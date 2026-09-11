@@ -32,6 +32,11 @@ QUOTA_EXHAUSTED_CODE = "REQUEST_LIMIT_EXCEEDED"
 INVALID_KEY_CODES = {"INVALID_API_KEY", "INVALID_KEY", "UNAUTHORIZED"}
 
 
+def _pre_start_odds_enabled() -> bool:
+    """Return whether the parent OddsPapi pre-start feature is enabled."""
+    return bool(getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False))
+
+
 def _account_usage_refresh_enabled() -> bool:
     """Return whether OddsPapi account/key usage refresh is allowed.
 
@@ -40,7 +45,7 @@ def _account_usage_refresh_enabled() -> bool:
     account-refresh flag is enabled.
     """
     return bool(
-        getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
+        _pre_start_odds_enabled()
         and getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True)
     )
 
@@ -174,7 +179,7 @@ class OddsPapiApiKeyScheduler:
         if (
             self.store is None
             or not credentials
-            or not _account_usage_refresh_enabled()
+            or not _pre_start_odds_enabled()
         ):
             return
         try:
@@ -553,7 +558,7 @@ class OddsPapiApiKeyScheduler:
             }
 
     def _persist(self, operation: str, callback) -> None:
-        if self.store is None or not _account_usage_refresh_enabled():
+        if self.store is None or not _pre_start_odds_enabled():
             return
         try:
             callback()

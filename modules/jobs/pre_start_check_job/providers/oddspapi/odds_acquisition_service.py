@@ -262,6 +262,7 @@ class OddspapiPreStartOddsAcquisitionService:
         payload: dict | None,
         result: OddspapiOddsAcquisitionResult,
         merge_full_bookmakers: bool,
+        select_latest_current: bool = False,
     ) -> dict | None:
         if error is not None:
             result.exchange_historical_requests_failed += 1
@@ -291,6 +292,11 @@ class OddspapiPreStartOddsAcquisitionService:
         if not historical_result.payload:
             return payload
         if merge_full_bookmakers:
+            if select_latest_current:
+                return OddspapiHistoricalOddsEnricher.merge_latest_current_odds(
+                    payload,
+                    historical_result.payload,
+                )
             return OddspapiHistoricalOddsEnricher.merge_bookmaker_odds(
                 payload,
                 historical_result.payload,
@@ -312,6 +318,7 @@ class OddspapiPreStartOddsAcquisitionService:
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
         merge_full_bookmakers: bool,
+        select_latest_current: bool = False,
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
         capture_raw_response: bool = False,
         as_of_targets: list[tuple[int, datetime, datetime]] | None = None,
@@ -356,6 +363,7 @@ class OddspapiPreStartOddsAcquisitionService:
                     payload=payload,
                     result=result,
                     merge_full_bookmakers=merge_full_bookmakers,
+                    select_latest_current=select_latest_current,
                 )
             return payload
 
@@ -394,6 +402,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 payload=payload,
                 result=result,
                 merge_full_bookmakers=merge_full_bookmakers,
+                select_latest_current=select_latest_current,
             )
         return payload
 
@@ -539,9 +548,14 @@ class OddspapiPreStartOddsAcquisitionService:
                         historical_result.payload,
                     )
                 else:
-                    # In production the preceding /odds response remains the
-                    # authoritative current view; historical only contributes
-                    # opening fields.
+                    # Both endpoints can contain a current observation. Make
+                    # the provider-time decision here, before the adapter and
+                    # repository, so the final payload has one newest current
+                    # value per matching player.
+                    payload = OddspapiHistoricalOddsEnricher.merge_latest_current_odds(
+                        payload,
+                        historical_result.payload,
+                    )
                     payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
                         payload,
                         historical_result.payload,
@@ -621,6 +635,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 min_price=min_price,
                 kickoff_utc=kickoff_utc,
                 available_through_utc=available_through_utc,
+                select_latest_current=available_through_utc is None,
             )
 
         if attach_as_of and result.as_of_quotes:
@@ -861,8 +876,16 @@ class OddspapiPreStartOddsAcquisitionService:
             )
             self._record_selection_diagnostics(result, historical_result)
             if historical_result.payload:
+                if available_through_utc is None:
+                    # Even the classic opening-enrichment request can return
+                    # a current observation. Reconcile it before persistence;
+                    # the historical payload remains an opening donor as well.
+                    payload = OddspapiHistoricalOddsEnricher.merge_latest_current_odds(
+                        current_payload,
+                        historical_result.payload,
+                    )
                 payload = OddspapiHistoricalOddsEnricher.merge_initial_prices(
-                    current_payload,
+                    payload,
                     historical_result.payload,
                 )
 

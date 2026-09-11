@@ -36,9 +36,9 @@ def _point(quote_id):
         snapshot_id=4,
         source_collected_at=None,
         collected_at=None,
-        minutes_before_start=1,
-        target_minute=1,
-        distance_from_target=0,
+        observed_minutes_before_start=1,
+        trajectory_minutes_before_start=Decimal("2.125"),
+        source_limit=Decimal("100"),
     )
 
 
@@ -50,14 +50,17 @@ def test_point_serialization_keeps_quote_identity():
     assert payload["exchange_level"] == 0
     assert payload["exchange_size"] is None
     assert payload["source_collected_at"] is None
+    assert payload["observed_minutes_before_start"] == 1
+    assert payload["trajectory_minutes_before_start"] == Decimal("2.125")
+    assert payload["source_limit"] == Decimal("100")
 
 
 class _Rows:
     def mappings(self):
         return self
 
-    def all(self):
-        return []
+    def __iter__(self):
+        return iter(())
 
 
 class _Session:
@@ -81,7 +84,7 @@ class _Context:
         return False
 
 
-def test_event_scope_precedes_quote_and_trajectory_ranking(monkeypatch):
+def test_event_scope_precedes_complete_snapshot_history(monkeypatch):
     session = _Session()
     monkeypatch.setattr(
         "infrastructure.persistence.repositories.odds_trajectory_repository.db_manager.get_session",
@@ -90,8 +93,6 @@ def test_event_scope_precedes_quote_and_trajectory_ranking(monkeypatch):
 
     result = OddsTrajectoryRepository._load_pre_start_trajectory_map(
         event_ids=[1],
-        target_minutes=[120, 1],
-        tolerance_minutes=5,
     )
 
     assert result == {}
@@ -100,14 +101,18 @@ def test_event_scope_precedes_quote_and_trajectory_ranking(monkeypatch):
     assert "FROM requested_events requested" in session.statement
     assert "WHERE mcq.main_line IS TRUE" in session.statement
     assert session.statement.index("JOIN markets m") < session.statement.index(
-        "ROW_NUMBER() OVER"
+        "JOIN market_choice_snapshots snapshots"
     )
-    assert "PARTITION BY event_id, quote_id, target_minute" in session.statement
-    assert "trajectory.quote_id IS NOT NULL" in session.statement
+    assert "CROSS JOIN" not in session.statement
+    assert "target_minute" not in session.statement
+    assert "distance_from_target" not in session.statement
     assert "snapshots.exchange_size" in session.statement
+    assert "snapshots.source_limit" in session.statement
+    assert "observed_minutes_before_start" in session.statement
+    assert "trajectory_minutes_before_start" in session.statement
+    assert "COALESCE(" in session.statement
     assert session.params["event_ids"] == [1]
-    assert session.params["target_minute_0"] == 120
-    assert session.params["target_minute_1"] == 1
+    assert set(session.params) == {"event_ids"}
 
 
 class _FailingSession:
@@ -124,12 +129,10 @@ def test_repository_distinguishes_query_failure_from_empty_result(monkeypatch):
     with pytest.raises(OddsTrajectoryLoadError):
         OddsTrajectoryRepository._load_pre_start_trajectory_map(
             event_ids=[1],
-            target_minutes=[1],
-            tolerance_minutes=3,
         )
 
 
-def test_public_read_normalizes_duplicate_ids_and_moments(monkeypatch):
+def test_public_read_normalizes_duplicate_event_ids(monkeypatch):
     session = _Session()
     monkeypatch.setattr(
         "infrastructure.persistence.repositories.odds_trajectory_repository.db_manager.get_session",
@@ -138,12 +141,8 @@ def test_public_read_normalizes_duplicate_ids_and_moments(monkeypatch):
 
     result = OddsTrajectoryRepository.get_pre_start_trajectory_map(
         event_ids=[2, 1, 2],
-        target_minutes=[30, 30, 1],
-        tolerance_minutes=3,
     )
 
     assert result == {}
     assert session.params["event_ids"] == [1, 2]
-    assert session.params["target_minute_0"] == 30
-    assert session.params["target_minute_1"] == 1
-    assert "target_minute_2" not in session.params
+    assert set(session.params) == {"event_ids"}

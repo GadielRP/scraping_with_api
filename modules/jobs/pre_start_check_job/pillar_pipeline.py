@@ -661,14 +661,19 @@ class EventPillarProcessor:
             return None
 
         minutes_until_start = getattr(event_context, "minutes_until_start", None)
+        evaluation_minute = minutes_until_start
         odds_trajectory = getattr(event_context, "odds_trajectory", [])
-        odds_trajectory_context = build_odds_trajectory_context(odds_trajectory)
+        odds_trajectory_context = build_odds_trajectory_context(
+            odds_trajectory,
+            evaluation_minute=evaluation_minute,
+        )
         event_context.odds_trajectory_context = odds_trajectory_context
         target_selection = select_target_minute(
             odds_trajectory_context,
             flow_id=CANONICAL_SIGNAL_FLOW_ID,
             expected_event_id=event_context.event_id,
             allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
+            evaluation_minute=evaluation_minute,
         )
 
         logger.info(

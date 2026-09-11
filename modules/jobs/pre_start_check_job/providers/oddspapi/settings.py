@@ -70,9 +70,9 @@ class OddspapiPreStartSettings:
     # exchange selector). Driven by Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES.
     require_active_quotes: bool = True
     persist_main_line_only: bool = True
-    # Historical ``current`` is not persisted twice when an attached moment
-    # references the exact same provider tick. Price equality alone is never
-    # enough to deduplicate two observations.
+    # Skip ``current`` only when a historical moment represents the same
+    # provider tick at the same logical extraction checkpoint. A significant
+    # change at T-20 therefore remains distinct from current at T-5.
     deduplicate_historical_current_snapshots: bool = True
 
     # When enabled, the pre-start phase removes stale rows from the

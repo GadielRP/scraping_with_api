@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import isclose, isfinite
 from typing import Callable, Sequence
 
@@ -67,6 +67,7 @@ class OddspapiHistoricalOddsChangeDetector:
         min_change_magnitude_pct: float = 20.0,
         min_history_hours: float = 24.0,
         flash_reversal_minutes: float = 3.0,
+        observation_cutoff_utc: datetime | None = None,
     ) -> list[HistoricalOddsAsOfQuote] | None:
         """Consume already sanitized ticks.
 
@@ -88,7 +89,14 @@ class OddspapiHistoricalOddsChangeDetector:
             return None
 
         window = timedelta(minutes=flash_reversal_minutes)
-        closing_boundary = kickoff_utc - window
+        if observation_cutoff_utc is not None:
+            cutoff = observation_cutoff_utc
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            effective_cutoff = min(kickoff_utc, cutoff)
+        else:
+            effective_cutoff = kickoff_utc
+        closing_boundary = effective_cutoff - window
         anchor = float(ticks[0][1]["price"])
         selected: list[HistoricalOddsAsOfQuote] = []
         index = 1

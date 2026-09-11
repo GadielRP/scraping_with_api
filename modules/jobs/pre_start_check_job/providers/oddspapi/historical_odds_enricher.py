@@ -1,9 +1,13 @@
-"""Merge historical opening quotes into the current OddsPapi response."""
+"""Merge historical OddsPapi observations into a canonical response."""
 
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
+
+from modules.oddspapi.historical_snapshot_policy import (
+    select_latest_current_player,
+)
 
 
 class OddspapiHistoricalOddsEnricher:
@@ -97,7 +101,38 @@ class OddspapiHistoricalOddsEnricher:
         base_response: dict | None,
         overlay_response: dict | None,
     ) -> dict:
-        """Deep-merge overlay bookmakerOdds into base (live exchange attach)."""
+        """Deep-merge overlay bookmaker odds into base."""
+        return cls._merge_bookmaker_odds(
+            base_response,
+            overlay_response,
+            player_merge=lambda base, overlay: {
+                **base,
+                **deepcopy(overlay),
+            },
+        )
+
+    @classmethod
+    def merge_latest_current_odds(
+        cls,
+        base_response: dict | None,
+        historical_response: dict | None,
+    ) -> dict:
+        """Keep one current observation, selecting the newest provider tick."""
+        return cls._merge_bookmaker_odds(
+            base_response,
+            historical_response,
+            player_merge=select_latest_current_player,
+        )
+
+    @classmethod
+    def _merge_bookmaker_odds(
+        cls,
+        base_response: dict | None,
+        overlay_response: dict | None,
+        *,
+        player_merge: Callable[[dict, dict], dict],
+    ) -> dict:
+        """Merge nested bookmaker data using an explicit player policy."""
         enriched = deepcopy(base_response if isinstance(base_response, dict) else {})
         overlay = overlay_response if isinstance(overlay_response, dict) else {}
         overlay_bookmakers = overlay.get("bookmakerOdds")
@@ -176,6 +211,9 @@ class OddspapiHistoricalOddsEnricher:
                         if not isinstance(base_player, dict):
                             base_players[player_id] = deepcopy(overlay_player)
                             continue
-                        base_player.update(deepcopy(overlay_player))
+                        base_players[player_id] = player_merge(
+                            base_player,
+                            overlay_player,
+                        )
 
         return enriched

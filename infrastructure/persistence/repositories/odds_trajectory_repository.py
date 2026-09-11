@@ -45,10 +45,10 @@ class OddsTrajectoryPoint:
     snapshot_id: Optional[int]
     source_collected_at: Optional[datetime]
     collected_at: Optional[datetime]
-    minutes_before_start: Optional[int]
-    target_minute: Optional[int]
-    distance_from_target: Optional[int]
+    observed_minutes_before_start: Optional[int]
+    trajectory_minutes_before_start: Optional[Decimal]
     main_line: Optional[bool] = None
+    source_limit: Optional[Decimal] = None
     exchange_size: Optional[Decimal] = None
 
     def to_dict(self) -> Dict:
@@ -78,9 +78,9 @@ class OddsTrajectoryPoint:
             "snapshot_id": self.snapshot_id,
             "source_collected_at": self.source_collected_at,
             "collected_at": self.collected_at,
-            "minutes_before_start": self.minutes_before_start,
-            "target_minute": self.target_minute,
-            "distance_from_target": self.distance_from_target,
+            "observed_minutes_before_start": self.observed_minutes_before_start,
+            "trajectory_minutes_before_start": self.trajectory_minutes_before_start,
+            "source_limit": self.source_limit,
         }
 
 
@@ -110,64 +110,42 @@ class OddsTrajectoryRepository:
             exchange_level=data.get("exchange_level"),
             initial_odds=data.get("initial_odds"),
             odds_value=data.get("odds_value"),
+            source_limit=data.get("source_limit"),
             exchange_size=data.get("exchange_size"),
             snapshot_id=data.get("snapshot_id"),
             source_collected_at=data.get("source_collected_at"),
             collected_at=data.get("collected_at"),
-            minutes_before_start=data.get("minutes_before_start"),
-            target_minute=data.get("target_minute"),
-            distance_from_target=data.get("distance_from_target"),
+            observed_minutes_before_start=data.get("observed_minutes_before_start"),
+            trajectory_minutes_before_start=data.get(
+                "trajectory_minutes_before_start"
+            ),
         )
 
     @staticmethod
     def get_pre_start_trajectory_map(
         event_ids: List[int],
-        target_minutes: Optional[List[int]] = None,
-        tolerance_minutes: Optional[int] = None,
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
         normalized_event_ids = sorted({int(event_id) for event_id in event_ids})
         if not normalized_event_ids:
             return {}
 
-        target_minutes = Config.PRE_START_ODDS_MOMENTS if target_minutes is None else target_minutes
-        normalized_target_minutes = list(
-            dict.fromkeys(int(target_minute) for target_minute in target_minutes)
-        )
-        tolerance_minutes = (
-            Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES
-            if tolerance_minutes is None
-            else tolerance_minutes
-        )
-
-        if not normalized_target_minutes:
-            return {}
-        if tolerance_minutes < 0:
-            raise ValueError("tolerance_minutes must be non-negative")
-
         return OddsTrajectoryRepository._load_pre_start_trajectory_map(
             event_ids=normalized_event_ids,
-            target_minutes=normalized_target_minutes,
-            tolerance_minutes=int(tolerance_minutes),
         )
 
     @staticmethod
     def _load_pre_start_trajectory_map(
         *,
         event_ids: List[int],
-        target_minutes: List[int],
-        tolerance_minutes: int,
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
-        target_minute_params = {
-            f"target_minute_{idx}": target_minute
-            for idx, target_minute in enumerate(target_minutes)
-        }
-        query_params = {
-            "event_ids": event_ids,
-            "tolerance_minutes": tolerance_minutes,
-            **target_minute_params,
-        }
-        query = build_pre_start_trajectory_query(target_minutes)
+        query_params = {"event_ids": event_ids}
+        query = build_pre_start_trajectory_query().execution_options(
+            stream_results=True,
+            yield_per=1000,
+        )
         started_at = perf_counter()
+        grouped: Dict[int, List[OddsTrajectoryPoint]] = {}
+        row_count = 0
 
         try:
             with db_manager.get_session() as session:
@@ -189,20 +167,17 @@ class OddsTrajectoryRepository:
                 rows = session.execute(
                     query,
                     query_params,
-                ).mappings().all()
-
-            grouped: Dict[int, List[OddsTrajectoryPoint]] = {}
-            for row in rows:
-                point = OddsTrajectoryRepository._from_row(row)
-                grouped.setdefault(point.event_id, []).append(point)
+                ).mappings()
+                for row in rows:
+                    point = OddsTrajectoryRepository._from_row(row)
+                    grouped.setdefault(point.event_id, []).append(point)
+                    row_count += 1
         except Exception as exc:
             duration_ms = (perf_counter() - started_at) * 1000
             logger.exception(
                 "Failed to load event-scoped pre-start odds trajectory "
-                "events=%s targets=%s tolerance=%s duration_ms=%.1f",
+                "events=%s duration_ms=%.1f",
                 len(event_ids),
-                len(target_minutes),
-                tolerance_minutes,
                 duration_ms,
             )
             raise OddsTrajectoryLoadError(
@@ -212,12 +187,11 @@ class OddsTrajectoryRepository:
         duration_ms = (perf_counter() - started_at) * 1000
         logger.info(
             "Loaded event-scoped pre-start odds trajectory "
-            "events_requested=%s events_returned=%s targets=%s rows=%s "
+            "events_requested=%s events_returned=%s rows=%s "
             "duration_ms=%.1f",
             len(event_ids),
             len(grouped),
-            len(target_minutes),
-            len(rows),
+            row_count,
             duration_ms,
         )
         return grouped

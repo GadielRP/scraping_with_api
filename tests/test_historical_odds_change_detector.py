@@ -151,6 +151,10 @@ def test_empty_opening_historical_moments_disable_classic_enrichment():
     assert settings.resolved_opening_historical_moments([]) == []
 
 
+def test_pre_start_settings_enable_checkpoint_aware_current_deduplication() -> None:
+    assert OddspapiPreStartSettings().deduplicate_historical_current_snapshots is True
+
+
 def test_significant_change_forced_moments_select_only_integer_key_moments():
     settings = OddspapiPreStartSettings(significant_change_forced_moments=(5, 0))
 
@@ -164,3 +168,29 @@ def test_significant_change_forced_moments_select_only_integer_key_moments():
 def test_invalid_significant_change_forced_moments(value):
     with pytest.raises(ValueError):
         OddspapiPreStartSettings(significant_change_forced_moments=value)
+
+
+def test_observation_cutoff_shifts_closing_window_for_pre_start():
+    # Kickoff at 18:00, observation cutoff at 17:55 (T-5)
+    cutoff = KICKOFF - timedelta(minutes=5)
+    # flash_reversal_minutes=3 means closing_boundary is 17:52 (8 min before kickoff)
+    # tick at 9m before kickoff (4m before cutoff) is before closing window and confirmed
+    # tick at 6m before kickoff (1m before cutoff) falls into closing window (17:54 > 17:52)
+    ticks = [
+        tick(1440, 2.0),
+        tick(9, 2.5),
+        tick(6, 2.8),
+    ]
+    quotes = detect(ticks, observation_cutoff_utc=cutoff, flash_reversal_minutes=3.0)
+    # tick(9, 2.5) is before closing window, candidate jump from 2.0 -> 2.5 (>=20%)
+    # In closing window (6m before kickoff), 2.8 is the latest tick through cutoff and significant from 2.5 (>=20% of 2.0 or 2.5?)
+    # 2.8 vs 2.5 is +12% from 2.5. If anchor is 2.5, 2.8 is not >=20% of 2.5.
+    # But if tick 6 is price 3.2, 3.2 vs 2.5 is +28% (significant).
+    # Let's test with price 3.2:
+    ticks_sig = [
+        tick(1440, 2.0),
+        tick(9, 2.5),
+        tick(6, 3.2),
+    ]
+    quotes_sig = detect(ticks_sig, observation_cutoff_utc=cutoff, flash_reversal_minutes=3.0)
+    assert [(q.minutes_until_start, q.price) for q in quotes_sig] == [(9, 2.5), (6, 3.2)]

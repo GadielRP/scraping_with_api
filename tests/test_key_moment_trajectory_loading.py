@@ -70,7 +70,7 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
         # construction. It must never reach the trajectory repository.
         return [{"event_id": 1, "odds_trajectory": []}]
 
-    def load_trajectory(event_ids, _moments):
+    def load_trajectory(event_ids):
         calls.append(("trajectory", set(event_ids)))
         return {1: [{"event_id": 1, "target_minute": 30}]}
 
@@ -181,7 +181,7 @@ def test_pillar_pipeline_execution_moments_gate(monkeypatch):
     monkeypatch.setattr(
         key_moment_evaluation,
         "_load_trajectory_payloads",
-        lambda event_ids, _moments: calls.append(("trajectory", sorted(event_ids))) or {},
+        lambda event_ids: calls.append(("trajectory", sorted(event_ids))) or {},
     )
     monkeypatch.setattr(
         key_moment_evaluation,
@@ -202,5 +202,4 @@ def test_pillar_pipeline_execution_moments_gate(monkeypatch):
         ("trajectory", [2]),
         ("pillars", [2]),
     ]
-
 

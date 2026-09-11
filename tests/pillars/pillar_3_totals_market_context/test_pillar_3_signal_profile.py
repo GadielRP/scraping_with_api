@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -54,6 +54,12 @@ def _event_context(event_id: int = EVENT_ID):
     )
 
 
+def _snapshot_times(target_minute: int) -> tuple[datetime, datetime]:
+    start_at = datetime(2026, 8, 27, 18, 0, tzinfo=timezone.utc)
+    observed_at = start_at - timedelta(minutes=target_minute)
+    return observed_at, observed_at - timedelta(seconds=15)
+
+
 def _book_rows(
     *,
     bookie_id: int,
@@ -67,6 +73,7 @@ def _book_rows(
     market_id: int,
 ) -> list[dict]:
     rows: list[dict] = []
+    observed_at, provider_at = _snapshot_times(target_minute)
     for index, (choice_name, price) in enumerate((('over', over), ('under', under)), 1):
         if price is None:
             continue
@@ -88,11 +95,12 @@ def _book_rows(
                 "quote_id": market_id * 100 + index,
                 "odds_value": price,
                 "snapshot_id": market_id * 1000 + index,
-                "collected_at": datetime(2026, 8, 27, 17, 59, tzinfo=timezone.utc),
-                "source_collected_at": datetime(2026, 8, 27, 17, 58, tzinfo=timezone.utc),
-                "minutes_before_start": target_minute,
-                "target_minute": target_minute,
-                "distance_from_target": 0,
+                "collected_at": observed_at,
+                "source_collected_at": provider_at,
+                "observed_minutes_before_start": target_minute,
+                "trajectory_minutes_before_start": (
+                    Decimal(target_minute) + Decimal("0.250000")
+                ),
                 "main_line": True,
             }
         )
@@ -112,6 +120,7 @@ def _exchange_rows(
     first_half: bool = False,
 ) -> list[dict]:
     rows: list[dict] = []
+    observed_at, provider_at = _snapshot_times(target_minute)
     for index, (choice_name, price, size) in enumerate(
         (("over", over, over_size), ("under", under, under_size)),
         1,
@@ -137,10 +146,12 @@ def _exchange_rows(
                 "odds_value": price,
                 "exchange_size": size,
                 "snapshot_id": market_id * 1000 + index,
-                "collected_at": datetime(2026, 8, 27, 17, 59, tzinfo=timezone.utc),
-                "minutes_before_start": target_minute,
-                "target_minute": target_minute,
-                "distance_from_target": 0,
+                "collected_at": observed_at,
+                "source_collected_at": provider_at,
+                "observed_minutes_before_start": target_minute,
+                "trajectory_minutes_before_start": (
+                    Decimal(target_minute) + Decimal("0.250000")
+                ),
             }
         )
     return rows
@@ -268,6 +279,32 @@ def test_ft_and_first_half_complete_produce_active_structural_contract() -> None
     assert profile["1H"] is not None
     assert profile["FT_1H"] is not None
     assert result["modules"][0]["P3_SIGNAL_PROFILE"] is profile
+
+
+def test_complete_arbitrary_history_does_not_change_p3_target_projection() -> None:
+    current_rows = _complete_rows(target_minute=5)
+    historical_rows = [
+        {
+            **row,
+            "odds_value": 9.99,
+            "snapshot_id": row["snapshot_id"] + 1_000_000,
+            "collected_at": datetime(
+                2026, 8, 27, 16, 37, tzinfo=timezone.utc
+            ),
+            "source_collected_at": datetime(
+                2026, 8, 27, 16, 36, 15, tzinfo=timezone.utc
+            ),
+            "observed_minutes_before_start": 83,
+            "trajectory_minutes_before_start": Decimal("83.750000"),
+        }
+        for row in current_rows
+    ]
+
+    result = _calculate([*historical_rows, *current_rows])
+
+    assert result["P3_STATUS"] == "ACTIVE"
+    assert result["P3_TARGET_MINUTE"] == 5
+    assert result["raw"]["inputs"]["PIN_FT_OVER_ODDS"] == pytest.approx(1.8)
 
 
 def test_ft_complete_without_first_half_is_partial() -> None:

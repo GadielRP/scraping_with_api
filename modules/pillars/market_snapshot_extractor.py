@@ -24,7 +24,7 @@ from modules.pillars.odds_trajectory_context import (
 # Hardcoded development/simulation overrides. ``None`` preserves the flow's
 # normal selection policy. A configured minute is strict and never falls back.
 HARDCODED_TARGET_MINUTE_BY_FLOW: dict[str, int | None] = {
-    "pre_start_signal_profile": 5,
+    "pre_start_signal_profile": None,
 }
 
 
@@ -154,6 +154,7 @@ def select_target_minute(
     flow_id: str,
     expected_event_id: int | None = None,
     allowed_target_minutes: Iterable[int] | None = None,
+    evaluation_minute: int | None = None,
 ) -> TargetMinuteSelection:
     """Select one strict minute for all requests made by a flow."""
     if context is None:
@@ -183,10 +184,15 @@ def select_target_minute(
         if allowed_target_minutes is None
         else {int(minute) for minute in allowed_target_minutes}
     )
+    normalized_evaluation_minute = (
+        None if evaluation_minute is None else int(evaluation_minute)
+    )
     candidates = [
         int(minute)
         for minute in context.target_minutes_present
         if allowed is None or int(minute) in allowed
+        if normalized_evaluation_minute is None
+        or int(minute) >= normalized_evaluation_minute
     ]
     if not candidates:
         return TargetMinuteSelection(
@@ -196,11 +202,16 @@ def select_target_minute(
                 "flow_id": flow_id,
                 "target_minutes_present": list(context.target_minutes_present),
                 "allowed_target_minutes": sorted(allowed) if allowed is not None else None,
+                "evaluation_minute": normalized_evaluation_minute,
             },
         )
     return TargetMinuteSelection(
         min(candidates),
-        diagnostics={"selection": "latest_available", "flow_id": flow_id},
+        diagnostics={
+            "selection": "latest_causal_available",
+            "flow_id": flow_id,
+            "evaluation_minute": normalized_evaluation_minute,
+        },
     )
 
 
@@ -229,7 +240,7 @@ def _matching_choices(
     ]
 
 
-def _read_quote(
+def _read_projected_quote(
     *,
     market_line: MarketLineOddsTrajectory,
     bookie: BookieOddsTrajectory,
@@ -239,6 +250,7 @@ def _read_quote(
     invalid: set[str],
     ambiguous: set[str],
 ) -> QuotePoint | None:
+    """Read one configured-target projection without scanning raw snapshots."""
     choices = _matching_choices(bookie, request.choice_name)
     if not choices:
         missing.add(request.input_name)
@@ -359,7 +371,7 @@ def extract_market_snapshot(
                     invalid.add(request.line_input_name)
 
         points = {
-            choice_request.key: _read_quote(
+            choice_request.key: _read_projected_quote(
                 market_line=market_line,
                 bookie=bookie,
                 request=choice_request,

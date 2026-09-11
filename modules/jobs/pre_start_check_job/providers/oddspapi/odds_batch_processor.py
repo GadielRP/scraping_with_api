@@ -1051,6 +1051,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         deduplicate_historical_current_snapshots=(
                             ODDSPAPI_PRE_START_SETTINGS.deduplicate_historical_current_snapshots
                         ),
+                        current_moment_minutes=candidate.minutes_until_start,
                         debug_mode=debug_mode,
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)

@@ -366,6 +366,32 @@ def test_refresh_and_usage_persistence_are_disabled_with_pre_start_feature_off(
     assert store.rows == {}
 
 
+def test_account_refresh_toggle_off_uses_persisted_state_without_account_request(
+    monkeypatch,
+):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", False)
+    calls = []
+
+    class UsageService:
+        def fetch(self, api_key):
+            calls.append(api_key)
+            raise AssertionError("account endpoint must not be called")
+
+    scheduler, store = _scheduler(
+        ["key"],
+        [_usage_row("key", 10)],
+        account_usage_service=UsageService(),
+    )
+
+    assert scheduler.refresh_if_due(force=True) is False
+    state = scheduler.usage_snapshot()[api_key_fingerprint("key")]
+
+    assert calls == []
+    assert state.request_limit == 250
+    assert state.estimated_request_count == 10
+    assert store.rows[api_key_fingerprint("key")].estimated_request_count == 10
+
+
 def test_unknown_key_usage_advances_instead_of_receiving_permanent_priority():
     scheduler, _store = _scheduler(
         ["known", "unknown"],

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -98,6 +99,9 @@ def _add_market(
     exchange_side: str | None = None,
     exchange_sizes: dict[str, float | None] | None = None,
 ) -> None:
+    start_at = datetime(2026, 8, 22, 18, 0, tzinfo=timezone.utc)
+    observed_at = start_at - timedelta(minutes=minute)
+    provider_at = observed_at - timedelta(seconds=15)
     for index, (choice_name, odds_value) in enumerate(prices.items(), start=1):
         rows.append(
             {
@@ -114,12 +118,14 @@ def _add_market(
                 "source": "oddspapi",
                 "exchange_side": exchange_side,
                 "exchange_level": 0,
-                "target_minute": minute,
                 "odds_value": odds_value,
                 "snapshot_id": minute * 1000 + len(rows),
-                "collected_at": "2026-08-22T17:55:00+00:00",
-                "minutes_before_start": minute,
-                "distance_from_target": 0,
+                "collected_at": observed_at.isoformat(),
+                "source_collected_at": provider_at.isoformat(),
+                "observed_minutes_before_start": minute,
+                "trajectory_minutes_before_start": (
+                    Decimal(minute) + Decimal("0.250000")
+                ),
                 "exchange_size": (
                     exchange_sizes.get(choice_name)
                     if exchange_sizes is not None
@@ -286,6 +292,30 @@ def test_full_time_and_first_half_complete_produce_exact_active_contract() -> No
     assert profile["FT_1H"] is not None
     assert result["modules"][0]["P2_SIGNAL_PROFILE"] is profile
     assert result["raw"] is result["modules"][0]["raw"]
+
+
+def test_complete_arbitrary_history_does_not_change_p2_target_projection() -> None:
+    current_rows = _complete_rows(minute=5)
+    historical_rows = [
+        {
+            **row,
+            "odds_value": 9.99,
+            "snapshot_id": row["snapshot_id"] + 1_000_000,
+            "collected_at": "2026-08-22T16:37:00+00:00",
+            "source_collected_at": "2026-08-22T16:36:15+00:00",
+            "observed_minutes_before_start": 83,
+            "trajectory_minutes_before_start": Decimal("83.750000"),
+        }
+        for row in current_rows
+    ]
+
+    result = _calculate([*historical_rows, *current_rows])
+
+    assert result["P2_STATUS"] == "ACTIVE"
+    assert result["P2_TARGET_MINUTE"] == 5
+    assert result["raw"]["inputs"][
+        "PIN_HOME_1X2_FULL_TIME_ODDS_PRICE"
+    ] == pytest.approx(2.0)
 
 
 def test_full_time_complete_and_first_half_absent_keeps_ft_and_marks_partial() -> None:
@@ -511,7 +541,12 @@ def test_one_strict_target_minute_has_no_per_market_fallback() -> None:
     rows = _complete_rows(minute=30) + _complete_rows(minute=5)
     rows = [
         row for row in rows
-        if not (row["target_minute"] == 5 and row["market_period"] == "1st Half" and row["bookie_id"] == 3 and row["choice_name"] == "2")
+        if not (
+            row["observed_minutes_before_start"] == 5
+            and row["market_period"] == "1st Half"
+            and row["bookie_id"] == 3
+            and row["choice_name"] == "2"
+        )
     ]
     result = _calculate(rows)
 

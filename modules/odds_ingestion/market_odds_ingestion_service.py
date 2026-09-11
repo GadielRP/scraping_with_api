@@ -291,6 +291,7 @@ class MarketOddsIngestionService:
         mainline_fallback_bookmakers: Sequence[str] | None = None,
         debug_mode: bool = False,
         deduplicate_historical_current_snapshots: bool = True,
+        current_moment_minutes: int | float | None = None,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
@@ -377,6 +378,7 @@ class MarketOddsIngestionService:
             deduplicate_historical_current_snapshots=(
                 deduplicate_historical_current_snapshots
             ),
+            current_moment_minutes=current_moment_minutes,
         )
         # Historical payloads are already preselected before the reader.  The
         # shared post-adapter filter remains intentionally as a compatibility

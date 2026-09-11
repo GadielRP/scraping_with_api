@@ -27,16 +27,23 @@ def get_oddspapi_key_scheduler() -> OddsPapiApiKeyScheduler:
         return _scheduler
     with _runtime_lock:
         if _scheduler is None:
+            pre_start_enabled = bool(
+                getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", False)
+            )
             refresh_enabled = oddspapi_account_usage_refresh_enabled()
             # Imports are intentionally delayed so importing the HTTP client
             # does not eagerly connect to PostgreSQL.
-            if refresh_enabled:
+            if pre_start_enabled:
                 from infrastructure.persistence.repositories.oddspapi_api_key_usage_repository import (
                     OddspapiApiKeyUsageRepository,
                 )
             _scheduler = OddsPapiApiKeyScheduler(
                 inventory=ApiKeyInventory(),
-                store=(OddspapiApiKeyUsageRepository() if refresh_enabled else None),
+                store=(
+                    OddspapiApiKeyUsageRepository()
+                    if pre_start_enabled
+                    else None
+                ),
                 account_usage_service=(
                     OddspapiAccountUsageService() if refresh_enabled else None
                 ),

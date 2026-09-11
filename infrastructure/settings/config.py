@@ -406,6 +406,8 @@ class Config:
         1,
         int(os.getenv('ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES', '60')),
     )
+    # When disabled, the key scheduler uses the last persisted account
+    # snapshot from the database and never requests the /account endpoint.
     ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH = _parse_env_bool(
         'ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH',
         True,

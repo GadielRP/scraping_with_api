@@ -18,6 +18,7 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.exchange_outcome_select
 )
 from modules.odds_ingestion.adapters.oddspapi_market_adapter import OddspapiMarketAdapter
 from modules.odds_ingestion.oddspapi_line_selection import line_liquidity, select_current_lines
+from modules.oddspapi.historical_snapshot_policy import select_latest_current_player
 
 
 def _fixture(specs):
@@ -240,6 +241,7 @@ def test_adapter_marks_historical_current_tick_for_canonical_deduplication():
     adapted = OddspapiMarketAdapter.from_odds_response(
         payload,
         market_mapping_index=index,
+        current_moment_minutes=5,
     )
     choices = adapted["bookmakers"][0]["markets"][0]["choices"]
 
@@ -262,6 +264,7 @@ def test_adapter_marks_historical_current_tick_for_canonical_deduplication():
     equal_price_from_another_tick = OddspapiMarketAdapter.from_odds_response(
         payload,
         market_mapping_index=index,
+        current_moment_minutes=5,
     )
     assert (
         equal_price_from_another_tick["bookmakers"][0]["markets"][0]["choices"][
@@ -269,6 +272,126 @@ def test_adapter_marks_historical_current_tick_for_canonical_deduplication():
         ]["persistCurrentSnapshot"]
         is True
     )
+
+
+def test_adapter_keeps_current_when_matching_tick_belongs_to_another_moment():
+    payload, index = _fixture([{}])
+    player = payload["bookmakerOdds"]["bet365"]["markets"]["1"]["outcomes"][
+        "1-0"
+    ]["players"]["0"]
+    player["changedAt"] = "2026-06-20T11:55:00Z"
+    player["momentQuotes"] = [
+        {
+            "minutesUntilStart": 5,
+            "price": player["price"],
+            "createdAt": "2026-06-20T11:55:00Z",
+        }
+    ]
+
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+        current_moment_minutes=0,
+    )
+
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+    assert choices[0]["persistCurrentSnapshot"] is True
+
+
+def test_adapter_keeps_current_for_significant_change_before_extraction():
+    payload, index = _fixture([{}])
+    player = payload["bookmakerOdds"]["bet365"]["markets"]["1"]["outcomes"][
+        "1-0"
+    ]["players"]["0"]
+    player["changedAt"] = "2026-06-20T11:40:00Z"
+    player["momentQuotes"] = [
+        {
+            "minutesUntilStart": 20.0,
+            "price": player["price"],
+            "createdAt": "2026-06-20T11:40:00Z",
+        }
+    ]
+
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+        current_moment_minutes=5,
+    )
+
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+    assert choices[0]["persistCurrentSnapshot"] is True
+
+
+def test_adapter_deduplicates_carried_tick_at_same_fallback_checkpoint():
+    payload, index = _fixture([{}])
+    player = payload["bookmakerOdds"]["bet365"]["markets"]["1"]["outcomes"][
+        "1-0"
+    ]["players"]["0"]
+    player["changedAt"] = "2026-06-20T11:40:12.500Z"
+    player["momentQuotes"] = [
+        {
+            "minutesUntilStart": 5,
+            "price": player["price"],
+            "createdAt": "2026-06-20T11:40:12.500Z",
+        }
+    ]
+
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=index,
+        current_moment_minutes=5,
+    )
+
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+    assert choices[0]["persistCurrentSnapshot"] is False
+
+
+def test_current_selection_prefers_newer_historical_tick_without_replacing_metadata():
+    base = {
+        "price": 1.90,
+        "active": True,
+        "changedAt": "2026-06-20T11:55:00.500Z",
+        "mainLine": True,
+        "sourceCollectedAt": "2026-06-20T11:55:00Z",
+    }
+    historical = {
+        "price": 1.85,
+        "active": True,
+        "changedAt": "2026-06-20T11:56:00.250Z",
+        "limit": 12,
+    }
+
+    selected = select_latest_current_player(base, historical)
+
+    assert selected["price"] == 1.85
+    assert selected["changedAt"] == "2026-06-20T11:56:00.250Z"
+    assert selected["limit"] == 12
+    assert selected["mainLine"] is True
+    assert "sourceCollectedAt" not in selected
+
+
+def test_current_selection_keeps_base_for_distinct_or_equal_provider_tick():
+    base = {
+        "price": 1.90,
+        "changedAt": "2026-06-20T11:55:00.500Z",
+    }
+
+    older = select_latest_current_player(
+        base,
+        {"price": 1.85, "changedAt": "2026-06-20T11:55:00.499Z"},
+    )
+    equal_with_offset = select_latest_current_player(
+        base,
+        {"price": 1.85, "changedAt": "2026-06-20T05:55:00.500-06:00"},
+    )
+    missing_base_timestamp = select_latest_current_player(
+        {"price": 1.90},
+        {"price": 1.85, "changedAt": "2026-06-20T11:56:00Z"},
+    )
+
+    assert older is base
+    assert equal_with_offset is base
+    assert missing_base_timestamp["price"] == 1.90
 
 
 def test_exchange_history_budget_is_spent_only_on_selected_line():

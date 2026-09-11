@@ -370,8 +370,6 @@ def _load_db_context(event_id: int, trajectory_market_groups, trajectory_market_
     source_event_id = EventSourceMappingRepository.get_source_event_id(event_id, "sofascore")
     trajectory_rows_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
         event_ids=[event_id],
-        target_minutes=Config.PRE_START_ODDS_MOMENTS,
-        tolerance_minutes=Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
     )
     trajectory_rows = [point.to_dict() for point in trajectory_rows_by_event_id.get(event_id, [])]
     trajectory_context = build_odds_trajectory_context(trajectory_rows)

@@ -1,29 +1,20 @@
-"""PostgreSQL query for bounded pre-start odds trajectory reads.
+"""PostgreSQL query for complete event-scoped pre-start odds histories.
 
-The request scope is introduced before quote eligibility and snapshot history.
-This is essential: quote depth is meaningful per choice, while the scheduler
-only needs choices owned by the requested events.
+The requested event and eligible quote sets are resolved before snapshot
+history is joined. Target-minute projection belongs to the pillar formatter,
+so this query returns every persisted snapshot for the selected quote lineage.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from sqlalchemy import bindparam, text
+from sqlalchemy import Integer, bindparam, text
 from sqlalchemy.sql.elements import TextClause
 
 
-def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClause:
-    """Build the event-scoped trajectory statement for the requested moments."""
-    if not target_minutes:
-        raise ValueError("target_minutes must not be empty")
-
-    target_value_rows = ", ".join(
-        f"(:target_minute_{index})" for index, _ in enumerate(target_minutes)
-    )
-
+def build_pre_start_trajectory_query() -> TextClause:
+    """Build the event-scoped statement for complete eligible quote histories."""
     return text(
-        f"""
+        """
         WITH requested_events AS (
             SELECT
                 e.id AS event_id,
@@ -95,43 +86,12 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
             ) ranked
             WHERE ranked.depth_rank = 1
         ),
-        snapshot_context AS (
+        quote_context AS (
             SELECT
-                eligible.event_id,
-                eligible.start_time_utc,
-                eligible.market_id,
-                eligible.market_name,
-                eligible.market_group,
-                eligible.market_period,
-                eligible.choice_group,
-                eligible.bookie_id,
+                eligible.*,
                 b.name AS bookie_name,
-                eligible.choice_id,
-                eligible.choice_name,
-                eligible.initial_odds,
-                snapshots.snapshot_id,
-                eligible.source,
-                snapshots.source_collected_at,
-                eligible.source_market_id,
-                eligible.source_outcome_id,
-                eligible.bookmaker_outcome_id,
-                eligible.main_line,
-                snapshots.source_limit,
-                snapshots.exchange_size,
-                snapshots.odds_value,
-                snapshots.collected_at,
-                event_mapping.source_sport_id AS event_source_sport_id,
-                ROUND(
-                    EXTRACT(
-                        EPOCH FROM (eligible.start_time_utc - snapshots.collected_at)
-                    ) / 60
-                )::int AS minutes_before_start,
-                eligible.quote_id,
-                eligible.exchange_side,
-                eligible.exchange_level
+                event_mapping.source_sport_id AS event_source_sport_id
             FROM eligible_quotes eligible
-            JOIN market_choice_snapshots snapshots
-              ON snapshots.quote_id = eligible.quote_id
             JOIN bookies b
               ON b.bookie_id = eligible.bookie_id
             LEFT JOIN event_source_mappings event_mapping
@@ -140,7 +100,7 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
         ),
         source_mapped AS (
             SELECT
-                snapshot_context.*,
+                quote_context.*,
                 COALESCE(
                     exact_mapping.mapping_id,
                     fallback_mapping.mapping_id
@@ -149,14 +109,14 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                     exact_mapping.canonical_market_key,
                     fallback_mapping.canonical_market_key
                 ) AS mapped_canonical_market_key
-            FROM snapshot_context
+            FROM quote_context
             LEFT JOIN market_source_mappings exact_mapping
-              ON exact_mapping.source = snapshot_context.source
-             AND exact_mapping.source_market_id = snapshot_context.source_market_id
-             AND exact_mapping.source_sport_id = snapshot_context.event_source_sport_id
+              ON exact_mapping.source = quote_context.source
+             AND exact_mapping.source_market_id = quote_context.source_market_id
+             AND exact_mapping.source_sport_id = quote_context.event_source_sport_id
             LEFT JOIN market_source_mappings fallback_mapping
-              ON fallback_mapping.source = snapshot_context.source
-             AND fallback_mapping.source_market_id = snapshot_context.source_market_id
+              ON fallback_mapping.source = quote_context.source
+             AND fallback_mapping.source_market_id = quote_context.source_market_id
              AND fallback_mapping.source_sport_id IS NULL
         ),
         textual_canonical_match AS (
@@ -191,9 +151,10 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                     textual_type.canonical_market_period, '-', ''
                  ), '_', ''), ' ', ''))
         ),
-        trajectory AS (
+        canonical_quotes AS (
             SELECT
                 textual.event_id,
+                textual.start_time_utc,
                 textual.market_id,
                 COALESCE(
                     mapped_type.canonical_market_key,
@@ -221,7 +182,7 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                     mapped_type.canonical_market_period,
                     textual.textual_market_period,
                     textual.market_period
-                 ) AS market_period,
+                ) AS market_period,
                 textual.choice_group,
                 textual.bookie_id,
                 textual.bookie_name,
@@ -230,12 +191,6 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                 textual.main_line,
                 outcome_mapping.display_order AS choice_display_order,
                 textual.initial_odds,
-                textual.odds_value,
-                textual.exchange_size,
-                textual.snapshot_id,
-                textual.source_collected_at,
-                textual.collected_at,
-                textual.minutes_before_start,
                 textual.quote_id,
                 textual.source,
                 textual.exchange_side,
@@ -261,88 +216,76 @@ def build_pre_start_trajectory_query(target_minutes: Sequence[int]) -> TextClaus
                     ) = false
                     OR textual.choice_group IS NOT NULL
                   )
-        ),
-        target_moments AS (
-            SELECT target_minute
-            FROM (VALUES {target_value_rows}) AS moments(target_minute)
-        ),
-        candidate_rows AS (
-            SELECT
-                trajectory.*,
-                target_moments.target_minute,
-                ABS(
-                    trajectory.minutes_before_start - target_moments.target_minute
-                ) AS distance_from_target
-            FROM trajectory
-            CROSS JOIN target_moments
-            WHERE ABS(
-                    trajectory.minutes_before_start - target_moments.target_minute
-                  ) <= :tolerance_minutes
-              AND trajectory.quote_id IS NOT NULL
-        ),
-        ranked_trajectory AS (
-            SELECT
-                candidate_rows.*,
-                ROW_NUMBER() OVER (
-                    PARTITION BY event_id, quote_id, target_minute
-                    ORDER BY
-                        distance_from_target,
-                        collected_at DESC,
-                        snapshot_id DESC
-                ) AS trajectory_rank
-            FROM candidate_rows
         )
         SELECT
-            event_id,
-            market_id,
-            canonical_market_key,
-            market_family,
-            market_display_order,
-            market_name,
-            market_group,
-            market_period,
-            choice_group,
-            bookie_id,
-            bookie_name,
-            choice_id,
-            choice_name,
-            main_line,
-            choice_display_order,
-            quote_id,
-            source,
-            exchange_side,
-            exchange_level,
-            initial_odds,
-            odds_value,
-            exchange_size,
-            snapshot_id,
-            source_collected_at,
-            collected_at,
-            minutes_before_start,
-            target_minute,
-            distance_from_target
-        FROM ranked_trajectory
-        WHERE trajectory_rank = 1
+            canonical.event_id,
+            canonical.market_id,
+            canonical.canonical_market_key,
+            canonical.market_family,
+            canonical.market_display_order,
+            canonical.market_name,
+            canonical.market_group,
+            canonical.market_period,
+            canonical.choice_group,
+            canonical.bookie_id,
+            canonical.bookie_name,
+            canonical.choice_id,
+            canonical.choice_name,
+            canonical.main_line,
+            canonical.choice_display_order,
+            canonical.quote_id,
+            canonical.source,
+            canonical.exchange_side,
+            canonical.exchange_level,
+            canonical.initial_odds,
+            snapshots.odds_value,
+            snapshots.source_limit,
+            snapshots.exchange_size,
+            snapshots.snapshot_id,
+            snapshots.source_collected_at,
+            snapshots.collected_at,
+            ROUND(
+                EXTRACT(
+                    EPOCH FROM (canonical.start_time_utc - snapshots.collected_at)
+                ) / 60
+            )::int AS observed_minutes_before_start,
+            ROUND(
+                EXTRACT(
+                    EPOCH FROM (
+                        canonical.start_time_utc
+                        - COALESCE(
+                            snapshots.source_collected_at,
+                            snapshots.collected_at
+                        )
+                    )
+                ) / 60,
+                6
+            ) AS trajectory_minutes_before_start
+        FROM canonical_quotes canonical
+        JOIN market_choice_snapshots snapshots
+          ON snapshots.quote_id = canonical.quote_id
         ORDER BY
-            event_id,
-            market_display_order NULLS LAST,
-            market_group,
-            market_period,
-            choice_group NULLS FIRST,
-            bookie_name,
-            source,
-            CASE exchange_side
+            canonical.event_id,
+            canonical.market_display_order NULLS LAST,
+            canonical.market_group,
+            canonical.market_period,
+            canonical.choice_group NULLS FIRST,
+            canonical.bookie_name,
+            canonical.source,
+            CASE canonical.exchange_side
                 WHEN 'back' THEN 1
                 WHEN 'lay' THEN 2
                 ELSE 0
             END,
-            exchange_level,
-            quote_id,
-            target_minute DESC,
-            choice_display_order NULLS LAST,
-            choice_name
+            canonical.exchange_level,
+            canonical.quote_id,
+            COALESCE(snapshots.source_collected_at, snapshots.collected_at),
+            snapshots.collected_at,
+            snapshots.snapshot_id,
+            canonical.choice_display_order NULLS LAST,
+            canonical.choice_name
         """
-    ).bindparams(bindparam("event_ids", expanding=True))
+    ).bindparams(bindparam("event_ids", expanding=True, type_=Integer))
 
 
 __all__ = ["build_pre_start_trajectory_query"]

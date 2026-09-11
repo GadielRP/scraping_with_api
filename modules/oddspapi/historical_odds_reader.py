@@ -153,6 +153,7 @@ class OddspapiHistoricalOddsReader:
                                     min_change_magnitude_pct=min_change_magnitude_pct,
                                     min_history_hours=min_history_hours,
                                     flash_reversal_minutes=flash_reversal_minutes,
+                                    observation_cutoff_utc=available_through_utc,
                                 )
                             # The adaptive reducer returns no moment quotes in
                             # two cases: the series is too short for the

@@ -152,6 +152,25 @@ class _RecordingFetcher:
         return self._result(_historical_payload(), kwargs)
 
 
+class _TimestampedCurrentFetcher(_RecordingFetcher):
+    def fetch_odds(self, fixture_id, **kwargs):
+        self.calls.append({"fixture_id": fixture_id, **kwargs})
+        endpoint = kwargs.get("endpoint")
+        if endpoint == ODDSPAPI_CURRENT_ODDS_ENDPOINT:
+            payload = _current_payload()
+            player = payload["bookmakerOdds"]["pinnacle"]["markets"]["101"][
+                "outcomes"
+            ]["201"]["players"]["0"]
+            player.update({"price": 1.90, "changedAt": "2026-06-20T11:55:00Z"})
+            return self._result(payload, kwargs)
+        payload = _historical_payload()
+        player = payload["bookmakerOdds"]["pinnacle"]["markets"]["101"][
+            "outcomes"
+        ]["201"]["players"]["0"]
+        player.update({"price": 1.85, "changedAt": "2026-06-20T11:56:00Z"})
+        return self._result(payload, kwargs)
+
+
 class _FakeMainlineCache:
     saved = []
     exchange_selections = [
@@ -324,6 +343,32 @@ def test_forced_significant_change_preserves_current_exchange_bookmaker(monkeypa
         ["outcomes"]["201"]["players"]["0"]["initialPrice"]
         == 2.05
     )
+
+
+def test_forced_significant_change_selects_newest_current_provider_tick(monkeypatch):
+    monkeypatch.setattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
+    fetcher = _TimestampedCurrentFetcher()
+    service = OddspapiPreStartOddsAcquisitionService(
+        fetcher=fetcher,
+        mainline_cache_repository=_FakeMainlineCache,
+    )
+
+    result = service.acquire(
+        "fixture-1",
+        **_acquire_kwargs(
+            regular_bookmakers=["pinnacle"],
+            exchange_bookmakers=None,
+            current_odds_available=False,
+            force_significant_changes=True,
+            start_time_utc=KICKOFF,
+        ),
+    )
+
+    player = result.payload["bookmakerOdds"]["pinnacle"]["markets"]["101"][
+        "outcomes"
+    ]["201"]["players"]["0"]
+    assert player["price"] == 1.85
+    assert player["changedAt"] == "2026-06-20T11:56:00Z"
 
 
 def test_forced_historical_simulation_uses_bounded_regular_current(monkeypatch):

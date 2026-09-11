@@ -286,3 +286,192 @@ def test_multi_source_exchange_series_do_not_collide() -> None:
         bookie.choices["1"].meta_by_minute[1].quote_id
         for bookie in bookies.values()
     } == {500, 501, 502, 503}
+
+
+def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> None:
+    base = _make_rows()[1]
+    rows = [
+        {
+            **base,
+            "snapshot_id": 2101,
+            "odds_value": "2.100",
+            "collected_at": "2026-01-01T11:55:10",
+            "source_collected_at": "2026-01-01T11:40:00",
+            "observed_minutes_before_start": 5,
+            "trajectory_minutes_before_start": "20.5041666667",
+            "source_limit": "100.500",
+        },
+        {
+            **base,
+            "snapshot_id": 2102,
+            "odds_value": "2.200",
+            "collected_at": "2026-01-01T11:55:20",
+            "source_collected_at": "2026-01-01T11:50:00",
+            "observed_minutes_before_start": 5,
+            "trajectory_minutes_before_start": "10.125",
+            "source_limit": "90.250",
+        },
+    ]
+
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[5],
+        tolerance_minutes=0,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["2:oddspapi:single:0"]
+        .choices["1"]
+    )
+
+    assert [snapshot.snapshot_id for snapshot in choice.snapshots] == [2101, 2102]
+    assert choice.odds_values == {5: Decimal("2.200")}
+    assert choice.meta_by_minute[5].snapshot_id == 2102
+    assert choice.snapshots[0].minutes_before_start == Decimal("20.5041666667")
+    assert choice.snapshots[0].source_limit == Decimal("100.500")
+    serialized = context.to_dict()["markets"]["1X2"]["Full Time"][
+        "1X2 Full Time"
+    ]["__default__"]["bookies"]["2:oddspapi:single:0"]["choices"]["1"]
+    assert len(serialized["snapshots"]) == 2
+    assert serialized["snapshots"][1]["snapshot_id"] == 2102
+    assert "source_minutes_before_start" not in serialized["snapshots"][0]
+
+
+def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> None:
+    base = _make_rows()[1]
+    rows = [
+        {
+            **base,
+            "snapshot_id": 2201,
+            "odds_value": "1.819",
+            # The opening was persisted during the T-5 ingestion batch.
+            "collected_at": "2026-05-19T17:00:20",
+            "source_collected_at": "2026-05-18T20:00:00",
+            "observed_minutes_before_start": 5,
+            "trajectory_minutes_before_start": "1265.0",
+        },
+        {
+            **base,
+            "snapshot_id": 2202,
+            "odds_value": "1.990",
+            # The T-5 moment/current was persisted slightly earlier, but its
+            # provider timestamp represents the fresher market state.
+            "collected_at": "2026-05-19T17:00:00",
+            "source_collected_at": "2026-05-19T16:58:58",
+            "observed_minutes_before_start": 5,
+            "trajectory_minutes_before_start": "6.0333333333",
+        },
+    ]
+
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[5],
+        tolerance_minutes=0,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["2:oddspapi:single:0"]
+        .choices["1"]
+    )
+
+    assert [snapshot.snapshot_id for snapshot in choice.snapshots] == [2201, 2202]
+    assert choice.odds_values == {5: Decimal("1.990")}
+    assert choice.meta_by_minute[5].snapshot_id == 2202
+
+
+def test_snapshot_minutes_and_target_projection_use_independent_time_axes() -> None:
+    row = {
+        **_make_rows()[0],
+        "observed_minutes_before_start": 5,
+        "trajectory_minutes_before_start": "20.5041666667",
+        "minutes_before_start": None,
+        "odds_value": "1.875",
+    }
+
+    context = build_odds_trajectory_context(
+        [row],
+        target_minutes_expected=[5],
+        tolerance_minutes=0,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert choice.snapshots[0].minutes_before_start == Decimal("20.5041666667")
+    assert choice.odds_values == {5: Decimal("1.875")}
+    assert choice.meta_by_minute[5].minutes_before_start == 5
+
+
+def test_previous_payload_prefers_source_minutes_for_snapshot_timeline() -> None:
+    row = {
+        **_make_rows()[0],
+        "minutes_before_start": 5,
+        "source_minutes_before_start": "20.25",
+        "odds_value": "1.875",
+    }
+
+    context = build_odds_trajectory_context(
+        [row],
+        target_minutes_expected=[5],
+        tolerance_minutes=0,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert choice.snapshots[0].minutes_before_start == Decimal("20.25")
+    assert choice.meta_by_minute[5].minutes_before_start == 5
+
+
+def test_evaluation_minute_excludes_later_configured_targets() -> None:
+    rows = [
+        {
+            **_make_rows()[0],
+            "snapshot_id": 3000 + minute,
+            "minutes_before_start": minute,
+            "odds_value": str(Decimal("2") + Decimal(minute) / 100),
+        }
+        for minute in (5, 0, -5)
+    ]
+
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[5, 0, -5],
+        tolerance_minutes=0,
+        evaluation_minute=5,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert len(choice.snapshots) == 3
+    assert choice.odds_values == {5: Decimal("2.05")}
+    assert context.target_minutes_present == [5]
+    assert context.missing_target_minutes == [0, -5]
+
+
+def test_filtered_context_copies_snapshot_lists() -> None:
+    context = build_odds_trajectory_context(
+        _make_rows(),
+        target_minutes_expected=[1],
+    )
+    filtered = context.filter_by_bookie_ids({1})
+    original_choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+    filtered_choice = (
+        filtered.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+
+    assert filtered_choice.snapshots == original_choice.snapshots
+    assert filtered_choice.snapshots is not original_choice.snapshots

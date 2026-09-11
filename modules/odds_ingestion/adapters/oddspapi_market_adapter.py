@@ -112,6 +112,7 @@ class OddspapiMarketAdapter:
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
         deduplicate_historical_current_snapshots: bool = True,
+        current_moment_minutes: int | float | None = None,
     ) -> dict:
         if market_mapping_index is None:
             raise ValueError("market_mapping_index is required")
@@ -350,6 +351,7 @@ class OddspapiMarketAdapter:
                                 deduplicate=(
                                     deduplicate_historical_current_snapshots
                                 ),
+                                current_moment_minutes=current_moment_minutes,
                             ),
                         }
                         moment_quotes = player.get("momentQuotes")

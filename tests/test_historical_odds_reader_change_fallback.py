@@ -121,3 +121,16 @@ def test_order_and_timestamp_ties_follow_existing_normalizer():
     # Existing ties process the later payload entry first.
     assert result.as_of_quotes[0].price == 2.6
     assert player(result)["price"] == 2.5
+
+
+def test_available_through_utc_passes_to_detector_closing_window():
+    available_through = KICKOFF - timedelta(minutes=5)
+    # Ticks at 24h, 9m (before closing), 6m (in T-5 closing window: 17:54 > 17:52)
+    ticks = [
+        tick(1440, 2.0),
+        tick(9, 2.5),
+        tick(6, 3.2),
+        tick(1, 4.0),  # This tick is after T-5 cutoff, so reader filters it out
+    ]
+    result = read(ticks, available_through_utc=available_through)
+    assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [(9, 2.5), (6, 3.2)]

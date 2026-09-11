@@ -87,7 +87,7 @@ def _run_pipeline(monkeypatch, selection_spy=None, mining_service=None):
     monkeypatch.setattr(
         pillar_pipeline,
         "build_odds_trajectory_context",
-        lambda _rows: context,
+        lambda _rows, **_kwargs: context,
     )
     if selection_spy is not None:
         monkeypatch.setattr(
@@ -147,6 +147,7 @@ def test_pipeline_selects_target_once_and_injects_same_object(monkeypatch) -> No
 
     assert len(calls) == 1
     assert calls[0][1]["flow_id"] == pillar_pipeline.CANONICAL_SIGNAL_FLOW_ID
+    assert calls[0][1]["evaluation_minute"] == 5
     assert captured["p2_selection"] is captured["p3_selection"]
     assert result["pillar_2"]["P2_TARGET_MINUTE"] == 5
     assert result["pillar_3"]["P3_TARGET_MINUTE"] == 5

@@ -106,6 +106,33 @@ def test_shared_extractor_supports_arbitrary_future_market_and_bookie() -> None:
     )
 
 
+def test_target_selection_does_not_cross_evaluation_boundary() -> None:
+    context = build_odds_trajectory_context(
+        [
+            _row("over", 1.91, target_minute=30),
+            _row("over", 1.89, target_minute=5),
+            _row("over", 1.88, target_minute=0),
+            _row("over", 1.87, target_minute=-5),
+        ],
+        target_minutes_expected=[30, 5, 0, -5],
+    )
+
+    at_five = select_target_minute(
+        context,
+        flow_id="future_pillar",
+        evaluation_minute=5,
+    )
+    at_zero = select_target_minute(
+        context,
+        flow_id="future_pillar",
+        evaluation_minute=0,
+    )
+
+    assert at_five.target_minute == 5
+    assert at_zero.target_minute == 0
+    assert at_five.diagnostics["selection"] == "latest_causal_available"
+
+
 def test_target_override_is_per_flow_and_strict(monkeypatch) -> None:
     context = build_odds_trajectory_context(
         [_row("over", 1.88, target_minute=0)],

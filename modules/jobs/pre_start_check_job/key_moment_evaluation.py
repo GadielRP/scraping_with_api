@@ -258,14 +258,11 @@ def _hydrate_missing_tennis_metadata(
 
 def _load_trajectory_payloads(
     event_ids: set[int],
-    key_moments: list[int],
 ) -> dict[int, list[dict]]:
-    """Load pillar trajectory inputs while keeping persistence failures explicit."""
+    """Load complete pillar histories while keeping persistence failures explicit."""
     try:
         trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
             event_ids=list(event_ids),
-            target_minutes=key_moments,
-            tolerance_minutes=Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES,
         )
     except OddsTrajectoryLoadError:
         logger.warning(
@@ -556,7 +553,6 @@ def evaluate_pre_start_key_moments(
             )
             trajectory_payloads = _load_trajectory_payloads(
                 validated_event_ids,
-                key_moments,
             )
             for context in pillar_contexts:
                 event_id = int(context.event_id if hasattr(context, "event_id") else context["event_id"])
