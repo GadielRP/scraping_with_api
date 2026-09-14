@@ -1,16 +1,19 @@
-"""Pillar 4 orchestrator."""
+"""Thin orchestrator for the Pillar 4 temporal signal profile."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
-from modules.pillars.pillar_4.drift_engine.drift_engine import (
-    ENGINE_VERSION,
-    calculate_p4_drift_engine,
-)
+
+from .debug_logging import log_p4_extraction, log_p4_signal_profile
+from .periods import P4_MODULE_ID, P4_MODULE_NAME, P4_PILLAR_ID
+from .raw_audit import build_raw_audit
+from .signal_engine import ENGINE_VERSION, build_p4_signal_profile
+from .trajectory_policy import extract_p4_trajectory_inputs
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,54 +21,87 @@ logger = logging.getLogger(__name__)
 def calculate_pillar_4(
     event_context: EventContext,
     odds_trajectory_context: OddsTrajectoryContext | None = None,
+    *,
+    target_minute: int,
     debug_mode: bool = False,
-) -> Dict[str, Any]:
-    """Calculate Pillar 4 and return a serializable pillar payload."""
-    odds_trajectory_context = (
-        odds_trajectory_context
-        or getattr(event_context, "odds_trajectory_context", None)
+) -> dict[str, Any]:
+    """Return P4's causal temporal profile for one exact operative target."""
+    odds_context = odds_trajectory_context or getattr(
+        event_context,
+        "odds_trajectory_context",
+        None,
     )
-    if odds_trajectory_context is None:
-        raise ValueError("EventContext is missing odds_trajectory_context for P4")
-    logger.info(
-        "P4 orchestrator start for event_id=%s participants=%s debug_mode=%s",
-        event_context.event_id,
-        event_context.participants_label,
-        debug_mode,
+    extraction = extract_p4_trajectory_inputs(
+        event_context,
+        odds_context,
+        target_minute=target_minute,
     )
-    drift_engine_result = calculate_p4_drift_engine(
-        event_context=event_context,
-        odds_trajectory_context=odds_trajectory_context,
-        debug_mode=debug_mode,
-    )
-    pillar_status = drift_engine_result.get("P4_STATUS", "INSUFFICIENT_DATA")
-    logger.info(
-        "P4 orchestrator done for %s: status=%s modules=%s market_period_count=%s",
-        event_context.participants_label,
-        pillar_status,
-        [drift_engine_result.get("module_id")],
-        drift_engine_result.get("market_period_count", 0),
-    )
-
-    return {
-        "pillar_id": "pillar_4",
-        "pillar_name": "Temporal Market Drift",
+    if debug_mode:
+        log_p4_extraction(logger, extraction)
+    raw = build_raw_audit(extraction)
+    base = {
+        "pillar_id": P4_PILLAR_ID,
+        "pillar_name": "Temporal Market Drift Signal Profile",
         "engine_version": ENGINE_VERSION,
         "event_id": event_context.event_id,
         "participants": event_context.participants_label,
-        "P4_STATUS": pillar_status,
-        "status": pillar_status,
-        "modules": [drift_engine_result],
-        "market_period_results": drift_engine_result.get("market_period_results", {}),
-        "market_period_count": drift_engine_result.get("market_period_count", 0),
-        "active_market_period_count": drift_engine_result.get("active_market_period_count", 0),
-        "insufficient_market_period_count": drift_engine_result.get(
-            "insufficient_market_period_count",
-            0,
-        ),
-        "raw": {
-            "module_count": 1,
-            "module_ids": [drift_engine_result.get("module_id")],
-            "drift_engine": drift_engine_result.get("raw", {}),
-        },
+        "P4_TARGET_MINUTE": extraction.target_minute,
+        "PERIODS": extraction.periods,
+        "MISSING_INPUTS": list(extraction.missing_inputs),
+        "INVALID_INPUTS": list(extraction.invalid_inputs),
+        "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
     }
+    if not extraction.usable:
+        logger.info(
+            "P4 signal profile unavailable event_id=%s target_minute=%s reason=%s",
+            event_context.event_id,
+            extraction.target_minute,
+            extraction.reason,
+        )
+        return {
+            **base,
+            "P4_STATUS": "INSUFFICIENT_DATA",
+            "status": "INSUFFICIENT_DATA",
+            "P4_SIGNAL_PROFILE": None,
+            "modules": [],
+            "raw": raw,
+        }
+
+    profile = build_p4_signal_profile(
+        extraction,
+        debug_mode=debug_mode,
+    ).to_dict()
+    status = str(profile["SUMMARY"]["STATUS"])
+    module = {
+        "pillar_id": P4_PILLAR_ID,
+        "module_id": P4_MODULE_ID,
+        "module_name": P4_MODULE_NAME,
+        "engine_version": ENGINE_VERSION,
+        "P4_STATUS": status,
+        "status": status,
+        "P4_TARGET_MINUTE": extraction.target_minute,
+        "P4_SIGNAL_PROFILE": profile,
+        "raw": raw,
+    }
+    if debug_mode:
+        log_p4_signal_profile(logger, profile)
+    logger.info(
+        "P4 signal profile calculated event_id=%s target_minute=%s status=%s "
+        "adaptive_series=%s checkpoint_series=%s",
+        event_context.event_id,
+        extraction.target_minute,
+        status,
+        profile["SUMMARY"]["ADAPTIVE_SERIES_COUNT"],
+        profile["SUMMARY"]["CHECKPOINT_SERIES_COUNT"],
+    )
+    return {
+        **base,
+        "P4_STATUS": status,
+        "status": status,
+        "P4_SIGNAL_PROFILE": profile,
+        "modules": [module],
+        "raw": raw,
+    }
+
+
+__all__ = ["ENGINE_VERSION", "calculate_pillar_4"]

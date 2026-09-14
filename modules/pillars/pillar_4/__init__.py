@@ -1,5 +1,5 @@
-"""Pillar 4 package."""
+"""Pillar 4 temporal market drift signal profile."""
 
-from .run_pillar_4 import calculate_pillar_4
+from .run_pillar_4 import ENGINE_VERSION, calculate_pillar_4
 
-__all__ = ["calculate_pillar_4"]
+__all__ = ["ENGINE_VERSION", "calculate_pillar_4"]

@@ -242,9 +242,13 @@ def test_pipeline_registers_both_structural_signal_profile_adapters() -> None:
         "pillar_1_team_structure_totals",
         "pillar_2_side_market",
         "pillar_3_totals_market_context",
+        "pillar_4_temporal_market_drift",
     }
     assert adapters["pillar_3_totals_market_context"].pillar_id == (
         "pillar_3_totals_market_context"
+    )
+    assert adapters["pillar_4_temporal_market_drift"].pillar_id == (
+        "pillar_4_temporal_market_drift"
     )
 
 

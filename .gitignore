@@ -100,6 +100,7 @@ copies/
 !docs/pre-start-closing-minute-contract-mismatch.md
 !docs/odds-significant-change-snapshots.md
 !docs/pillars/mining-persistence.md
+!P4_BLUEPRINT_IMPLEMENTACION_ES_WORKING_v4.md
 
 test_*.py
 *.json

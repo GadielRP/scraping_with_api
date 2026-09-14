@@ -51,9 +51,13 @@ from modules.pillars.mining.adapters import (
     P1TotalsMiningAdapter,
     P2MiningAdapter,
     P3MiningAdapter,
+    P4MiningAdapter,
 )
 from modules.pillars.mining.service import PillarMiningService
-from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
+from modules.pillars.pillar_4.run_pillar_4 import (
+    ENGINE_VERSION as P4_ENGINE_VERSION,
+    calculate_pillar_4,
+)
 from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
 from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
@@ -97,19 +101,28 @@ def _is_pillar_competition_in_scope(competition_id) -> bool:
     )
 
 
-def _build_p4_error_result(event_context, odds_trajectory_context, exc: Exception) -> dict:
+def _build_p4_error_result(
+    event_context,
+    odds_trajectory_context,
+    exc: Exception,
+    *,
+    target_minute: int,
+) -> dict:
     return {
-        "pillar_id": "pillar_4",
-        "pillar_name": "Temporal Market Drift",
+        "pillar_id": "pillar_4_temporal_market_drift",
+        "pillar_name": "Temporal Market Drift Signal Profile",
+        "engine_version": P4_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
+        "P4_TARGET_MINUTE": target_minute,
+        "PERIODS": {},
+        "MISSING_INPUTS": [],
+        "INVALID_INPUTS": [],
+        "AMBIGUOUS_INPUTS": [],
         "P4_STATUS": "ERROR",
         "status": "ERROR",
+        "P4_SIGNAL_PROFILE": None,
         "modules": [],
-        "market_period_results": {},
-        "market_period_count": 0,
-        "active_market_period_count": 0,
-        "insufficient_market_period_count": 0,
         "error": str(exc),
         "raw": {
             "reason": "pillar_4_exception",
@@ -587,6 +600,8 @@ class EventPillarProcessor:
             target_minute = result.get("P2_TARGET_MINUTE")
         if target_minute is None:
             target_minute = result.get("P3_TARGET_MINUTE")
+        if target_minute is None:
+            target_minute = result.get("P4_TARGET_MINUTE")
         engine_version = result.get("engine_version") or result.get("raw", {}).get(
             "engine_version"
         )
@@ -790,6 +805,8 @@ class EventPillarProcessor:
                 # calculate pillar 4 (p4)
                 p4_result = calculate_pillar_4(
                     event_context=event_context,
+                    odds_trajectory_context=odds_trajectory_context,
+                    target_minute=evaluation_minute,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -799,22 +816,35 @@ class EventPillarProcessor:
                     event_context.participants_label,
                     exc,
                 )
-                p4_result = _build_p4_error_result(event_context, odds_trajectory_context, exc)
+                p4_result = _build_p4_error_result(
+                    event_context,
+                    odds_trajectory_context,
+                    exc,
+                    target_minute=evaluation_minute,
+                )
 
+            profile_summary = (
+                (p4_result.get("P4_SIGNAL_PROFILE") or {}).get("SUMMARY") or {}
+            )
             logger.info(
-                "P4 calculated for %s: status=%s market_periods=%s active=%s insufficient=%s",
+                "P4 calculated for %s: status=%s target_minute=%s adaptive_series=%s checkpoint_series=%s",
                 event_context.participants_label,
                 p4_result.get("P4_STATUS"),
-                p4_result.get("market_period_count"),
-                p4_result.get("active_market_period_count"),
-                p4_result.get("insufficient_market_period_count"),
+                p4_result.get("P4_TARGET_MINUTE"),
+                profile_summary.get("ADAPTIVE_SERIES_COUNT"),
+                profile_summary.get("CHECKPOINT_SERIES_COUNT"),
             )
             if self.debug_mode:
                 logger.info(
-                    "P4 debug summary for %s: trajectory_keys=%s",
+                    "P4 debug summary for %s: periods=%s",
                     event_context.participants_label,
-                    list((p4_result.get("market_period_results") or {}).keys())[:10],
+                    list((p4_result.get("PERIODS") or {}).keys())[:10],
                 )
+            self._persist_mining_result(
+                "pillar_4_temporal_market_drift",
+                event_context,
+                p4_result,
+            )
         else:
             logger.info(
                 "Pillar 4 (Temporal Market Drift) skipped for %s (disabled by toggle)",
@@ -1307,7 +1337,7 @@ class EventPillarProcessor:
 
 def _registered_mining_adapters() -> dict[
     str,
-    P1SideMiningAdapter | P1TotalsMiningAdapter | P2MiningAdapter | P3MiningAdapter,
+    P1SideMiningAdapter | P1TotalsMiningAdapter | P2MiningAdapter | P3MiningAdapter | P4MiningAdapter,
 ]:
     """Composition root for structural signal-profile mining writers."""
     return {
@@ -1315,6 +1345,7 @@ def _registered_mining_adapters() -> dict[
         "pillar_1_team_structure_totals": P1TotalsMiningAdapter(),
         "pillar_2_side_market": P2MiningAdapter(),
         "pillar_3_totals_market_context": P3MiningAdapter(),
+        "pillar_4_temporal_market_drift": P4MiningAdapter(),
     }
 
 

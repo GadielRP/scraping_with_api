@@ -8,8 +8,8 @@ import json
 import logging
 
 from modules.oddspapi.client import OddsPapiClient
-from infrastructure.settings import Config
 from modules.oddspapi.runtime import (
+    get_oddspapi_key_scheduler,
     oddspapi_account_usage_refresh_enabled,
     refresh_oddspapi_account_usage_if_due,
 )
@@ -146,15 +146,22 @@ def run_fixture_discovery_job(
         from_date = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
         to_date = from_date + timedelta(days=lookahead_days)
 
-    return OddspapiFixtureDiscoveryJob(
-        client=client,
-        sports=sports or dict(DISCOVERY_SPORT_IDS),
-        create_mappings=create_mappings,
-        persist_queue=persist_queue,
-        status_id=status_id,
-        max_fixtures_per_sport=max_fixtures_per_sport,
-        chunk_size=chunk_size,
-    ).run(from_date, to_date)
+    runtime_client = client or OddsPapiClient(
+        key_scheduler=get_oddspapi_key_scheduler()
+    )
+    try:
+        return OddspapiFixtureDiscoveryJob(
+            client=runtime_client,
+            sports=sports or dict(DISCOVERY_SPORT_IDS),
+            create_mappings=create_mappings,
+            persist_queue=persist_queue,
+            status_id=status_id,
+            max_fixtures_per_sport=max_fixtures_per_sport,
+            chunk_size=chunk_size,
+        ).run(from_date, to_date)
+    finally:
+        if client is None:
+            runtime_client.close()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -167,15 +174,30 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--max-fixtures-per-sport must be positive")
         if args.chunk_size <= 0:
             raise ValueError("--chunk-size must be positive")
-        job = OddspapiFixtureDiscoveryJob(
-            sports=sports,
-            create_mappings=bool(args.commit and not args.dry_run),
-            persist_queue=bool(args.persist_queue and args.commit and not args.dry_run),
-            status_id=args.status_id,
-            max_fixtures_per_sport=args.max_fixtures_per_sport,
-            chunk_size=args.chunk_size,
+        if oddspapi_account_usage_refresh_enabled():
+            try:
+                refresh_oddspapi_account_usage_if_due()
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Oddspapi account usage preflight failed; using persisted estimates"
+                )
+        runtime_client = OddsPapiClient(
+            key_scheduler=get_oddspapi_key_scheduler()
         )
-        summary = job.run(from_date, to_date)
+        try:
+            summary = OddspapiFixtureDiscoveryJob(
+                client=runtime_client,
+                sports=sports,
+                create_mappings=bool(args.commit and not args.dry_run),
+                persist_queue=bool(
+                    args.persist_queue and args.commit and not args.dry_run
+                ),
+                status_id=args.status_id,
+                max_fixtures_per_sport=args.max_fixtures_per_sport,
+                chunk_size=args.chunk_size,
+            ).run(from_date, to_date)
+        finally:
+            runtime_client.close()
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))
 

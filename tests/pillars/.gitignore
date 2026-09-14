@@ -1,3 +1,6 @@
-# Keep the shared P2/P3 coverage regression suite visible to Git.
+# Keep canonical pillar regression suites visible to Git.
 !.gitignore
 !test_market_bookie_coverage.py
+!pillar_4/
+!pillar_4/test_pillar_4_signal_profile.py
+!mining/test_pillar_4_mining.py
