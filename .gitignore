@@ -104,8 +104,7 @@ copies/
 
 test_*.py
 *.json
-odds_papi/**/*.json
-odds_papi/*.json
+odds_papi/*
 
 # Phase 1 OddsPapi offline ingestion verification
 !tests/

@@ -232,6 +232,8 @@ CANONICAL_MARKET_TYPE_SEEDS = {
                 "full time (including overtime)",
                 # Baseball / cricket-style extras use the same "incl. extras" bucket as OT.
                 "winner (incl. extra innings)",
+                # Ice hockey shootout markets include overtime and penalty shots.
+                "winner (incl. overtime and penalties)",
             },
             "period_lock": "Full Time",
         },
