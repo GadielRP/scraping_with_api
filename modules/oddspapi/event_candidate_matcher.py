@@ -277,16 +277,16 @@ def _normalize_sport(value: object) -> str:
     return SPORT_ALIASES.get(normalized, normalized)
 
 
-def _fixture_start_time_utc(fixture: OddspapiFixtureIdentity) -> object | None:
-    if fixture.start_time_utc is not None:
-        return as_utc(fixture.start_time_utc, field_name="fixture.start_time_utc")
+def _fixture_starts_at(fixture: OddspapiFixtureIdentity) -> object | None:
+    if fixture.starts_at is not None:
+        return as_utc(fixture.starts_at, field_name="fixture.starts_at")
     return None
 
 
-def _event_start_time_utc(event_start_time) -> object | None:
+def _event_starts_at(event_start_time) -> object | None:
     if event_start_time is None:
         return None
-    return as_utc(event_start_time, field_name="event.start_time_utc")
+    return as_utc(event_start_time, field_name="event.starts_at")
 
 
 def _stringify_values(values: Iterable[object]) -> list[str]:
@@ -668,8 +668,8 @@ class OddspapiEventCandidateMatcher:
         sport_score = self._sport_score(fixture_sport, event_sport)
 
         start_time_delta_minutes: float | None = None
-        fixture_start_time = _fixture_start_time_utc(fixture)
-        event_start_time = _event_start_time_utc(getattr(event, "start_time_utc", None))
+        fixture_start_time = _fixture_starts_at(fixture)
+        event_start_time = _event_starts_at(getattr(event, "starts_at", None))
         if fixture_start_time is not None and event_start_time is not None:
             delta = abs(event_start_time - fixture_start_time)
             start_time_delta_minutes = round(abs(delta.total_seconds()) / 60.0, 3)
@@ -838,7 +838,7 @@ class OddspapiEventCandidateMatcher:
             )
         )
 
-        fixture_start_time = _fixture_start_time_utc(fixture)
+        fixture_start_time = _fixture_starts_at(fixture)
         if fixture_start_time is not None:
             window_start = fixture_start_time - timedelta(hours=1)
             window_end = fixture_start_time + timedelta(hours=1)
@@ -849,8 +849,8 @@ class OddspapiEventCandidateMatcher:
                 window_end,
             )
             query = query.filter(
-                Event.start_time_utc >= window_start,
-                Event.start_time_utc <= window_end,
+                Event.starts_at >= window_start,
+                Event.starts_at <= window_end,
             )
 
         if fixture.normalized_sport:

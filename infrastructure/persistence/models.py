@@ -1,9 +1,9 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON, SmallInteger
+from sqlalchemy import Column, Integer, String, Numeric, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 from infrastructure.persistence.types import UTCDateTime
 
 Base = declarative_base()
@@ -19,8 +19,8 @@ class Participant(Base):
     slug = Column(Text)
     short_name = Column(Text)
     code_name = Column(Text)
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         UniqueConstraint('source', 'source_participant_id', name='unique_participant_source_external_id'),
@@ -51,8 +51,8 @@ class Competition(Base):
     standings_grouping = Column(Text)
     league_config_source = Column(Text)
     has_standings_source_endpoint = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         UniqueConstraint('source', 'source_tournament_id', name='unique_competition_source_tournament_id'),
@@ -67,11 +67,9 @@ class Event(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     custom_id = Column(Text)
     slug = Column(Text, nullable=False)
-    # COMPATIBILITY NAME: ``_utc`` is retained to avoid a costly cross-codebase
-    # rename. PostgreSQL stores this timestamptz as an absolute instant; clients
-    # may display that instant with another offset (for example ``-06``). The
-    # Python/domain contract is nevertheless always a timezone-aware UTC value.
-    start_time_utc = Column(UTCDateTime(), nullable=False)
+    # Absolute kickoff instant. PostgreSQL stores it as timestamptz and the
+    # Python contract always exposes an aware datetime normalized to UTC.
+    starts_at = Column(UTCDateTime(), nullable=False)
     sport = Column(Text, nullable=False)
     # LEGACY_EVENT_TEXT_FIELDS:
     # Kept for backward compatibility with historical rows and old runtime paths.
@@ -98,8 +96,8 @@ class Event(Base):
     away_participant_id = Column(Integer, ForeignKey('participants.participant_id', ondelete='SET NULL'))
     competition_id = Column(Integer, ForeignKey('competitions.competition_id', ondelete='SET NULL'))
 
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
     
     # Relationships
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
@@ -152,8 +150,8 @@ class EventSourceMapping(Base):
     match_method = Column(Text, nullable=False, default='direct')
     confidence = Column(Numeric(5, 3))
     raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'))
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     event = relationship("Event", back_populates="source_mappings")
     participant_home = relationship("Participant", foreign_keys=[participant_home_id])
@@ -205,14 +203,14 @@ class EventSourceResolutionQueue(Base):
     participant2_name = Column(Text, nullable=True)
     participant2_short_name = Column(Text, nullable=True)
     participant2_abbr = Column(Text, nullable=True)
-    source_start_time_utc = Column(UTCDateTime(), nullable=True)
+    source_starts_at = Column(UTCDateTime(), nullable=True)
     raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
     raw_payload = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
     candidate_scores = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
     attempt_count = Column(Integer, nullable=False, default=1)
-    first_seen_at = Column(DateTime, default=get_local_now)
-    last_attempted_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    first_seen_at = Column(UTCDateTime(), default=utc_now)
+    last_attempted_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         UniqueConstraint(
@@ -221,7 +219,7 @@ class EventSourceResolutionQueue(Base):
             name='unique_event_source_resolution_queue_source_event',
         ),
         Index('idx_event_source_resolution_queue_status', 'source', 'resolution_status'),
-        Index('idx_event_source_resolution_queue_start_time', 'source_start_time_utc'),
+        Index('idx_event_source_resolution_queue_start_time', 'source_starts_at'),
         Index('idx_event_source_resolution_queue_best_candidate', 'best_candidate_event_id'),
     )
 
@@ -262,8 +260,8 @@ class EventObservation(Base):
     observation_type = Column(String(50), nullable=False)  # 'ground_type', 'weather', etc.
     observation_value = Column(Text)  # Flexible value storage
     sport = Column(String(50))  # For quick filtering
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
     
     # Constraints
     __table_args__ = (
@@ -301,7 +299,7 @@ class PillarMiningRun(Base):
     canonical_status = Column(String(20), nullable=False)
     evaluation_minute = Column(SmallInteger)
     target_minute = Column(SmallInteger)
-    calculated_at = Column(DateTime, nullable=False, default=get_local_now)
+    calculated_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     sport = Column(String(50), nullable=False)
     competition_id = Column(
         Integer,
@@ -319,9 +317,9 @@ class PillarMiningRun(Base):
     output_payload = Column(
         JSONB().with_variant(JSON(), 'sqlite'), nullable=False, default=dict
     )
-    created_at = Column(DateTime, nullable=False, default=get_local_now)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     updated_at = Column(
-        DateTime, nullable=False, default=get_local_now, onupdate=get_local_now
+        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
     )
 
     event = relationship("Event", back_populates="pillar_mining_runs")
@@ -420,9 +418,9 @@ class PillarMiningUnit(Base):
     diagnostics = Column(
         JSONB().with_variant(JSON(), 'sqlite'), nullable=False, default=dict
     )
-    created_at = Column(DateTime, nullable=False, default=get_local_now)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     updated_at = Column(
-        DateTime, nullable=False, default=get_local_now, onupdate=get_local_now
+        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
     )
 
     run = relationship("PillarMiningRun", back_populates="units")
@@ -494,9 +492,9 @@ class PillarMiningMetricValue(Base):
     numeric_value = Column(Numeric(30, 12))
     text_value = Column(Text)
     boolean_value = Column(Boolean)
-    created_at = Column(DateTime, nullable=False, default=get_local_now)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     updated_at = Column(
-        DateTime, nullable=False, default=get_local_now, onupdate=get_local_now
+        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
     )
 
     unit = relationship("PillarMiningUnit", back_populates="metrics")
@@ -559,8 +557,8 @@ class BookieSourceMapping(Base):
     source_bookie_slug = Column(Text, nullable=False)
     match_method = Column(Text, nullable=False, default="direct")
     confidence = Column(Numeric(5, 3), nullable=True)
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     bookie = relationship("Bookie", back_populates="source_mappings")
 
@@ -584,8 +582,8 @@ class CanonicalMarketType(Base):
     enabled_for_ingestion = Column(Boolean, nullable=False, default=True)
     enabled_for_trajectory = Column(Boolean, nullable=False, default=False)
     display_order = Column(Integer)
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     source_mappings = relationship(
         "MarketSourceMapping",
@@ -628,8 +626,8 @@ class MarketSourceMapping(Base):
     canonical_market_period = Column(Text, nullable=False)
     match_method = Column(Text, nullable=False, default="catalog_rule")
     confidence = Column(Numeric(5, 3))
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     canonical_market_type = relationship(
         "CanonicalMarketType",
@@ -676,8 +674,8 @@ class MarketOutcomeSourceMapping(Base):
     source_outcome_name = Column(Text, nullable=False)
     canonical_choice_name = Column(Text, nullable=False)
     display_order = Column(Integer)
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     market_source_mapping = relationship(
         "MarketSourceMapping",
@@ -705,8 +703,8 @@ class SourceCatalogSync(Base):
     file_path = Column(Text, nullable=False)
     payload_hash = Column(Text, nullable=False)
     item_count = Column(Integer, nullable=False)
-    imported_at = Column(DateTime, default=get_local_now)
-    created_at = Column(DateTime, default=get_local_now)
+    imported_at = Column(UTCDateTime(), default=utc_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
 
     __table_args__ = (
         Index("idx_source_catalog_syncs_source_type", "source", "catalog_type"),
@@ -739,7 +737,7 @@ class Market(Base):
     is_live = Column(Boolean, default=False, nullable=False)
     
     # Timestamps
-    collected_at = Column(DateTime, default=get_local_now, nullable=False)
+    collected_at = Column(UTCDateTime(), default=utc_now, nullable=False)
     
     # Constraints
     __table_args__ = (
@@ -808,8 +806,8 @@ class MarketChoiceSnapshot(Base):
         nullable=False,
     )
     odds_value = Column(Numeric(8, 3), nullable=False)
-    collected_at = Column(DateTime, default=get_local_now, nullable=False)
-    source_collected_at = Column(DateTime)
+    collected_at = Column(UTCDateTime(), default=utc_now, nullable=False)
+    source_collected_at = Column(UTCDateTime())
     source_limit = Column(Numeric(12, 3))
     exchange_size = Column(Numeric(18, 3))
     
@@ -874,13 +872,13 @@ class MarketChoiceQuote(Base):
 
     # Current state (independently nullable by design, see class docstring)
     initial_odds = Column(Numeric(8, 3))
-    initial_captured_at = Column(DateTime)
+    initial_captured_at = Column(UTCDateTime())
     current_odds = Column(Numeric(8, 3))
-    current_updated_at = Column(DateTime)
+    current_updated_at = Column(UTCDateTime())
     movement = Column(SmallInteger, default=0)  # -1 = dropped, 0 = unchanged, +1 = increased
 
-    created_at = Column(DateTime, default=get_local_now)
-    updated_at = Column(DateTime, default=get_local_now, onupdate=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
+    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         # NOTE: incomplete on its own for NULL exchange_side (see comment on
@@ -944,9 +942,9 @@ class OddsPortalLeagueCache(Base):
     __tablename__ = 'oddsportal_league_cache'
     
     season_id = Column(Integer, primary_key=True)                  # e.g. 80229 (NBA)
-    cached_date = Column(DateTime, nullable=False)                  # Date the cache was populated
+    cached_date = Column(UTCDateTime(), nullable=False)                  # Date the cache was populated
     match_urls = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=False)                      # { "/basketball/usa/nba/team-a-team-b-xYZ/": "Team A - Team B" }
-    created_at = Column(DateTime, default=get_local_now)
+    created_at = Column(UTCDateTime(), default=utc_now)
 
 
 class DailyDiscoveryLog(Base):
@@ -963,8 +961,8 @@ class DailyDiscoveryLog(Base):
     sport = Column(String(50), nullable=False)
     status = Column(String(20), nullable=False, default='pending')  # 'pending', 'completed', 'failed'
     attempts = Column(Integer, default=0)
-    last_attempt_at = Column(DateTime)
-    created_at = Column(DateTime, default=get_local_now)
+    last_attempt_at = Column(UTCDateTime())
+    created_at = Column(UTCDateTime(), default=utc_now)
     
     __table_args__ = (
         UniqueConstraint('date', 'run_slot', 'sport', name='unique_date_slot_sport_discovery'),
@@ -986,9 +984,9 @@ class OddspapiFixtureDiscoveryRun(Base):
     trigger = Column(String(20), nullable=False, default='scheduled')
     status = Column(String(20), nullable=False, default='running')
     process_id = Column(Integer)
-    started_at = Column(DateTime, nullable=False, default=get_local_now)
-    heartbeat_at = Column(DateTime, nullable=False, default=get_local_now)
-    finished_at = Column(DateTime)
+    started_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    heartbeat_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    finished_at = Column(UTCDateTime())
     summary = Column(JSONB().with_variant(JSON(), 'sqlite'))
     error = Column(Text)
 
@@ -1014,8 +1012,8 @@ class OddspapiApiKeyUsage(Base):
 
     key_fingerprint = Column(String(64), primary_key=True)
     subscription_id = Column(String(255))
-    subscription_valid_from = Column(DateTime)
-    subscription_valid_until = Column(DateTime)
+    subscription_valid_from = Column(UTCDateTime())
+    subscription_valid_until = Column(UTCDateTime())
     request_limit = Column(Integer)
     reported_request_count = Column(Integer)
     estimated_request_count = Column(
@@ -1030,14 +1028,14 @@ class OddspapiApiKeyUsage(Base):
         default='unknown',
         server_default='unknown',
     )
-    account_refreshed_at = Column(DateTime)
+    account_refreshed_at = Column(UTCDateTime())
     last_error_code = Column(String(100))
-    last_error_at = Column(DateTime)
+    last_error_at = Column(UTCDateTime())
     updated_at = Column(
-        DateTime,
+        UTCDateTime(),
         nullable=False,
-        default=get_local_now,
-        onupdate=get_local_now,
+        default=utc_now,
+        onupdate=utc_now,
     )
 
 
@@ -1059,7 +1057,7 @@ class OddspapiMainlineOutcomeCache(Base):
     source_outcome_id = Column(Text, nullable=False)
     canonical_market_key = Column(Text)
     is_exchange = Column(Boolean, nullable=False, default=False, server_default=text("false"))
-    captured_at = Column(DateTime, default=get_local_now, nullable=False)
+    captured_at = Column(UTCDateTime(), default=utc_now, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
@@ -1213,7 +1211,7 @@ EVENT_ALL_ODDS_VIEW_SQL = (
     """
     CREATE OR REPLACE VIEW event_all_odds AS
     SELECT
-        e.start_time_utc AS start_time_utc,
+        e.starts_at AS starts_at,
         (hp.name || ' / ' || ap.name) AS participants,
         eo.one_open::numeric(6,2) AS odds1a,
         eo.one_final::numeric(6,2) AS odds1b,
@@ -1253,7 +1251,7 @@ BASKETBALL_RESULTS_VIEW_SQL = (
         ap.name AS away_team,
         e.round,
         e.season_id,
-        e.start_time_utc AS start_time,
+        e.starts_at AS start_time,
         r.home_score,
         r.away_score,
         r.winner,
@@ -1334,7 +1332,7 @@ MV_ALERT_EVENTS_SQL = (
         e.sport,
         e.gender,
         e.discovery_source,
-        e.start_time_utc,
+        e.starts_at,
         (hp.name || ' vs ' || ap.name) AS participants,
         hp.name AS home_team,
         ap.name AS away_team,
@@ -1380,7 +1378,7 @@ MV_ALERT_EVENTS_SQL = (
 MV_ALERT_EVENTS_INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_shape_total ON mv_alert_events (sport, var_shape, var_total);",
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_winner_diff ON mv_alert_events (sport, winner_side, point_diff);",
-    "CREATE INDEX IF NOT EXISTS idx_mv_alert_start_time ON mv_alert_events (start_time_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_mv_alert_start_time ON mv_alert_events (starts_at);",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_alert_event_id ON mv_alert_events (event_id);",
     "CREATE INDEX IF NOT EXISTS idx_mv_alert_sport_gender ON mv_alert_events (sport, gender);"
 ]
@@ -1396,9 +1394,9 @@ DUAL_PROCESS_MARKET_INDEXES_SQL = [
 ]
 
 EVENT_ODDS_HISTORY_INDEXES_SQL = [
-    "CREATE INDEX IF NOT EXISTS idx_events_start_time_utc ON events (start_time_utc);",
-    "CREATE INDEX IF NOT EXISTS idx_events_sport_start_time_utc ON events (sport, start_time_utc);",
-    "CREATE INDEX IF NOT EXISTS idx_events_season_start_time_utc ON events (season_id, start_time_utc);",
+    "CREATE INDEX IF NOT EXISTS idx_events_starts_at ON events (starts_at);",
+    "CREATE INDEX IF NOT EXISTS idx_events_sport_starts_at ON events (sport, starts_at);",
+    "CREATE INDEX IF NOT EXISTS idx_events_season_starts_at ON events (season_id, starts_at);",
     "CREATE INDEX IF NOT EXISTS idx_market_choice_snapshots_quote_collected ON market_choice_snapshots (quote_id, collected_at DESC, snapshot_id DESC);",
 ]
 
@@ -1414,7 +1412,7 @@ SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = (
         e.id AS event_id,
         e.season_id,
         s.year AS season_year,
-        e.start_time_utc,
+        e.starts_at,
         e.competition_id,
         hp.name AS home_team,
         ap.name AS away_team,

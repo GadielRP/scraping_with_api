@@ -69,7 +69,7 @@ def _best_side_overlap(left: set[str], right_a: set[str], right_b: set[str]) -> 
 
 
 def _event_time(event: Event) -> datetime | None:
-    start = getattr(event, "start_time_utc", None)
+    start = getattr(event, "starts_at", None)
     return start if isinstance(start, datetime) else None
 
 

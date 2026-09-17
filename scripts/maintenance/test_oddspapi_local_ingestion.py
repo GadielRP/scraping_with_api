@@ -79,7 +79,7 @@ def _event_summary(event) -> dict:
         "id": event.id,
         "slug": event.slug,
         "custom_id": event.custom_id,
-        "start_time_utc": event.start_time_utc,
+        "starts_at": event.starts_at,
         "sport": event.sport,
         "country": event.country,
         "competition_id": event.competition_id,

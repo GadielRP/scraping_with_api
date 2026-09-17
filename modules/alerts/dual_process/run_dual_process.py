@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from modules.alerts.dual_process.process_1 import alert_engine
 from modules.alerts.dual_process.process_2 import Process2Engine
-from shared.timezone_utils import get_local_now_aware
+from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class DualProcessRunner:
                 final_prediction=final_prediction,
                 agreement_details=agreement_details,
                 minutes_until_start=minutes_until_start,
-                timestamp=get_local_now_aware().strftime("%Y-%m-%d %H:%M:%S %Z"),
+                timestamp=now_in_timezone(Config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S %Z"),
             )
 
             logger.info("[DUAL PROCESS] Evaluation completed for event %s: %s", event.id, verdict.value)
@@ -329,7 +329,7 @@ class DualProcessRunner:
             final_prediction=None,
             agreement_details=f"Error: {error_message}",
             minutes_until_start=minutes_until_start,
-            timestamp=get_local_now_aware().strftime("%Y-%m-%d %H:%M:%S %Z"),
+            timestamp=now_in_timezone(Config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S %Z"),
         )
 
     def send_alerts(self, notifier, dual_reports: List[DualProcessReport]) -> bool:

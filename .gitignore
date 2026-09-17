@@ -1,208 +1,213 @@
-# Python / entornos
+# =========================================================
+# Python
+# =========================================================
+
 __pycache__/
-__pycache__/*.pyc
-*.pyc
-.venv/
-venv/
+*.py[cod]
 *.pyo
 
+.venv/
+venv/
+env/
 
-# Debugging files
-
-logs/
-profile.yaml
-detect_unsupported_markets.py
-scratch/
-modulo*.txt
-slow_pre_start_check_job_run.logs
-
-# test files
-Bets-Hoja24.csv
-exports/
-testjson.py
-
-markets_detailed_query.csv
-markets_detailed_query_after.csv
-audit_recent_sofascore_odds_order.py
-choice_names_outcome_diagnostic.py
-
-server_markets_detailed.csv
-*.csv
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 
-test_proxy.py
-tests/
+# =========================================================
+# IDE / OS
+# =========================================================
 
-# deployment
-
-clean_scp/
-MIGRATION_GUIDE.md
-deploy_direct.sh
-deploy.sh
-docker-compose.yml
-docker-compose.override.yml
 .vscode/
 .idea/
 .DS_Store
-.gitignore
-repository_backup.py
+Thumbs.db
 
-# Scripts
-ocr_*.py
-sofascore_api_backup.py
 
-# private
+# =========================================================
+# Secrets / local environment
+# =========================================================
+
 .env
 .env.*
-*.txt
-.cursor/
-sofascore.service 
-assets/
-scratch/
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+sofascore.service
+
+
+# =========================================================
+# Local AI / agent tooling
+# =========================================================
+
 .codex/
+.agents/
+.cursor/
+
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+
+graphify-out/
+.graphify_version
 
 
-# old files
-old/
-csv/
-verify_betfair_persistence.py
+# =========================================================
+# Graphify generated output
+# =========================================================
 
-# databases backups/dumps
-*.db
-backup.dump
-*.dump
-*.dump.gz
-latest_backup.dump
-latest_backup.dump.gz
-db-init/local_backup.dump.gz
-db-init/local.backup.dump.gz
+# Keep the graph local, especially if it indexes local-only knowledge.
+graphify-out/
+
+.graphify_version
 
 
+# =========================================================
+# Logs / runtime output
+# =========================================================
 
-01-restore.sh
+logs/
+*.log
 
-
-# csv for telegram predictions
-.last_processed_id
-predictions_*.csv
-parse_telegram_predictions.py
-
-collect_yesterday_odds.py
-
-
-
+slow_pre_start_check_job_run.logs
+cache_found.logs
+cache_saved.logs
 logs_for_observations_refactor.txt
 
+.last_processed_id
+
+
+# =========================================================
+# Scratch / temporary / generated work
+# =========================================================
+
+scratch/
 copies/
-*.md
-!pre_start_odds_ingestion.md
-!docs/refactors/db-schema-odds-refactor.md
-!docs/refactors/db-schema-odds-refactor-phase-4b.md
-!docs/pre-start-closing-minute-contract-mismatch.md
-!docs/odds-significant-change-snapshots.md
-!docs/pillars/mining-persistence.md
-!P4_BLUEPRINT_IMPLEMENTACION_ES_WORKING_v4.md
+exports/
+clean_scp/
 
-test_*.py
-*.json
-odds_papi/*
+old/
+csv/
 
-# Phase 1 OddsPapi offline ingestion verification
-!tests/
-tests/*
-!tests/__init__.py
-!tests/test_historical_odds_change_detector.py
-!tests/test_historical_odds_reader_change_fallback.py
-!tests/test_odds_acquisition_service.py
-!tests/test_exchange_historical_fetch_executor.py
-!tests/test_odds_batch_processor_exchange_fanout_wiring.py
-!tests/test_oddspapi_fixture_discovery_recovery.py
-!tests/test_pre_start_memory_limits.py
-!tests/test_key_moment_trajectory_loading.py
-!tests/test_runtime_observability.py
-!tests/test_event_odds_availability.py
-!tests/test_odds_endpoint_404_handling.py
-!tests/test_t_minus_one_odds_job.py
-!tests/test_temporal_contract.py
-!tests/test_oddspapi_api_keys.py
-!tests/test_tennis_snapshot_observations.py
-!tests/test_oddsportal_hover_parser.py
-!tests/test_oddsportal_logging.py
-!tests/test_oddsportal_canonical_ingestion.py
-!tests/test_oddsportal_betfair_back_lay_quotes.py
-!tests/test_market_choice_quote_model.py
-!tests/test_market_choice_quote_writer.py
-!tests/test_market_choice_quote_temporal_merge.py
-!tests/test_sofascore_quote_timestamp_fallback.py
-!tests/test_market_choice_snapshot_writer.py
-!tests/test_odds_movement.py
-!tests/test_save_canonical_bookmaker_batches_quotes.py
-!tests/test_market_read_queries.py
-!tests/test_market_quote_read_policy.py
-!tests/test_market_quote_readiness.py
-!tests/test_external_odds_alert_quote_read.py
-!tests/test_odds_trajectory_repository.py
-!tests/test_pillar_mining_repository.py
-!tests/test_pillar_mining_settings.py
-!tests/test_dual_process_market_odds_read_migration.py
-!tests/test_no_legacy_odds_reads.py
-!config/odds_read_priority.json
-!docs/refactors/db-schema-odds-refactor-phase-4c-runbook.md
-!docs/refactors/db-schema-odds-refactor-phase-5.md
-!docs/refactors/db-schema-odds-refactor-phase-6.md
-!tests/pillars/
-tests/pillars/*.pyc
-!tests/pillars/test_odds_trajectory_context.py
-!tests/pillars/test_market_snapshot_extractor.py
-!tests/pillars/test_extraction_logging.py
-!tests/pillars/test_exact_price_memory_quote_context.py
-!tests/pillars/test_drift_engine_quote_identity.py
-!tests/pillars/pillar_2_side_market/
-!tests/pillars/pillar_2_side_market/__init__.py
-!tests/pillars/pillar_2_side_market/test_pillar_2_raw.py
-!tests/pillars/pillar_3_totals_market_context/
-!tests/pillars/pillar_3_totals_market_context/__init__.py
-!tests/pillars/pillar_3_totals_market_context/test_pillar_3_signal_profile.py
-!tests/pillars/test_structural_target_selection.py
-!tests/pillars/mining/
-!tests/pillars/mining/__init__.py
-!tests/pillars/mining/test_pillar_2_mining.py
-!tests/pillars/mining/test_pillar_2_signal_profile_mining.py
-!tests/pillars/mining/test_pillar_3_mining.py
-!tests/oddspapi/
-!tests/oddspapi/test_line_selection.py
-!tests/oddspapi/test_fixture_discovery_job.py
-!tests/oddspapi/test_pre_start_odds_job.py
-!tests/oddspapi/test_pre_start_odds_batch_processor.py
-!tests/oddspapi/test_api_key_scheduler.py
-!tests/oddspapi/test_api_key_usage_repository.py
-!tests/oddspapi/test_historical_payload_selector.py
-!tests/oddspapi/test_oddspapi_market_filter.py
-
-
-!scripts/maintenance/test_oddspapi_local_ingestion.py
 *debug/
-*.log
 debug*/
 
 debug_football/
 debug_laliga/
+
+
+# =========================================================
+# Local assets / generated captures
+# =========================================================
+
+assets/
+
 bet_365_away_hovered.html
 bet_365_away_not_hovered.html
-*.html
 
-cache_found.logs
-cache_saved.logs
+pre_start_check_oddsportal_case.txt
+pre_start_check_oddsportal_case_only_oddsportal_logs.txt
+
+
+# =========================================================
+# Local CSV/data exports
+# =========================================================
+
+/*.csv
+
+Bets-Hoja24.csv
+markets_detailed_query.csv
+markets_detailed_query_after.csv
+server_markets_detailed.csv
+
+predictions_*.csv
+
+
+# =========================================================
+# Local databases / backups / dumps
+# =========================================================
+
+*.db
+*.sqlite
+*.sqlite3
+
+*.dump
+*.dump.gz
+
+backup.dump
+latest_backup.dump
+latest_backup.dump.gz
+
+db-init/local_backup.dump.gz
+db-init/local.backup.dump.gz
+
+reduced_sofascore.sqlite3
+
+
+# =========================================================
+# Local deployment / backup helpers
+# =========================================================
+
+docker-compose.yml
+docker-compose.override.yml
+
+deploy.sh
+deploy_direct.sh
+
+repository_backup.py
+01-restore.sh
+
+
+# =========================================================
+# One-off debugging / diagnostic scripts
+# =========================================================
+
+detect_unsupported_markets.py
+audit_recent_sofascore_odds_order.py
+choice_names_outcome_diagnostic.py
+
+test_proxy.py
+testjson.py
+
+verify_betfair_persistence.py
+collect_yesterday_odds.py
+
 create_view.py
 list_of_sports_theodds_api.py
 theoddsapi_test.py
-pre_start_check_oddsportal_case.txt
-pre_start_check_oddsportal_case_only_oddsportal_logs.txt
+
 pg_to_sqlite_reduced.py
-reduced_sofascore.sqlite3
 
-# documentacion
+ocr_*.py
+sofascore_api_backup.py
 
-docs/audits/*.md
-!docs/refactors/database-hardening-roadmap.md
-!docs/architecture/temporal-contract.md
+parse_telegram_predictions.py
+
+
+# =========================================================
+# Local profiling
+# =========================================================
+
+profile.yaml
+
+
+# =========================================================
+# Local OddsPAPI raw/generated material and OddsApi
+# =========================================================
+
+odds_papi/*
+odds_api/*
+
+# =========================================================
+# Miscellaneous temporary files
+# =========================================================
+
+modulo*.txt

@@ -117,7 +117,7 @@ class HistoricalFormService:
                 home_score,
                 away_score,
                 winner,
-                start_time_utc
+                starts_at
             FROM season_events_with_results
             WHERE round = 'regular_season'
         """
@@ -141,7 +141,7 @@ class HistoricalFormService:
             query_sql += " AND season_id = ANY(:season_ids)"
             query_params["season_ids"] = list(included_season_ids)
 
-        query_sql += " AND (home_team = :team_name OR away_team = :team_name) ORDER BY start_time_utc DESC"
+        query_sql += " AND (home_team = :team_name OR away_team = :team_name) ORDER BY starts_at DESC"
 
         with db_manager.get_session() as session:
             return session.execute(text(query_sql), query_params).fetchall()
@@ -175,7 +175,7 @@ class HistoricalFormService:
             team_role = "away"
             opponent_role = "home"
 
-        game_timestamp = row.start_time_utc.timestamp()
+        game_timestamp = row.starts_at.timestamp()
         standings = standings_by_cutoff.get(game_timestamp) or {}
         team_standing = _normalize_standing_snapshot(
             standings.get(team_name, {}),
@@ -310,7 +310,7 @@ class HistoricalFormService:
                 if not (exclude_event_id and row.event_id == exclude_event_id)
                 and not (
                     current_event_timestamp
-                    and row.start_time_utc.timestamp() >= current_event_timestamp
+                    and row.starts_at.timestamp() >= current_event_timestamp
                 )
             ]
 
@@ -318,7 +318,7 @@ class HistoricalFormService:
             # cutoff, instead of one league-wide recompute per game.
             standings_by_cutoff = self.standings_calculator.calculate_standings_timeline(
                 season_id,
-                [row.start_time_utc.timestamp() for row in applicable_rows],
+                [row.starts_at.timestamp() for row in applicable_rows],
                 sport,
                 source_unique_tournament_id=source_unique_tournament_id,
                 source_tournament_id=source_tournament_id,

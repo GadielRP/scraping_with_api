@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventSourceMapping
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +376,7 @@ class EventSourceMappingRepository:
                 .update(
                     {
                         EventSourceMapping.has_odds: False,
-                        EventSourceMapping.updated_at: get_local_now(),
+                        EventSourceMapping.updated_at: utc_now(),
                     },
                     synchronize_session=False,
                 )
@@ -536,7 +536,7 @@ class EventSourceMappingRepository:
                 setattr(mapping, attr, value)
                 changed = True
         if changed:
-            mapping.updated_at = get_local_now()
+            mapping.updated_at = utc_now()
         return changed
 
     @staticmethod

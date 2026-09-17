@@ -39,7 +39,7 @@ def _seed_event_and_bookie(manager):
     with manager.get_session() as session:
         event = Event(
             slug="betfair-quote-fix",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",
@@ -392,7 +392,7 @@ def test_opening_snapshot_gate_uses_exchange_side_quote_not_null_row(tmp_path):
 def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_path):
     manager = _make_manager(tmp_path, "moments.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
-    moment_at = datetime(2026, 6, 20, 10, 0, 0)
+    moment_at = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
     batches = _batch(current_odds=2.10)
     batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
         {
@@ -448,7 +448,7 @@ def test_canonical_flag_can_suppress_current_snapshot(
             "minutesUntilStart": 5,
             "price": 2.10,
             "createdAt": current_source_time,
-            "collectedAt": datetime(2026, 6, 20, 11, 55),
+            "collectedAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
         }
     ]
     batches[0]["markets"][0]["choices"][0]["persistCurrentSnapshot"] = False
@@ -466,7 +466,9 @@ def test_canonical_flag_can_suppress_current_snapshot(
     with manager.get_session() as session:
         assert session.query(MarketChoiceSnapshot).count() == 1
         snapshot = session.query(MarketChoiceSnapshot).one()
-        assert snapshot.collected_at == datetime(2026, 6, 20, 11, 55)
+        assert snapshot.collected_at == datetime(
+            2026, 6, 20, 11, 55, tzinfo=timezone.utc
+        )
     assert result.snapshots_saved == 1
 
 
@@ -484,7 +486,7 @@ def test_repository_does_not_infer_current_deduplication_from_provider_fields(
             "createdAt": batches[0]["markets"][0]["choices"][0][
                 "sourceCollectedAt"
             ],
-            "collectedAt": datetime(2026, 6, 20, 11, 55),
+            "collectedAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
         }
     ]
 
@@ -505,7 +507,7 @@ def test_repository_does_not_infer_current_deduplication_from_provider_fields(
 def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_timestamp):
     manager = _make_manager(tmp_path, "subsecond.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
-    base = datetime(2026, 6, 20, 10)
+    base = datetime(2026, 6, 20, 10, tzinfo=timezone.utc)
     moments = [
         {
             "price": price,
@@ -543,14 +545,21 @@ def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_times
         assert len({row.quote_id for row in rows}) == 2
         assert {row.source_collected_at.microsecond for row in rows} == {100000, 200000, 900000}
         if dynamic_timestamp:
-            assert all(row.collected_at == row.source_collected_at for row in rows)
+            # The two timestamps describe different clocks: collected_at is our
+            # observation instant, source_collected_at is the provider instant.
+            # UTC storage must not reinterpret either one as Mexico wall time.
+            assert {row.collected_at.hour for row in rows} == {10}
+            assert {row.source_collected_at.hour for row in rows} == {16}
 
 
 @pytest.mark.parametrize("missing_first", [True, False])
 def test_moment_dedup_preserves_missing_source_timestamp_wildcard(tmp_path, missing_first):
     manager = _make_manager(tmp_path, "missing-source.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
-    moment = {"price": 2.5, "collectedAt": datetime(2026, 6, 20, 10)}
+    moment = {
+        "price": 2.5,
+        "collectedAt": datetime(2026, 6, 20, 10, tzinfo=timezone.utc),
+    }
     source_time = "2026-06-20T16:00:00Z"
     moment["createdAt"] = None if missing_first else source_time
     batches = _batch(current_odds=2.5)

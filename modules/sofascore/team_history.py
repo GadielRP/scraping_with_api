@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from shared.timezone_utils import get_local_now_aware
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def get_nearest_event_for_team(client, team_id: int) -> Optional[Dict]:
     if not events:
         return None
 
-    now_ts = get_local_now_aware().timestamp()
+    now_ts = utc_now().timestamp()
     future_events = [event for event in events if event.get("startTimestamp", 0) >= now_ts]
 
     if not future_events:

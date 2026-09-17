@@ -138,7 +138,7 @@ def resolve_matchup_streak_analysis(
         streak_analysis = build_matchup_streak_context(
             event_id=event_id,
             event_custom_id=custom_id,
-            event_start_time=event_context.start_time_utc,
+            event_start_time=event_context.starts_at,
             sport=event_context.sport,
             discovery_source=event_context.discovery_source,
             source_unique_tournament_id=event_context.competition.source_unique_tournament_id,

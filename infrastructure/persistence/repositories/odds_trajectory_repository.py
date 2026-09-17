@@ -138,10 +138,7 @@ class OddsTrajectoryRepository:
         *,
         event_ids: List[int],
     ) -> Dict[int, List[OddsTrajectoryPoint]]:
-        query_params = {
-            "event_ids": event_ids,
-            "snapshot_timezone": Config.LEGACY_MARKET_SNAPSHOT_TIMEZONE,
-        }
+        query_params = {"event_ids": event_ids}
         query = build_pre_start_trajectory_query().execution_options(
             stream_results=True,
             yield_per=1000,

@@ -30,7 +30,7 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.exchange_historical_fet
 from modules.jobs.pre_start_check_job.providers.oddspapi.exchange_outcome_selector import (
     ExchangeHistoricalSelection,
 )
-from shared.timezone_utils import convert_utc_to_local, get_local_now
+from shared.temporal import utc_now
 
 
 @pytest.fixture(autouse=True)
@@ -256,7 +256,7 @@ def test_invalid_key_is_disabled_without_counting_a_rejected_request():
 
 def test_refresh_uses_persisted_ttl_across_scheduler_restart():
     keys = ["k1", "k2"]
-    now = get_local_now()
+    now = utc_now()
     calls = []
 
     class UsageService:
@@ -301,7 +301,7 @@ def test_refresh_ttl_uses_configured_local_database_timestamp():
             calls.append(api_key)
             raise AssertionError("fresh naive timestamp should prevent refresh")
 
-    fresh_local = get_local_now()
+    fresh_local = utc_now()
     scheduler, _store = _scheduler(
         ["key"],
         [_usage_row("key", 40, refreshed_at=fresh_local)],
@@ -314,7 +314,7 @@ def test_refresh_ttl_uses_configured_local_database_timestamp():
 
 
 def test_refresh_failure_keeps_stale_state_and_observes_retry_backoff():
-    stale = get_local_now() - timedelta(days=2)
+    stale = utc_now() - timedelta(days=2)
     calls = []
 
     class FailingUsageService:
@@ -453,9 +453,9 @@ def test_account_parser_selects_current_subscription_and_never_returns_raw_key()
 
     assert snapshot.subscription_id == "current"
     assert snapshot.request_count == 80
-    assert snapshot.refreshed_at.tzinfo is None
-    assert snapshot.subscription_valid_from == convert_utc_to_local(
-        datetime(2026, 8, 1, tzinfo=timezone.utc)
+    assert snapshot.refreshed_at.tzinfo is not None
+    assert snapshot.subscription_valid_from == datetime(
+        2026, 8, 1, tzinfo=timezone.utc
     )
     assert snapshot.key_fingerprint == api_key_fingerprint("secret-key")
     assert "secret-key" not in repr(snapshot)

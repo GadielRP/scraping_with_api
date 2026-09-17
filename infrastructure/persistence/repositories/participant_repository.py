@@ -5,7 +5,7 @@ from sqlalchemy import tuple_
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Participant
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -160,5 +160,5 @@ class ParticipantRepository:
                 setattr(participant, attr, value)
                 changed = True
         if changed:
-            participant.updated_at = get_local_now()
+            participant.updated_at = utc_now()
         return changed

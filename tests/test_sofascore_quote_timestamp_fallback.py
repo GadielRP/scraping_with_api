@@ -19,11 +19,11 @@ def test_sofascore_live_updates_quote_without_source_collected_at(tmp_path, monk
     manager.create_tables()
     monkeypatch.setattr(market_repo_module, "db_manager", manager)
 
-    old_ts = datetime(2026, 8, 5, 17, 0, 0)
+    old_ts = datetime(2026, 8, 5, 17, 0, 0, tzinfo=timezone.utc)
     with manager.get_session() as session:
         event = Event(
             slug="ss-ts",
-            start_time_utc=datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="EPL",
             home_team="Home",
@@ -89,4 +89,4 @@ def test_sofascore_live_updates_quote_without_source_collected_at(tmp_path, monk
         assert float(quote.current_odds) == 1.67
         assert quote.current_updated_at is not None
         assert quote.current_updated_at > old_ts
-        assert quote.current_updated_at >= datetime.now() - timedelta(minutes=5)
+        assert quote.current_updated_at >= datetime.now(timezone.utc) - timedelta(minutes=5)

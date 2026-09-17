@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 
 CANONICAL_STATUSES = frozenset(
@@ -81,7 +81,7 @@ class PillarMiningRun:
     diagnostics: dict[str, Any] = field(default_factory=dict)
     output_payload: dict[str, Any] = field(default_factory=dict)
     units: tuple[PillarMiningUnit, ...] = field(default_factory=tuple)
-    calculated_at: datetime = field(default_factory=get_local_now)
+    calculated_at: datetime = field(default_factory=utc_now)
 
 
 def validate_mining_run(run: PillarMiningRun) -> None:

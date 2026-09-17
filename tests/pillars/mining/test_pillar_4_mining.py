@@ -13,7 +13,7 @@ def _event():
         sport="Football",
         participants_label="Home vs Away",
         minutes_until_start=5,
-        start_time_utc=datetime(2026, 9, 12, 18, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 9, 12, 18, 0, tzinfo=timezone.utc),
         context_status="normalized",
         competition=SimpleNamespace(competition_id=99, display_name="League"),
     )

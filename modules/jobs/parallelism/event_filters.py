@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Dict, List
 
-from shared.timezone_utils import get_local_now_aware
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
         return []
 
     try:
-        current_time = get_local_now_aware()
+        current_time = now_in_timezone(Config.TIMEZONE)
         current_timestamp = int(current_time.timestamp())
         min_start_timestamp = current_timestamp + (min_minutes_away * 60)
 

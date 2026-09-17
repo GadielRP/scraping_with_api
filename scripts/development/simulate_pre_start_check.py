@@ -449,10 +449,10 @@ def _run_pre_start_check_simulation(
             event_obj.away_team,
             event_obj.sport,
             event_obj.season_id,
-            event_obj.start_time_utc,
+            event_obj.starts_at,
         )
         kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(
-            event_obj.start_time_utc
+            event_obj.starts_at
         )
         boundary = (
             kickoff_utc - timedelta(minutes=simulated_minutes)

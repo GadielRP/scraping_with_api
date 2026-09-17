@@ -4,10 +4,11 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import Column, Integer, MetaData, Table, create_engine, insert, select
 
-from infrastructure.persistence.migrations.event_timezones import (
-    EVENT_TIMESTAMP_MIGRATIONS,
-    RETIRED_EVENT_VIEWS,
-    migrate_event_timezones,
+from infrastructure.persistence.migrations.temporal_schema import (
+    COLUMN_RENAMES,
+    INSTANT_COLUMN_MIGRATIONS,
+    RETIRED_READ_MODELS,
+    migrate_temporal_schema,
 )
 from infrastructure.persistence.types import UTCDateTime
 from modules.jobs.pre_start_check_job.timing import minutes_until_start
@@ -96,21 +97,33 @@ def test_utc_datetime_rejects_naive_values_even_on_sqlite():
         utc_type.process_bind_param(datetime(2026, 9, 16, 12, 0), sqlite_dialect)
 
 
-def test_event_migration_contract_declares_each_legacy_origin_zone():
+def test_temporal_migration_declares_mexico_origin_for_every_naive_instant():
     contracts = {
         (migration.table_name, migration.column_name): migration.legacy_timezone
-        for migration in EVENT_TIMESTAMP_MIGRATIONS
+        for migration in INSTANT_COLUMN_MIGRATIONS
     }
-    assert contracts == {
-        ("events", "start_time_utc"): "America/Mexico_City",
-        ("event_source_resolution_queue", "source_start_time_utc"): "UTC",
+    assert contracts[("events", "starts_at")] == "America/Mexico_City"
+    assert contracts[("market_choice_snapshots", "collected_at")] == (
+        "America/Mexico_City"
+    )
+    assert set(contracts.values()) == {"America/Mexico_City"}
+
+
+def test_temporal_migration_renames_concepts_instead_of_encoding_utc_in_names():
+    renames = {
+        (rename.table_name, rename.old_name): rename.new_name
+        for rename in COLUMN_RENAMES
     }
+    assert renames[("events", "start_time_utc")] == "starts_at"
+    assert renames[
+        ("event_source_resolution_queue", "source_start_time_utc")
+    ] == "source_starts_at"
 
 
 def test_obsolete_event_views_are_retired_explicitly():
-    assert RETIRED_EVENT_VIEWS == ("basketball_results_season_year",)
+    assert RETIRED_READ_MODELS == ("basketball_results_season_year",)
 
 
 def test_postgresql_only_migration_is_a_noop_on_sqlite():
     engine = create_engine("sqlite:///:memory:")
-    assert migrate_event_timezones(engine) == []
+    assert migrate_temporal_schema(engine) == []

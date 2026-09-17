@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
-from shared.timezone_utils import get_local_now
+from shared.temporal import now_in_timezone, utc_now
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
 from .extractor import DailyDiscoveryExtractor
@@ -18,7 +18,7 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
     from infrastructure.settings import Config
 
     if now is None:
-        now = get_local_now()
+        now = now_in_timezone(Config.TIMEZONE)
 
     current_hour = now.hour
     am_hour = Config.DAILY_DISCOVERY_AM_OPEN_HOUR
@@ -40,7 +40,9 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
 
 def run_daily_discovery(sports=None, date_str=None, run_slot=None):
     if date_str is None:
-        date_str = get_local_now().strftime("%Y-%m-%d")
+        from infrastructure.settings import Config
+
+        date_str = now_in_timezone(Config.TIMEZONE).strftime("%Y-%m-%d")
     if sports is None:
         sports = DEFAULT_DAILY_DISCOVERY_SPORTS
     return DailyDiscoveryExtractor().discover_events_for_date(date_str, sports=sports, run_slot=run_slot)
@@ -58,7 +60,7 @@ def run_daily_discovery_job() -> None:
         logger.warning("Failed to cleanup DailyDiscovery logs: %s", exc)
 
     try:
-        now = get_local_now()
+        now = now_in_timezone(Config.TIMEZONE)
         run_slot = resolve_daily_discovery_slot(now)
 
         if not run_slot:
@@ -70,11 +72,11 @@ def run_daily_discovery_job() -> None:
         # Calculate target date:
         # AM slot (evening MX / night UTC) targets tomorrow's UTC date.
         # PM slot (morning MX / afternoon UTC) targets today's UTC date.
-        utc_now = datetime.now(timezone.utc)
+        current_utc = utc_now()
         if run_slot == "AM":
-            target_date_obj = utc_now + timedelta(days=1)
+            target_date_obj = current_utc + timedelta(days=1)
         else:
-            target_date_obj = utc_now
+            target_date_obj = current_utc
         today_str = target_date_obj.strftime("%Y-%m-%d")
 
         DailyDiscoveryRepository.initialize_sports_for_slot(

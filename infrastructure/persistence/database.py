@@ -114,18 +114,18 @@ class DatabaseManager:
         try:
             from sqlalchemy import inspect
             from sqlalchemy.types import String, Integer, Text, DateTime, Numeric, BigInteger
-            from infrastructure.persistence.migrations.event_timezones import (
-                migrate_event_timezones,
+            from infrastructure.persistence.migrations.temporal_schema import (
+                migrate_temporal_schema,
             )
             
             inspector = inspect(self.engine)
             migrations_applied = []
 
-            # Event instants are a prerequisite for every later migration or
-            # query that compares event windows. Existing event values use the
-            # documented America/Mexico_City-naive convention; the focused
-            # migration converts them to absolute timestamptz instants.
-            migrations_applied.extend(migrate_event_timezones(self.engine))
+            # The temporal contract is a prerequisite for later migrations and
+            # queries. Every historical naive instant is interpreted using the
+            # documented America/Mexico_City provenance and converted to
+            # PostgreSQL timestamptz before application code can read it.
+            migrations_applied.extend(migrate_temporal_schema(self.engine))
             
             # Run one-time manual migrations FIRST (before generic column migration)
             # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
@@ -718,7 +718,7 @@ class DatabaseManager:
                     "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_status "
                     "ON event_source_resolution_queue (source, resolution_status)",
                     "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_start_time "
-                    "ON event_source_resolution_queue (source_start_time_utc)",
+                    "ON event_source_resolution_queue (source_starts_at)",
                     "CREATE INDEX IF NOT EXISTS idx_event_source_resolution_queue_best_candidate "
                     "ON event_source_resolution_queue (best_candidate_event_id)",
                 ]
@@ -732,65 +732,11 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
 
     def _migrate_oddspapi_api_key_usage(self):
-        """Store OddsPapi account timestamps in configured local DB time."""
+        """Ensure the OddsPapi usage table exists under the UTC contract."""
         try:
             from infrastructure.persistence.models import OddspapiApiKeyUsage
 
             self._create_table_and_indexes(OddspapiApiKeyUsage, [])
-            if self.engine.dialect.name != "postgresql":
-                return
-
-            timestamp_columns = (
-                "subscription_valid_from",
-                "subscription_valid_until",
-                "account_refreshed_at",
-                "last_error_at",
-                "updated_at",
-            )
-            with self.get_session() as session:
-                # PostgreSQL cannot resolve a bind parameter embedded in the
-                # USING expression of ALTER COLUMN TYPE, even when CAST as
-                # TEXT. Set the transaction-local timezone through a regular
-                # function call, then let the DDL read the typed setting.
-                session.execute(
-                    text(
-                        "SELECT set_config('TimeZone', "
-                        "CAST(:configured_timezone AS TEXT), true)"
-                    ),
-                    {"configured_timezone": Config.TIMEZONE},
-                )
-                for column_name in timestamp_columns:
-                    data_type = session.execute(
-                        text(
-                            """
-                            SELECT data_type
-                            FROM information_schema.columns
-                            WHERE table_schema = current_schema()
-                              AND table_name = 'oddspapi_api_key_usage'
-                              AND column_name = :column_name
-                            """
-                        ),
-                        {"column_name": column_name},
-                    ).scalar()
-                    if data_type != "timestamp with time zone":
-                        continue
-                    session.execute(
-                        text(
-                            f"""
-                            ALTER TABLE oddspapi_api_key_usage
-                            ALTER COLUMN {column_name}
-                            TYPE TIMESTAMP WITHOUT TIME ZONE
-                            USING {column_name} AT TIME ZONE
-                                  current_setting('TimeZone')
-                            """
-                        )
-                    )
-                    logger.info(
-                        "Converted oddspapi_api_key_usage.%s to configured "
-                        "local time (%s)",
-                        column_name,
-                        Config.TIMEZONE,
-                    )
         except Exception as e:
             logger.error("Oddspapi API key usage migration failed: %s", e)
             logger.error(traceback.format_exc())
@@ -1439,7 +1385,7 @@ class DatabaseManager:
                     "CREATE INDEX IF NOT EXISTS idx_events_home_participant_id ON events (home_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_events_away_participant_id ON events (away_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_events_competition_id ON events (competition_id)",
-                    "CREATE INDEX IF NOT EXISTS idx_events_sport_start_time_utc ON events (sport, start_time_utc)",
+                    "CREATE INDEX IF NOT EXISTS idx_events_sport_starts_at ON events (sport, starts_at)",
                     "CREATE INDEX IF NOT EXISTS idx_participants_source_participant ON participants (source, source_participant_id)",
                     "CREATE INDEX IF NOT EXISTS idx_competitions_source_tournament ON competitions (source, source_tournament_id)",
                 ]
@@ -1606,7 +1552,7 @@ class DatabaseManager:
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS event_migration_status (
                     migration_key TEXT PRIMARY KEY,
-                    completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     details TEXT
                 )
             """))

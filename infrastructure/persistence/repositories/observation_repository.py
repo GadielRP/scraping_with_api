@@ -5,7 +5,7 @@ from sqlalchemy import and_
 
 from infrastructure.persistence.models import EventObservation
 from infrastructure.persistence.database import db_manager
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class ObservationRepository:
         if observation:
             observation.observation_value = observation_value
             observation.sport = sport
-            observation.updated_at = get_local_now()
+            observation.updated_at = utc_now()
             logger.debug("Updated observation %s for event %s", observation_type, event_id)
             return observation
 

@@ -76,13 +76,13 @@ def _event_payload(event) -> dict:
             "sport": event.sport,
             "home_team": event.home_team,
             "away_team": event.away_team,
-            "start_time_utc": event.start_time_utc,
+            "starts_at": event.starts_at,
         },
         # The production orchestrator computes this flag through its shared
         # timing logic. This focused harness forces eligibility so it can exercise
         # one event's Oddspapi fetch and ingestion independent of wall-clock time.
         "should_extract_odds": True,
-        "minutes_until_start": minutes_until_start(event.start_time_utc),
+        "minutes_until_start": minutes_until_start(event.starts_at),
         "metadata_snapshot": None,
     }
 
@@ -102,7 +102,7 @@ def run_for_event(event_id: int, *, dry_run: bool = False) -> int:
     fixture_id = EventSourceMappingRepository.get_source_event_id(event_id, "oddspapi")
     logger.info("=" * 90)
     logger.info("Oddspapi pre-start odds development simulation")
-    logger.info("events.id=%s | event=%s vs %s | start=%s | minutes_until_start=%s", event.id, event.home_team, event.away_team, event.start_time_utc, minutes_until_start(event.start_time_utc))
+    logger.info("events.id=%s | event=%s vs %s | start=%s | minutes_until_start=%s", event.id, event.home_team, event.away_team, event.starts_at, minutes_until_start(event.starts_at))
     logger.info("existing Oddspapi fixture mapping=%s", fixture_id or "<missing>")
     logger.info(
         "mode=%s | bookmakers=%s",

@@ -100,7 +100,7 @@ class BackfillEventCandidate:
     """Lightweight representation of an event row — no ORM lazy-load risk."""
     id: int
     slug: str
-    start_time_utc: datetime
+    starts_at: datetime
     sport: str
     home_participant_id: Optional[int]
     away_participant_id: Optional[int]
@@ -264,7 +264,7 @@ def save_state(
     state_file: str,
     processed_date: date,
     last_event_id: int,
-    last_start_time_utc: datetime,
+    last_starts_at: datetime,
     args: argparse.Namespace,
 ) -> None:
     """Persist checkpoint after each successful event."""
@@ -273,7 +273,7 @@ def save_state(
         state = {
             "last_date": processed_date.strftime("%Y-%m-%d"),
             "last_event_id": last_event_id,
-            "last_start_time_utc": last_start_time_utc.isoformat(),
+            "last_starts_at": last_starts_at.isoformat(),
             "updated_at": datetime.now().isoformat(),
             "mode": current_mode(args),
         }
@@ -316,7 +316,7 @@ def get_candidate_dates(
     try:
         with db_manager.get_session() as session:
             local_event_date = cast(
-                func.timezone(Config.TIMEZONE, Event.start_time_utc),
+                func.timezone(Config.TIMEZONE, Event.starts_at),
                 Date,
             )
             query = session.query(
@@ -326,10 +326,10 @@ def get_candidate_dates(
             # Date bounds
             if args.from_date:
                 from_start, _ = local_day_bounds_utc(args.from_date, Config.TIMEZONE)
-                query = query.filter(Event.start_time_utc >= from_start)
+                query = query.filter(Event.starts_at >= from_start)
             if args.to_date:
                 _, to_end = local_day_bounds_utc(args.to_date, Config.TIMEZONE)
-                query = query.filter(Event.start_time_utc < to_end)
+                query = query.filter(Event.starts_at < to_end)
 
             # Missing-only filter
             if args.missing_only:
@@ -369,7 +369,7 @@ def get_events_for_date(
             query = session.query(
                 Event.id,
                 Event.slug,
-                Event.start_time_utc,
+                Event.starts_at,
                 Event.sport,
                 Event.home_participant_id,
                 Event.away_participant_id,
@@ -379,8 +379,8 @@ def get_events_for_date(
             ).filter(
                 and_(
                     Event.id > MIN_EVENT_ID,
-                    Event.start_time_utc >= day_start,
-                    Event.start_time_utc < day_end,
+                    Event.starts_at >= day_start,
+                    Event.starts_at < day_end,
                 )
             )
 
@@ -398,12 +398,12 @@ def get_events_for_date(
                 last_ts, last_eid = resume_after
                 query = query.filter(
                     or_(
-                        Event.start_time_utc > last_ts,
-                        and_(Event.start_time_utc == last_ts, Event.id > last_eid),
+                        Event.starts_at > last_ts,
+                        and_(Event.starts_at == last_ts, Event.id > last_eid),
                     )
                 )
 
-            query = query.order_by(Event.start_time_utc, Event.id)
+            query = query.order_by(Event.starts_at, Event.id)
 
             if limit_remaining is not None:
                 query = query.limit(limit_remaining)
@@ -413,7 +413,7 @@ def get_events_for_date(
                 BackfillEventCandidate(
                     id=r.id,
                     slug=r.slug,
-                    start_time_utc=r.start_time_utc,
+                    starts_at=r.starts_at,
                     sport=r.sport,
                     home_participant_id=r.home_participant_id,
                     away_participant_id=r.away_participant_id,
@@ -647,7 +647,7 @@ def run_backfill(args: argparse.Namespace) -> None:
     if state and not dry_run:
         last_date_str = state.get("last_date")
         last_event_id = state.get("last_event_id")
-        last_ts_str = state.get("last_start_time_utc")
+        last_ts_str = state.get("last_starts_at")
         if last_date_str and last_event_id:
             resume_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
             if last_ts_str:
@@ -720,7 +720,7 @@ def run_backfill(args: argparse.Namespace) -> None:
             for ev_idx, candidate in enumerate(events, 1):
                 stats["events_seen"] += 1
                 date_stats["events_seen"] += 1
-                date_resume_after = (candidate.start_time_utc, candidate.id)
+                date_resume_after = (candidate.starts_at, candidate.id)
 
                 # Progress log
                 if ev_idx == 1 or ev_idx % 10 == 0 or ev_idx == len(events):
@@ -755,8 +755,8 @@ def run_backfill(args: argparse.Namespace) -> None:
                     date_stats["skipped_not_found"] += 1
                     logger.warning("⚠️  Event %d returned 404 — skipped (not deleting)", candidate.id)
                     if not dry_run:
-                        save_state(state_file, current_date, candidate.id, candidate.start_time_utc, args)
-                        last_successful_checkpoint = (current_date, candidate.id, candidate.start_time_utc)
+                        save_state(state_file, current_date, candidate.id, candidate.starts_at, args)
+                        last_successful_checkpoint = (current_date, candidate.id, candidate.starts_at)
                     consecutive_empty = 0
                     time.sleep(args.sleep)
                     continue
@@ -780,8 +780,8 @@ def run_backfill(args: argparse.Namespace) -> None:
                         date_stats["results_updated"] += 1
                     # Checkpoint
                     if not dry_run:
-                        save_state(state_file, current_date, candidate.id, candidate.start_time_utc, args)
-                        last_successful_checkpoint = (current_date, candidate.id, candidate.start_time_utc)
+                        save_state(state_file, current_date, candidate.id, candidate.starts_at, args)
+                        last_successful_checkpoint = (current_date, candidate.id, candidate.starts_at)
                 
                 elif result.status == "dry_run":
                     consecutive_empty = 0

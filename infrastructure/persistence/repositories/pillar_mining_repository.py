@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
@@ -32,7 +32,7 @@ class PillarMiningRepository:
 
     @staticmethod
     def _run_values(run: PillarMiningRun) -> dict[str, Any]:
-        now = get_local_now()
+        now = utc_now()
         return {
             "event_id": run.event_id,
             "pillar_id": run.pillar_id,
@@ -61,7 +61,7 @@ class PillarMiningRepository:
         unit: PillarMiningUnit,
         parent_unit_id: int | None,
     ) -> dict[str, Any]:
-        now = get_local_now()
+        now = utc_now()
         return {
             "run_id": run_id,
             "parent_unit_id": parent_unit_id,

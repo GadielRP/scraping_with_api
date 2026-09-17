@@ -63,7 +63,7 @@ def _run(**overrides) -> MiningRunContract:
             "P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}},
         },
         "units": (summary, module),
-        "calculated_at": datetime(2026, 8, 22, 17, 55),
+        "calculated_at": datetime(2026, 8, 22, 17, 55, tzinfo=timezone.utc),
     }
     values.update(overrides)
     return MiningRunContract(**values)
@@ -73,7 +73,7 @@ def _event() -> Event:
     return Event(
         id=1,
         slug="home-away",
-        start_time_utc=datetime(2026, 8, 22, 18, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 8, 22, 18, 0, tzinfo=timezone.utc),
         sport="Football",
         competition="League",
         home_team="Home",

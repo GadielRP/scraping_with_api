@@ -106,8 +106,8 @@ class OddspapiEventResolver:
         sport = fixture.sport_name or fixture.sport_id
         if sport:
             summary.append(f"sport={sport}")
-        if fixture.start_time_utc:
-            summary.append(f"start_utc={fixture.start_time_utc}")
+        if fixture.starts_at:
+            summary.append(f"start_utc={fixture.starts_at}")
         if fixture.start_time_local:
             summary.append(f"start_local={fixture.start_time_local}")
         return " ".join(summary)

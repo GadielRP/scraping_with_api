@@ -197,9 +197,9 @@ def get_season_events_missing_from_view(
         )
 
         if cutoff_time is not None:
-            query = query.filter(Event.start_time_utc <= cutoff_time)
+            query = query.filter(Event.starts_at <= cutoff_time)
 
-        rows = query.order_by(Event.start_time_utc).all()
+        rows = query.order_by(Event.starts_at).all()
         return [row[0] for row in rows if row[0]]
 
 

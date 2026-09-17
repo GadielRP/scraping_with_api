@@ -1,7 +1,8 @@
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib import import_module
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
@@ -39,7 +40,7 @@ def test_missed_slot_targets_next_utc_day_after_evening_restart(monkeypatch):
     )
 
     assert slots[-1] == (
-        datetime(2026, 7, 24, 17, 45),
+        datetime(2026, 7, 24, 17, 45, tzinfo=ZoneInfo(Config.TIMEZONE)),
         "17:45",
         "2026-07-25",
     )
@@ -62,7 +63,9 @@ def test_missed_slot_is_still_recovered_next_morning(monkeypatch):
         now_local=datetime(2026, 7, 25, 10, 0),
     )
 
-    assert slots[-1][0] == datetime(2026, 7, 24, 17, 45)
+    assert slots[-1][0] == datetime(
+        2026, 7, 24, 17, 45, tzinfo=ZoneInfo(Config.TIMEZONE)
+    )
     assert slots[-1][2] == "2026-07-25"
 
 
@@ -152,16 +155,15 @@ def test_fixture_discovery_defaults_when_cli_forwards_none_target_date(monkeypat
         to_dict=lambda: {},
     )
 
-    class FixedDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 8, 6, 13, 0, tzinfo=tz)
-
-    monkeypatch.setattr(scheduler_module, "datetime", FixedDateTime)
     monkeypatch.setattr(
         scheduler_module,
-        "get_local_now",
-        lambda: datetime(2026, 8, 6, 7, 0),
+        "utc_now",
+        lambda: datetime(2026, 8, 6, 13, 0, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "now_in_timezone",
+        lambda _zone: datetime(2026, 8, 6, 7, 0, tzinfo=timezone.utc),
     )
     monkeypatch.setattr(
         scheduler_module.OddspapiFixtureDiscoveryRunRepository,
@@ -364,8 +366,8 @@ def test_immediate_fixture_discovery_is_recorded_as_manual(monkeypatch):
     calls = []
     monkeypatch.setattr(
         scheduler_module,
-        "get_local_now",
-        lambda: datetime(2026, 8, 6, 11, 27),
+        "now_in_timezone",
+        lambda _zone: datetime(2026, 8, 6, 11, 27, tzinfo=timezone.utc),
     )
     monkeypatch.setattr(
         JobScheduler,

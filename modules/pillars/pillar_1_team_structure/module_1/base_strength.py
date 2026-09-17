@@ -1236,8 +1236,8 @@ def calculate_base_strength(
         _debug_line("Esta es la tabla exacta que recibe y procesa el M1 para calcular el record de la temporada y la escala dinámica.")
         
         _event_ts = getattr(streak_analysis, "current_event_timestamp", None)
-        if _event_ts is None and event_context.start_time_utc:
-            _event_ts = event_context.start_time_utc.timestamp()
+        if _event_ts is None and event_context.starts_at:
+            _event_ts = event_context.starts_at.timestamp()
         if _event_ts:
             import datetime
             _event_date_str = datetime.datetime.fromtimestamp(

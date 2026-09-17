@@ -121,10 +121,10 @@ def test_adapter_transports_per_choice_tooltip_timestamps():
     )
 
     choice = response.bookmakers[0].markets[0].choices[0]
-    assert choice.initial_changed_at.endswith("-08-04T14:41")
-    assert choice.source_collected_at.endswith("-08-05T10:01")
+    assert choice.initial_changed_at.endswith("-08-04T14:41-06:00")
+    assert choice.source_collected_at.endswith("-08-05T10:01-06:00")
     assert choice.as_repository_dict()["sourceCollectedAt"].endswith(
-        "-08-05T10:01"
+        "-08-05T10:01-06:00"
     )
     assert choice.as_repository_dict()["mainLine"] is True
 
@@ -183,11 +183,11 @@ def test_adapter_shares_one_market_between_betfair_back_and_lay():
     back_1 = by_side_and_name[("back", "1")]
     lay_1 = by_side_and_name[("lay", "1")]
     assert back_1.current_odds == "1.42"
-    assert back_1.source_collected_at.endswith("-08-05T10:01")
+    assert back_1.source_collected_at.endswith("-08-05T10:01-06:00")
     assert back_1.as_repository_dict()["exchangeSide"] == "back"
     assert back_1.as_repository_dict()["mainLine"] is True
     assert lay_1.current_odds == "1.44"
-    assert lay_1.source_collected_at.endswith("-08-05T10:02")
+    assert lay_1.source_collected_at.endswith("-08-05T10:02-06:00")
     assert lay_1.as_repository_dict()["exchangeSide"] == "lay"
     assert lay_1.as_repository_dict()["mainLine"] is True
 
@@ -334,7 +334,7 @@ def _seed_event_and_bookie(manager):
     with manager.get_session() as session:
         event = Event(
             slug="home-away",
-            start_time_utc=datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",

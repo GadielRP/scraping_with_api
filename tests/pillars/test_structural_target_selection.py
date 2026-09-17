@@ -17,7 +17,7 @@ def _event_context() -> EventContext:
         season_id=2026,
         season_name="2026",
         season_year=2026,
-        start_time_utc=datetime(2026, 8, 31, 18, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 8, 31, 18, 0, tzinfo=timezone.utc),
         minutes_until_start=5,
         discovery_source="test",
         home=ParticipantContext(

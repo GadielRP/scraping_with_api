@@ -7,7 +7,7 @@ so this query returns every persisted snapshot for the selected quote lineage.
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, bindparam, text
+from sqlalchemy import Integer, bindparam, text
 from sqlalchemy.sql.elements import TextClause
 
 
@@ -18,14 +18,14 @@ def build_pre_start_trajectory_query() -> TextClause:
         WITH requested_events AS (
             SELECT
                 e.id AS event_id,
-                e.start_time_utc
+                e.starts_at
             FROM events e
             WHERE e.id IN :event_ids
         ),
         event_quotes AS (
             SELECT
                 requested.event_id,
-                requested.start_time_utc,
+                requested.starts_at,
                 m.market_id,
                 m.market_name,
                 m.market_group,
@@ -154,7 +154,7 @@ def build_pre_start_trajectory_query() -> TextClause:
         canonical_quotes AS (
             SELECT
                 textual.event_id,
-                textual.start_time_utc,
+                textual.starts_at,
                 textual.market_id,
                 COALESCE(
                     mapped_type.canonical_market_key,
@@ -246,25 +246,16 @@ def build_pre_start_trajectory_query() -> TextClause:
             snapshots.collected_at,
             ROUND(
                 EXTRACT(
-                    EPOCH FROM (
-                        canonical.start_time_utc
-                        - timezone(:snapshot_timezone, snapshots.collected_at)
-                    )
+                    EPOCH FROM (canonical.starts_at - snapshots.collected_at)
                 ) / 60
             )::int AS observed_minutes_before_start,
             ROUND(
                 EXTRACT(
                     EPOCH FROM (
-                        canonical.start_time_utc
+                        canonical.starts_at
                         - COALESCE(
-                            timezone(
-                                :snapshot_timezone,
-                                snapshots.source_collected_at
-                            ),
-                            timezone(
-                                :snapshot_timezone,
-                                snapshots.collected_at
-                            )
+                            snapshots.source_collected_at,
+                            snapshots.collected_at
                         )
                     )
                 ) / 60,
@@ -294,10 +285,7 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.choice_display_order NULLS LAST,
             canonical.choice_name
         """
-    ).bindparams(
-        bindparam("event_ids", expanding=True, type_=Integer),
-        bindparam("snapshot_timezone", type_=String),
-    )
+    ).bindparams(bindparam("event_ids", expanding=True, type_=Integer))
 
 
 __all__ = ["build_pre_start_trajectory_query"]

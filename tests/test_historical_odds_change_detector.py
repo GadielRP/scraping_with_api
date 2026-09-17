@@ -10,7 +10,6 @@ from modules.oddspapi.historical_odds_change_detector import (
 from modules.jobs.pre_start_check_job.providers.oddspapi.settings import (
     OddspapiPreStartSettings,
 )
-from shared.timezone_utils import convert_utc_to_local
 
 KICKOFF = datetime(2026, 9, 3, 18, tzinfo=timezone.utc)
 
@@ -28,7 +27,6 @@ def detect(ticks, **kwargs):
         source_market_id="131",
         source_outcome_id="131",
         player_id="0",
-        to_local=convert_utc_to_local,
         **kwargs,
     )
 
@@ -65,7 +63,7 @@ def test_anchor_updates_and_preserves_timestamp_and_fractional_minutes():
     ticks = [tick(1440, 2), tick(60.123456, 2.4), tick(50, 2.8), tick(40, 2.88), tick(10, 2)]
     quotes = detect(ticks)
     assert [q.price for q in quotes] == [2.4, 2.88, 2]
-    assert quotes[0].collected_at == convert_utc_to_local(ticks[1][0])
+    assert quotes[0].collected_at == ticks[1][0]
     assert quotes[0].created_at == ticks[1][1]["createdAt"]
     assert quotes[0].minutes_until_start == pytest.approx(60.123456)
 

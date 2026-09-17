@@ -10,7 +10,7 @@ from typing import Dict, List
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from modules.sofascore.sport_classifier import SPORT_TENNIS, SPORT_TENNIS_DOUBLES, SportClassifier
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class TennisSportClassificationMaintenance:
                                 "home_team": event.home_team,
                                 "away_team": event.away_team,
                                 "competition": event.competition,
-                                "start_time": event.start_time_utc.isoformat(),
+                                "start_time": event.starts_at.isoformat(),
                                 "current_sport": event.sport,
                                 "corrected_sport": classified_sport,
                             }
@@ -106,7 +106,7 @@ class TennisSportClassificationMaintenance:
                         event = session.query(Event).filter(Event.id == correction["event_id"]).first()
                         if event:
                             event.sport = correction["corrected_sport"]
-                            event.updated_at = get_local_now()
+                            event.updated_at = utc_now()
                             corrected_count += 1
                         else:
                             failed_corrections.append(f"Event {correction['event_id']} not found")

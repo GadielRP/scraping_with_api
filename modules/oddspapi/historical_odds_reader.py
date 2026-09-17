@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 import logging
 from typing import Sequence
 
-from shared.timezone_utils import convert_utc_to_local
-
 from modules.oddspapi.historical_odds_as_of import (
     HistoricalOddsAsOfQuote,
     OddspapiHistoricalOddsAsOf,
@@ -149,7 +147,6 @@ class OddspapiHistoricalOddsReader:
                                     source_market_id=source_market_id,
                                     source_outcome_id=source_outcome_id,
                                     player_id=player_key,
-                                    to_local=convert_utc_to_local,
                                     min_change_magnitude_pct=min_change_magnitude_pct,
                                     min_history_hours=min_history_hours,
                                     flash_reversal_minutes=flash_reversal_minutes,

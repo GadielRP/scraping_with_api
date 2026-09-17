@@ -10,6 +10,7 @@ import time
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
@@ -42,8 +43,7 @@ from modules.oddspapi.runtime import (
     refresh_oddspapi_account_usage_if_due,
 )
 from shared.runtime_observability import observe_operation
-from shared.temporal import UTC, in_timezone, utc_now
-from shared.timezone_utils import TIMEZONE, get_local_now
+from shared.temporal import UTC, in_timezone, now_in_timezone, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +411,7 @@ class JobScheduler:
         scheduled_local_date = kwargs.pop("_scheduled_local_date", None)
         scheduled_time = kwargs.pop("_scheduled_time", None)
         create_mappings = bool(kwargs.get("create_mappings", True))
-        local_now = get_local_now()
+        local_now = now_in_timezone(Config.TIMEZONE)
         scheduled_local_date = scheduled_local_date or local_now.strftime("%Y-%m-%d")
         scheduled_time = scheduled_time or local_now.strftime("%H:%M")
         sport_scope = OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
@@ -423,12 +423,12 @@ class JobScheduler:
         # Since this job runs late in the MX evening (23:45 UTC), we target the upcoming UTC day
         # (tomorrow UTC) to avoid trying to resolve matches that have already started.
         if kwargs.get("target_date") is None:
-            utc_now = datetime.now(timezone.utc)
+            current_utc = utc_now()
             # If running after 12:00 UTC, target tomorrow's UTC calendar day
-            if utc_now.hour >= 12:
-                target = utc_now + timedelta(days=1)
+            if current_utc.hour >= 12:
+                target = current_utc + timedelta(days=1)
             else:
-                target = utc_now
+                target = current_utc
             kwargs["target_date"] = target.strftime("%Y-%m-%d")
 
         target_date_str = kwargs.get("target_date")
@@ -586,7 +586,9 @@ class JobScheduler:
 
     @staticmethod
     def _target_date_for_local_slot(slot_local: datetime) -> str:
-        slot_utc = TIMEZONE.localize(slot_local).astimezone(timezone.utc)
+        if slot_local.tzinfo is None or slot_local.utcoffset() is None:
+            slot_local = slot_local.replace(tzinfo=ZoneInfo(Config.TIMEZONE))
+        slot_utc = slot_local.astimezone(UTC)
         target = slot_utc + timedelta(days=1) if slot_utc.hour >= 12 else slot_utc
         return target.strftime("%Y-%m-%d")
 
@@ -595,7 +597,9 @@ class JobScheduler:
         *,
         now_local: datetime | None = None,
     ) -> list[tuple[datetime, str, str]]:
-        now_local = now_local or get_local_now()
+        now_local = now_local or now_in_timezone(Config.TIMEZONE)
+        if now_local.tzinfo is None or now_local.utcoffset() is None:
+            now_local = now_local.replace(tzinfo=ZoneInfo(Config.TIMEZONE))
         lookback_hours = max(
             0,
             Config.ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS,
@@ -616,7 +620,11 @@ class JobScheduler:
                         configured_time,
                     )
                     continue
-                occurrence = datetime.combine(local_date, slot_time)
+                occurrence = datetime.combine(
+                    local_date,
+                    slot_time,
+                    tzinfo=ZoneInfo(Config.TIMEZONE),
+                )
                 if occurrence < cutoff or occurrence > now_local:
                     continue
                 target_date = self._target_date_for_local_slot(occurrence)
@@ -737,7 +745,7 @@ class JobScheduler:
 
     def run_job_oddspapi_fixture_discovery_now(self, **kwargs):
         logger.info("Running Oddspapi fixture discovery immediately")
-        local_now = get_local_now()
+        local_now = now_in_timezone(Config.TIMEZONE)
         kwargs.setdefault("_trigger", "manual")
         kwargs.setdefault("_scheduled_local_date", local_now.strftime("%Y-%m-%d"))
         kwargs.setdefault("_scheduled_time", local_now.strftime("%H:%M"))

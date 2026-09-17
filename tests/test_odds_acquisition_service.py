@@ -242,7 +242,7 @@ def test_live_significant_changes_preserve_persistence_control(monkeypatch, atta
         fetcher=OddspapiOddsFetcher(client=client), mainline_cache_repository=_FakeMainlineCache,
     )
     result = service.acquire("fixture-1", **_acquire_kwargs(
-        is_live=True, start_time_utc=KICKOFF, exchange_bookmakers=None,
+        is_live=True, starts_at=KICKOFF, exchange_bookmakers=None,
         as_of_moments=[120, 5, 0], attach_as_of=attach,
         require_active_quotes=False, filter_post_kickoff_ticks=False,
     ))
@@ -275,7 +275,7 @@ def test_forced_significant_change_routes_non_live_candidate_to_historical_lane(
         **_acquire_kwargs(
             minutes_until_start=5,
             is_live=False,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             force_significant_changes=True,
         ),
     )
@@ -297,7 +297,7 @@ def test_forced_significant_change_overrides_global_flag(monkeypatch):
         **_acquire_kwargs(
             minutes_until_start=5,
             is_live=False,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             exchange_bookmakers=None,
             current_odds_available=False,
             force_significant_changes=True,
@@ -325,7 +325,7 @@ def test_forced_significant_change_preserves_current_exchange_bookmaker(monkeypa
         **_acquire_kwargs(
             minutes_until_start=5,
             is_live=False,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             current_odds_available=False,
             force_significant_changes=True,
         ),
@@ -360,7 +360,7 @@ def test_forced_significant_change_selects_newest_current_provider_tick(monkeypa
             exchange_bookmakers=None,
             current_odds_available=False,
             force_significant_changes=True,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
         ),
     )
 
@@ -384,7 +384,7 @@ def test_forced_historical_simulation_uses_bounded_regular_current(monkeypatch):
         **_acquire_kwargs(
             minutes_until_start=5,
             is_live=False,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             exchange_bookmakers=None,
             current_odds_available=False,
             force_significant_changes=True,
@@ -412,7 +412,7 @@ def test_forced_significant_change_retains_debug_payloads_for_both_endpoints(mon
         **_acquire_kwargs(
             minutes_until_start=5,
             is_live=False,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             exchange_bookmakers=None,
             current_odds_available=False,
             debug_mode=True,
@@ -445,7 +445,7 @@ def test_exchange_historical_raw_capture_is_explicitly_configured(
         "fixture-1",
         **_acquire_kwargs(
             is_live=True,
-            start_time_utc=KICKOFF,
+            starts_at=KICKOFF,
             regular_bookmakers=None,
             debug_mode=False,
         ),
@@ -483,7 +483,7 @@ def test_live_propagates_custom_change_settings_to_regular_and_exchange(monkeypa
     fetcher = _RecordingFetcher()
     service = OddspapiPreStartOddsAcquisitionService(fetcher=fetcher, mainline_cache_repository=cache)
     service.acquire("fixture-1", **_acquire_kwargs(
-        is_live=True, start_time_utc=KICKOFF,
+        is_live=True, starts_at=KICKOFF,
         exchange_fetch_executor=SimpleNamespace(fetch_all=fetch_all) if concurrent else None,
     ))
     assert len(fetcher.calls) == (1 if concurrent else 3)
@@ -675,7 +675,7 @@ def test_live_attach_as_of_quotes_onto_normalized_payload():
             is_live=True,
             exchange_bookmakers=None,
             enable_exchange_historical=False,
-            start_time_utc=datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc),
             as_of_moments=[120, 5],
             attach_as_of=True,
         ),
@@ -707,7 +707,7 @@ def test_live_as_of_without_attach_does_not_mutate_ingest_payload():
             is_live=True,
             exchange_bookmakers=None,
             enable_exchange_historical=False,
-            start_time_utc=datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc),
             as_of_moments=[120, 5],
             attach_as_of=False,
         ),

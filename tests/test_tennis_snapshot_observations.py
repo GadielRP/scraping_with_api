@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -19,7 +19,7 @@ from modules.observations.service import SportObservationService
 def _event(**overrides):
     payload = {
         "slug": "a-b",
-        "start_time_utc": datetime(2026, 8, 14, 10, 40),
+        "starts_at": datetime(2026, 8, 14, 10, 40, tzinfo=timezone.utc),
         "sport": "Tennis",
         "competition": "ATP",
         "home_team": "A",

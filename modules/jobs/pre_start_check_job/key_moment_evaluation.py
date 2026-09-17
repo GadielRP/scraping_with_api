@@ -326,7 +326,7 @@ def _build_evaluation_payloads(
 
         initial_minutes = candidate.get("minutes_until_start")
         if initial_minutes is None:
-            initial_minutes = minutes_until_start(event_obj.start_time_utc)
+            initial_minutes = minutes_until_start(event_obj.starts_at)
         event_context = build_event_context(
             event_obj=event_obj,
             minutes_until_start=initial_minutes,

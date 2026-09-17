@@ -20,7 +20,7 @@ def show_events(limit: int = 10):
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 )
-                .order_by(Event.start_time_utc.desc())
+                .order_by(Event.starts_at.desc())
                 .limit(limit)
                 .all()
             )
@@ -34,7 +34,7 @@ def show_events(limit: int = 10):
                 continue
             print(f"Teams: {event.home_participant.name} vs {event.away_participant.name}")
             print(f"Competition: {event.competition_ref.display_name}")
-            print(f"Start Time: {event.start_time_utc}")
+            print(f"Start Time: {event.starts_at}")
 
             if odds:
                 print(f"Market: {odds.market_name} / {odds.market_group} / {odds.market_period}")

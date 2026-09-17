@@ -4,7 +4,8 @@ import logging
 from app.logging_setup import setup_logging
 import sys
 
-from shared.timezone_utils import get_local_now
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get scheduled events for today for a specific sport by sport slug")
@@ -15,7 +16,7 @@ if __name__ == "__main__":
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    date_str = args.date or get_local_now().strftime("%Y-%m-%d")
+    date_str = args.date or now_in_timezone(Config.TIMEZONE).strftime("%Y-%m-%d")
     sport_slug = args.sport_slug
 
     try:

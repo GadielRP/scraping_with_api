@@ -111,10 +111,9 @@ def test_event_scope_precedes_complete_snapshot_history(monkeypatch):
     assert "observed_minutes_before_start" in session.statement
     assert "trajectory_minutes_before_start" in session.statement
     assert "COALESCE(" in session.statement
-    assert "timezone(:snapshot_timezone, snapshots.collected_at)" in session.statement
+    assert "canonical.starts_at - snapshots.collected_at" in session.statement
     assert session.params["event_ids"] == [1]
-    assert session.params["snapshot_timezone"] == "America/Mexico_City"
-    assert set(session.params) == {"event_ids", "snapshot_timezone"}
+    assert set(session.params) == {"event_ids"}
 
 
 class _FailingSession:
@@ -147,5 +146,4 @@ def test_public_read_normalizes_duplicate_event_ids(monkeypatch):
 
     assert result == {}
     assert session.params["event_ids"] == [1, 2]
-    assert session.params["snapshot_timezone"] == "America/Mexico_City"
-    assert set(session.params) == {"event_ids", "snapshot_timezone"}
+    assert set(session.params) == {"event_ids"}

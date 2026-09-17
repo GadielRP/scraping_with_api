@@ -14,26 +14,26 @@ logger = logging.getLogger(__name__)
 
 
 def minutes_until_start(
-    start_time_utc: datetime | None,
+    starts_at: datetime | None,
     *,
     now: datetime | None = None,
 ) -> int:
     """Calculate minutes until an event from two absolute instants."""
-    if start_time_utc is None:
+    if starts_at is None:
         return 0
 
-    start_utc = as_utc(start_time_utc, field_name="start_time_utc")
+    start_utc = as_utc(starts_at, field_name="starts_at")
     now_utc = as_utc(now, field_name="now") if now is not None else utc_now()
     return round((start_utc - now_utc).total_seconds() / 60)
 
 
 def minutes_since_start(
-    start_time_utc: datetime | None,
+    starts_at: datetime | None,
     *,
     now: datetime | None = None,
 ) -> int:
     """Calculate minutes since event start as a negative number."""
-    return minutes_until_start(start_time_utc, now=now)
+    return minutes_until_start(starts_at, now=now)
 
 
 def should_extract_odds_for_event(

@@ -12,6 +12,7 @@ from modules.pillars.odds_trajectory_context import build_odds_trajectory_contex
 from modules.pillars.pillar_4.metrics import build_temporal_features
 from modules.pillars.pillar_4.models import P4Point
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
+from shared.temporal import NaiveDateTimeError
 
 
 KICKOFF = datetime(2026, 9, 12, 18, 0, tzinfo=timezone.utc)
@@ -23,7 +24,7 @@ def _event(target: int = 5):
         sport="Football",
         participants_label="Home vs Away",
         minutes_until_start=target,
-        start_time_utc=KICKOFF,
+        starts_at=KICKOFF,
         context_status="normalized",
         competition=SimpleNamespace(competition_id=99, display_name="League"),
     )
@@ -137,7 +138,7 @@ def test_profile_uses_snapshots_and_excludes_every_point_after_dynamic_target() 
     assert profile["STRUCTURAL_DOMAIN_SUMMARY"]["TOTALS"]["SERIES_IDS"]
 
 
-def test_p4_adapts_legacy_mexico_wall_clock_snapshots_before_time_math() -> None:
+def test_p4_context_rejects_naive_snapshot_timestamps() -> None:
     rows = [
         _row(
             minute=minute,
@@ -152,14 +153,8 @@ def test_p4_adapts_legacy_mexico_wall_clock_snapshots_before_time_math() -> None
         )
     ]
 
-    result = calculate_pillar_4(
-        _event(5),
-        _context(rows, 5),
-        target_minute=5,
-    )
-
-    assert result["P4_STATUS"] == "ACTIVE"
-    assert result["raw"]["extraction_diagnostics"]["invalid_inputs"] == []
+    with pytest.raises(NaiveDateTimeError):
+        _context(rows, 5)
 
 
 def test_debug_logging_reports_inputs_formulas_signals_and_lineage(caplog) -> None:

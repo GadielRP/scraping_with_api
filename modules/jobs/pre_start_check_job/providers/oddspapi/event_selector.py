@@ -27,7 +27,7 @@ class OddspapiPreStartCandidate:
     source_sport_id: str | None = None
     is_live: bool = False
     competition_id: int | None = None
-    start_time_utc: datetime | None = None
+    starts_at: datetime | None = None
     home_participant: str | None = None
     away_participant: str | None = None
     event_label: str | None = None
@@ -138,7 +138,7 @@ def select_oddspapi_pre_start_candidates(
                 source_sport_id=source_state.source_sport_id if source_state else None,
                 is_live=_is_live_moment(minutes_until_start),
                 competition_id=event_data.get("competition_id"),
-                start_time_utc=event_data.get("start_time_utc"),
+                starts_at=event_data.get("starts_at"),
                 home_participant=home_participant,
                 away_participant=away_participant,
                 event_label=event_label,

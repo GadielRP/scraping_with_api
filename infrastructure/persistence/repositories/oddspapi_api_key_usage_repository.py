@@ -16,11 +16,11 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import OddspapiApiKeyUsage
 from modules.oddspapi.account_usage import AccountUsageSnapshot
 from modules.oddspapi.api_key_scheduler import PersistedApiKeyUsage
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 
 def _now() -> datetime:
-    return get_local_now()
+    return utc_now()
 
 
 class OddspapiApiKeyUsageRepository:

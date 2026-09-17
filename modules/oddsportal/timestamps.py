@@ -6,6 +6,9 @@ import re
 import unicodedata
 from datetime import datetime, timedelta
 
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone, require_aware
+
 
 _MONTHS = {
     "jan": 1,
@@ -51,7 +54,10 @@ def parse_oddsportal_tooltip_time(
     if month is None:
         return None
 
-    reference = reference_time or datetime.now()
+    reference = require_aware(
+        reference_time or now_in_timezone(Config.TIMEZONE),
+        field_name="OddsPortal tooltip reference_time",
+    )
     try:
         candidate = datetime(
             reference.year,
@@ -59,6 +65,7 @@ def parse_oddsportal_tooltip_time(
             int(day),
             int(hour),
             int(minute),
+            tzinfo=reference.tzinfo,
         )
     except ValueError:
         return None

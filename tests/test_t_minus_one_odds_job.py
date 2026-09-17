@@ -75,7 +75,7 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
             or [
                 {
                     "id": 101,
-                    "start_time_utc": datetime(
+                    "starts_at": datetime(
                         2026, 8, 13, 19, 0, tzinfo=timezone.utc
                     ),
                 }

@@ -97,7 +97,7 @@ class MatchupStreakContext:
     #   "season_id": int,
     #   "canonical_season_id": int,
     #   "cutoff_timestamp": float,
-    #   "cutoff_rule": "start_time_utc < cutoff_dt",
+    #   "cutoff_rule": "starts_at < cutoff_dt",
     #   "sport": str,
     #   "source_unique_tournament_id": Optional[int],
     #   "source_tournament_id": Optional[int],

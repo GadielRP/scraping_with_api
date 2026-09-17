@@ -49,7 +49,7 @@ def build_pre_start_event_candidates(
             event_id = event_data["id"]
             minutes = pre_calculated_timings.get(event_id)
             if minutes is None:
-                minutes = minutes_until_start(event_data["start_time_utc"])
+                minutes = minutes_until_start(event_data["starts_at"])
             preloaded_sofascore_event_id = get_numeric_source_event_id(
                 source_states,
                 event_id,
@@ -63,7 +63,7 @@ def build_pre_start_event_candidates(
             ) = should_extract_odds_for_event(
                 event_id,
                 minutes,
-                event_data.get("start_time_utc"),
+                event_data.get("starts_at"),
                 sofascore_event_id=preloaded_sofascore_event_id,
                 key_moments=key_moments,
                 timestamp_correction_enabled=timestamp_correction_enabled,
@@ -98,7 +98,7 @@ def build_pre_start_event_candidates(
                 refreshed_event = scheduler.event_repo.get_event_by_id(event_id)
                 if refreshed_event:
                     event_data["season_id"] = refreshed_event.season_id
-                    event_data["start_time_utc"] = refreshed_event.start_time_utc
+                    event_data["starts_at"] = refreshed_event.starts_at
 
             if (
                 should_extract_odds
@@ -113,7 +113,7 @@ def build_pre_start_event_candidates(
                 "event_data": event_data,
                 "minutes_until_start": minutes,
                 "should_extract_odds": should_extract_odds,
-                "original_start_time": event_data["start_time_utc"],
+                "original_start_time": event_data["starts_at"],
                 "metadata_snapshot": metadata_snapshot,
                 "sofascore_event_id": sofascore_event_id,
             }

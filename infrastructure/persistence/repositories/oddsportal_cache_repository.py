@@ -3,7 +3,8 @@ from typing import Optional, Dict
 
 from infrastructure.persistence.models import OddsPortalLeagueCache
 from infrastructure.persistence.database import db_manager
-from shared.timezone_utils import get_local_now
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,9 @@ class OddsPortalCacheRepository:
         """
         try:
             with db_manager.get_session() as session:
-                today = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                today = now_in_timezone(Config.TIMEZONE).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
 
                 existing = session.query(OddsPortalLeagueCache).filter(
                     OddsPortalLeagueCache.season_id == season_id
@@ -33,7 +36,7 @@ class OddsPortalCacheRepository:
                 if existing:
                     existing.match_urls = match_urls_dict
                     existing.cached_date = today
-                    existing.created_at = get_local_now()
+                    existing.created_at = utc_now()
                     logger.debug(f"Updated league cache for season {season_id}: {len(match_urls_dict)} URLs")
                 else:
                     cache_entry = OddsPortalLeagueCache(
@@ -58,7 +61,9 @@ class OddsPortalCacheRepository:
         try:
             from datetime import timedelta
             with db_manager.get_session() as session:
-                cutoff_date = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=valid_days - 1)
+                cutoff_date = now_in_timezone(Config.TIMEZONE).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ) - timedelta(days=valid_days - 1)
 
                 cache = session.query(OddsPortalLeagueCache).filter(
                     OddsPortalLeagueCache.season_id == season_id,
@@ -82,7 +87,9 @@ class OddsPortalCacheRepository:
         try:
             from datetime import timedelta
             with db_manager.get_session() as session:
-                cutoff_date = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=retention_days)
+                cutoff_date = now_in_timezone(Config.TIMEZONE).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ) - timedelta(days=retention_days)
 
                 deleted = session.query(OddsPortalLeagueCache).filter(
                     OddsPortalLeagueCache.cached_date < cutoff_date

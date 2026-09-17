@@ -15,7 +15,6 @@ from typing import Sequence
 from modules.oddspapi.historical_odds_quote import HistoricalOddsAsOfQuote
 
 from shared.temporal import as_utc
-from shared.timezone_utils import convert_utc_to_local
 
 
 class OddspapiHistoricalOddsAsOf:
@@ -30,7 +29,7 @@ class OddspapiHistoricalOddsAsOf:
         """
         if start_time is None:
             return None
-        return as_utc(start_time, field_name="start_time_utc")
+        return as_utc(start_time, field_name="starts_at")
 
     @classmethod
     def targets_from_start(
@@ -38,13 +37,12 @@ class OddspapiHistoricalOddsAsOf:
         start_time: datetime | None,
         moments: Sequence[int],
     ) -> list[tuple[int, datetime, datetime]]:
-        """Return ``(minutes, target_utc, collected_at_local)`` for non-negative moments."""
+        """Return ``(minutes, target_utc, collected_at_utc)`` for non-negative moments."""
         if start_time is None:
             return []
         start_utc = cls.start_time_as_utc(start_time)
         if start_utc is None:
             return []
-        start_local = convert_utc_to_local(start_time)
         targets: list[tuple[int, datetime, datetime]] = []
         for moment in moments:
             try:
@@ -58,7 +56,7 @@ class OddspapiHistoricalOddsAsOf:
                 (
                     minutes,
                     start_utc - delta,
-                    start_local - delta,
+                    start_utc - delta,
                 )
             )
         return targets

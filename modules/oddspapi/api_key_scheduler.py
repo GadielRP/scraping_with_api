@@ -22,7 +22,7 @@ from modules.oddspapi.endpoint_policy import (
     normalize_endpoint,
 )
 from modules.oddspapi.exceptions import OddsPapiQuotaExhaustedError
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -381,13 +381,13 @@ class OddsPapiApiKeyScheduler:
                 ] += 1
                 state.status = "exhausted"
                 state.last_error_code = normalized_error
-                state.last_error_at = get_local_now()
+                state.last_error_at = utc_now()
                 persist_status = ("exhausted", normalized_error)
             elif invalid_key:
                 self._diagnostic_counts[f"{lease.key_id}:invalid"] += 1
                 state.status = "invalid"
                 state.last_error_code = normalized_error or "HTTP_401"
-                state.last_error_at = get_local_now()
+                state.last_error_at = utc_now()
                 persist_status = ("invalid", state.last_error_code)
             elif outcome.status_code == 429:
                 self._diagnostic_counts[f"{lease.key_id}:rate_limited"] += 1
@@ -435,7 +435,7 @@ class OddsPapiApiKeyScheduler:
             return False
         refreshed_any = False
         try:
-            now = get_local_now()
+            now = utc_now()
             for credential in self.inventory.all_credentials():
                 with self._condition:
                     state = self._state_for(credential)
@@ -468,7 +468,7 @@ class OddsPapiApiKeyScheduler:
                     with self._condition:
                         failed_state = self._state_for(credential)
                         failed_state.last_error_code = error_code
-                        failed_state.last_error_at = get_local_now()
+                        failed_state.last_error_at = utc_now()
                     logger.warning(
                         "OddsPapi account usage refresh failed key_id=%s error=%s",
                         credential.log_id,

@@ -27,7 +27,7 @@ from modules.jobs.pre_start_check_job.providers.oddspapi.odds_fetcher import (
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 from infrastructure.persistence.repositories.bookie_repository import BookieResolution
-from shared.timezone_utils import TIMEZONE, convert_utc_to_local
+from shared.temporal import UTC
 
 
 SERVICE = "modules.odds_ingestion.market_odds_ingestion_service"
@@ -52,24 +52,19 @@ ADAPTED = {
 }
 
 
-def test_oddspapi_source_timestamp_is_converted_to_project_timezone():
+def test_oddspapi_source_timestamp_is_normalized_to_utc():
     parsed = MarketRepository._parse_source_datetime(
         "2026-07-28T21:57:00.122Z",
-        convert_to_project_timezone=True,
     )
-    expected = (
-        datetime(2026, 7, 28, 21, 57, 0, 122000, tzinfo=timezone.utc)
-        .astimezone(TIMEZONE)
-        .replace(tzinfo=None)
-    )
+    expected = datetime(2026, 7, 28, 21, 57, 0, 122000, tzinfo=UTC)
 
     assert parsed == expected
-    assert parsed.tzinfo is None
-    assert MarketRepository._uses_utc_source_timestamps("oddspapi")
-    assert MarketRepository._uses_utc_source_timestamps(
+    assert parsed.tzinfo is UTC
+    assert MarketRepository._requires_provider_timestamp("oddspapi")
+    assert MarketRepository._requires_provider_timestamp(
         "oddspapi_pre_start"
     )
-    assert not MarketRepository._uses_utc_source_timestamps("sofascore")
+    assert not MarketRepository._requires_provider_timestamp("sofascore")
 
 
 def resolution(resolved=True, reason=None, created_mappings=None):
@@ -320,7 +315,7 @@ def _seed_repository_entities(manager):
     with manager.get_session() as session:
         event = Event(
             slug="exchange-test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Premier League",
             home_team="Home",
@@ -405,8 +400,8 @@ def test_repository_persists_historical_opening_and_final_odds(tmp_path):
         snapshot = session.query(MarketChoiceSnapshot).one()
     assert float(quote.initial_odds) == 1.7
     assert float(quote.current_odds) == 1.9
-    assert snapshot.source_collected_at == convert_utc_to_local(
-        datetime.fromisoformat("2026-06-19T12:34:56+00:00")
+    assert snapshot.source_collected_at == datetime.fromisoformat(
+        "2026-06-19T12:34:56+00:00"
     )
 
 
@@ -575,8 +570,8 @@ def test_repository_persists_exchange_opening_as_back_without_initial_lay(
         ("lay", 0, 2.0),
     ]
     assert float(snapshots[0].exchange_size) == 25
-    assert snapshots[0].source_collected_at == convert_utc_to_local(
-        datetime.fromisoformat("2026-06-19T10:00:00+00:00")
+    assert snapshots[0].source_collected_at == datetime.fromisoformat(
+        "2026-06-19T10:00:00+00:00"
     )
     quote_ids = {
         (quote.exchange_side, quote.exchange_level): quote.quote_id
@@ -771,7 +766,7 @@ def test_historical_current_cutoff_keeps_as_of_targets_independent():
             (
                 5,
                 datetime(2026, 8, 21, 1, 55, tzinfo=timezone.utc),
-                datetime(2026, 8, 20, 19, 55),
+                datetime(2026, 8, 21, 1, 55, tzinfo=timezone.utc),
             )
         ],
         current_cutoff_utc=datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc),
@@ -783,10 +778,11 @@ def test_historical_current_cutoff_keeps_as_of_targets_independent():
     assert result.as_of_quotes[0].created_at == "2026-08-21T01:54:00Z"
 
 
-def test_historical_cutoff_converts_local_naive_event_start_to_utc():
-    assert OddspapiHistoricalOddsAsOf.start_time_as_utc(
-        datetime(2026, 8, 20, 20, 0)
-    ) == datetime(2026, 8, 21, 2, 0, tzinfo=timezone.utc)
+def test_historical_cutoff_rejects_naive_event_start():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        OddspapiHistoricalOddsAsOf.start_time_as_utc(
+            datetime(2026, 8, 20, 20, 0)
+        )
 
 
 def test_historical_fetcher_applies_explicit_current_cutoff():
@@ -860,17 +856,12 @@ def test_live_acquisition_passes_event_start_as_historical_current_cutoff():
         exchange_request_budget=None,
         minimum_initial_span_minutes=60,
         current_odds_available=True,
-        start_time_utc=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
     )
 
     assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
     assert captured["current_cutoff_utc"] == datetime(
-        2026,
-        8,
-        21,
-        2,
-        0,
-        tzinfo=timezone.utc,
+        2026, 8, 20, 20, 0, tzinfo=timezone.utc
     )
 
 
@@ -912,7 +903,7 @@ def test_live_acquisition_can_disable_post_kickoff_tick_filter():
         current_odds_available=True,
         require_active_quotes=False,
         filter_post_kickoff_ticks=False,
-        start_time_utc=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
     )
 
     assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT

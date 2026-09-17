@@ -88,7 +88,7 @@ def get_exact_price_memory_sample(
         if current_draw_odds is not None:
             query = text(
                 """
-                SELECT mae.event_id, mae.sport, mae.home_team, mae.away_team, mae.start_time_utc,
+                SELECT mae.event_id, mae.sport, mae.home_team, mae.away_team, mae.starts_at,
                        mae.one_final, mae.x_final, mae.two_final, mae.var_shape, mae.winner_side,
                        mae.home_score, mae.away_score
                 FROM mv_alert_events mae
@@ -99,7 +99,7 @@ def get_exact_price_memory_sample(
                   AND ROUND(mae.two_final::numeric, 3) = ROUND(CAST(:current_away_odds AS numeric), 3)
                   AND mae.var_shape = true
                   AND mae.winner_side IS NOT NULL
-                ORDER BY mae.start_time_utc DESC
+                ORDER BY mae.starts_at DESC
                 """
             )
             params = {
@@ -112,7 +112,7 @@ def get_exact_price_memory_sample(
         else:
             query = text(
                 """
-                SELECT mae.event_id, mae.sport, mae.home_team, mae.away_team, mae.start_time_utc,
+                SELECT mae.event_id, mae.sport, mae.home_team, mae.away_team, mae.starts_at,
                        mae.one_final, mae.two_final, mae.var_shape, mae.winner_side,
                        mae.home_score, mae.away_score
                 FROM mv_alert_events mae
@@ -122,7 +122,7 @@ def get_exact_price_memory_sample(
                   AND ROUND(mae.two_final::numeric, 3) = ROUND(CAST(:current_away_odds AS numeric), 3)
                   AND mae.var_shape = false
                   AND mae.winner_side IS NOT NULL
-                ORDER BY mae.start_time_utc DESC
+                ORDER BY mae.starts_at DESC
                 """
             )
             params = {
@@ -175,7 +175,7 @@ def get_exact_price_memory_sample(
                 "away_team": mapping.get("away_team"),
                 "home_score": int(home_score) if home_score is not None else None,
                 "away_score": int(away_score) if away_score is not None else None,
-                "start_time": _format_datetime(mapping.get("start_time_utc")),
+                "start_time": _format_datetime(mapping.get("starts_at")),
                 "one_final": float(one_final) if one_final is not None else None,
                 "x_final": float(x_final) if x_final is not None else None,
                 "two_final": float(two_final) if two_final is not None else None,

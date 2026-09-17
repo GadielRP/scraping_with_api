@@ -30,7 +30,7 @@ from modules.odds_ingestion.market_odds_ingestion_service import (
     MarketOddsIngestionService,
 )
 from modules.observations import sport_observation_service
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 # State file to track last processed event ID
 STATE_FILE = 'process_null_seasons_last_id.log'
@@ -101,7 +101,7 @@ def save_last_processed_id(event_id: int):
 
 def get_events_with_null_season(min_id: int = 269, last_processed_id: Optional[int] = None) -> List[tuple]:
     """
-    Query for all events where season_id is null and start_time_utc is in the past, sorted by ID.
+    Query for all events where season_id is null and starts_at is in the past, sorted by ID.
     
     Args:
         min_id: Minimum event ID to process (default 269)
@@ -111,12 +111,12 @@ def get_events_with_null_season(min_id: int = 269, last_processed_id: Optional[i
         List of tuples (event_id, slug) sorted by event_id
     """
     try:
-        now = get_local_now()
+        now = utc_now()
         with db_manager.get_session() as session:
             query = session.query(Event).filter(
                 Event.season_id == None,
                 Event.id > min_id,
-                Event.start_time_utc < now
+                Event.starts_at < now
             )
             
             # If resuming, start after the last processed ID

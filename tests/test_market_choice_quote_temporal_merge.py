@@ -15,7 +15,7 @@ from infrastructure.persistence.repositories.market.market_choice_quote_writer i
 )
 
 
-T0 = datetime(2026, 6, 20, 10, 0, 0)
+T0 = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
 T1 = T0 + timedelta(minutes=5)
 T2 = T0 + timedelta(minutes=10)
 
@@ -247,7 +247,7 @@ def seed_choice(manager):
     with manager.get_session() as session:
         event = Event(
             slug="temporal-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Basketball",
             competition="WNBA",
             home_team="Home",

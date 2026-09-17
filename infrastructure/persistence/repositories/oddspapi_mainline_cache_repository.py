@@ -8,7 +8,7 @@ from datetime import timedelta
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import OddspapiMainlineOutcomeCache
 from modules.oddspapi.format_utils import normalize_source_id
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class OddspapiMainlineCacheRepository:
         mainline_outcomes: list[dict],
     ) -> int:
         """Upsert mainline outcomes into oddspapi_mainline_outcome_cache."""
-        captured_at = get_local_now()
+        captured_at = utc_now()
         rows: list[dict] = []
         seen: set[tuple[str, str, str]] = set()
         for outcome in mainline_outcomes or []:
@@ -263,7 +263,7 @@ class OddspapiMainlineCacheRepository:
     def purge_stale_cache(days: int = 2) -> int:
         """Purge cache entries older than N days."""
         retention_days = max(0, int(days))
-        cutoff = get_local_now() - timedelta(days=retention_days)
+        cutoff = utc_now() - timedelta(days=retention_days)
         try:
             with db_manager.get_session() as session:
                 deleted = (

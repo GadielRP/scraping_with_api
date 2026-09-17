@@ -10,7 +10,9 @@ from typing import Any, Mapping
 from modules.odds_ingestion.canonical_market_resolver import resolve_oddsportal_key
 from modules.oddsportal.oddsportal_routes import flatten_sport_scraping_route
 from modules.oddsportal.timestamps import oddsportal_tooltip_time_to_iso
+from infrastructure.settings import Config
 from shared.odds_utils import normalize_odds_value
+from shared.temporal import now_in_timezone
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +203,7 @@ class OddsPortalMarketAdapter:
     ) -> OddsPortalOddsResponse:
         markets_by_bookie: dict[tuple[str, str], list[CanonicalMarketPayload]] = {}
         diagnostics: list[dict] = []
-        reference_time = datetime.now()
+        reference_time = now_in_timezone(Config.TIMEZONE)
 
         for extraction in cls._extractions(odds_data):
             canonical_key, reason = resolve_oddsportal_key(

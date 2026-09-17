@@ -23,7 +23,7 @@ def seed_choice(manager):
     with manager.get_session() as session:
         event = Event(
             slug="test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Basketball",
             competition="WNBA",
             home_team="Home",
@@ -90,7 +90,7 @@ def _upsert_quote(session, **kwargs):
 def test_upsert_creates_row_with_initial_only(tmp_path):
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
-    initial_time = datetime(2026, 6, 20, 10, 0, 0)
+    initial_time = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
 
     with manager.get_session() as session:
         _upsert_quote(
@@ -116,8 +116,8 @@ def test_upsert_merges_current_into_existing_initial_only_row(tmp_path):
     """The original bug report scenario: initial at T-120, current arrives later at T-5."""
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
-    initial_time = datetime(2026, 6, 20, 10, 0, 0)
-    current_time = datetime(2026, 6, 20, 11, 55, 0)
+    initial_time = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
+    current_time = datetime(2026, 6, 20, 11, 55, 0, tzinfo=timezone.utc)
 
     with manager.get_session() as session:
         _upsert_quote(

@@ -530,14 +530,14 @@ def get_events_for_date(target_date: date) -> List[Event]:
     SELECT * FROM events
     WHERE id > 269
       AND (season_id IS NULL OR season_id NOT IN (34951, 38191, ...))
-      AND DATE(start_time_utc) = target_date
-    ORDER BY start_time_utc
+      AND DATE(starts_at) = target_date
+    ORDER BY starts_at
     
     Args:
         target_date: The date to query events for
         
     Returns:
-        List of Event objects ordered by start_time_utc
+        List of Event objects ordered by starts_at
     """
     try:
         with db_manager.get_session() as session:
@@ -553,10 +553,10 @@ def get_events_for_date(target_date: date) -> List[Event]:
                         Event.season_id.is_(None),
                         ~Event.season_id.in_(NBA_SEASONS_TO_EXCLUDE)
                     ),
-                    Event.start_time_utc >= day_start,
-                    Event.start_time_utc < day_end
+                    Event.starts_at >= day_start,
+                    Event.starts_at < day_end
                 )
-            ).order_by(Event.start_time_utc).all()
+            ).order_by(Event.starts_at).all()
             
             return events
             
@@ -573,16 +573,16 @@ def get_events_for_datetime_range(start_datetime: datetime, end_datetime: dateti
     SELECT * FROM events
     WHERE id > 269
       AND (season_id IS NULL OR season_id NOT IN (34951, 38191, ...))
-      AND start_time_utc >= start_datetime
-      AND start_time_utc <= end_datetime
-    ORDER BY start_time_utc
+      AND starts_at >= start_datetime
+      AND starts_at <= end_datetime
+    ORDER BY starts_at
     
     Args:
         start_datetime: The start datetime (inclusive)
         end_datetime: The end datetime (inclusive)
         
     Returns:
-        List of Event objects ordered by start_time_utc
+        List of Event objects ordered by starts_at
     """
     try:
         with db_manager.get_session() as session:
@@ -594,10 +594,10 @@ def get_events_for_datetime_range(start_datetime: datetime, end_datetime: dateti
                         Event.season_id.is_(None),
                         ~Event.season_id.in_(NBA_SEASONS_TO_EXCLUDE)
                     ),
-                    Event.start_time_utc >= start_datetime,
-                    Event.start_time_utc <= end_datetime
+                    Event.starts_at >= start_datetime,
+                    Event.starts_at <= end_datetime
                 )
-            ).order_by(Event.start_time_utc).all()
+            ).order_by(Event.starts_at).all()
             
             return events
             
@@ -617,7 +617,7 @@ def get_all_available_dates() -> List[date]:
         with db_manager.get_session() as session:
             # Get distinct dates from events matching criteria
             dates = session.query(
-                cast(Event.start_time_utc, Date).label('event_date')
+                cast(Event.starts_at, Date).label('event_date')
             ).filter(
                 and_(
                     Event.id > LAST_ID,
@@ -796,7 +796,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
                         'away_team': event.away_team,
                         'sport': event.sport,
                         'competition': event.competition,
-                        'start_time': event.start_time_utc.isoformat()
+                        'start_time': event.starts_at.isoformat()
                     },
                     'result_data': {
                         'home_score': result_data.get('home_score'),
@@ -1035,7 +1035,7 @@ Examples:
             from collections import defaultdict
             events_by_date = defaultdict(list)
             for event in manual_events:
-                event_date = event.start_time_utc.date()
+                event_date = event.starts_at.date()
                 events_by_date[event_date].append(event)
             
             dates_list = sorted(events_by_date.keys())

@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 import logging
 from typing import Any
 
-from shared.temporal import as_utc
-from shared.timezone_utils import convert_utc_to_local
+from infrastructure.settings import Config
+from shared.temporal import as_utc, in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def _parse_start_time(value: Any) -> tuple[datetime | None, datetime | None]:
         parsed = parsed.replace(tzinfo=timezone.utc)
 
     utc_time = as_utc(parsed, field_name="Oddspapi fixture startTime")
-    local_time = convert_utc_to_local(utc_time, keep_tzinfo=True)
+    local_time = in_timezone(utc_time, Config.TIMEZONE)
     return utc_time, local_time
 
 
@@ -69,7 +69,7 @@ class OddspapiFixtureIdentity:
     category_name: str | None = None
     category_slug: str | None = None
     season_id: str | None = None
-    start_time_utc: datetime | None = None
+    starts_at: datetime | None = None
     start_time_local: datetime | None = None
     participant1_id: str | None = None
     participant1_name: str | None = None
@@ -94,7 +94,7 @@ class OddspapiFixtureIdentity:
         if not isinstance(external_providers, dict):
             external_providers = {}
 
-        start_time_utc, start_time_local = _parse_start_time(data.get("startTime"))
+        starts_at, start_time_local = _parse_start_time(data.get("startTime"))
         external_provider_keys = sorted(
             key for key in external_providers.keys() if str(key or "").strip()
         )
@@ -103,7 +103,7 @@ class OddspapiFixtureIdentity:
             "Normalized OddsPapi fixture %s sport=%s start_utc=%s start_local=%s providers=%s participants=%s vs %s tournament=%s / %s",
             fixture_id,
             _normalize_sport_name(data.get("sportName")),
-            start_time_utc,
+            starts_at,
             start_time_local,
             external_provider_keys,
             _normalize_optional_text(data.get("participant1Name")),
@@ -123,7 +123,7 @@ class OddspapiFixtureIdentity:
             category_name=_normalize_optional_text(data.get("categoryName")),
             category_slug=_normalize_optional_text(data.get("categorySlug")),
             season_id=_normalize_optional_text(data.get("seasonId")),
-            start_time_utc=start_time_utc,
+            starts_at=starts_at,
             start_time_local=start_time_local,
             participant1_id=_normalize_optional_text(data.get("participant1Id")),
             participant1_name=_normalize_optional_text(data.get("participant1Name")),
@@ -149,7 +149,7 @@ class OddspapiFixtureIdentity:
             "category_name": self.category_name,
             "category_slug": self.category_slug,
             "season_id": self.season_id,
-            "start_time_utc": self.start_time_utc.isoformat() if self.start_time_utc else None,
+            "starts_at": self.starts_at.isoformat() if self.starts_at else None,
             "start_time_local": self.start_time_local.isoformat() if self.start_time_local else None,
             "participant1_id": self.participant1_id,
             "participant1_name": self.participant1_name,

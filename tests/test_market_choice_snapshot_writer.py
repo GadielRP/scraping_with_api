@@ -27,7 +27,7 @@ def seed_choice(manager):
     with manager.get_session() as session:
         event = Event(
             slug="snapshot-writer-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",
@@ -55,8 +55,8 @@ def seed_choice(manager):
 def test_append_derives_identity_and_stable_lineage_from_quote(tmp_path):
     manager = make_manager(tmp_path)
     choice_id = seed_choice(manager)
-    collected_at = datetime(2026, 6, 20, 11, 55, 0)
-    source_collected_at = datetime(2026, 6, 20, 11, 54, 30)
+    collected_at = datetime(2026, 6, 20, 11, 55, 0, tzinfo=timezone.utc)
+    source_collected_at = datetime(2026, 6, 20, 11, 54, 30, tzinfo=timezone.utc)
 
     with manager.get_session() as session:
         quote = MarketChoiceQuote(
@@ -115,7 +115,7 @@ def test_append_accepts_pending_quote_in_same_unit_of_work(tmp_path):
             session,
             quote=quote,
             odds_value=1.90,
-            collected_at=datetime(2026, 6, 20, 11, 55, 0),
+            collected_at=datetime(2026, 6, 20, 11, 55, 0, tzinfo=timezone.utc),
         )
 
         # One flush is enough for the complete graph: SQLAlchemy inserts the

@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Dict, List, Optional
 
 from infrastructure.settings import Config
-from shared.temporal import as_utc, interpret_local_naive
+from shared.temporal import as_utc
 
 
 def _coerce_text(value: Any) -> Optional[str]:
@@ -74,13 +74,7 @@ def _coerce_decimal(value: Any) -> Optional[Decimal]:
 
 
 def _coerce_snapshot_instant(value: Any, *, field_name: str) -> Optional[datetime]:
-    """Adapt one persisted snapshot timestamp to the domain UTC contract.
-
-    ``market_choice_snapshots`` predates the canonical instant migration and
-    still stores Mexico City wall-clock values without timezone metadata. This
-    formatter is the anti-corruption boundary for both repository payloads and
-    direct callers; nothing downstream receives a naive datetime.
-    """
+    """Validate and normalize one persisted snapshot instant to UTC."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -97,12 +91,6 @@ def _coerce_snapshot_instant(value: Any, *, field_name: str) -> Optional[datetim
     else:
         return None
 
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        return interpret_local_naive(
-            parsed,
-            Config.LEGACY_MARKET_SNAPSHOT_TIMEZONE,
-            field_name=field_name,
-        )
     return as_utc(parsed, field_name=field_name)
 
 

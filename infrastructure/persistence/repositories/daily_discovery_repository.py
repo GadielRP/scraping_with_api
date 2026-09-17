@@ -4,7 +4,8 @@ from datetime import timedelta
 
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.persistence.database import db_manager
-from shared.timezone_utils import get_local_now
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class DailyDiscoveryRepository:
                 if log:
                     log.status = status
                     log.attempts = (log.attempts or 0) + 1
-                    log.last_attempt_at = get_local_now()
+                    log.last_attempt_at = utc_now()
                     logger.info(
                         "Updated DailyDiscoveryLog %s - %s - %s to %s",
                         date_str,
@@ -121,7 +122,9 @@ class DailyDiscoveryRepository:
 
         try:
             with db_manager.get_session() as session:
-                cutoff_date = (get_local_now() - timedelta(days=days_to_keep)).strftime('%Y-%m-%d')
+                cutoff_date = (
+                    now_in_timezone(Config.TIMEZONE) - timedelta(days=days_to_keep)
+                ).strftime('%Y-%m-%d')
                 deleted = session.query(DailyDiscoveryLog).filter(
                     DailyDiscoveryLog.date < cutoff_date
                 ).delete()

@@ -66,7 +66,7 @@ def _db_sport_names(sport_keys: set[str]) -> list[str]:
 
 def _fixture_time(fixture: OddspapiFixtureIdentity) -> datetime | None:
     """Return the provider kickoff on the canonical aware-UTC basis."""
-    return fixture.start_time_utc
+    return fixture.starts_at
 
 
 # Rare dual-perfect ties need human adjudication even when broad queue
@@ -133,11 +133,11 @@ class OddspapiCandidatePool:
             timed = [
                 event
                 for event in sport_events
-                if isinstance(getattr(event, "start_time_utc", None), datetime)
+                if isinstance(getattr(event, "starts_at", None), datetime)
             ]
-            timed.sort(key=lambda event: event.start_time_utc)
+            timed.sort(key=lambda event: event.starts_at)
             self._sorted_events_by_sport[sport] = timed
-            self._sorted_times_by_sport[sport] = [event.start_time_utc for event in timed]
+            self._sorted_times_by_sport[sport] = [event.starts_at for event in timed]
 
     @classmethod
     def load(cls, fixtures: list[OddspapiFixtureIdentity], session: Session) -> "OddspapiCandidatePool":
@@ -167,8 +167,8 @@ class OddspapiCandidatePool:
             query = query.filter(or_(*clauses))
         if times:
             query = query.filter(
-                Event.start_time_utc >= min(times) - cls.TOLERANCE,
-                Event.start_time_utc <= max(times) + cls.TOLERANCE,
+                Event.starts_at >= min(times) - cls.TOLERANCE,
+                Event.starts_at <= max(times) + cls.TOLERANCE,
             )
         events = query.all()
         logger.info("Loaded Oddspapi candidate pool events=%s fixtures=%s", len(events), len(fixtures))

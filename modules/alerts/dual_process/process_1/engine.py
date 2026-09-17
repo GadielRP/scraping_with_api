@@ -70,8 +70,8 @@ class AlertEngine:
             try:
                 now = utc_now()
                 event_start = as_utc(
-                    event.start_time_utc,
-                    field_name=f"event {event.id} start_time_utc",
+                    event.starts_at,
+                    field_name=f"event {event.id} starts_at",
                 )
                 time_diff = event_start - now
                 minutes_until_start = round(time_diff.total_seconds() / 60)
@@ -198,7 +198,7 @@ class AlertEngine:
             "sport": event.sport,
             "discovery_source": event.discovery_source,
             "start_time": in_timezone(
-                event.start_time_utc,
+                event.starts_at,
                 Config.TIMEZONE,
             ).strftime("%H:%M"),
             "minutes_until_start": minutes_until_start,

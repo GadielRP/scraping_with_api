@@ -212,17 +212,17 @@ def get_events_to_process(start_date: datetime, end_date: datetime, resume_from_
     
     Criteria:
     - id > MIN_EVENT_ID
-    - start_time_utc >= start_date
-    - start_time_utc < end_date (end of yesterday)
+    - starts_at >= start_date
+    - starts_at < end_date (end of yesterday)
     - No result exists
     
-    Events are sorted by start_time_utc for chronological processing.
+    Events are sorted by starts_at for chronological processing.
     """
     with db_manager.get_session() as session:
         query = session.query(Event).outerjoin(Result).filter(
             Event.id > MIN_EVENT_ID,
-            Event.start_time_utc >= start_date,
-            Event.start_time_utc < end_date,
+            Event.starts_at >= start_date,
+            Event.starts_at < end_date,
             Result.event_id == None
         )
         
@@ -230,8 +230,8 @@ def get_events_to_process(start_date: datetime, end_date: datetime, resume_from_
         if resume_from_id:
             query = query.filter(Event.id > resume_from_id)
         
-        # Sort by start_time_utc for chronological processing
-        events = query.order_by(Event.start_time_utc.asc(), Event.id.asc()).all()
+        # Sort by starts_at for chronological processing
+        events = query.order_by(Event.starts_at.asc(), Event.id.asc()).all()
         
         logger.info(f"Found {len(events)} events needing results between {start_date.date()} and {end_date.date()}")
         return events
@@ -308,14 +308,14 @@ def backfill_results(limit: int = None):
     Args:
         limit: Maximum number of events to process (None = all)
     """
-    from shared.timezone_utils import get_local_now
+    from shared.temporal import utc_now
     
     print(f"\n{'='*60}")
     print("BACKFILL: Results & Odds")
     print(f"{'='*60}\n")
     
     # Calculate date range using timezone-aware local time
-    local_now = get_local_now()
+    local_now = utc_now()
     
     # Yesterday = today minus 1 day, end of day (23:59:59)
     yesterday_start = (local_now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)

@@ -24,7 +24,7 @@ from infrastructure.persistence.repositories.market.market_choice_snapshot_write
     MarketChoiceSnapshotWriter,
 )
 from shared.odds_utils import fractional_to_decimal, normalize_odds_value
-from shared.timezone_utils import convert_utc_to_local, get_local_now
+from shared.temporal import as_utc, utc_now
 
 logger = logging.getLogger(__name__)
 oddsportal_logger = logging.LoggerAdapter(logger, {"oddsportal": True})
@@ -68,8 +68,6 @@ class MarketRepository:
     @staticmethod
     def _parse_source_datetime(
         value,
-        *,
-        convert_to_project_timezone: bool = False,
     ) -> Optional[datetime]:
         if value in (None, ""):
             return None
@@ -85,12 +83,10 @@ class MarketRepository:
                 parsed = datetime.fromisoformat(normalized)
             except ValueError:
                 return None
-        if convert_to_project_timezone:
-            return convert_utc_to_local(parsed)
-        return parsed
+        return as_utc(parsed, field_name="market source timestamp")
 
     @staticmethod
-    def _uses_utc_source_timestamps(source: str | None) -> bool:
+    def _requires_provider_timestamp(source: str | None) -> bool:
         return str(source or "").strip().lower().startswith("oddspapi")
 
     @staticmethod
@@ -109,9 +105,10 @@ class MarketRepository:
 
     @staticmethod
     def _snapshot_collected_at_key(collected_at: datetime) -> datetime:
-        if collected_at.tzinfo is not None:
-            return collected_at.replace(microsecond=0, tzinfo=None)
-        return collected_at.replace(microsecond=0)
+        return as_utc(
+            collected_at,
+            field_name="snapshot collected_at",
+        ).replace(microsecond=0)
 
     @staticmethod
     def _existing_moment_snapshot_source_keys(
@@ -197,7 +194,7 @@ class MarketRepository:
         persisted_bookie_ids = set()
         skipped_market_count = 0
         skipped_choice_count = 0
-        collected_at = get_local_now()
+        collected_at = utc_now()
         with db_manager.get_session() as session:
             existing_markets = (
                 session.query(Market)
@@ -511,7 +508,7 @@ class MarketRepository:
             # Assign IDs to all new choices in one flush, then append snapshots
             # and refresh the current-state MarketChoiceQuote cache.
             session.flush()
-            uses_oddspapi_source_time = MarketRepository._uses_utc_source_timestamps(
+            requires_provider_timestamp = MarketRepository._requires_provider_timestamp(
                 source
             )
             existing_snapshot_keys = set()
@@ -553,15 +550,13 @@ class MarketRepository:
             for market, choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("initialChangedAt"),
-                    convert_to_project_timezone=uses_oddspapi_source_time,
                 )
                 current_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("sourceCollectedAt") or choice_data.get("changedAt"),
-                    convert_to_project_timezone=uses_oddspapi_source_time,
                 )
                 if (
                     current_source_collected_at is None
-                    and not uses_oddspapi_source_time
+                    and not requires_provider_timestamp
                 ):
                     current_source_collected_at = collected_at
                 quotes_by_identity = MarketRepository._upsert_choice_quotes(
@@ -740,7 +735,6 @@ class MarketRepository:
                             moment_collected_at = (
                                 MarketRepository._parse_source_datetime(
                                     moment_collected_at,
-                                    convert_to_project_timezone=False,
                                 )
                             )
                         if moment_odds is None or moment_collected_at is None:
@@ -753,7 +747,6 @@ class MarketRepository:
                         )
                         incoming_src_ts_for_write = MarketRepository._parse_source_datetime(
                             moment_quote.get("createdAt"),
-                            convert_to_project_timezone=uses_oddspapi_source_time,
                         )
                         if snapshot_key in moment_snapshot_source_keys:
                             # A snapshot for this theoretical moment already exists.

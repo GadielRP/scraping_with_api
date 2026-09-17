@@ -52,7 +52,7 @@ def _event_info(event_id=101):
             "sport": "Football",
             "home_team": "Home",
             "away_team": "Away",
-            "start_time_utc": None,
+            "starts_at": None,
         },
         "minutes_until_start": 30,
         "should_extract_odds": True,
@@ -127,7 +127,7 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
         "id": 101,
         "slug": "home-away",
         "sport": "Football",
-        "start_time_utc": None,
+        "starts_at": None,
     }
     state = _state(101, "sofascore", "9001", True)
 
@@ -173,7 +173,7 @@ def test_candidate_builder_skips_key_moment_after_timing_api_failure(monkeypatch
         "id": 101,
         "slug": "home-away",
         "sport": "Football",
-        "start_time_utc": None,
+        "starts_at": None,
     }
     state = _state(101, "sofascore", "9001", True)
 
@@ -204,8 +204,8 @@ def test_candidate_builder_skips_key_moment_after_timing_api_failure(monkeypatch
 
 def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
     upcoming_events = [
-        {"id": 101, "start_time_utc": None},
-        {"id": 102, "start_time_utc": None},
+        {"id": 101, "starts_at": None},
+        {"id": 102, "starts_at": None},
     ]
     filtered_events = [upcoming_events[1]]
     loaded_event_ids = []
@@ -653,7 +653,7 @@ def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch
     )
 
     stats = intraday_result_freshness.process_intraday_result_freshness(
-        [{"id": 101, "sport": "Football", "start_time_utc": None}]
+        [{"id": 101, "sport": "Football", "starts_at": None}]
     )
 
     assert stats["queued_for_deletion"] == 1
@@ -688,7 +688,7 @@ def test_intraday_batches_event_endpoint_404(monkeypatch):
     )
 
     stats = intraday_result_freshness.process_intraday_result_freshness(
-        [{"id": 101, "sport": "Football", "start_time_utc": None}]
+        [{"id": 101, "sport": "Football", "starts_at": None}]
     )
 
     assert stats["queued_for_deletion"] == 1
@@ -1318,7 +1318,7 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
         sport="Football",
         home_team="Home",
         away_team="Away",
-        start_time_utc=None,
+        starts_at=None,
         season_id=5,
     )
 
@@ -1393,14 +1393,14 @@ def test_odds_extraction_gate_uses_competition_id_already_on_event(
         "competition_id": 176,
         "slug": "tracked",
         "sport": "Basketball",
-        "start_time_utc": None,
+        "starts_at": None,
     }
     untracked_event = {
         "id": 102,
         "competition_id": 999999,
         "slug": "untracked",
         "sport": "Football",
-        "start_time_utc": None,
+        "starts_at": None,
     }
     monkeypatch.setattr(
         event_candidate_builder,
@@ -1663,7 +1663,7 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
         sport="Football",
         season_id=999999,
         competition_id=999999,
-        start_time_utc=None,
+        starts_at=None,
     )
     scheduler = SimpleNamespace(
         event_repo=SimpleNamespace(get_event_by_id=lambda _event_id: event),
@@ -1677,7 +1677,7 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
         "sport": event.sport,
         "season_id": event.season_id,
         "competition_id": event.competition_id,
-        "start_time_utc": event.start_time_utc,
+        "starts_at": event.starts_at,
     }
     event_plan = SimpleNamespace(
         candidates=[{"event_id": event.id}],

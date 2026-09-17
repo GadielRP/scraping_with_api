@@ -6,7 +6,6 @@ from unittest.mock import patch
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 from tests.test_historical_odds_change_detector import KICKOFF, tick
-from shared.timezone_utils import convert_utc_to_local
 
 
 def payload(ticks):
@@ -36,9 +35,10 @@ def test_insufficient_history_falls_back_using_strict_ticks_everywhere():
     result = read(ticks)
     assert [q.minutes_until_start for q in result.as_of_quotes] == [120, 30, 5, 1, 0]
     assert all(q.price == 2 for q in result.as_of_quotes)
-    assert all(q.collected_at == convert_utc_to_local(
-        KICKOFF - timedelta(minutes=q.minutes_until_start)
-    ) for q in result.as_of_quotes)
+    assert all(
+        q.collected_at == KICKOFF - timedelta(minutes=q.minutes_until_start)
+        for q in result.as_of_quotes
+    )
     assert all(q.created_at == ticks[1][1]["createdAt"] for q in result.as_of_quotes)
     assert player(result)["initialPrice"] == 2
     assert player(result)["price"] == 2

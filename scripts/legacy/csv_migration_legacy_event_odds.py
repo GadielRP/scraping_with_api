@@ -19,15 +19,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import os
-import pytz
 
 # Import your existing models
 from infrastructure.persistence.models import Base, Event, EventOdds, Result
 from infrastructure.settings import Config
+from shared.temporal import utc_now
 
 # Get configuration values
 DATABASE_URL = Config.DATABASE_URL
-TIMEZONE = Config.TIMEZONE
 
 # Configure logging
 logging.basicConfig(
@@ -64,8 +63,6 @@ class CSVToPostgreSQLMigrator:
         self.engine = None
         self.session = None
         
-        # Timezone configuration
-        self.timezone = pytz.timezone(TIMEZONE)
         
         # Statistics tracking
         self.stats = {
@@ -135,9 +132,9 @@ class CSVToPostgreSQLMigrator:
         df = df.replace('', None)
         
         # Convert date columns with timezone handling
-        if 'start_time_utc' in df.columns:
+        if 'starts_at' in df.columns:
             # Convert to datetime first
-            df['start_time_utc'] = pd.to_datetime(df['start_time_utc'], errors='coerce', dayfirst=True)
+            df['starts_at'] = pd.to_datetime(df['starts_at'], errors='coerce', dayfirst=True)
             
             # CSV times are already in Mexico City timezone, no conversion needed
             # Just ensure they are naive datetime objects for database storage
@@ -164,7 +161,7 @@ class CSVToPostgreSQLMigrator:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
         # Handle missing values for required fields
-        required_fields = ['slug', 'start_time_utc', 'sport', 'competition', 'home_team', 'away_team']
+        required_fields = ['slug', 'starts_at', 'sport', 'competition', 'home_team', 'away_team']
         for field in required_fields:
             if field in df.columns:
                 missing_count = df[field].isna().sum()
@@ -174,26 +171,12 @@ class CSVToPostgreSQLMigrator:
         logger.info("Data cleaning completed")
         return df
     
-    def _get_local_now(self):
-        """
-        Get current time in Mexico City timezone.
-        
-        Returns:
-            datetime: Current time in local timezone (naive, for database storage)
-        """
-        # Get current UTC time
-        utc_now = datetime.utcnow()
-        # Convert to Mexico City timezone
-        local_now = utc_now.replace(tzinfo=pytz.UTC).astimezone(self.timezone)
-        # Return naive datetime (without timezone info) for database storage
-        return local_now.replace(tzinfo=None)
-    
     def _compare_event_content(self, existing_event, event_data, row):
         """Compare all fields between existing event and CSV data."""
         try:
             # Compare basic event fields
             if (existing_event.slug != row['slug'] or
-                existing_event.start_time_utc != row['start_time_utc'] or
+                existing_event.starts_at != row['starts_at'] or
                 existing_event.sport != row['sport'] or
                 existing_event.competition != row['competition'] or
                 existing_event.country != row.get('country') or
@@ -253,14 +236,14 @@ class CSVToPostgreSQLMigrator:
             event_data = {
                 'custom_id': row.get('custom_id'),
                 'slug': row['slug'],
-                'start_time_utc': row['start_time_utc'],
+                'starts_at': row['starts_at'],
                 'sport': row['sport'],
                 'competition': row['competition'],
                 'country': row.get('country'),
                 'home_team': row['home_team'],
                 'away_team': row['away_team'],
-                'created_at': self._get_local_now() if pd.isna(row.get('created_at')) else row['created_at'],
-                'updated_at': self._get_local_now() if pd.isna(row.get('updated_at')) else row['updated_at']
+                'created_at': utc_now() if pd.isna(row.get('created_at')) else row['created_at'],
+                'updated_at': utc_now() if pd.isna(row.get('updated_at')) else row['updated_at']
             }
             
             if existing_event:
@@ -371,7 +354,7 @@ class CSVToPostgreSQLMigrator:
                 'x_final': row.get('x_final'),
                 'two_open': row.get('two_open'),
                 'two_final': row.get('two_final'),
-                'last_sync_at': self._get_local_now() if pd.isna(row.get('last_sync_at')) else row['last_sync_at']
+                'last_sync_at': utc_now() if pd.isna(row.get('last_sync_at')) else row['last_sync_at']
             }
             
             if existing_odds:
@@ -417,7 +400,7 @@ class CSVToPostgreSQLMigrator:
                 'away_score': int(row['away_score']) if not pd.isna(row['away_score']) else None,
                 'winner': row.get('winner'),
                 'ended_at': row.get('ended_at') if pd.notna(row.get('ended_at')) else None,
-                'updated_at': self._get_local_now() if pd.isna(row.get('updated_at')) else row['updated_at']
+                'updated_at': utc_now() if pd.isna(row.get('updated_at')) else row['updated_at']
             }
             
             if existing_result:

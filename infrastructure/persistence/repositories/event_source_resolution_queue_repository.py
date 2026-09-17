@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import EventSourceResolutionQueue
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 from modules.oddspapi.event_candidate_matcher import EventCandidateScore
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
 
@@ -113,7 +113,7 @@ class EventSourceResolutionQueueRepository:
                 participant2_name=fixture.participant2_name,
                 participant2_short_name=fixture.participant2_short_name,
                 participant2_abbr=fixture.participant2_abbr,
-                source_start_time_utc=fixture.start_time_utc,
+                source_starts_at=fixture.starts_at,
                 raw_external_providers=dict(fixture.external_providers),
                 raw_payload=dict(fixture.raw_payload),
                 candidate_scores=EventSourceResolutionQueueRepository._as_serializable_candidate_scores(
@@ -153,7 +153,7 @@ class EventSourceResolutionQueueRepository:
             queue_row.participant2_name = fixture.participant2_name
             queue_row.participant2_short_name = fixture.participant2_short_name
             queue_row.participant2_abbr = fixture.participant2_abbr
-            queue_row.source_start_time_utc = fixture.start_time_utc
+            queue_row.source_starts_at = fixture.starts_at
             queue_row.raw_external_providers = dict(fixture.external_providers)
             queue_row.raw_payload = dict(fixture.raw_payload)
             queue_row.candidate_scores = EventSourceResolutionQueueRepository._as_serializable_candidate_scores(
@@ -169,8 +169,8 @@ class EventSourceResolutionQueueRepository:
                 len(sorted_scores),
             )
 
-        queue_row.last_attempted_at = get_local_now()
-        queue_row.updated_at = get_local_now()
+        queue_row.last_attempted_at = utc_now()
+        queue_row.updated_at = utc_now()
         return queue_row
 
     @staticmethod

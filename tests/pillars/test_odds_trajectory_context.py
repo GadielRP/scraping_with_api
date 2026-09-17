@@ -26,8 +26,8 @@ def _make_rows() -> list[dict[str, object]]:
             "initial_odds": "1.900",
             "odds_value": "1.850",
             "snapshot_id": 1001,
-            "source_collected_at": "2026-01-01T09:59:30",
-            "collected_at": "2026-01-01T10:00:00",
+            "source_collected_at": "2026-01-01T09:59:30+00:00",
+            "collected_at": "2026-01-01T10:00:00+00:00",
             "minutes_before_start": 1,
             "target_minute": 1,
             "distance_from_target": 0,
@@ -51,7 +51,7 @@ def _make_rows() -> list[dict[str, object]]:
             "initial_odds": "1.910",
             "odds_value": "1.860",
             "snapshot_id": 2001,
-            "collected_at": "2026-01-01T10:00:00",
+            "collected_at": "2026-01-01T10:00:00+00:00",
             "minutes_before_start": 1,
             "target_minute": 1,
             "distance_from_target": 0,
@@ -97,11 +97,11 @@ def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
         .meta_by_minute[1]
     )
 
-    assert meta.collected_at.isoformat() == "2026-01-01T16:00:00+00:00"
-    assert meta.changed_at.isoformat() == "2026-01-01T15:59:30+00:00"
+    assert meta.collected_at.isoformat() == "2026-01-01T10:00:00+00:00"
+    assert meta.changed_at.isoformat() == "2026-01-01T09:59:30+00:00"
 
 
-def test_legacy_mexico_snapshot_times_enter_domain_as_aware_utc_instants() -> None:
+def test_persisted_snapshot_instants_remain_aware_utc_in_domain() -> None:
     context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
 
     snapshot = (
@@ -111,8 +111,8 @@ def test_legacy_mexico_snapshot_times_enter_domain_as_aware_utc_instants() -> No
         .snapshots[0]
     )
 
-    assert snapshot.collected_at.isoformat() == "2026-01-01T16:00:00+00:00"
-    assert snapshot.source_collected_at.isoformat() == "2026-01-01T15:59:30+00:00"
+    assert snapshot.collected_at.isoformat() == "2026-01-01T10:00:00+00:00"
+    assert snapshot.source_collected_at.isoformat() == "2026-01-01T09:59:30+00:00"
 
 
 def test_choice_context_preserves_main_line() -> None:
@@ -220,7 +220,7 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "initial_odds": "2.010",
             "odds_value": "1.970",
             "snapshot_id": 3001,
-            "collected_at": "2026-01-01T10:00:00",
+            "collected_at": "2026-01-01T10:00:00+00:00",
             "minutes_before_start": 1,
             "target_minute": 1,
             "distance_from_target": 0,
@@ -243,7 +243,7 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
             "initial_odds": "1.750",
             "odds_value": "1.720",
             "snapshot_id": 4001,
-            "collected_at": "2026-01-01T10:00:00",
+            "collected_at": "2026-01-01T10:00:00+00:00",
             "minutes_before_start": 1,
             "target_minute": 1,
             "distance_from_target": 0,
@@ -309,8 +309,8 @@ def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> Non
             **base,
             "snapshot_id": 2101,
             "odds_value": "2.100",
-            "collected_at": "2026-01-01T11:55:10",
-            "source_collected_at": "2026-01-01T11:40:00",
+            "collected_at": "2026-01-01T11:55:10+00:00",
+            "source_collected_at": "2026-01-01T11:40:00+00:00",
             "observed_minutes_before_start": 5,
             "trajectory_minutes_before_start": "20.5041666667",
             "source_limit": "100.500",
@@ -319,8 +319,8 @@ def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> Non
             **base,
             "snapshot_id": 2102,
             "odds_value": "2.200",
-            "collected_at": "2026-01-01T11:55:20",
-            "source_collected_at": "2026-01-01T11:50:00",
+            "collected_at": "2026-01-01T11:55:20+00:00",
+            "source_collected_at": "2026-01-01T11:50:00+00:00",
             "observed_minutes_before_start": 5,
             "trajectory_minutes_before_start": "10.125",
             "source_limit": "90.250",
@@ -359,8 +359,8 @@ def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> Non
             "snapshot_id": 2201,
             "odds_value": "1.819",
             # The opening was persisted during the T-5 ingestion batch.
-            "collected_at": "2026-05-19T17:00:20",
-            "source_collected_at": "2026-05-18T20:00:00",
+            "collected_at": "2026-05-19T17:00:20+00:00",
+            "source_collected_at": "2026-05-18T20:00:00+00:00",
             "observed_minutes_before_start": 5,
             "trajectory_minutes_before_start": "1265.0",
         },
@@ -370,8 +370,8 @@ def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> Non
             "odds_value": "1.990",
             # The T-5 moment/current was persisted slightly earlier, but its
             # provider timestamp represents the fresher market state.
-            "collected_at": "2026-05-19T17:00:00",
-            "source_collected_at": "2026-05-19T16:58:58",
+            "collected_at": "2026-05-19T17:00:00+00:00",
+            "source_collected_at": "2026-05-19T16:58:58+00:00",
             "observed_minutes_before_start": 5,
             "trajectory_minutes_before_start": "6.0333333333",
         },

@@ -346,7 +346,7 @@ def test_event_source_mapping_repository_stores_participant_links():
     with Session() as session:
         event = Event(
             slug="oddspapi-participant-link-test",
-            start_time_utc=datetime(2099, 1, 3, 12, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2099, 1, 3, 12, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test Competition",
             home_team="Ivory Coast",
@@ -447,7 +447,7 @@ def test_mapping_batch_uses_bulk_preloads_and_skips_unchanged_updates():
     with Session() as session:
         canonical_event = Event(
             slug="batch-mapping-test",
-            start_time_utc=datetime(2099, 1, 1, 12, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2099, 1, 1, 12, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test",
             home_team="Home",

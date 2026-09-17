@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 def get_current_date() -> date:
     """Return the local calendar date used for OddsPortal cache decisions."""
-    from shared.timezone_utils import get_local_now
+    from infrastructure.settings import Config
+    from shared.temporal import now_in_timezone
 
-    return get_local_now().date()
+    return now_in_timezone(Config.TIMEZONE).date()
 
 # Provider routing only. This is deliberately separate from the business
 # allowlist in modules.competition.tracked_competitions.

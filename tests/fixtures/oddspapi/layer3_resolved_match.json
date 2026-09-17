@@ -1,0 +1,21 @@
+{
+  "fixtureId": "id1000001761301154",
+  "participant1Id": "5001",
+  "participant1Name": "Liverpool FC",
+  "participant1ShortName": "Liverpool",
+  "participant1Abbr": "LIV",
+  "participant2Id": "5002",
+  "participant2Name": "Manchester United",
+  "participant2ShortName": "Manchester",
+  "participant2Abbr": "MNU",
+  "sportId": 10,
+  "sportName": "Soccer",
+  "tournamentId": 17,
+  "tournamentName": "Premier League",
+  "tournamentSlug": "premier-league",
+  "categoryName": "England",
+  "categorySlug": "england",
+  "seasonId": 130281,
+  "startTime": "2026-04-13T19:00:00.000Z",
+  "externalProviders": {}
+}

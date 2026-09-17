@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Competition
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ class CompetitionRepository:
             value = competition_data.get(attr)
             if value is not None:
                 setattr(competition, attr, value)
-        competition.updated_at = get_local_now()
+        competition.updated_at = utc_now()
 
     @staticmethod
     def update_number_of_teams_if_missing(
@@ -129,7 +129,7 @@ class CompetitionRepository:
             return False
 
         competition.number_of_teams = number_of_teams
-        competition.updated_at = get_local_now()
+        competition.updated_at = utc_now()
         return True
 
     @staticmethod
@@ -237,7 +237,7 @@ class CompetitionRepository:
 
         if changed:
             competition.league_config_source = source
-            competition.updated_at = get_local_now()
+            competition.updated_at = utc_now()
 
         return changed
 
@@ -263,7 +263,7 @@ class CompetitionRepository:
             return False
 
         competition.has_standings_source_endpoint = has_standings_source_endpoint
-        competition.updated_at = get_local_now()
+        competition.updated_at = utc_now()
         return True
 
     @staticmethod

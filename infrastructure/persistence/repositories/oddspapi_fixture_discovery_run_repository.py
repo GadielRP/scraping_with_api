@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import OddspapiFixtureDiscoveryRun
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ class OddspapiFixtureDiscoveryRunRepository:
         scheduled_time: str | None = None,
     ) -> bool:
         """Atomically claim a target date and sport scope."""
-        now = get_local_now()
+        now = utc_now()
         scheduled_local_date = scheduled_local_date or now.strftime('%Y-%m-%d')
         scheduled_time = scheduled_time or now.strftime('%H:%M')
         with db_manager.get_session() as session:
@@ -262,7 +262,7 @@ class OddspapiFixtureDiscoveryRunRepository:
         *,
         sport_scope: str = DEFAULT_SPORT_SCOPE,
     ) -> None:
-        now = get_local_now()
+        now = utc_now()
         with db_manager.get_session() as session:
             run = (
                 session.query(OddspapiFixtureDiscoveryRun)
@@ -283,7 +283,7 @@ class OddspapiFixtureDiscoveryRunRepository:
         *,
         sport_scope: str = DEFAULT_SPORT_SCOPE,
     ) -> None:
-        now = get_local_now()
+        now = utc_now()
         with db_manager.get_session() as session:
             run = (
                 session.query(OddspapiFixtureDiscoveryRun)
@@ -299,7 +299,7 @@ class OddspapiFixtureDiscoveryRunRepository:
     @staticmethod
     def mark_running_as_interrupted() -> int:
         """Close rows left running by a process that did not shut down cleanly."""
-        now = get_local_now()
+        now = utc_now()
         with db_manager.get_session() as session:
             runs = (
                 session.query(OddspapiFixtureDiscoveryRun)

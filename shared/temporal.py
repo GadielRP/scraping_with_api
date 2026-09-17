@@ -39,6 +39,11 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def now_in_timezone(timezone_name: str) -> datetime:
+    """Return the current instant rendered in one named IANA timezone."""
+    return utc_now().astimezone(ZoneInfo(timezone_name))
+
+
 def from_unix_timestamp(value: int | float) -> datetime:
     """Parse a Unix timestamp as an aware UTC instant."""
     return datetime.fromtimestamp(value, tz=UTC)
@@ -92,6 +97,7 @@ __all__ = [
     "in_timezone",
     "interpret_local_naive",
     "local_day_bounds_utc",
+    "now_in_timezone",
     "require_aware",
     "utc_now",
 ]

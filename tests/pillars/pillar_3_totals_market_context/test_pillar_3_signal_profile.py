@@ -48,7 +48,7 @@ def _event_context(event_id: int = EVENT_ID):
         season_id=77,
         season_name="2026",
         season_year=2026,
-        start_time_utc=datetime(2026, 8, 27, 18, 0, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 8, 27, 18, 0, tzinfo=timezone.utc),
         context_status="normalized",
         competition=SimpleNamespace(competition_id=99, display_name="League"),
     )

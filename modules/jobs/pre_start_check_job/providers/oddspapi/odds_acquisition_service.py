@@ -431,7 +431,7 @@ class OddspapiPreStartOddsAcquisitionService:
         result: OddspapiOddsAcquisitionResult,
         requested_bookmakers: set[str],
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
-        start_time_utc: datetime | None = None,
+        starts_at: datetime | None = None,
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
         force_significant_changes: bool = False,
@@ -464,10 +464,10 @@ class OddspapiPreStartOddsAcquisitionService:
             return result
 
         as_of_targets = OddspapiHistoricalOddsAsOf.targets_from_start(
-            start_time_utc,
+            starts_at,
             as_of_moments or [],
         )
-        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(start_time_utc)
+        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(starts_at)
         enable_significant_changes = force_significant_changes or bool(
             getattr(Config, "ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS", False)
         )
@@ -675,7 +675,7 @@ class OddspapiPreStartOddsAcquisitionService:
         filter_post_kickoff_ticks: bool,
         debug_mode: bool,
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None,
-        start_time_utc: datetime,
+        starts_at: datetime,
         as_of_moments: list[int] | None,
         attach_as_of: bool,
         available_through_utc: datetime | None,
@@ -742,7 +742,7 @@ class OddspapiPreStartOddsAcquisitionService:
             result=result,
             requested_bookmakers=requested_bookmakers,
             fetch_executor=fetch_executor,
-            start_time_utc=start_time_utc,
+            starts_at=starts_at,
             as_of_moments=as_of_moments,
             attach_as_of=attach_as_of,
             force_significant_changes=True,
@@ -991,7 +991,7 @@ class OddspapiPreStartOddsAcquisitionService:
         filter_post_kickoff_ticks: bool = True,
         debug_mode: bool = False,
         exchange_fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
-        start_time_utc: datetime | None = None,
+        starts_at: datetime | None = None,
         as_of_moments: list[int] | None = None,
         attach_as_of: bool = False,
         force_significant_changes: bool = False,
@@ -1003,7 +1003,7 @@ class OddspapiPreStartOddsAcquisitionService:
         result = OddspapiOddsAcquisitionResult()
         requested_bookmakers: set[str] = set()
 
-        if force_significant_changes and not is_live and start_time_utc is not None:
+        if force_significant_changes and not is_live and starts_at is not None:
             return self._acquire_forced_significant_change(
                 fixture_id,
                 event_id=event_id,
@@ -1027,7 +1027,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 filter_post_kickoff_ticks=filter_post_kickoff_ticks,
                 debug_mode=debug_mode,
                 fetch_executor=exchange_fetch_executor,
-                start_time_utc=start_time_utc,
+                starts_at=starts_at,
                 as_of_moments=as_of_moments,
                 attach_as_of=attach_as_of,
                 available_through_utc=available_through_utc,
@@ -1057,7 +1057,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 result=result,
                 requested_bookmakers=requested_bookmakers,
                 fetch_executor=exchange_fetch_executor,
-                start_time_utc=start_time_utc,
+                starts_at=starts_at,
                 as_of_moments=as_of_moments,
                 attach_as_of=attach_as_of,
                 force_significant_changes=force_significant_changes,

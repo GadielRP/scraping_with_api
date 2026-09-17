@@ -489,7 +489,7 @@ def extract_p4_trajectory_inputs(
     if isinstance(target_minute, bool) or not isinstance(target_minute, int):
         raise TypeError("target_minute must be an integer")
     target = target_minute
-    start = event_context.start_time_utc
+    start = event_context.starts_at
     operative_as_of = start - timedelta(minutes=target)
     context = odds_trajectory_context
     if context is None or not context.available or not context.markets:

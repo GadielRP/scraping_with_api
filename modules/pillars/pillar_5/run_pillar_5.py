@@ -38,7 +38,7 @@ def calculate_pillar_5(
         event_context.event_id,
         event_context.participants_label,
         debug_mode,
-        event_context.start_time_utc,
+        event_context.starts_at,
     )
     engine_result = calculate_p5_exact_price_memory_engine(
         event_context=event_context,

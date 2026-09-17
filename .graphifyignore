@@ -1,0 +1,112 @@
+# =========================================================
+# GRAPHIFY — archivos que NO deben formar parte del grafo
+# =========================================================
+
+
+# ---------------------------------------------------------
+# Output de Graphify y configuración de agentes
+# No son conocimiento del dominio del proyecto.
+# ---------------------------------------------------------
+
+graphify-out/
+.codex/
+.agents/
+.cursor/
+.vscode/
+.idea/
+
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+
+# ---------------------------------------------------------
+# Documentación histórica / no autoritativa
+# ---------------------------------------------------------
+
+docs/archive/
+docs/audits/
+
+# Investigaciones puntuales ya superadas por la implementación actual
+docs/pillars/event-230168-pre-start-p2-p3-mapping-investigation.md
+
+# Snapshot de auditoría; el roadmap es la fuente viva
+docs/refactors/database_audit.md
+
+
+# ---------------------------------------------------------
+# Código exploratorio / legacy / desarrollo
+# La implementación productiva de Oddspapi está en modules/oddspapi/
+# ---------------------------------------------------------
+
+odds_papi/
+scripts/legacy/
+scripts/development/
+
+
+# ---------------------------------------------------------
+# Tests
+# Mantener el grafo principal centrado en runtime/arquitectura.
+# Codex puede leer tests directamente cuando sean necesarios.
+# ---------------------------------------------------------
+
+tests/
+conftest.py
+compose.memory-test.yaml
+
+
+# ---------------------------------------------------------
+# Runtime / outputs / debugging
+# ---------------------------------------------------------
+
+logs/
+scratch/
+exports/
+copies/
+old/
+csv/
+clean_scp/
+assets/
+
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+
+*debug*/
+debug*/
+
+*.pyc
+*.pyo
+*.log
+*.csv
+*.html
+
+
+# ---------------------------------------------------------
+# Bases de datos, backups y dumps
+# ---------------------------------------------------------
+
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.dump.gz
+
+backup.dump
+latest_backup.dump
+latest_backup.dump.gz
+
+
+# ---------------------------------------------------------
+# Secrets / credenciales
+# Graphify tiene protecciones propias, pero prefiero exclusión explícita.
+# ---------------------------------------------------------
+
+.env
+.env.*
+
+*.pem
+*.key
+*.p12
+*.pfx

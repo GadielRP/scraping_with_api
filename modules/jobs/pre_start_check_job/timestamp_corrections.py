@@ -49,7 +49,7 @@ def check_and_update_starting_time(
             if not event:
                 logger.warning(f"Event {event_id} not found in database for timing check")
                 return False
-            current_starting_time = event.start_time_utc
+            current_starting_time = event.starts_at
 
         new_starting_time = convert_timestamp_to_datetime(startTimeStamp)
 
@@ -103,7 +103,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
 
                 event_id = event_data["id"]
                 sport = event_data["sport"]
-                stored_start_time = event_data["start_time_utc"]
+                stored_start_time = event_data["starts_at"]
                 minutes_ago = abs(minutes_since_start(stored_start_time))
 
                 try:

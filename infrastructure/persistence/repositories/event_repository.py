@@ -11,9 +11,9 @@ from shared.temporal import (
     as_utc,
     from_unix_timestamp,
     local_day_bounds_utc,
+    now_in_timezone,
     utc_now,
 )
-from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
 from .competition_repository import CompetitionRepository
@@ -65,7 +65,7 @@ class EventRepository:
             "home_team": EventRepository._display_home_team(event_obj),
             "away_team": EventRepository._display_away_team(event_obj),
             "competition": EventRepository._display_competition(event_obj),
-            "start_time_utc": event_obj.start_time_utc,
+            "starts_at": event_obj.starts_at,
             "sport": event_obj.sport,
             "country": event_obj.country,
             "slug": event_obj.slug,
@@ -107,7 +107,7 @@ class EventRepository:
             "home_team": home_team,
             "away_team": away_team,
             "competition": competition_name,
-            "start_time_utc": event_obj.start_time_utc,
+            "starts_at": event_obj.starts_at,
             "sport": event_obj.sport,
             "country": event_obj.country,
             "slug": event_obj.slug,
@@ -287,7 +287,7 @@ class EventRepository:
                 if event_obj:
                     event_obj.custom_id = event_payload.get('customId')
                     event_obj.slug = event_payload.get('slug') or event_obj.slug
-                    event_obj.start_time_utc = from_unix_timestamp(
+                    event_obj.starts_at = from_unix_timestamp(
                         event_payload['startTimestamp']
                     )
                     event_obj.sport = event_payload.get('sport') or event_obj.sport
@@ -329,7 +329,7 @@ class EventRepository:
                         else:
                             event_obj.round = round_info
 
-                    event_obj.updated_at = get_local_now()
+                    event_obj.updated_at = utc_now()
                     EventSourceMappingRepository.upsert_mapping(
                         session=session,
                         **EventRepository._source_mapping_fields(
@@ -357,7 +357,7 @@ class EventRepository:
                     event_obj = Event(
                         custom_id=event_payload.get('customId'),
                         slug=event_payload.get('slug') or source_event_id,
-                        start_time_utc=from_unix_timestamp(
+                        starts_at=from_unix_timestamp(
                             event_payload['startTimestamp']
                         ),
                         sport=event_payload.get('sport') or 'Unknown',
@@ -475,8 +475,8 @@ class EventRepository:
                 # Build query with sport filter
                 filters = [
                     Event.sport == sport,
-                    Event.start_time_utc >= window_start,
-                    Event.start_time_utc <= window_end
+                    Event.starts_at >= window_start,
+                    Event.starts_at <= window_end
                 ]
                 
                 # Add alert_sent filter if specified
@@ -545,11 +545,11 @@ class EventRepository:
                     .filter(Event.id.in_(list(event_id_to_time.keys())))
                     .all()
                 )
-                updated_at = get_local_now()
+                updated_at = utc_now()
                 updated_count = 0
                 for event in events:
                     if event.id in event_id_to_time:
-                        event.start_time_utc = event_id_to_time[event.id]
+                        event.starts_at = event_id_to_time[event.id]
                         event.updated_at = updated_at
                         updated_count += 1
                 session.commit()
@@ -681,8 +681,8 @@ class EventRepository:
                     joinedload(Event.competition_ref),
                 ).filter(
                     and_(
-                        Event.start_time_utc >= window_start,
-                        Event.start_time_utc < window_end,
+                        Event.starts_at >= window_start,
+                        Event.starts_at < window_end,
                     )
                 )
                 if competition_ids:
@@ -742,7 +742,7 @@ class EventRepository:
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 ).filter(
-                    and_(Event.start_time_utc >= window_start, Event.start_time_utc <= window_end)
+                    and_(Event.starts_at >= window_start, Event.starts_at <= window_end)
                 )
                 
                 if season_ids:
@@ -804,8 +804,8 @@ class EventRepository:
                     )
                     .filter(
                         and_(
-                            Event.start_time_utc >= window_start,
-                            Event.start_time_utc < now,
+                            Event.starts_at >= window_start,
+                            Event.starts_at < now,
                             Result.event_id.is_(None),
                         )
                     )
@@ -831,7 +831,7 @@ class EventRepository:
         """Get all events for today"""
         try:
             with db_manager.get_session() as session:
-                local_today = get_local_now().date()
+                local_today = now_in_timezone(Config.TIMEZONE).date()
                 today_start, today_end = local_day_bounds_utc(
                     local_today,
                     Config.TIMEZONE,
@@ -841,7 +841,7 @@ class EventRepository:
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 ).filter(
-                    and_(Event.start_time_utc >= today_start, Event.start_time_utc < today_end)
+                    and_(Event.starts_at >= today_start, Event.starts_at < today_end)
                 ).all()
         except Exception as e:
             logger.error(f"Error getting today's events: {e}")
@@ -863,7 +863,7 @@ class EventRepository:
                     joinedload(Event.away_participant),
                     joinedload(Event.competition_ref),
                 ).filter(
-                    and_(Event.start_time_utc >= day_start, Event.start_time_utc < day_end)
+                    and_(Event.starts_at >= day_start, Event.starts_at < day_end)
                 ).all()
         except Exception as e:
             logger.error(f"Error getting events for date {target_date}: {e}")
@@ -881,11 +881,11 @@ class EventRepository:
                     joinedload(Event.competition_ref),
                 ).filter(
                     or_(
-                        and_(Event.sport.in_(['Football', 'Futsal']), Event.start_time_utc < now - timedelta(hours=2.5)),
-                        and_(Event.sport == 'Tennis', Event.start_time_utc < now - timedelta(hours=4)),
-                        and_(Event.sport == 'Baseball', Event.start_time_utc < now - timedelta(hours=4)),
-                        and_(Event.sport == 'Basketball', Event.start_time_utc < now - timedelta(hours=3)),
-                        and_(~Event.sport.in_(['Football', 'Futsal', 'Tennis', 'Baseball', 'Basketball']), Event.start_time_utc < now - timedelta(hours=3))
+                        and_(Event.sport.in_(['Football', 'Futsal']), Event.starts_at < now - timedelta(hours=2.5)),
+                        and_(Event.sport == 'Tennis', Event.starts_at < now - timedelta(hours=4)),
+                        and_(Event.sport == 'Baseball', Event.starts_at < now - timedelta(hours=4)),
+                        and_(Event.sport == 'Basketball', Event.starts_at < now - timedelta(hours=3)),
+                        and_(~Event.sport.in_(['Football', 'Futsal', 'Tennis', 'Baseball', 'Basketball']), Event.starts_at < now - timedelta(hours=3))
                     )
                 ).all()
         except Exception as e:

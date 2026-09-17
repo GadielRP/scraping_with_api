@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Callable
 
 from modules.oddspapi.api_key_inventory import api_key_fingerprint
-from shared.timezone_utils import convert_utc_to_local, get_local_now
+from shared.temporal import as_utc, interpret_local_naive, utc_now
 
 
 def _parse_datetime(value) -> datetime | None:
@@ -17,7 +17,9 @@ def _parse_datetime(value) -> datetime | None:
         parsed = value
     else:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    return convert_utc_to_local(parsed)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return interpret_local_naive(parsed, "UTC", field_name="Oddspapi account timestamp")
+    return as_utc(parsed, field_name="Oddspapi account timestamp")
 
 
 @dataclass(frozen=True)
@@ -85,7 +87,7 @@ class OddspapiAccountUsageService:
             if len(active) == 1:
                 selected = active[0]
 
-        now = get_local_now()
+        now = utc_now()
         fingerprint = api_key_fingerprint(api_key)
         if selected is None:
             return AccountUsageSnapshot(

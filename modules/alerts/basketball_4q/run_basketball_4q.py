@@ -128,7 +128,7 @@ class Basketball4QMonitor:
 
             logger.info(f"📋 Found {len(all_nba_events)} NBA event(s) that started within last 140 minutes:")
             for idx, event in enumerate(all_nba_events, 1):
-                minutes_since_start = self._calculate_minutes_since_start(event["start_time_utc"])
+                minutes_since_start = self._calculate_minutes_since_start(event["starts_at"])
                 logger.info(
                     f"   {idx}. Event {event['id']}: {event['home_team']} vs {event['away_team']} "
                     f"({event['competition']}) - Started {minutes_since_start} minutes ago"
@@ -146,7 +146,7 @@ class Basketball4QMonitor:
             nba_events_to_check = []
             for event in all_nba_events:
                 competition_id = event.get("competition_id")
-                event_start = event["start_time_utc"]
+                event_start = event["starts_at"]
                 if (
                     Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS
                     and not is_tracked_competition(competition_id)
@@ -170,7 +170,7 @@ class Basketball4QMonitor:
                 f"🔍 Filtered to {len(nba_events_to_check)} event(s) in 105-140 minute window (will check for 4th quarter):"
             )
             for idx, event in enumerate(nba_events_to_check, 1):
-                minutes_since_start = self._calculate_minutes_since_start(event["start_time_utc"])
+                minutes_since_start = self._calculate_minutes_since_start(event["starts_at"])
                 logger.info(
                     f"   {idx}. Event {event['id']}: {event['home_team']} vs {event['away_team']} "
                     f"({minutes_since_start} minutes ago)"
@@ -277,13 +277,13 @@ class Basketball4QMonitor:
         except Exception as e:
             logger.error(f"Error in check_nba_4th_quarter: {e}")
 
-    def _calculate_minutes_since_start(self, start_time_utc) -> int:
+    def _calculate_minutes_since_start(self, starts_at) -> int:
         """Calculate minutes since event started."""
         try:
             now = utc_now()
             event_start = as_utc(
-                start_time_utc,
-                field_name="basketball event start_time_utc",
+                starts_at,
+                field_name="basketball event starts_at",
             )
             time_diff = now - event_start
             return int(time_diff.total_seconds() / 60)

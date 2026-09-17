@@ -31,7 +31,7 @@ DEFAULT_RESULT_FRESHNESS_WINDOWS = [(160, 165), (220, 230)]
 
 
 def _get_minutes_ago(event_data: Dict) -> int:
-    return abs(minutes_since_start(event_data["start_time_utc"]))
+    return abs(minutes_since_start(event_data["starts_at"]))
 
 
 def _should_check_result_now(event_data: Dict) -> bool:

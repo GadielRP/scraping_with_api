@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from math import isclose, isfinite
-from typing import Callable, Sequence
+from typing import Sequence
 
 from modules.oddspapi.historical_odds_quote import HistoricalOddsAsOfQuote
 
@@ -63,7 +63,6 @@ class OddspapiHistoricalOddsChangeDetector:
         source_market_id: str,
         source_outcome_id: str,
         player_id: str,
-        to_local: Callable[[datetime], datetime],
         min_change_magnitude_pct: float = 20.0,
         min_history_hours: float = 24.0,
         flash_reversal_minutes: float = 3.0,
@@ -80,8 +79,7 @@ class OddspapiHistoricalOddsChangeDetector:
         Inspect reversal windows by index, without allocating slices. Rejected
         episodes resume at their reversal; confirmed ticks advance one position
         so subsequent changes can still be measured against the new anchor.
-        The caller supplies timezone conversion so this reducer never reads
-        global configuration. Input datetimes must be aware and UTC ordered.
+        Input datetimes must be aware and UTC ordered.
         """
         if not ticks:
             return []
@@ -134,7 +132,7 @@ class OddspapiHistoricalOddsChangeDetector:
                     minutes_until_start=(kickoff_utc - created_at).total_seconds() / 60,
                     price=round(price, 3),
                     created_at=str(quote.get("createdAt") or ""),
-                    collected_at=to_local(created_at),
+                    collected_at=created_at,
                     limit=quote.get("limit"),
                     active=quote.get("active"),
                 )

@@ -15,7 +15,7 @@ from modules.odds_ingestion import MarketOddsIngestionService
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from shared.timezone_utils import get_local_now_aware
+from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
 def run_results_collection_previous_day() -> None:
     logger.info("Starting Results Collection (previous day)")
     try:
-        yesterday = get_local_now_aware().date() - timedelta(days=1)
+        yesterday = now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
         events = EventRepository.get_events_by_date(yesterday)
         if not events:
             logger.info("No events found from previous day")

@@ -49,7 +49,7 @@ from modules.jobs.pre_start_check_job.timing import (
 )
 from modules.competition.tracked_competitions import tracked_competition_ids
 from modules.sofascore import api_client
-from shared.timezone_utils import get_local_now_aware
+from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def _split_recently_started_events(
 
     for event_data in events:
         try:
-            minutes_ago = abs(minutes_since_start(event_data["start_time_utc"]))
+            minutes_ago = abs(minutes_since_start(event_data["starts_at"]))
         except Exception:
             logger.warning(
                 "Could not compute minutes_ago for started event %s",
@@ -396,7 +396,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
     """Run maintenance, odds ingestion, and key-moment evaluation in order."""
     logger.info(
         "🚀 PRE-START CHECK EXECUTED at %s",
-        get_local_now_aware().strftime("%H:%M:%S %Z"),
+        now_in_timezone(Config.TIMEZONE).strftime("%H:%M:%S %Z"),
     )
     previous_evidence_mode = getattr(
         api_client,
@@ -416,7 +416,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
             tracked_competition_ids,
         )
         timings = {
-            event["id"]: minutes_until_start(event["start_time_utc"])
+            event["id"]: minutes_until_start(event["starts_at"])
             for event in upcoming_events
         }
 

@@ -425,7 +425,7 @@ def _build_league_totals_context(
         "season_id": season_id,
         "canonical_season_id": canonical_season_id,
         "cutoff_timestamp": cutoff_timestamp,
-        "cutoff_rule": "start_time_utc < cutoff_dt",
+        "cutoff_rule": "starts_at < cutoff_dt",
         "sport": sport,
         "source_unique_tournament_id": source_unique_tournament_id,
         "source_tournament_id": source_tournament_id,
@@ -513,7 +513,7 @@ class HistoricalStandingsCalculator:
         query_sql = """
             SELECT
                 event_id,
-                start_time_utc,
+                starts_at,
                 home_team,
                 away_team,
                 home_score,
@@ -522,7 +522,7 @@ class HistoricalStandingsCalculator:
                 result_subtype
             FROM season_events_with_results
             WHERE round = 'regular_season'
-              AND start_time_utc < :cutoff_dt
+              AND starts_at < :cutoff_dt
         """
         query_params: Dict[str, Any] = {
             "cutoff_dt": cutoff_dt,
@@ -544,7 +544,7 @@ class HistoricalStandingsCalculator:
             query_sql += " AND season_id = ANY(:season_ids)"
             query_params["season_ids"] = list(all_season_ids)
 
-        query_sql += "\n            ORDER BY start_time_utc\n            "
+        query_sql += "\n            ORDER BY starts_at\n            "
 
         query = text(query_sql)
 
@@ -558,12 +558,12 @@ class HistoricalStandingsCalculator:
                 away_score = int(row.away_score)
                 winner = row.winner
                 result_subtype = normalize_result_subtype(getattr(row, "result_subtype", None), winner)
-                start_time_utc = row.start_time_utc
+                starts_at = row.starts_at
 
                 match_records.append({
                     "event_id": int(row.event_id),
-                    "start_time_utc": start_time_utc,
-                    "startTimestamp": int(start_time_utc.timestamp()),
+                    "starts_at": starts_at,
+                    "startTimestamp": int(starts_at.timestamp()),
                     "home_team": row.home_team,
                     "away_team": row.away_team,
                     "home_score": home_score,
@@ -765,7 +765,7 @@ class HistoricalStandingsCalculator:
             competition_id=competition_id,
             season_year=season_year,
         )
-        record_timestamps = [record["start_time_utc"].timestamp() for record in match_records]
+        record_timestamps = [record["starts_at"].timestamp() for record in match_records]
         needs_h2h_records = standings_method in {"football_3_1_0_h2h", "wins_h2h"}
 
         snapshots: Dict[float, Dict[str, Dict]] = {}

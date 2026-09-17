@@ -3,7 +3,7 @@ import os
 import sys
 
 from infrastructure.settings import Config
-from shared.timezone_utils import get_local_now_aware
+from shared.temporal import now_in_timezone
 
 
 _MONTH_NAMES = [
@@ -33,7 +33,7 @@ _ODDSPORTAL_LOGGER_PREFIXES = (
 
 def _get_log_path() -> str:
     """Build the dynamic log file path based on current local date."""
-    now = get_local_now_aware()
+    now = now_in_timezone(Config.TIMEZONE)
     month_folder = _MONTH_NAMES[now.month]
     week_number = min((now.day - 1) // 7 + 1, 4)
 
@@ -44,7 +44,7 @@ def _get_log_path() -> str:
 
 def _get_oddsportal_log_path() -> str:
     """Build the OddsPortal-specific log file path."""
-    now = get_local_now_aware()
+    now = now_in_timezone(Config.TIMEZONE)
     month_folder = _MONTH_NAMES[now.month]
     week_number = min((now.day - 1) // 7 + 1, 4)
 

@@ -79,7 +79,7 @@ def collect_yesterday_odds():
         yesterday_events = []
         for event in events:
             # Check if event is from yesterday
-            if event.start_time_utc.date() == yesterday.date():
+            if event.starts_at.date() == yesterday.date():
                 yesterday_events.append(event)
         
         events = yesterday_events

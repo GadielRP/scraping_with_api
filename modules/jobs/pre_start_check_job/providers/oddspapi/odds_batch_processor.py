@@ -619,7 +619,7 @@ class OddspapiPreStartOddsBatchProcessor:
             for candidate in mapped_candidates
             if self._is_live_candidate(candidate)
             or (
-                candidate.start_time_utc is not None
+                candidate.starts_at is not None
                 and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
                     candidate.minutes_until_start
                 )
@@ -644,7 +644,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     candidate.has_odds
                     or self._is_live_candidate(candidate)
                     or (
-                        candidate.start_time_utc is not None
+                        candidate.starts_at is not None
                         and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
                             candidate.minutes_until_start
                         )
@@ -658,7 +658,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     not closing_only
                     or self._is_live_candidate(candidate)
                     or (
-                        candidate.start_time_utc is not None
+                        candidate.starts_at is not None
                         and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
                             candidate.minutes_until_start
                         )
@@ -841,7 +841,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     )
                 )
                 force_significant_changes = configured_significant_change and (
-                    candidate.start_time_utc is not None
+                    candidate.starts_at is not None
                 )
                 if configured_significant_change and not force_significant_changes:
                     logger.info(
@@ -947,7 +947,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         filter_post_kickoff_ticks=filter_post_kickoff_ticks,
                         debug_mode=debug_mode,
                         exchange_fetch_executor=exchange_fetch_executor,
-                        start_time_utc=candidate.start_time_utc,
+                        starts_at=candidate.starts_at,
                         as_of_moments=(
                             list(Config.PRE_START_ODDS_MOMENTS)
                             if getattr(

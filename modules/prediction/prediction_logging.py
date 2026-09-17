@@ -159,8 +159,8 @@ class PredictionLogger:
 
                 pending_predictions = session.query(PredictionLog).join(Event, PredictionLog.event_id == Event.id).filter(
                     PredictionLog.status == "pending",
-                    Event.start_time_utc >= yesterday_start,
-                    Event.start_time_utc < yesterday_end,
+                    Event.starts_at >= yesterday_start,
+                    Event.starts_at < yesterday_end,
                 ).all()
 
                 if not pending_predictions:

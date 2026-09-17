@@ -59,7 +59,7 @@ class EventContext:
     season_id: Optional[int]
     season_name: Optional[str]
     season_year: Optional[int]
-    start_time_utc: datetime
+    starts_at: datetime
     minutes_until_start: Optional[int]
     discovery_source: Optional[str]
     home: ParticipantContext
@@ -161,13 +161,13 @@ def build_event_context(
         logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
         return None
 
-    start_time_utc = getattr(event_obj, "start_time_utc", None)
-    if start_time_utc is None:
-        missing.append("start_time_utc")
+    starts_at = getattr(event_obj, "starts_at", None)
+    if starts_at is None:
+        missing.append("starts_at")
     else:
-        start_time_utc = as_utc(
-            start_time_utc,
-            field_name="event_context.start_time_utc",
+        starts_at = as_utc(
+            starts_at,
+            field_name="event_context.starts_at",
         )
     if missing:
         logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
@@ -302,7 +302,7 @@ def build_event_context(
         season_id=getattr(event_obj, "season_id", None),
         season_name=season.name if season else None,
         season_year=season.year if season else None,
-        start_time_utc=start_time_utc,
+        starts_at=starts_at,
         minutes_until_start=minutes_until_start,
         discovery_source=getattr(event_obj, "discovery_source", None),
         home=home,

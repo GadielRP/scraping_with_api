@@ -40,7 +40,7 @@ def seed_choice(manager, *, choice_group=None):
     with manager.get_session() as session:
         event = Event(
             slug="test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            starts_at=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Basketball",
             competition="WNBA",
             home_team="Home",

@@ -93,7 +93,7 @@ class P2MiningAdapter:
                 "competition": getattr(competition, "display_name", None),
                 "minutes_to_start": evaluation_minute,
                 "P2_TARGET_MINUTE": target_minute,
-                "event_start_time_utc": getattr(event_context, "start_time_utc", None),
+                "event_starts_at": getattr(event_context, "starts_at", None),
                 "context_status": getattr(event_context, "context_status", None),
             }
         )

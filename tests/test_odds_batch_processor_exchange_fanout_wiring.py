@@ -140,7 +140,7 @@ def test_forced_key_moment_routes_non_live_candidate_to_significant_change(monke
     candidate = replace(
         _candidate(),
         minutes_until_start=5,
-        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
     )
 
     _process(candidate)
@@ -160,7 +160,7 @@ def test_forced_key_moment_bypasses_closing_only_gate(monkeypatch):
     candidate = replace(
         _candidate(),
         minutes_until_start=5,
-        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
     )
 
     _process(candidate)
@@ -184,7 +184,7 @@ def test_forced_key_moment_can_prime_missing_mainline_cache(monkeypatch):
     candidate = replace(
         _candidate(),
         minutes_until_start=5,
-        start_time_utc=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+        starts_at=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
     )
 
     _process(candidate)

@@ -16,7 +16,7 @@ import time
 import psycopg
 from typing import Dict, List, Optional
 from datetime import datetime
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from infrastructure.settings import Config
@@ -276,7 +276,7 @@ class GenderReorganization:
                 
                 # Update the gender field
                 event.gender = gender
-                event.updated_at = get_local_now()
+                event.updated_at = utc_now()
                 
                 # Commit happens automatically when context manager exits successfully
                 # But we'll explicitly commit here to be sure
