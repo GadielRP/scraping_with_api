@@ -59,6 +59,7 @@ sofascore_api_backup.py
 sofascore.service 
 assets/
 scratch/
+.codex/
 
 
 # old files

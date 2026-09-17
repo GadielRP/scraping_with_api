@@ -2,46 +2,31 @@
 
 ## Activación y contrato
 
-`ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=false` conserva la estrategia
-anterior. Al activarlo se seleccionan cambios adaptativos en la adquisición
-histórica live; `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` sigue controlando la
-escritura en base de datos.
-El cambio no modifica el `.env` local ni los datos existentes.
+`ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=true` (default en `Config`) activa la selección de cambios adaptativos en la adquisición histórica live de OddspAPI; `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` (default en `Config`) gobierna la escritura de dichos snapshots en base de datos. Si se desactiva explícitamente (`false`), se conserva la reconstrucción fija previa.
 
-Los umbrales versionados están en `OddspapiPreStartSettings`: magnitud 20%,
-historial mínimo 24 horas, reversión 3 minutos y precio mínimo exclusivo 1.01.
-Se aplican individualmente a cada bookmaker/mercado/outcome/jugador.
+Los umbrales y la política versionada de producto están centralizados en `OddspapiPreStartSettings` (`modules/jobs/pre_start_check_job/providers/oddspapi/settings.py`):
+- `significant_change_min_magnitude_pct = 15.0`: magnitud mínima de cambio relativo respecto al ancla vigente (15%).
+- `significant_change_min_history_hours = 20.0`: historial mínimo requerido desde el primer tick válido hasta el kickoff (20 horas).
+- `significant_change_flash_reversal_minutes = 3.0`: ventana de confirmación para descartar reversiones transitorias (3 minutos).
+- `significant_change_min_price = 1.01`: precio mínimo admisible para la sanitización (`price >= 1.01`).
+- `significant_change_forced_moments = (5,)`: momentos clave no-live que ejecutan deliberadamente el flujo híbrido `/odds` → caché de líneas principales → `/historical-odds` con evaluación de cambios significativos.
 
-El reader ordena como antes y sanitiza una vez por serie. Apertura, última
-cuota, detector y fallback comparten los ticks limpios. Se excluyen precios
-no finitos, cuotas inactivas, precios centinela y ticks posteriores al kickoff,
-incluso cuando los controles clásicos de actividad/cutoff estén desactivados.
-Si falta kickoff, se registra el motivo y se utiliza el comportamiento clásico.
+Estos umbrales se aplican individualmente a cada combinación bookmaker / mercado / outcome / jugador.
 
-El detector recibe la conversión horaria como dependencia explícita y no
-importa configuración, HTTP ni SQL. El DTO se comparte desde
-`historical_odds_quote.py`, manteniendo su importación pública anterior desde
-`historical_odds_as_of.py`.
+El reader ordena cronológicamente y sanitiza una vez por serie. Apertura, última cuota, detector y fallback comparten los ticks limpios. Se excluyen precios no finitos, cuotas inactivas (`active=false`), precios centinela y ticks posteriores al kickoff (`createdAt > kickoff_utc`). Si falta kickoff, se registra el motivo y se utiliza el comportamiento clásico.
+
+El detector (`OddspapiHistoricalOddsChangeDetector`) recibe la conversión horaria como dependencia explícita y no importa configuración global, HTTP ni SQL. El DTO se comparte desde `historical_odds_quote.py`.
 
 ## Selección temporal
 
 - No se emite el ancla inicial. Cada cambio confirmado actualiza el ancla.
-- La reversión debe volver a una diferencia estrictamente menor al umbral
-  antes de completar la ventana. Revertir exactamente al final no invalida
-  el candidato. Los microticks en la nueva zona no requieren precio idéntico.
-- Un tick se considera vigente hasta el siguiente válido; no se exige una
-  frecuencia de actualizaciones para confirmar permanencia.
-- En el tramo posterior a `kickoff - ventana`, solo se evalúa el último tick
-  válido hasta kickoff. Se emite sin confirmación si cambia al menos el umbral
-  respecto al ancla vigente. No se registra un cierre estable automáticamente.
-- Con menos de 24 horas se reconstruyen los momentos configurados sobre la
-  serie limpia. Este fallback mantiene los tiempos teóricos tradicionales.
-- Los cambios dinámicos conservan microsegundos en `collected_at`, fecha del
-  proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`.
-  La consulta analítica sigue devolviendo minutos enteros por compatibilidad.
+- La reversión debe volver a una diferencia estrictamente menor al umbral antes de completar la ventana. Revertir exactamente al final no invalida el candidato. Los microticks en la nueva zona no requieren precio idéntico.
+- Un tick se considera vigente hasta el siguiente válido; no se exige una frecuencia de actualizaciones para confirmar permanencia.
+- En el tramo posterior a `kickoff - ventana`, solo se evalúa el último tick válido hasta kickoff. Se emite sin confirmación si cambia al menos el umbral respecto al ancla vigente. No se registra un cierre estable automáticamente.
+- Con menos de 20 horas de historial limpio (o cuando ningún cambio califica), se reconstruyen los momentos configurados sobre la serie limpia. Este fallback mantiene los tiempos teóricos tradicionales (`momentQuotes`).
+- Los cambios dinámicos conservan microsegundos en `collected_at`, fecha del proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`. La consulta analítica sigue devolviendo minutos enteros por compatibilidad.
 
-Los snapshots ordinarios de apertura y cuota actual continúan existiendo;
-esta estrategia solo sustituye la reconstrucción de `momentQuotes`.
+Los snapshots ordinarios de apertura y cuota actual continúan existiendo; esta estrategia sustituye la reconstrucción analítica de momentos intermedios.
 
 ## Persistencia y coste
 

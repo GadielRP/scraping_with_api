@@ -25,9 +25,12 @@ root_dir/
     logging_setup.py
     commands/                  # individual CLI command implementations
   docs/                        # technical architecture, pillar blueprints, and provider guides
-    architecture/              # contracts and system design
-    pillars/                   # pillar implementation specs and mining persistence
-    providers/                 # odds ingestion, OddsPortal scraping & snapshots
+    architecture/              # contracts, canonical market catalogs, and DB ingestion context
+    pillars/                   # pillar specs, inputs/lifecycle context, and mining persistence
+    providers/                 # odds ingestion, SofaScore API architecture, OddsPortal scraping & snapshots
+    jobs/                      # scheduled job workflows and discovery architecture
+    alerts/                    # alert systems and real-time prediction engines
+    operations/                # cloud deployment, Docker, and environment operations guides
     archive/                   # historical migration records and audit reports
   modules/                     # domain logic organised by feature
     alerts/                    # alert transport & formatting engines
@@ -74,7 +77,7 @@ These commands map one‑to‑one to functions in app/commands/. See the docstri
 Alert‑related logic lives under modules/alerts/. It contains a Telegram transport for sending messages and a set of formatters used by different alert types. The telegram_notifier.py module wraps the Telegram Bot API and automatically splits long messages into safe chunks. Sub‑packages include:
 
 alerts_formatter/ – classes responsible for constructing human‑readable alert messages. Each alert type (odds, dual process, matchup streak, Q4, time correction) implements a formatter here.
-basketball_4q/ – prediction engine for basketball fourth‑quarter analysis. It uses team rhythm, momentum and statistical ranges to project performance and exposes a run_basketball_4q.py script for manual execution.
+basketball_4q/ – prediction engine for basketball fourth‑quarter analysis. It uses team rhythm, momentum and statistical ranges to project performance and exposes a run_basketball_4q.py script for manual execution. See [`docs/alerts/basketball-4q.md`](docs/alerts/basketball-4q.md).
 dual_process/ – implements the dual process alert strategy. The process_1 and process_2 submodules handle candidate search, evaluation and sport‑specific rules for football and other sports. The top‑level run_dual_process.py entrypoint orchestrates both phases.
 matchup_streak_analysis/ – analyses head‑to‑head records, historical form and standings. It defines constants.py, head_to_head.py, historical_form.py, standings_engine.py, standings_rules.py, standings_simulator.py and winning_odds.py. The run_matchup_streak_analysis.py script triggers this pipeline and uses the materialised view mv_alert_events for candidate lookup.
 ### Jobs (modules/jobs)
@@ -84,7 +87,7 @@ Oddspapi jobs are grouped under `modules/jobs/oddspapi/fixture_discovery/` for m
 Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
 clean_league_cache/ – clears stale OddsPortal league cache rows before the day’s discovery.
-daily_discovery/ – fetches today’s events and odds across sports. It maintains a retry queue for sports that fail due to proxies or network errors.
+daily_discovery/ – fetches today’s events and odds across sports with AM/PM slots. It maintains status per sport and slot via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
 midnight_sync_job/ – runs after midnight to collect match results, update prediction logs and refresh materialised views.
 parallelism/ – utilities for job parallelisation, event filtering and recommendation generation.
@@ -128,7 +131,7 @@ The observations package extracts additional metadata about events. For example,
 
 The pillars package implements specialized analytical and statistical signal engines:
 
-* `context.py`: Defines the typed lifecycle data model (`EventContext`). It encapsulates normalized participants, competition data, trajectory contexts, observations, and prediction reports without relying on unstructured dictionaries.
+* `context.py`: Defines the typed lifecycle data model (`EventContext`). It encapsulates normalized participants, competition data, trajectory contexts, observations, and prediction reports without relying on unstructured dictionaries. See [`docs/pillars/inputs.md`](docs/pillars/inputs.md).
 * `streak_analysis_resolver.py`: Centralized resolver that coordinates matchup streak evaluation and form analysis across alert and pillar pipelines.
 * `competition_metadata_resolver.py`: Enriches and caches league structure details (e.g. number of teams, total regular season games, standings groupings).
 * `pillar_1_team_structure/`: Multilayer side and totals engine (Base Strength, Offensive Profile, Direct Matchup, Quality-Adjusted Immediate State, Structural Drift, Opponent Expectation, etc.).
@@ -191,8 +194,7 @@ Prediction‑related utilities live in this small package. They include predicti
 
 ### SofaScore Client (modules/sofascore)
 
-This package wraps the SofaScore public API. The client.py implements a resilient HTTP client (using curl‑cffi
- for browser‑like headers) and methods for event discovery, odds retrieval, results parsing and standings. Additional modules include:
+This package wraps the SofaScore public API. The client.py implements a resilient HTTP client (using curl‑cffi for browser‑like TLS fingerprint impersonation) and methods for event discovery, odds retrieval, results parsing and standings. See [`docs/providers/sofascore_api_architecture.md`](docs/providers/sofascore_api_architecture.md). Additional modules include:
 
 discovery_feeds.py and schedule_feeds.py – fetch dropping odds, high‑value streaks, H2H, winning odds and daily schedule feeds.
 event_details.py and results_parser.py – normalise event details and final scores.
@@ -207,7 +209,7 @@ The SofaScore modules provide the primary source of events and odds for the plat
 Under infrastructure/ are cross‑cutting utilities shared by the modules:
 
 Network & proxies – network/proxy_manager.py manages proxy rotation and failure handling for both SofaScore HTTP calls and OddsPortal scraping.
-Persistence – persistence/ defines SQLAlchemy models (models.py), repository patterns for each domain (repositories/*.py) and the main database.py for creating sessions and applying migrations. The repositories perform inserts, updates and queries for events, seasons, odds, markets, results, observations and caches.
+Persistence – persistence/ defines SQLAlchemy models (models.py), canonical market catalogs (see [`docs/architecture/canonical_markets_list.md`](docs/architecture/canonical_markets_list.md) and [`docs/architecture/odds_db_ingestion_context.md`](docs/architecture/odds_db_ingestion_context.md)), repository patterns for each domain (repositories/*.py) and the main database.py for creating sessions and applying migrations. The repositories perform inserts, updates and queries for events, seasons, odds, markets, results, observations and caches.
 Scheduler – scheduler/job_scheduler.py wraps the schedule library to register jobs and run them on separate threads. When you call python main.py start, this scheduler initialises the job list based on configuration.
 Settings – settings/config.py reads environment variables (via python‑dotenv
 ) and exposes typed configuration. Important options include database URL, polling intervals, discovery times, timezone, proxy toggles, and Telegram credentials.

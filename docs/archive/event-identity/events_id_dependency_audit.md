@@ -1,5 +1,10 @@
 # Events ID Dependency Audit
 
+> [!NOTE]
+> **Historical Document**  
+> Describes repository state at the time of the original audit/incident.  
+> Do not treat paths, configuration, or implementation details here as current architecture.
+
 > **Commit base**: `c14d561`  
 > **Date**: 2026-06-19  
 > **Author**: Architecture audit updated to reflect implemented changes  
@@ -455,7 +460,7 @@ class Event(Base):
 
     custom_id = Column(Text)
     slug = Column(Text, nullable=False)
-    start_time_utc = Column(DateTime, nullable=False)
+    starts_at = Column(DateTime, nullable=False)
     sport = Column(Text, nullable=False)
 
     # LEGACY_EVENT_TEXT_FIELDS: kept for backward compatibility
@@ -700,7 +705,7 @@ else:
     event_obj = Event(
         # id is NOT set — autoincrement assigns it
         slug=event_payload.get('slug') or sofascore_event_id,
-        start_time_utc=datetime.fromtimestamp(event_payload['startTimestamp']),
+        starts_at=datetime.fromtimestamp(event_payload['startTimestamp']),
         sport=event_payload.get('sport') or 'Unknown',
         # ... other fields ...
     )

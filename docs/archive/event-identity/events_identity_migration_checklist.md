@@ -1,8 +1,13 @@
 # Events Identity Migration Checklist
 
+> [!NOTE]
+> **Historical Document**  
+> Describes repository state at the time of the original audit/incident.  
+> Do not treat paths, configuration, or implementation details here as current architecture.
+
 > Status: implemented in codebase  
 > Date: 2026-06-19  
-> Reference audit: [events_id_dependency_audit.md](C:/Users/gadie/Documents/projects/sofascore/docs/audits/events_id_dependency_audit.md)
+> Reference audit: [events_id_dependency_audit.md](events_id_dependency_audit.md)
 
 ---
 

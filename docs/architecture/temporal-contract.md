@@ -1,85 +1,105 @@
 # Contrato temporal del sistema
 
-## Estado y alcance
+## Estado
 
-Decisión aceptada para los instantes de inicio de evento. Este documento no
-convierte automáticamente todos los timestamps de auditoría del sistema; esos
-campos se clasificarán en iniciativas posteriores.
+Contrato aplicado a todos los instantes persistidos y verificado en PostgreSQL
+el 2026-09-17. El esquema no contiene columnas `timestamp without time zone`.
 
 ## Vocabulario
 
-- **Instante:** un punto inequívoco de la línea de tiempo. En Python siempre es
-  un `datetime` timezone-aware y, dentro del dominio, se normaliza a UTC.
-- **Fecha civil (`LocalDate`):** una fecha de calendario, por ejemplo
-  `2026-09-16`, cuyo significado depende de una zona de negocio.
-- **Hora civil (`LocalTime`):** una hora recurrente, por ejemplo `03:00`, que
-  no identifica por sí sola un instante.
-- **Fecha zonificada (`ZonedDateTime`):** la representación de un instante en
-  una zona IANA, usada en calendarios y presentación.
+- **Instante:** un punto inequívoco de la línea de tiempo. En Python es un
+  `datetime` timezone-aware y se normaliza a UTC al entrar al dominio.
+- **Fecha civil (`LocalDate`):** una fecha de calendario cuyo significado
+  depende de una zona de negocio.
+- **Hora civil (`LocalTime`):** una hora recurrente que por sí sola no
+  identifica un instante.
+- **Fecha zonificada (`ZonedDateTime`):** un instante representado en una zona
+  IANA; se usa para calendario y presentación, no como formato de persistencia.
 
 ## Invariantes
 
-1. `Event.start_time_utc` representa un instante, no una hora civil.
-2. El modelo de aplicación acepta y devuelve ese valor como UTC aware.
-3. PostgreSQL lo persiste como `TIMESTAMP WITH TIME ZONE` (`timestamptz`).
+1. Toda columna temporal del esquema representa un instante absoluto.
+2. Los modelos aceptan y devuelven `datetime` aware normalizados a UTC.
+3. PostgreSQL persiste esos valores como `TIMESTAMP WITH TIME ZONE`
+   (`timestamptz`).
 4. Un `datetime` naive no puede cruzar un límite de dominio o persistencia.
 5. Unix timestamps se interpretan directamente como UTC.
 6. `Config.TIMEZONE` controla calendarios locales, horarios recurrentes y
    presentación. Cambiarla no cambia ningún instante persistido.
-7. Las consultas por “día local” calculan primero el intervalo semiabierto
-   `[inicio_local, siguiente_inicio_local)` y luego lo convierten a UTC.
+7. Las consultas por día local construyen el intervalo semiabierto
+   `[inicio_local, siguiente_inicio_local)` y lo convierten a UTC.
 
-El sufijo histórico `_utc` se conserva para evitar una migración transversal;
-ahora coincide con el contrato real del valor.
+## Responsabilidades de los módulos
+
+`shared/temporal.py` contiene las primitivas temporales independientes de la
+base de datos: validar aware, normalizar a UTC, leer el reloj, interpretar una
+hora naive solo en una frontera explícita y calcular límites de un día local.
+No conoce SQLAlchemy ni modelos.
+
+`infrastructure/persistence/types.py` contiene `UTCDateTime`, el adaptador de
+SQLAlchemy que hace cumplir el contrato al escribir y leer. PostgreSQL usa
+`timestamptz`; SQLite guarda UTC sin `tzinfo` internamente porque no tiene un
+tipo equivalente, pero el adaptador restaura UTC-aware al devolver el valor.
+
+`infrastructure/persistence/migrations/temporal_schema.py` solo se ocupa de la
+transición del esquema histórico. No contiene reglas de negocio ni se usa para
+conversiones ordinarias durante la ejecución.
 
 ## Límites de conversión
 
-- Proveedor -> dominio: parsear una vez, exigir offset o usar el contrato
-  documentado del proveedor, y normalizar con `shared.temporal.as_utc`.
+- Proveedor -> dominio: parsear una vez, exigir `Z`/offset o declarar el
+  contrato documentado del proveedor, y normalizar con `as_utc`.
 - Dominio -> base: `UTCDateTime` rechaza valores naive.
-- Base -> dominio: `UTCDateTime` devuelve valores UTC aware.
-- Dominio -> interfaz: convertir a `Config.TIMEZONE` únicamente para mostrar o
+- Base -> dominio: `UTCDateTime` devuelve UTC-aware.
+- Dominio -> interfaz: convertir a `Config.TIMEZONE` solo para mostrar o
   aplicar una regla de calendario.
-- Legacy -> dominio: `interpret_local_naive` solo se permite cuando el código
-  declara explícitamente la zona que dio significado al valor antiguo.
+- Legacy -> dominio: `interpret_local_naive` exige declarar la zona que daba
+  significado al dato antiguo. No es una comodidad para código nuevo.
 
-## Migración de datos existente
+## Nombres canónicos
 
-La columna `events.start_time_utc` contiene, antes de esta migración, horas
-civiles naive de `America/Mexico_City`. Se convierte in-place con la semántica:
+- `events.starts_at`: instante de inicio del evento.
+- `event_source_resolution_queue.source_starts_at`: instante de inicio
+  informado por el proveedor.
+
+Los nombres describen el concepto y no el formato visual. Un cliente SQL puede
+mostrar un `timestamptz` con `+00`, `-06` u otro offset según la zona de la
+sesión; todos representan el mismo instante.
+
+## Migración histórica
+
+La precondición confirmada es que todos los valores históricos que estaban en
+columnas `timestamp without time zone` eran horas civiles de
+`America/Mexico_City`. Cada columna se convirtió in-place mediante la
+semántica:
 
 ```sql
-start_time_utc AT TIME ZONE 'America/Mexico_City'
+legacy_value AT TIME ZONE 'America/Mexico_City'
 ```
 
-No se usa un offset fijo. PostgreSQL debe aplicar las reglas históricas de la
-zona IANA para cada fecha. La migración calcula previamente el epoch esperado,
-cambia el tipo y exige que el epoch resultante coincida para cada fila dentro
-de la misma transacción.
+No se aplicó un offset fijo. PostgreSQL usó las reglas históricas de la zona
+IANA para la fecha de cada fila. Para cada columna, el migrador:
 
-`event_source_resolution_queue.source_start_time_utc` tiene una procedencia
-distinta: sus valores legacy fueron producidos desde Unix timestamps como UTC
-naive, por lo que esa columna se interpreta explícitamente con `UTC`.
+1. calcula y conserva temporalmente el epoch esperado por clave primaria;
+2. cambia el tipo a `TIMESTAMP WITH TIME ZONE`;
+3. compara el epoch de cada fila con el esperado;
+4. aborta y revierte toda la transacción si existe una diferencia;
+5. aborta si al final queda cualquier columna `timestamp without time zone`.
 
-La vista legacy `basketball_results_season_year` no forma parte de los read
-models actuales, no tiene consumidores en el repositorio ni dependencias en
-PostgreSQL y se retira explícitamente durante esta migración. Se elimina sin
-`CASCADE` para que cualquier dependencia desconocida en otro entorno detenga
-la operación en vez de ser borrada silenciosamente.
+La misma transacción renombró `events.start_time_utc` a `events.starts_at` y
+`event_source_resolution_queue.source_start_time_utc` a
+`event_source_resolution_queue.source_starts_at`. Las vistas dependientes se
+recrean después de la migración. La vista obsoleta
+`basketball_results_season_year` se retira explícitamente.
 
-## Despliegue
+## Estado verificado de PostgreSQL
 
-La conversión in-place requiere una ventana de mantenimiento porque PostgreSQL
-puede bloquear la tabla durante el cambio de tipo. El orden seguro es:
+- cero columnas `timestamp without time zone` en el esquema de aplicación;
+- `events.starts_at` es `timestamp with time zone`;
+- el nombre antiguo `start_time_utc` ya no existe;
+- las conexiones de la aplicación ejecutan `SET TIME ZONE 'UTC'`;
+- el migrador es idempotente y una segunda ejecución no modifica el esquema.
 
-1. detener writers y schedulers con el contrato antiguo;
-2. tomar respaldo y registrar conteo, mínimo y máximo;
-3. desplegar este código e iniciar una sola instancia para ejecutar la
-   migración;
-4. comprobar que la migración y la recreación de vistas terminaron;
-5. ejecutar consultas de humo de eventos próximos y del job pre-start;
-6. reanudar el resto de instancias y schedulers.
-
-El runner es idempotente: si la columna ya es timezone-aware no vuelve a
-convertirla. La aplicación configura cada conexión PostgreSQL en UTC, de modo
-que lecturas y SQL de diagnóstico respeten el nombre `start_time_utc`.
+La conversión in-place exige una ventana de mantenimiento porque PostgreSQL
+puede tomar locks exclusivos durante `ALTER COLUMN TYPE`. Antes de repetirla
+en otro entorno se deben detener writers antiguos y tomar un respaldo.

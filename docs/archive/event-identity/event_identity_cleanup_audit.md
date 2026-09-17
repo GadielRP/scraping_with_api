@@ -1,5 +1,10 @@
 # Event Identity Cleanup Audit
 
+> [!NOTE]
+> **Historical Document**  
+> Describes repository state at the time of the original audit/incident.  
+> Do not treat paths, configuration, or implementation details here as current architecture.
+
 > Commit reviewed: `bd53863`  
 > Date: 2026-06-19  
 > Purpose: identify unreachable, legacy, obsolete, or cleanup-worthy code after the canonical event identity migration.
