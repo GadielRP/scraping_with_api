@@ -8,19 +8,19 @@
 
 ## 1. Runtime summary
 
-The pre-start job builds **one shared candidate plan**, then runs each provider phase independently against that plan. Shared timing eligibility is decided once by the job (`should_extract_odds`) and reused by every phase. With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` (default), OddspAPI can extract `/odds` across configured positive key moments, but `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` narrows which moments reach the provider. The current `.env` value is temporarily `[5,0]`; the intended rollout is **T−5 only**, represented by `[5]`. The dedicated T−1 job remains disabled via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`.
+The pre-start job builds **one shared candidate plan**, then runs each provider phase independently against that plan. Shared timing eligibility is decided once by the job (`should_extract_odds`) and reused by every phase. With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` (default), OddspAPI can extract `/odds` across configured positive key moments, but `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` narrows which moments reach the provider. The versioned default in `Config` is `[5]`, representing the current architectural contract of **T−5 only**. The dedicated T−1 job remains disabled via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`.
 
 ### 1.1 Current OddspAPI rollout status
 
-The distinction between deployed configuration and intended behavior is important:
+The distinction between versioned configuration defaults and environment overrides is critical:
 
-| Moment | Admitted by current `.env` `[5,0]` | Current route | Intended now |
+| Moment | Versioned default `[5]` | Current route | Intended architecture |
 |---|---:|---|---:|
-| T−5 | Yes | Forced hybrid flow because `significant_change_forced_moments=(5,)`: `/odds` → cache → `/historical-odds` → significant changes or fixed-moment fallback | Yes |
-| T−1 | No | The provider allowlist excludes it and the dedicated T−1 scheduler job is disabled | No |
-| T−0 | Yes, temporarily | Live `/historical-odds` lane; it does not run the T−5 `/odds` priming step | No |
+| T−5 | Yes | Forced hybrid flow because `significant_change_forced_moments=(5,)`: `/odds` → cache → `/historical-odds` → significant changes or fixed-moment fallback | Yes (active) |
+| T−1 | No | Excluded from the allowlist; dedicated T−1 scheduler job disabled | No |
+| T−0 | No (admitted only if `0` is configured via environment override) | Live `/historical-odds` lane; does not run the T−5 `/odds` priming step | No |
 
-Therefore the process **can still ingest T−0 while `.env` contains `0`**. The desired current operation is obtained with `ODDSPAPI_PRE_START_ALLOWED_MOMENTS=[5]`; this document records that target but does not treat the temporary `[5,0]` value as product intent.
+Under the versioned default `ODDSPAPI_PRE_START_ALLOWED_MOMENTS=[5]`, OddspAPI pre-start execution is restricted strictly to T−5. If an operator explicitly overrides this environment variable (e.g. `ODDSPAPI_PRE_START_ALLOWED_MOMENTS=[5,0]`), the process admits T−0 into the live historical lane, but that represents a runtime override rather than the default repository contract.
 
 An event reaches a provider HTTP request only when all of these are true:
 
@@ -457,7 +457,7 @@ Every transient physical attempt gets a fresh lease. `ODDSPAPI_MAX_RETRIES` limi
 
 Cooldown is enforced per `(full fingerprint, normalized endpoint)` by class-wide locks and completion timestamps. Current product values are `account=1.0`, `odds=0.5`, `historical-odds=5.0`, and `fixtures=2.0` seconds. Different keys may proceed concurrently; two sessions cannot bypass the cooldown for the same key/endpoint.
 
-The control plane intentionally uses two kinds of clock. Durable timestamps and TTL comparisons (`subscription_valid_*`, `account_refreshed_at`, `last_error_at`, and `updated_at`) follow the repository-wide database convention through `shared/timezone_utils.py`: current values come from `get_local_now()`, provider UTC values pass through `convert_utc_to_local()`, and PostgreSQL stores the resulting `Config.TIMEZONE` wall-clock value without `tzinfo`. Cooldown and `Retry-After` waits continue to use `time.monotonic()` because they measure elapsed duration, not civil time; changing the OS clock or timezone therefore cannot make a cooldown negative or unexpectedly longer.
+The control plane intentionally uses two kinds of clock. Durable timestamps and TTL comparisons (`subscription_valid_*`, `account_refreshed_at`, `last_error_at`, and `updated_at`) use aware UTC instants from `shared.temporal` and PostgreSQL stores them as `timestamptz`. Cooldown and `Retry-After` waits continue to use `time.monotonic()` because they measure elapsed duration, not civil time; changing the OS clock or timezone therefore cannot make a cooldown negative or unexpectedly longer.
 
 #### 6.0.7 `/account` refresh lifecycle
 
@@ -549,9 +549,9 @@ Security invariants:
 
 ### 6.1 Which moments actually fetch (this is the gate)
 
-Configured key moments are `PRE_START_ODDS_MOMENTS` (current `.env`: `[120, 30, 5, 1, 0]`). The main pre-start job runs `regular_pre_start_moments()` after removing the dedicated closing minute. `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` is an additional OddspAPI-only gate applied before candidate selection. The current `.env` value is temporarily `[5,0]`, so both T−5 and T−0 are requestable; the intended current value is `[5]`, which leaves only T−5.
+Configured key moments are `PRE_START_ODDS_MOMENTS` (versioned default in `Config`: `[120, 30, 5, 1, 0, -5]`). The main pre-start job runs `regular_pre_start_moments()` after removing the dedicated closing minute (`1`). `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` is an additional OddspAPI-only gate applied before candidate selection. Its versioned default is `[5]`, restricting candidate selection strictly to T−5. (If overridden by an environment variable such as `[5, 0]`, T−0 becomes requestable as well, but `[5]` remains the codebase default).
 
-- **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` and can be reconstructed by the live historical as-of engine only when T−0 is admitted. Under the intended T−5-only allowlist, neither a real-time nor reconstructed T−1 snapshot is requested.
+- **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` and can be reconstructed by the live historical as-of engine only when T−0 is admitted. Under the default T−5-only allowlist, neither a real-time nor reconstructed T−1 snapshot is requested.
 - **Positive moments ($T-120, T-30, T-5$)**: `ODDSPAPI_PRE_START_CLOSING_ONLY` (default `false`) controls positive-minute `/odds` acquisition after the provider-only moment gate.
 
 | Flag | T-120 / T-30 / T-5 (main job) | T-1 (critical job) | T-0 / live (`minutes <= 0`) |
@@ -561,9 +561,9 @@ Configured key moments are `PRE_START_ODDS_MOMENTS` (current `.env`: `[120, 30, 
 | forced non-live minute | hybrid `/odds` → mainline cache → `/historical-odds` with detector | n/a | n/a |
 
 With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`:
-1. OddspAPI fetches `/odds` at each allowed positive moment ($T-120, T-30, T-5$ nominally), populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots. A minute listed in `significant_change_forced_moments` uses the hybrid sequence `/odds` → cache → `/historical-odds` instead of the ordinary-only route.
+1. OddspAPI fetches `/odds` at each allowed positive moment (T−5 by default under `[5]`), populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots. Because minute `5` is listed in `significant_change_forced_moments`, it executes the hybrid sequence `/odds` → cache → `/historical-odds` instead of the ordinary-only route.
 2. $T-1$ is skipped in real time.
-3. At $T-0$ **only while `0` passes the provider-only gate**, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. This lane is active under the temporary `[5,0]` deployment but is outside the T−5-only target. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
+3. At $T-0$, requests only occur if `0` is explicitly added to `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` via environment override. In that case, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. Under the versioned default `[5]`, $T-0$ is skipped. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
 
 HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply for compatibility. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
 
@@ -584,7 +584,7 @@ Independent of `CLOSING_ONLY` (the skip does not apply to live).
 1. Refuse the request if the event has no mainline cache (`missing_mainline_cache`).
 2. For a live candidate, call `/historical-odds` only (no live `/odds`). A forced non-live candidate is handled by §6.1.2.1 and primes the cache first.
 3. Upstream pre-selection: before traversing and normalizing tick series, `HistoricalPayloadSelector` filters unmapped markets/outcomes, non-mainline markets (via cache), and applies allowed key/group/period filters directly in memory, retaining the unmutated `raw_payload` for debug and audit.
-4. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), convert the canonical event start (stored as Mexico-local naive time despite the legacy `start_time_utc` name) to UTC and pass it as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
+4. When `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS=true` (default), pass the canonical UTC-aware `events.starts_at` instant as the inclusive historical-current cutoff. Opening/current normalization ignores every tick with `createdAt > kickoff`. With the toggle disabled, no cutoff is passed and selection returns to the unbounded latest tick.
 5. Ingest with `use_mainline_cache=True` so choices can be tagged `mainLine` from cache.
 6. If `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` is on (default `true`), historical observations travel as `momentQuotes`. With significant-change mode enabled, a series uses detector-selected changes when any qualify; when the detector produces no moment quotes, the reader uses the configured fixed moments as a per-series fallback. If kickoff is missing, the reader logs the reason and disables significant-change extraction; because as-of targets are derived from kickoff, no fixed/dynamic `momentQuotes` are reconstructed for that read. The repository performs provider-neutral replay deduplication: if a moment snapshot already exists at the same temporal key with the same `source_collected_at`, it is skipped; a genuinely newer provider tick may be appended.
 
@@ -761,9 +761,9 @@ OddspAPI exposes provider timestamps with seconds (and sometimes sub-second prec
 
 | Observation | `collected_at` persisted | `source_collected_at` persisted |
 |---|---|---|
-| Ordinary `/odds` opening | Local `get_local_now()` captured once for the batch | `initialChangedAt` from OddspAPI, converted to project-local naive time; nullable if absent |
-| Ordinary `/odds` current | Same local batch `get_local_now()` | `sourceCollectedAt` or `changedAt`, converted to project-local naive time; nullable if absent |
-| Historical normalized opening/current | The acquisition lane decides whether these fields replace or enrich the `/odds` base; if persisted as ordinary snapshots, they use the same batch `get_local_now()` | Historical `createdAt` selected by the normalizer, converted to project-local naive time |
+| Ordinary `/odds` opening | Aware UTC instant captured once for the batch | `initialChangedAt` from OddspAPI, parsed and normalized to UTC; nullable if absent |
+| Ordinary `/odds` current | Same aware UTC batch instant | `sourceCollectedAt` or `changedAt`, parsed and normalized to UTC; nullable if absent |
+| Historical normalized opening/current | The acquisition lane decides whether these fields replace or enrich the `/odds` base; if persisted as ordinary snapshots, they use the same aware UTC batch instant | Historical `createdAt` selected by the normalizer, parsed and normalized to UTC |
 | Significant-change `momentQuote` | The actual provider tick time converted to project-local time | The same tick's `createdAt`, converted to project-local time |
 | Fixed fallback `momentQuote` | The theoretical target (`start_time - minutesUntilStart`) in project-local time | The actual tick carried forward to that target, converted from its `createdAt` |
 | Exchange current/moment | Batch now for current, target/tick time for moments | Resolved provider observation timestamp; side/level remains part of `quote_id` |
@@ -931,7 +931,7 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES` | `false` | `false` = persist even if `active=false`. |
 | `ODDSPAPI_PRE_START_FILTER_POST_KICKOFF_TICKS` | `true` | `true` = opening/current from `/historical-odds` only consider ticks whose `createdAt <= kickoff UTC`; `false` restores unbounded latest-tick selection. |
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | `false` | `false` = `/odds` runs at allowed positive moments. `true` skips ordinary positive moments; an explicitly forced significant-change moment still runs its hybrid `/odds` priming step. |
-| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | `[5,0]` (temporary) | OddspAPI-only moment gate applied before provider selection. The desired current behavior is `[5]`, meaning T−5 only; the temporary `0` also admits the independent T−0 historical lane. |
+| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | `[5]` (code default) | OddspAPI-only moment gate applied before provider selection. Versioned default is `[5]` (T−5 only). Can be overridden via environment variable (e.g. `[5,0]`) to admit the independent T−0 historical lane. |
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | `false` | `false` = disables dedicated T-1 critical scheduler job. Minute 1 stays in `PRE_START_ODDS_MOMENTS` for T-0 as-of reconstruction. |
 | `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. Skipped for tracked competitions. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
@@ -996,7 +996,7 @@ Write ownership (`market_write_policy_for_source`):
 | `ODDSPAPI_ENDPOINT_COOLDOWNS` | Key/endpoint completion-to-next-request cooldown map. |
 | `ODDSPAPI_PRE_START_WORKERS` | Configured maximum; code hard-caps effective concurrency at four and by work/key counts. |
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | When `false` (default), OddspAPI fetches `/odds` at allowed positive moments. An explicit forced significant-change moment still performs its `/odds` priming step when this is `true`. |
-| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | OddspAPI-only moment allowlist (current `.env` `[5,0]`, temporarily); it is evaluated before provider candidate selection. The intended current value is `[5]`, which excludes T−0 even though `PRE_START_ODDS_MOMENTS` contains `0`. |
+| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | OddspAPI-only moment allowlist (versioned default `[5]`); evaluated before provider candidate selection. Restricts pre-start OddspAPI extraction to T−5. Overridable via environment variable if an operator needs to admit T−0. |
 | `opening_historical_moments` | Versioned non-live moments for the classic opening-enrichment `/historical-odds` request. Current policy is `()`, so classic enrichment is disabled; this does not disable the independently gated T−0 live historical lane. |
 | `significant_change_forced_moments` | Versioned non-live moments that explicitly force the hybrid significant-change flow. Current policy is `(5,)`; missing kickoff is logged and does not activate the forced lane. |
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | When `false` (default), disables the dedicated T-1 critical scheduler job. |

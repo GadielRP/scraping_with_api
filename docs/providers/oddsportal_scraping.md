@@ -17,9 +17,9 @@ An event is selected for OddsPortal only when all of these conditions are true:
 1. `Config.ODDSPORTAL_SCRAPING_ENABLED` is true.
 2. The event is returned by `EventRepository.get_events_starting_soon()`.
 3. Its canonical `competition_id` exists in `ODDSPORTAL_COMPETITION_ROUTES`.
-4. Its pre-calculated `minutes_until_start` is exactly `-5`.
+4. Its pre-calculated `minutes_until_start` matches `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`).
 
-`-5` means approximately five minutes after the stored start time. The value is calculated with Python `round()`, so it is a rounded minute bucket, not a precise elapsed-time comparison.
+Under this opening-only flow, OddsPortal is captured once, early enough (typically at T-120) to supply authoritative opening prices (`initial_odds`) before OddsPAPI owns later current timeframes. Persistence enforces `ODDSPORTAL_OPENING_ONLY_POLICY`, so OddsPortal never writes current odds or snapshots.
 
 The current local/template environments differ:
 
@@ -94,7 +94,7 @@ scheduler.event_repo.get_events_starting_soon(
 The SQL time interval is:
 
 ```text
-[current local naive minute - 5 minutes, current time + PRE_START_WINDOW_MINUTES]
+[current aware local minute - 5 minutes, current time + PRE_START_WINDOW_MINUTES]
 ```
 
 The lower boundary is built from `datetime.now().replace(second=0, microsecond=0) - 5 minutes`. Consequently, the query includes recently started events only near the five-minute boundary; it is not an unrestricted post-start query.
@@ -163,7 +163,7 @@ If no upcoming events remain after maintenance, the main pre-start function retu
 ```python
 Config.ODDSPORTAL_SCRAPING_ENABLED
 and competition_id in ODDSPORTAL_COMPETITION_ROUTES
-and pre_calculated_timings[event_id] == -5
+and minutes_until_start == Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES
 ```
 
 Important consequences:
@@ -171,7 +171,7 @@ Important consequences:
 - Eligibility is based on canonical `competition_id`, not `season_id`.
 - A missing `season_id` does not prevent selection. It disables the DB-cache shortcut for that task, but live league discovery can still run.
 - `ENABLE_ODDS_EXTRACTION` does not gate OddsPortal candidate selection.
-- `PRE_START_ODDS_MOMENTS` does not directly gate selection; `-5` is hard-coded in the OddsPortal worker. In normal operation `-5` should also remain in `PRE_START_ODDS_MOMENTS` so downstream key-moment evaluation and provider odds remain aligned.
+- The capture moment is controlled by `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`). It is deliberately not hardcoded to -5 or dependent on provider odds moment lists.
 - `PRE_START_TRACKED_COMPETITIONS_ONLY` can filter the event out earlier at the SQL query, even if it has an OddsPortal route.
 
 For each selected event, `create_oddsportal_scrape_state()` creates:
@@ -249,7 +249,7 @@ The distribution is “season-aware” only in this specific sense:
 
 Each chunk owns one Chromium browser and processes its tasks sequentially, with a one-second pause between tasks. Different chunks run concurrently.
 
-There is **no active resolver-seed queue, condition-based sibling release, or dedicated cache-warming phase** in the current dispatcher. Sibling tasks from the same season can be assigned to different chunks and can independently miss the cache while another browser is still warming it.
+There is **no active resolver-seed queue, condition-based sibling release, or dedicated cache-warming phase** in the current dispatcher. Sibling tasks from the same season can be assigned to different chunks and can independently miss the cache while another browser is still warming it. Although data models like `GroupSeedResult` and synchronization primitives (`threading.Condition`) are defined or imported in the package, they are not wired into an active worker coordination loop in `scrape_multiple_matches_parallel_sync()`.
 
 ### 7.2 Per-browser and per-event lifecycle
 
@@ -582,24 +582,42 @@ For every event processed normally or caught by the per-event exception handler,
 
 `_on_event_scraped()` performs persistence inline in the browser worker thread, before signaling `done_event`:
 
-1. Put non-empty `MatchOddsData` in the shared in-memory `data_cache`.
-2. Call `MarketRepository.save_markets_from_oddsportal(event_id, op_data)`.
-3. Record the returned market count or `None` on callback-level failure.
+1. Call `MarketOddsIngestionService.save_from_oddsportal_data(event_id, op_data, reference_data=...)`.
+2. Record `ingestion_result.markets_saved` in `saved_counts[event_id]`.
+3. If `saved > 0` and `op_data_cache` is provided, cache `op_data` in memory.
 4. Set `done_at_monotonic` and `done_event`.
 
-`save_markets_from_oddsportal()` iterates every `MarketExtraction`. It falls back to the legacy match-level fields only when `extractions` is empty.
+### 15.1 Architectural Ownership: Opening Odds Only
 
-For normal bookmaker rows:
+Persistence strictly adheres to `ODDSPORTAL_OPENING_ONLY_POLICY` defined in `infrastructure.persistence.market_write_policy`:
 
-- Over/Under choices become `over` and `under`; other groups use `1`, optional `x`, and `2`.
-- The selected handicap/total line becomes `choice_group`.
-- Bookies are resolved through `BookieRepository.resolve_bookie_from_source(source="oddsportal", allow_create=False)`.
-- A configured regular bookmaker is still skipped when it cannot be resolved to an existing DB bookie; persistence never auto-creates one.
-- Market writes use the normal repository flow and create snapshots with source `oddsportal`.
+```python
+ODDSPORTAL_OPENING_ONLY_POLICY = MarketWritePolicy(
+    name="oddsportal_opening_only",
+    overwrite_initial_odds=True,
+    persist_current_odds=False,
+    persist_opening_snapshots=False,
+    persist_current_snapshots=False,
+    require_initial_odds=True,
+)
+```
 
-Betfair Exchange is resolved using source name `Betfair Exchange` and slug `betfair-ex`. Back and Lay are saved as separate `choice_group` values, optionally suffixed by a handicap.
+By design:
+- **Opening odds authority:** OddsPortal is the authoritative opening-odds source. It overwrites `initial_odds` (`overwrite_initial_odds=True`) and requires valid initial odds to persist (`require_initial_odds=True`).
+- **No current odds or snapshots:** OddsPortal does **not** persist `current_odds` (`persist_current_odds=False`) and does **not** write opening or current snapshots (`persist_opening_snapshots=False`, `persist_current_snapshots=False`). This prevents cross-provider collisions in canonical tables (`MarketChoice` / snapshots) where snapshots share canonical choice rows.
 
-The returned `saved_count` counts saved market records, not raw bookmaker rows or individual choices.
+### 15.2 Ingestion Flow and Bookmaker Resolution
+
+`MarketOddsIngestionService.save_from_oddsportal_data()`:
+
+1. Adapts `MatchOddsData` via `OddsPortalMarketAdapter.from_match_odds_data()`.
+2. Resolves bookmakers using preloaded `OddsPortalIngestionReferenceData`:
+   - Matching bookmakers are looked up by `source_slug` against existing database bookmaker records where `source="oddsportal"`.
+   - Unresolved bookmaker slugs are skipped (logged as warnings). Persistence never auto-creates bookmaker records (`allow_create=False`).
+3. Betfair Exchange is mapped using source name `Betfair Exchange` and slug `betfair-ex`. Back and Lay are saved as separate `choice_group` values, optionally suffixed by handicap.
+4. Saves market records atomically via `MarketRepository.save_markets_for_bookmaker_batch()`.
+
+The recorded `saved` count represents saved market records, not raw bookmaker rows or individual choices.
 
 ## 16. Alert and pillar integration
 
@@ -620,7 +638,7 @@ The wait has two phases:
 
 After completion or timeout, the alert path queries `MarketRepository.get_external_markets_for_event()` to verify/read persisted external markets. It also returns the in-memory `MatchOddsData`, when present, so the formatter can add movement timestamps that are not read from the DB query.
 
-`send_odds_alert()` itself only sends odds alerts at minutes `30` and `-5`. It appends the external-markets section when the event's `competition_id` has an OddsPortal route and external DB rows exist.
+`send_odds_alert()` itself only sends odds alerts at minutes `30` and `5` (`ALLOWED_ODDS_ALERT_MINUTES = {30, 5}`). It appends the external-markets section when the event's `competition_id` has an OddsPortal route and external DB rows exist.
 
 External rows are not guaranteed to be exclusively from OddsPortal: `get_external_markets_for_event()` returns all non-primary bookies and derives the displayed source from the latest choice snapshot.
 
@@ -668,6 +686,7 @@ These remain environment-backed because they vary by machine, deployment, or int
 | Variable | Default | Meaning |
 |---|---:|---|
 | `ODDSPORTAL_SCRAPING_ENABLED` | `true` | Master deployment feature flag; templates set it to false. |
+| `ODDSPORTAL_OPENING_CAPTURE_MINUTES` | `120` | Pre-start minute mark at which OddsPortal opening odds are scraped. |
 | `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Browser concurrency constrained by host RAM and task count. |
 | `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` s | Cross-cycle worker coordination timeout. |
 | `ODDSPORTAL_ALERT_WAIT_TIMEOUT` | `180` s | Alert-pipeline coordination SLA. |
@@ -676,7 +695,7 @@ These remain environment-backed because they vary by machine, deployment, or int
 
 | Variable | Relationship |
 |---|---|
-| `POLL_INTERVAL_MINUTES` | Determines exact scheduler minute marks. Values should align with the hard-coded `-5` selection bucket. |
+| `POLL_INTERVAL_MINUTES` | Determines exact scheduler minute marks. Values should align with the opening capture bucket (`ODDSPORTAL_OPENING_CAPTURE_MINUTES`, default `120`). |
 | `PRE_START_WINDOW_MINUTES` | Upper boundary of the event query. The repository independently includes approximately five minutes of recently started events. |
 | `PRE_START_ODDS_MOMENTS` | Controls normal provider/evaluation key moments, not OddsPortal selection itself. |
 | `PRE_START_TRACKED_COMPETITIONS_ONLY` | Can remove non-business-tracked events before OddsPortal selection. |
@@ -721,7 +740,7 @@ For a faithful production-path check, prefer `python main.py pre-start` with a s
 
 1. Effective toggle is true.
 2. The event's canonical competition has an OddsPortal route.
-3. Stored start time produces the rounded `-5` bucket.
+3. Stored start time produces the rounded `minutes_until_start` matching `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`).
 4. Candidate log appears.
 5. URL resolution reports cache hit or live league discovery.
 6. `on_task_started` is logged.
@@ -740,7 +759,7 @@ Check, in order:
 2. whether the event is inside the repository query window;
 3. canonical `competition_id`, not `season_id`;
 4. presence in `ODDSPORTAL_COMPETITION_ROUTES`;
-5. logged rounded `minutes_until_start` equals exactly `-5`;
+5. logged rounded `minutes_until_start` equals `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`);
 6. earlier filtering by `PRE_START_TRACKED_COMPETITIONS_ONLY`.
 
 ### Candidate selected but never “started”
@@ -777,11 +796,11 @@ Check:
 4. URL resolution/queue phase completed;
 5. the per-event extraction completed within the post-claim wait budget;
 6. at least one external bookie resolved and persisted;
-7. the alert is at minute `-5` (or the independent allowed minute `30`).
+7. the alert is at minute `5` or `30` (`ALLOWED_ODDS_ALERT_MINUTES = {30, 5}`).
 
 ## 21. Reliability boundaries and non-obvious facts
 
-- OddsPortal selection is hard-coded at `-5`; changing `PRE_START_ODDS_MOMENTS` alone does not move it.
+- OddsPortal selection is configured at `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`); changing `PRE_START_ODDS_MOMENTS` alone does not move it.
 - `competition_id` controls provider routing; `season_id` controls only league-cache scope.
 - Visible rows are read from the page, then the persistence allowlist/limit is applied. Hover has its own allowlist/limit but can only select from that retained set.
 - Decimal and fractional display tokens are auto-detected and normalized to decimal; there is no runtime format toggle.

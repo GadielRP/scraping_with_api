@@ -1,14 +1,16 @@
 # P4 — Trayectoria Temporal del Mercado
-## Blueprint de Implementación v4 — Candidato a Sellado Técnico
+## Especificación y Contrato Técnico v4 (`p4-signal-profile-v1`)
 
-> **Estado:** IMPLEMENTADO — CONTRATO V4 VERIFICADO POR TESTS — PENDIENTE ÚNICAMENTE DE QA/ROLLOUT OPERATIVO  
+> **Estado:** IMPLEMENTADO — CONTRATO V4 EN PRODUCCIÓN (`p4-signal-profile-v1`)  
 > **Repositorio:** `GadielRP/scraping_with_api`  
 > **Punto principal de orquestación:** `modules/jobs/pre_start_check_job/pillar_pipeline.py`  
 > **Paquete del pilar:** `modules/pillars/pillar_4/`  
-> **Arquitectura de referencia:** Pilar 2 y Pilar 3 ya implementados  
-> **Endpoint operativo:** `Tn`, donde `n = P4_TARGET_MINUTE` recibido desde el pipeline; la configuración actual evalúa en `T5`  
-> **Contrato físico de inputs:** sincronizado con `inputs.md`, `modules/pillars/context.py` y `modules/pillars/odds_trajectory_context.py`  
-> **Objetivo de este documento:** guiar el rediseño/reimplementación de Pilar 4 sin introducir supuestos no revisados.
+> **Entry point:** `modules/pillars/pillar_4/run_pillar_4.py` (`calculate_pillar_4`)  
+> **Minería:** `modules/pillars/mining/adapters/pillar_4.py` (`P4MiningAdapter`, scope `temporal_market_drift`)  
+> **Arquitectura de referencia:** Modelo desacoplado análogo a Pilar 2 y Pilar 3  
+> **Endpoint operativo:** `Tn`, donde `n = P4_TARGET_MINUTE` recibido dinámicamente desde el pipeline (default evaluado: `T5`)  
+> **Contrato físico de inputs:** `modules/pillars/context.py` (`EventContext`), `modules/pillars/odds_trajectory_context.py` (`OddsTrajectoryContext`) y referencia complementaria en [inputs.md](../../inputs.md)  
+> **Objetivo de este documento:** Contrato normativo y especificación canónica del motor de trayectoria temporal de P4.
 
 ---
 
@@ -21,7 +23,7 @@ Los siguientes términos son normativos:
 - **DEBERÍA**: comportamiento preferido; cualquier desviación debe justificarse técnicamente.
 - **PUEDE**: comportamiento opcional.
 
-Este blueprint sustituye los borradores recientes de revisión de P4 que trataban `T1` como parte de la trayectoria operativa.
+Este blueprint sustituye los borradores de revisión de P4 que trataban `T1` como parte de la trayectoria operativa.
 
 La lógica y las decisiones canónicas de P4 están cerradas y su implementación vive en `modules/pillars/pillar_4/`. La sección 79 registra el resultado de la auditoría técnica y las limitaciones conocidas; ya no constituye una lista de decisiones abiertas.
 
@@ -29,13 +31,13 @@ Regla de lectura de este documento: `Tn` designa siempre el target operativo din
 
 ---
 
-# 1. Por qué P4 se está rediseñando
+# 1. Motivación y arquitectura del rediseño v4
 
-P4 ya fue implementado anteriormente bajo un modelo semántico más antiguo.
+P4 fue implementado originalmente bajo un modelo semántico más antiguo.
 
-La implementación actual contiene conceptos aprovechables, pero sus responsabilidades y su semántica temporal ya no coinciden con la arquitectura actual de System I.
+Esa implementación previa contenía conceptos aprovechables, pero sus responsabilidades y su semántica temporal no coincidían con la arquitectura de System I.
 
-El nuevo P4 DEBE alinearse con la arquitectura ya utilizada por P2/P3:
+El diseño v4 consolidó a P4 con la arquitectura utilizada por P2/P3:
 
 ```text
 pre_start_check_job
@@ -435,7 +437,7 @@ Ejemplos:
 ```text
 event_id
 sport
-start_time_utc
+starts_at
 
 market_group
 market_period
@@ -528,7 +530,7 @@ EventContext(
     season_id: int | None,
     season_name: str | None,
     season_year: int | None,
-    start_time_utc: datetime,
+    starts_at: datetime,
     minutes_until_start: int | None,
     discovery_source: str | None,
     home: ParticipantContext,
@@ -556,7 +558,7 @@ EventContext(
 )
 ```
 
-`start_time_utc` conserva ese nombre por compatibilidad; actualmente su valor está configurado con hora de México. P4 NO DEBE inferir por el nombre que el objeto es timezone-aware UTC: debe usar el valor y la convención temporal entregados por el pipeline de forma consistente con el formatter.
+`starts_at` conserva ese nombre por compatibilidad; actualmente su valor está configurado con hora de México. P4 NO DEBE inferir por el nombre que el objeto es timezone-aware UTC: debe usar el valor y la convención temporal entregados por el pipeline de forma consistente con el formatter.
 
 `home` y `away` usan:
 
@@ -605,7 +607,7 @@ CompetitionContext(
 )
 ```
 
-Para P4, sus campos relevantes de identidad/contexto son `event_id`, `sport`, `participants_label`, `start_time_utc`, `minutes_until_start`, participantes y competencia. Los demás campos se conservan para integración y auditoría, pero no son parámetros analíticos independientes.
+Para P4, sus campos relevantes de identidad/contexto son `event_id`, `sport`, `participants_label`, `starts_at`, `minutes_until_start`, participantes y competencia. Los demás campos se conservan para integración y auditoría, pero no son parámetros analíticos independientes.
 
 `EventContext` contiene dos representaciones temporales distintas:
 
@@ -3438,7 +3440,7 @@ Pregunta central:
 Toda métrica operativa P4 debe usar exclusivamente información disponible hasta el instante nominal del target operativo:
 
 ```python
-P4_OPERATIVE_AS_OF = EventContext.start_time_utc - timedelta(minutes=P4_TARGET_MINUTE)
+P4_OPERATIVE_AS_OF = EventContext.starts_at - timedelta(minutes=P4_TARGET_MINUTE)
 ```
 
 Decisión canónica:
@@ -4742,7 +4744,7 @@ Su responsabilidad es auditar compatibilidad técnica y reportar incompatibilida
 | **P4-PD-009 — Implied probability** | P4 reutiliza exactamente la semántica P2/P3. El componente RAW es `1 / decimal_odds`; cualquier normalized/de-vig probability debe provenir de primitive compartida, nunca de una definición privada de P4. |
 | **P4-PD-010 — Standard Handicap** | Fuera del scope inicial de P4 v4. Mantener separado de AH. Solo reconsiderar si la auditoría técnica demuestra incompatibilidad real con el flujo contractual actual. |
 | **P4-PD-011 — Status global** | Top-level: `ACTIVE`, `PARTIAL`, `INSUFFICIENT_DATA`, `ERROR`. `AMBIGUOUS` e `INVALID` quedan en diagnostics; si inutilizan el core requerido, el top-level es `INSUFFICIENT_DATA`. |
-| **P4-PD-012 — Historical as-of** | Ningún punto con `availability_at > start_time_utc - target_minute` puede entrar al profile operativo. El extractor aplica el corte antes de construir ambas vistas. |
+| **P4-PD-012 — Historical as-of** | Ningún punto con `availability_at > starts_at - target_minute` puede entrar al profile operativo. El extractor aplica el corte antes de construir ambas vistas. |
 | **P4-PD-013 — Adaptive vs checkpoints** | Conservar ambas vistas. `ADAPTIVE_VIEW` es la vista primaria rica cuando existe. `CHECKPOINT_VIEW` es la vista estandarizada/comparable y fallback. Ninguna sustituye a la otra. |
 | **P4-PD-014 — Resumen por ventanas** | Por ventana conservar start/end, net, path, point/leg count, sign changes, timestamps, elapsed, direction y pattern. `MOVE_SHARE_BY_WINDOW = WINDOW_PATH_LENGTH / TOTAL_PATH_LENGTH`. |
 | **P4-PD-015 — Comparabilidad adaptive/fallback** | Métricas sensibles a resolución deben identificar vista/source mode y no compararse ciegamente. Persistir `TRAJECTORY_SOURCE_MODE`, `OBSERVATION_COUNT`, `LEG_COUNT`. Endpoint metrics son más comparables cuando comparten endpoints. |
@@ -5033,7 +5035,7 @@ Las decisiones `P4-PD-001…P4-PD-016` se materializaron en una implementación 
 `extract_p4_trajectory_inputs()` calcula:
 
 ```text
-operative_as_of = start_time_utc - timedelta(minutes=target_minute)
+operative_as_of = starts_at - timedelta(minutes=target_minute)
 ```
 
 y excluye antes de cualquier proyección todo snapshot con `availability_at > operative_as_of`. Las pruebas cubren T1/T0/T-5 y el caso en que un snapshot futuro declara un `source_collected_at` antiguo.

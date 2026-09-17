@@ -17,10 +17,7 @@ duplicados. El resultado real continúa en `results` y se relaciona por
 
 ## 1.1 Estado actual de la implementación
 
-Al 2026-09-02, el contrato, el repositorio y la integración runtime están
-activos para P1, P2 y P3. El pipeline llama a la minería inmediatamente después
-de calcular cada output y conserva también los resultados de error donde el
-productor los expone.
+El contrato, el repositorio y la integración runtime están activos para P1, P2, P3 y P4. El pipeline llama a la minería inmediatamente después de calcular cada output y conserva también los resultados de error donde el productor los expone. P5 permanece como pilar de cálculo sin adaptador de minería registrado.
 
 P1 se calcula en `pillar_pipeline.py` y ahora se persiste en dos runs
 independientes. Su orquestador devuelve dos salidas:
@@ -242,25 +239,20 @@ movimiento de mercado y no es automáticamente una predicción del partido.
 
 ## 7. Mapeo actual y futuro
 
-| Pilar | Scope | Jerarquía |
-|---|---|---|
-| P1 Side | `side` | summary → M1–M7 → components |
-| P1 Totals | `totals` | summary → structural/temporal/trend layers |
-| P2 | `side_market` | summary → `p2_signal_engine` |
-| P3 | `totals_market_context` | summary → `p3_signal_engine` |
-| P4 | `temporal_drift` | summary → market periods → choices |
-| P5 | `exact_price_memory` | summary → exact price memory module |
+| Pilar | Scope | Jerarquía | Estado de Registro |
+|---|---|---|---|
+| P1 Side | `side` | summary → M1–M7 → components | Registrado y activo |
+| P1 Totals | `totals` | summary → structural/temporal/trend layers | Registrado y activo |
+| P2 | `side_market` | summary → `p2_signal_engine` | Registrado y activo |
+| P3 | `totals_market_context` | summary → `p3_signal_engine` | Registrado y activo |
+| P4 | `temporal_market_drift` | summary → module (`p4_signal_engine`) | Registrado y activo (`P4MiningAdapter`) |
+| P5 | `exact_price_memory` | summary → exact price memory module | Pendiente de adaptador |
 
-P1, P2 y P3 están registrados para escritura actualmente. P4 y P5 quedan
-pendientes de escritura. P1 no necesita `bookie_id`: su output es un perfil de
-equipos y no una observación de book. P4 y P5 sí deben exponer `bookie_id` en
-sus outputs antes de activar sus adaptadores. El adaptador no debe resolver IDs
-por nombre. La misma regla aplica a cualquier identidad canónica: si no viene
-del productor o del contexto, no se adivina.
+P1, P2, P3 y P4 están registrados para escritura actualmente en `_registered_mining_adapters()` (`modules/jobs/pre_start_check_job/pillar_pipeline.py`). P4 utiliza `P4MiningAdapter` (`modules/pillars/mining/adapters/pillar_4.py`) para persistir su perfil temporal en `payload_schema_version = 2` sin inventar score escalar ni dirección global; preserva el perfil estructurado completo en `payload->'P4_SIGNAL_PROFILE'` y proyecta dimensiones de mercado (mercados, períodos, vistas, bookies, fuentes, lados de exchange y series).
 
-Los resultados FT pueden evaluarse con `results`. Una evaluación de primer
-tiempo o de una línea totals necesita una fuente de outcome apropiada; no debe
-forzarse con `results.winner` si semánticamente no corresponde.
+P5 queda pendiente de adaptador de minería y escritura. La regla de procedencia canónica se mantiene: si una identidad o metadato no proviene del productor o del contexto, ningún adaptador debe adivinarla.
+
+Los resultados FT pueden evaluarse con `results`. Una evaluación de primer tiempo o de una línea totals necesita una fuente de outcome apropiada; no debe forzarse con `results.winner` si semánticamente no corresponde.
 
 ## 8. Implementación de persistencia de P1
 
@@ -414,6 +406,7 @@ validación del contrato y finalmente la conectividad/transacción del repositor
   Totals.
 - `modules/pillars/mining/adapters/pillar_2.py`: traducción de P2.
 - `modules/pillars/mining/adapters/pillar_3.py`: traducción estructural de P3.
+- `modules/pillars/mining/adapters/pillar_4.py`: traducción del perfil temporal de P4.
 - `infrastructure/persistence/models.py`: esquema SQLAlchemy.
 - `infrastructure/persistence/repositories/pillar_mining_repository.py`: transacción.
 - `infrastructure/persistence/database.py`: migración de esquema.

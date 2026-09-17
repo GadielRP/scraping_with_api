@@ -5,13 +5,10 @@ This repository implements a modular monolith for ingesting sports events and od
  and scrapes supplemental data from OddsPortal, persists everything in PostgreSQL, runs rule‑based algorithms (dual process, matchup streak, basketball 4th‑quarter projections and more) and dispatches notifications via Telegram.
 
 Key capabilities include:
-
-Event discovery and persistence – multiple discovery sources scan SofaScore feeds for upcoming games, deduplicate them and store events and opening odds in a unified schema.
-Selective odds extraction – key moments (120, 30, 5, 0 and −5 minutes around kick‑off) trigger odds snapshots and market persistence. Alerts are only sent at the 30‑minute and −5‑minute marks.
-Prediction & alerting pipeline – a three‑phase workflow synchronises supplemental OddsPortal data, evaluates dual process and matchup streak rules, and dispatches formatted notifications via Telegram. A separate basketball 4Q predictor uses historical momentum and rhythm models.
 *   Event discovery and persistence – multiple discovery sources scan SofaScore feeds for upcoming games, deduplicate them and store events and opening odds in a unified schema.
-*   Selective odds extraction – key moments (120, 30, 5, 0 and −5 minutes around kick‑off) trigger odds snapshots and market persistence. Alerts are only sent at the 30‑minute and −5‑minute marks.
-*   Prediction & alerting pipeline – a three‑phase workflow synchronises supplemental OddsPortal data, evaluates dual process and matchup streak rules, and dispatches formatted notifications via Telegram. A separate basketball 4Q predictor uses historical momentum and rhythm models.
+*   Selective odds extraction – key moments (120, 30, 5, 1, 0, and −5 minutes around kick‑off) trigger odds snapshots and market persistence. Alerts are dispatched according to configured precision alert gates (e.g. 30 and 5 minutes).
+*   Prediction & alerting pipeline – a multi-stage workflow synchronises supplemental OddsPortal data, evaluates dual process and matchup streak rules, and dispatches formatted notifications via Telegram. A separate basketball 4Q predictor uses historical momentum and rhythm models.
+*   Pillar signal architecture – modular analytical pillars (P1 through P5) evaluate structural strengths, market contexts, and price trajectories, persisting profiles through a standardized mining layer.
 *   Scheduled jobs with CLI – a built‑in scheduler runs discovery, pre‑start checks, midnight result collection and daily discovery at configurable times. All jobs can also be triggered ad‑hoc through main.py commands.
 *   Extensible modules – the code is organised into clearly defined packages: alerts, jobs, observations, oddsportal scraping, prediction, infrastructure and shared utilities. Adding a new alert type or job only requires implementing a module under the appropriate package and wiring it through the CLI.
 
@@ -27,12 +24,19 @@ root_dir/
     initialize.py
     logging_setup.py
     commands/                  # individual CLI command implementations
+  docs/                        # technical architecture, pillar blueprints, and provider guides
+    architecture/              # contracts and system design
+    pillars/                   # pillar implementation specs and mining persistence
+    providers/                 # odds ingestion, OddsPortal scraping & snapshots
+    archive/                   # historical migration records and audit reports
   modules/                     # domain logic organised by feature
     alerts/                    # alert transport & formatting engines
     jobs/                      # scheduled and ad‑hoc jobs
     observations/              # observations & sport‑specific enrichments
     oddsportal/                # Playwright scraper & models for OddsPortal
-    pillars/                   # modular prediction pillars (P1, P4, P5) and normalized event context
+    odds_ingestion/            # canonical multi-provider odds ingestion service & adapters
+    oddspapi/                  # Oddspapi client, quota scheduler & candidate matching
+    pillars/                   # modular prediction pillars (P1–P5), mining layer & EventContext
     prediction/                # prediction logging & utilities
     sofascore/                 # SofaScore API client & helpers
   infrastructure/              # cross‑cutting concerns: networking, persistence, scheduling, settings
@@ -75,11 +79,7 @@ dual_process/ – implements the dual process alert strategy. The process_1 and 
 matchup_streak_analysis/ – analyses head‑to‑head records, historical form and standings. It defines constants.py, head_to_head.py, historical_form.py, standings_engine.py, standings_rules.py, standings_simulator.py and winning_odds.py. The run_matchup_streak_analysis.py script triggers this pipeline and uses the materialised view mv_alert_events for candidate lookup.
 ### Jobs (modules/jobs)
 
-Oddspapi jobs are grouped under `modules/jobs/oddspapi/`, with each job in its
-own subpackage. `fixture_discovery/` creates mappings for known canonical
-events, while `pre_start_odds/` requests and ingests odds for those existing
-mappings inside the main pre-start lifecycle. This keeps discovery and odds
-ingestion separate without creating a second pre-start scheduler.
+Oddspapi jobs are grouped under `modules/jobs/oddspapi/fixture_discovery/` for mapping known canonical events to Oddspapi fixtures, while pre-start odds acquisition lives in `modules/jobs/pre_start_check_job/providers/oddspapi/` inside the pre-start lifecycle. This keeps discovery and odds ingestion separate without creating a second pre-start scheduler.
 
 Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
@@ -105,15 +105,15 @@ The pre-start check runs repeatedly (every `POLL_INTERVAL_MINUTES`, default 5m) 
 
 3. **Candidate Plan Generation (`build_pre_start_event_candidates`)**:
    - Computes exact `minutes_until_start` for each event against UTC clock time.
-   - Evaluates whether the event aligns with key operational moments (`PRE_START_ODDS_MOMENTS`, e.g. `120, 30, 5, 1, -5`).
+   - Evaluates whether the event aligns with key operational moments (`PRE_START_ODDS_MOMENTS`, e.g. `120, 30, 5, 1, 0, -5`).
    - Runs `should_extract_odds_for_event`: calls the SofaScore `/event/{id}` endpoint when timestamp correction is enabled, ingests court surface / ground observations, captures rankings into `metadata_snapshot`, and handles rescheduled events.
    - Applies provider-specific competition gating (`ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY`, `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY`) to set the `should_extract_odds` decision flag.
    - Yields a unified `PreStartEventPlan` containing the active candidate list and an `event_id` index lookup.
 
 4. **Multi-Provider Ingestion & Prediction Handoff**:
-   - **SofaScore & Oddspapi Odds**: Ingests fresh bookmaker odds and temporal snapshots using the candidate plan's `should_extract_odds` flags.
-   - **OddsPortal Scraping**: Concurrently queries external markets for candidates matching opening capture moments.
-   - **Alerts & Pillars**: Transforms candidate records into typed `EventContext` instances via `_build_evaluation_payloads`, executing matchup streak rules, dual process algorithms, and statistical pillars (P1, P4, P5).
+   - **SofaScore & Oddspapi Odds**: Ingests fresh bookmaker odds and temporal snapshots using the candidate plan's `should_extract_odds` flags via dedicated provider runners in `modules/jobs/pre_start_check_job/providers/` coordinated by `MarketOddsIngestionService`. See [`docs/providers/pre_start_odds_ingestion.md`](docs/providers/pre_start_odds_ingestion.md) and [`docs/providers/odds-significant-change-snapshots.md`](docs/providers/odds-significant-change-snapshots.md).
+   - **OddsPortal Scraping**: Concurrently queries external markets for candidates matching opening capture moments (`Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES`, default 120).
+   - **Alerts & Pillars**: Transforms candidate records into typed `EventContext` instances via `_build_evaluation_payloads`, executing matchup streak rules, dual process algorithms, and statistical pillars (P1–P5).
 
 results_collection_job/ – collects finished match results and updates prediction logs.
 
@@ -132,20 +132,23 @@ The pillars package implements specialized analytical and statistical signal eng
 * `streak_analysis_resolver.py`: Centralized resolver that coordinates matchup streak evaluation and form analysis across alert and pillar pipelines.
 * `competition_metadata_resolver.py`: Enriches and caches league structure details (e.g. number of teams, total regular season games, standings groupings).
 * `pillar_1_team_structure/`: Multilayer side and totals engine (Base Strength, Offensive Profile, Direct Matchup, Quality-Adjusted Immediate State, Structural Drift, Opponent Expectation, etc.).
-* `pillar_4_temporal_market_drift/`: Evaluates market velocity and temporal drift across opening and closing odds.
-* `pillar_5_exact_price_memory/`: Analyzes price memory, stability and exact quote distribution across bookmakers.
+* `pillar_2_side_market/`: Evaluates side market dynamics, spreads, and market consensus.
+* `pillar_3_totals_market_context/`: Evaluates totals market context, distribution expectations, and line stability.
+* `pillar_4/`: Evaluates market velocity and temporal drift across opening and closing odds (`calculate_pillar_4`). See [`docs/pillars/p4-temporal-market-drift.md`](docs/pillars/p4-temporal-market-drift.md).
+* `pillar_5/`: Analyzes price memory, stability and exact quote distribution across bookmakers (`run_pillar_5`).
+* `mining/`: Unified persistence and feature extraction layer (`PillarMiningRepository`) storing JSONB signal profiles for analytical pillars. See [`docs/pillars/mining-persistence.md`](docs/pillars/mining-persistence.md).
 
 ### OddsPortal Scraping (modules/oddsportal)
 
-This package encapsulates a Playwright‑based scraper that captures authoritative opening odds at a configurable pre-start minute. Core modules include:
+This package encapsulates a Playwright‑based scraper that captures authoritative opening odds at a configurable pre-start minute (`Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES`, default 120). Core modules include:
 
-scraper_impl.py, scraper_browser.py and scraper_render.py – implement the asynchronous browser, page navigation and element extraction.
-scraper_lookup.py and team_matcher.py – resolve SofaScore events to OddsPortal URLs using league caches and fuzzy team matching.
-scraper_data.py and models.py – define dataclasses for odds snapshots, markets, matches and results.
-oddsportal_dispatcher.py – orchestrates concurrent scraping using a dispatcher that decouples league cache seeding from event scraping. This allows sibling events to begin scraping in parallel once the league page is resolved.
-oddsportal_config.py – configuration and mapping for OddsPortal seasons, markets and scraping routes.
+* `scraper_impl.py`, `scraper_browser.py` and `scraper_render.py` – implement browser management, page navigation, anti-automation flags, and element extraction.
+* `scraper_lookup.py` and `team_matcher.py` – resolve SofaScore events to OddsPortal URLs using league caches and fuzzy team matching.
+* `scraper_data.py` and `dataclasses.py` – define typed data models for odds snapshots, markets, matches and results.
+* `oddsportal_dispatcher.py` – orchestrates concurrent scraping across Chromium browser workers partitioned by season (`scrape_multiple_matches_parallel_sync`).
+* `oddsportal_config.py` and `oddsportal_routes.py` – configuration and mapping for OddsPortal seasons, markets and scraping routes.
 
-Data scraped here is normalised into the same schema as SofaScore odds and persisted via the infrastructure layer.
+Data scraped here is canonicalized via `OddsPortalMarketAdapter` and persisted through `MarketOddsIngestionService.save_from_oddsportal_data()`. See [`docs/providers/oddsportal_scraping.md`](docs/providers/oddsportal_scraping.md) for comprehensive operational details.
 
 #### Temporary provider ownership policy
 
@@ -210,10 +213,12 @@ Settings – settings/config.py reads environment variables (via python‑dotenv
 ) and exposes typed configuration. Important options include database URL, polling intervals, discovery times, timezone, proxy toggles, and Telegram credentials.
 ## Shared Utilities
 
-The shared/ package houses small helpers that don’t belong to a specific module. For example:
+The shared/ package houses cross-cutting helpers that don’t belong to a specific module:
 
-odds_utils.py – convert fractional odds to decimals and compute deltas.
-timezone_utils.py – provide timezone‑aware conversions between UTC and local time (default America/Mexico_City).
+* `temporal.py` – canonical temporal primitives enforcing timezone-aware UTC instants and IANA local conversions (see [`docs/architecture/temporal-contract.md`](docs/architecture/temporal-contract.md)).
+* `odds_utils.py` – convert fractional odds to decimals and compute deltas.
+* `runtime_observability.py` – structured logging and diagnostic metrics for critical paths.
+* `shutdown.py` – clean process termination handling.
 ## Scripts
 
 One‑off scripts live under scripts/. They support administrative tasks such as:
@@ -318,11 +323,12 @@ ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES=60
 # The pre-start scheduler cadence and its shared timing moments.
 POLL_INTERVAL_MINUTES=5
 PRE_START_T_MINUS_ONE_INTERVAL_MINUTES=1
-PRE_START_ODDS_MOMENTS=120,30,5,1,-5
+PRE_START_ODDS_MOMENTS=120,30,5,1,0,-5
 PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
 
 # Oddspapi pre-start ingestion.
 ENABLE_ODDSPAPI_PRE_START_ODDS=true
+ODDSPAPI_PRE_START_ALLOWED_MOMENTS=5
 ODDSPAPI_PRE_START_ODDS_ENDPOINT=historical-odds
 ODDSPAPI_PRE_START_WORKERS=4
 ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle,bet365
@@ -347,6 +353,7 @@ without a key the flow logs one warning and skips eligible events. The legacy
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
 | `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
+| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | `5` | Whitelist of operational moments at which Oddspapi pre-start odds acquisition executes (default T-5 only; `[5,0]` is an operational override). |
 | `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `historical-odds` | Selects the regular-bookmaker source. Historical mode uses the latest historical observation as current odds and the earliest credible observation as initial odds, without calling `/v4/odds` unless an exchange bookmaker is enabled. |
 | `ODDSPAPI_PRE_START_WORKERS` | `4` | Maximum concurrent pre-start workers. Effective concurrency is bounded by work items and eligible endpoint keys. Workers own HTTP sessions, while keys are dynamically leased per request. |
 | `ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS` | `24` | Durable `/v4/account` refresh interval used to reconcile reported and locally estimated quota usage. |
@@ -366,7 +373,7 @@ without a key the flow logs one warning and skips eligible events. The legacy
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
 | `POLL_INTERVAL_MINUTES` | `5` | Frequency of the existing pre-start cycle. The job checks exact rounded minute values, so choose a cadence that lands on the configured key moments. |
 | `PRE_START_T_MINUS_ONE_INTERVAL_MINUTES` | `1` | Frequency of the isolated closing-odds scheduler. Keep it at `1` to cover events starting at any minute. |
-| `PRE_START_ODDS_MOMENTS` | `120,30,5,1,-5` | Exact rounded minutes before/after kickoff at which **both** SofaScore and Oddspapi are eligible to capture odds. The closing minute is owned by the isolated T-1 ingestion lane. |
+| `PRE_START_ODDS_MOMENTS` | `120,30,5,1,0,-5` | Exact rounded minutes before/after kickoff at which pre-start lifecycle evaluates candidates. The closing minute is owned by the isolated T-1 ingestion lane. |
 | `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` | `3` | Allowed distance from a configured moment when loading the downstream trajectory. |
 
 `/v4/odds` is never requested when `minutes_until_start <= 0`, even if an
@@ -380,10 +387,10 @@ pool, but requests acquire keys from the shared quota-aware scheduler. Exchange
 mode preserves the serial per-event budget while outcome-scoped historical
 requests fan out through at most four scheduler-backed workers.
 
-Oddspapi `createdAt` values are interpreted as UTC and converted through
-`shared.timezone_utils.convert_utc_to_local` before being stored as the naive
-project-local `market_choice_snapshots.source_collected_at`. This applies to
-both the opening (`initialChangedAt`) and latest (`changedAt`) observations.
+Oddspapi `createdAt` values are interpreted as UTC and normalized through
+`shared.temporal` before being stored as project-local
+`market_choice_snapshots.source_collected_at` (see [`docs/architecture/temporal-contract.md`](docs/architecture/temporal-contract.md)).
+This applies to both the opening (`initialChangedAt`) and latest (`changedAt`) observations.
 
 The standalone utilities in `odds_papi/` use the same comma-separated
 `ODDSPAPI_KEY` setting. They select the first key by default; set
