@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
+from shared.temporal import from_unix_timestamp
 
 from modules.competition.league_config import (
     get_canonical_season_id,
@@ -489,7 +490,7 @@ class HistoricalStandingsCalculator:
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        cutoff_dt = datetime.fromtimestamp(cutoff_timestamp)
+        cutoff_dt = from_unix_timestamp(cutoff_timestamp)
         all_season_ids = get_included_season_ids(
             source_unique_tournament_id,
             source_tournament_id,

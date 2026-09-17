@@ -7,14 +7,15 @@ traverse raw payloads.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Sequence
 
 # Re-export the existing public name while keeping the DTO independent of
 # project timezone/configuration for the dynamic domain reducer.
 from modules.oddspapi.historical_odds_quote import HistoricalOddsAsOfQuote
 
-from shared.timezone_utils import convert_local_to_utc, convert_utc_to_local
+from shared.temporal import as_utc
+from shared.timezone_utils import convert_utc_to_local
 
 
 class OddspapiHistoricalOddsAsOf:
@@ -24,15 +25,12 @@ class OddspapiHistoricalOddsAsOf:
     def start_time_as_utc(start_time: datetime | None) -> datetime | None:
         """Normalize the canonical event start to an aware UTC boundary.
 
-        Canonical event datetimes are stored as local-naive values despite the
-        legacy ``start_time_utc`` field name. A timezone-aware value is treated
-        according to its own offset.
+        Canonical event datetimes are absolute, timezone-aware instants. A
+        naive value is rejected instead of being guessed at this boundary.
         """
         if start_time is None:
             return None
-        if start_time.tzinfo is None:
-            return convert_local_to_utc(start_time).replace(tzinfo=timezone.utc)
-        return start_time.astimezone(timezone.utc)
+        return as_utc(start_time, field_name="start_time_utc")
 
     @classmethod
     def targets_from_start(
@@ -46,10 +44,7 @@ class OddspapiHistoricalOddsAsOf:
         start_utc = cls.start_time_as_utc(start_time)
         if start_utc is None:
             return []
-        if start_time.tzinfo is None:
-            start_local = start_time
-        else:
-            start_local = convert_utc_to_local(start_time)
+        start_local = convert_utc_to_local(start_time)
         targets: list[tuple[int, datetime, datetime]] = []
         for moment in moments:
             try:

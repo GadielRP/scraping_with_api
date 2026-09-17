@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import schedule
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib import import_module
 from types import SimpleNamespace
 
@@ -65,11 +65,6 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
     monkeypatch,
     caplog,
 ):
-    class FixedDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 8, 13, 18, 59, 3)
-
     query_windows = []
     calls = []
     scheduler = SimpleNamespace(
@@ -77,10 +72,21 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
             get_events_starting_between=lambda start, end, **kwargs: query_windows.append(
                 (start, end)
             )
-            or [{"id": 101, "start_time_utc": datetime(2026, 8, 13, 19, 0)}]
+            or [
+                {
+                    "id": 101,
+                    "start_time_utc": datetime(
+                        2026, 8, 13, 19, 0, tzinfo=timezone.utc
+                    ),
+                }
+            ]
         )
     )
-    monkeypatch.setattr(t_minus_one_module, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        t_minus_one_module,
+        "utc_now",
+        lambda: datetime(2026, 8, 13, 18, 59, 3, tzinfo=timezone.utc),
+    )
     monkeypatch.setattr(
         t_minus_one_module,
         "run_pre_start_odds_moments",
@@ -90,14 +96,14 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
     with caplog.at_level(logging.INFO):
         result = t_minus_one_module.run_t_minus_one_odds_job(
             scheduler,
-            datetime(2026, 8, 13, 18, 59),
+            datetime(2026, 8, 13, 18, 59, tzinfo=timezone.utc),
         )
 
     assert result == "plan"
     assert query_windows == [
         (
-            datetime(2026, 8, 13, 19, 0),
-            datetime(2026, 8, 13, 19, 0, 1),
+            datetime(2026, 8, 13, 19, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 13, 19, 0, 1, tzinfo=timezone.utc),
         )
     ]
     assert calls[0][1]["key_moments"] == (1,)
@@ -107,11 +113,6 @@ def test_t_minus_one_job_queries_exact_slot_and_records_dispatch_lag(
 
 
 def test_t_minus_one_job_does_not_replay_after_event_start(monkeypatch):
-    class FixedDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 8, 13, 19, 0)
-
     scheduler = SimpleNamespace(
         event_repo=SimpleNamespace(
             get_events_starting_between=lambda *_args: (_ for _ in ()).throw(
@@ -119,12 +120,16 @@ def test_t_minus_one_job_does_not_replay_after_event_start(monkeypatch):
             )
         )
     )
-    monkeypatch.setattr(t_minus_one_module, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        t_minus_one_module,
+        "utc_now",
+        lambda: datetime(2026, 8, 13, 19, 0, tzinfo=timezone.utc),
+    )
 
     assert (
         t_minus_one_module.run_t_minus_one_odds_job(
             scheduler,
-            datetime(2026, 8, 13, 18, 59),
+            datetime(2026, 8, 13, 18, 59, tzinfo=timezone.utc),
         )
         is None
     )
@@ -143,7 +148,7 @@ def test_t_minus_one_job_skips_when_closing_moment_is_not_configured(monkeypatch
     assert (
         t_minus_one_module.run_t_minus_one_odds_job(
             scheduler,
-            datetime(2026, 8, 13, 18, 59),
+            datetime(2026, 8, 13, 18, 59, tzinfo=timezone.utc),
         )
         is None
     )

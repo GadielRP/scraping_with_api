@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 
 from infrastructure.settings import Config
+from shared.temporal import as_utc, utc_now
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
 )
@@ -23,7 +24,8 @@ def run_t_minus_one_odds_job(
     debug_mode: bool = False,
 ):
     """Ingest provider odds for the closing event slot one minute ahead."""
-    now = datetime.now()
+    scheduled_at = as_utc(scheduled_at, field_name="scheduled_at")
+    now = utc_now()
     closing_minute = Config.PRE_START_CLOSING_ODDS_MINUTE
     target_start = scheduled_at + timedelta(minutes=closing_minute)
     dispatch_lag_ms = max(0, int((now - scheduled_at).total_seconds() * 1000))

@@ -10,7 +10,7 @@ docs/refactors/db-schema-odds-refactor.md (Fase 2).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -39,7 +39,7 @@ def _seed_event_and_bookie(manager):
     with manager.get_session() as session:
         event = Event(
             slug="betfair-quote-fix",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",

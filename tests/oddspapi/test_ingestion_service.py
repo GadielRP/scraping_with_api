@@ -320,7 +320,7 @@ def _seed_repository_entities(manager):
     with manager.get_session() as session:
         event = Event(
             slug="exchange-test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Premier League",
             home_team="Home",
@@ -860,7 +860,7 @@ def test_live_acquisition_passes_event_start_as_historical_current_cutoff():
         exchange_request_budget=None,
         minimum_initial_span_minutes=60,
         current_odds_available=True,
-        start_time_utc=datetime(2026, 8, 20, 20, 0),
+        start_time_utc=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
     )
 
     assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT
@@ -912,7 +912,7 @@ def test_live_acquisition_can_disable_post_kickoff_tick_filter():
         current_odds_available=True,
         require_active_quotes=False,
         filter_post_kickoff_ticks=False,
-        start_time_utc=datetime(2026, 8, 20, 20, 0),
+        start_time_utc=datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc),
     )
 
     assert captured["endpoint"] == ODDSPAPI_HISTORICAL_ODDS_ENDPOINT

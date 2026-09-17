@@ -7,6 +7,7 @@ Provides consistent timezone handling across all components.
 from datetime import datetime
 import pytz
 from infrastructure.settings import Config
+from shared.temporal import UTC, as_utc, in_timezone, interpret_local_naive, utc_now
 
 # Get the configured timezone
 TIMEZONE = pytz.timezone(Config.TIMEZONE)
@@ -19,7 +20,7 @@ def get_local_now():
     Returns:
         datetime: Current time in local timezone (naive, for database storage)
     """
-    return datetime.now(TIMEZONE).replace(tzinfo=None)
+    return get_local_now_aware().replace(tzinfo=None)
 
 
 def get_local_now_aware():
@@ -29,7 +30,12 @@ def get_local_now_aware():
     Returns:
         datetime: Current time in local timezone (with timezone info)
     """
-    return datetime.now(TIMEZONE)
+    return in_timezone(utc_now(), Config.TIMEZONE)
+
+
+def get_utc_now():
+    """Return the current absolute instant as an aware UTC datetime."""
+    return utc_now()
 
 
 def get_local_now_iso():
@@ -53,9 +59,9 @@ def convert_utc_to_local(utc_dt, keep_tzinfo=False):
     Returns:
         datetime: Local timezone datetime (naive or aware depending on keep_tzinfo)
     """
-    if utc_dt.tzinfo is None:
-        utc_dt = utc_dt.replace(tzinfo=pytz.UTC)
-    local_dt = utc_dt.astimezone(TIMEZONE)
+    if utc_dt.tzinfo is None or utc_dt.utcoffset() is None:
+        utc_dt = utc_dt.replace(tzinfo=UTC)
+    local_dt = in_timezone(utc_dt, Config.TIMEZONE)
     if keep_tzinfo:
         return local_dt
     return local_dt.replace(tzinfo=None)
@@ -71,8 +77,8 @@ def convert_local_to_utc(local_dt):
     Returns:
         datetime: UTC datetime (naive)
     """
-    # Localize to Mexico City timezone
-    local_aware = TIMEZONE.localize(local_dt)
-    # Convert to UTC
-    utc_dt = local_aware.astimezone(pytz.UTC)
+    if local_dt.tzinfo is None or local_dt.utcoffset() is None:
+        utc_dt = interpret_local_naive(local_dt, Config.TIMEZONE)
+    else:
+        utc_dt = as_utc(local_dt)
     return utc_dt.replace(tzinfo=None)

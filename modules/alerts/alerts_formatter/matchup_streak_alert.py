@@ -1,8 +1,10 @@
 """Formatting helpers for matchup streak alerts."""
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from infrastructure.settings import Config
+from shared.temporal import from_unix_timestamp, in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ def _format_game_date(timestamp: int) -> str:
     if timestamp == 0:
         return ""
     try:
-        dt = datetime.fromtimestamp(timestamp)
+        dt = in_timezone(from_unix_timestamp(timestamp), Config.TIMEZONE)
         return dt.strftime("%m/%d/%Y")
     except Exception:
         return ""

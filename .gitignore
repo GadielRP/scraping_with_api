@@ -122,6 +122,7 @@ tests/*
 !tests/test_event_odds_availability.py
 !tests/test_odds_endpoint_404_handling.py
 !tests/test_t_minus_one_odds_job.py
+!tests/test_temporal_contract.py
 !tests/test_oddspapi_api_keys.py
 !tests/test_tennis_snapshot_observations.py
 !tests/test_oddsportal_hover_parser.py
@@ -202,3 +203,5 @@ reduced_sofascore.sqlite3
 # documentacion
 
 docs/audits/*.md
+!docs/refactors/database-hardening-roadmap.md
+!docs/architecture/temporal-contract.md

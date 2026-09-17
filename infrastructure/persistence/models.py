@@ -4,6 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from shared.timezone_utils import get_local_now
+from infrastructure.persistence.types import UTCDateTime
 
 Base = declarative_base()
 
@@ -66,7 +67,11 @@ class Event(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     custom_id = Column(Text)
     slug = Column(Text, nullable=False)
-    start_time_utc = Column(DateTime, nullable=False)
+    # COMPATIBILITY NAME: ``_utc`` is retained to avoid a costly cross-codebase
+    # rename. PostgreSQL stores this timestamptz as an absolute instant; clients
+    # may display that instant with another offset (for example ``-06``). The
+    # Python/domain contract is nevertheless always a timezone-aware UTC value.
+    start_time_utc = Column(UTCDateTime(), nullable=False)
     sport = Column(Text, nullable=False)
     # LEGACY_EVENT_TEXT_FIELDS:
     # Kept for backward compatibility with historical rows and old runtime paths.
@@ -200,7 +205,7 @@ class EventSourceResolutionQueue(Base):
     participant2_name = Column(Text, nullable=True)
     participant2_short_name = Column(Text, nullable=True)
     participant2_abbr = Column(Text, nullable=True)
-    source_start_time_utc = Column(DateTime, nullable=True)
+    source_start_time_utc = Column(UTCDateTime(), nullable=True)
     raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
     raw_payload = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)
     candidate_scores = Column(JSONB().with_variant(JSON(), 'sqlite'), nullable=True)

@@ -31,6 +31,7 @@ from modules.pillars.common import (
     classify_strength,
 )
 from modules.pillars.context import EventContext
+from shared.temporal import from_unix_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -229,8 +230,9 @@ def _extract_game_gd_series(results: List[Dict], side: str = "", debug_mode: boo
                 opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
                 game_date = ""
                 if "startTimestamp" in result:
-                    import datetime
-                    game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                    game_date = (
+                        f" [{from_unix_timestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                    )
                 log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: GD could not be extracted")
             continue
 
@@ -238,8 +240,9 @@ def _extract_game_gd_series(results: List[Dict], side: str = "", debug_mode: boo
             opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
             game_date = ""
             if "startTimestamp" in result:
-                import datetime
-                game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                game_date = (
+                    f" [{from_unix_timestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                )
             ts = result.get("team_score")
             os_ = result.get("opponent_score")
             log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: gd={_fmt(gd, 1)} (team_score({ts}) - opponent_score({os_}) = {_fmt(gd, 1)})")
@@ -1237,7 +1240,10 @@ def calculate_base_strength(
             _event_ts = event_context.start_time_utc.timestamp()
         if _event_ts:
             import datetime
-            _event_date_str = datetime.datetime.fromtimestamp(_event_ts).strftime("%Y-%m-%d %H:%M:%S")
+            _event_date_str = datetime.datetime.fromtimestamp(
+                _event_ts,
+                tz=datetime.timezone.utc,
+            ).strftime("%Y-%m-%d %H:%M:%S UTC")
             _debug_line("Momento exacto de la tabla (Corte temporal): %s", _event_date_str)
             
         _current_standings = getattr(streak_analysis, "current_standings", None)

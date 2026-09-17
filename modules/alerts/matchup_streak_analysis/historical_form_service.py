@@ -13,17 +13,18 @@ historical_form_reporting.
 
 import logging
 import os
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
+from infrastructure.settings import Config
 from modules.competition.league_config import (
     get_collected_season_bundle,
     get_grouping_method,
     get_included_season_ids,
     get_standings_method,
 )
+from shared.temporal import from_unix_timestamp, in_timezone
 from .historical_form_reporting import (
     format_standings_table_for_telegram,
     send_debug_telegram,
@@ -228,7 +229,10 @@ class HistoricalFormService:
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
         )
-        current_date = datetime.fromtimestamp(current_event_timestamp).strftime("%Y-%m-%d %H:%M")
+        current_date = in_timezone(
+            from_unix_timestamp(current_event_timestamp),
+            Config.TIMEZONE,
+        ).strftime("%Y-%m-%d %H:%M")
         title = f"CURRENT Standings (at {current_date})"
         message = format_standings_table_for_telegram(
             current_standings,

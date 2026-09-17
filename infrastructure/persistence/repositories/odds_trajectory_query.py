@@ -7,7 +7,7 @@ so this query returns every persisted snapshot for the selected quote lineage.
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, bindparam, text
+from sqlalchemy import Integer, String, bindparam, text
 from sqlalchemy.sql.elements import TextClause
 
 
@@ -246,7 +246,10 @@ def build_pre_start_trajectory_query() -> TextClause:
             snapshots.collected_at,
             ROUND(
                 EXTRACT(
-                    EPOCH FROM (canonical.start_time_utc - snapshots.collected_at)
+                    EPOCH FROM (
+                        canonical.start_time_utc
+                        - timezone(:snapshot_timezone, snapshots.collected_at)
+                    )
                 ) / 60
             )::int AS observed_minutes_before_start,
             ROUND(
@@ -254,8 +257,14 @@ def build_pre_start_trajectory_query() -> TextClause:
                     EPOCH FROM (
                         canonical.start_time_utc
                         - COALESCE(
-                            snapshots.source_collected_at,
-                            snapshots.collected_at
+                            timezone(
+                                :snapshot_timezone,
+                                snapshots.source_collected_at
+                            ),
+                            timezone(
+                                :snapshot_timezone,
+                                snapshots.collected_at
+                            )
                         )
                     )
                 ) / 60,
@@ -285,7 +294,10 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.choice_display_order NULLS LAST,
             canonical.choice_name
         """
-    ).bindparams(bindparam("event_ids", expanding=True, type_=Integer))
+    ).bindparams(
+        bindparam("event_ids", expanding=True, type_=Integer),
+        bindparam("snapshot_timezone", type_=String),
+    )
 
 
 __all__ = ["build_pre_start_trajectory_query"]

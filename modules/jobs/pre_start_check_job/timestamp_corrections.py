@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Set
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.persistence.repositories import ResultRepository
 from infrastructure.settings import Config
+from shared.temporal import from_unix_timestamp, utc_now
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
@@ -19,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 def convert_timestamp_to_datetime(timestamp: int) -> datetime:
-    """Convert Unix timestamp to datetime object."""
-    return datetime.fromtimestamp(timestamp)
+    """Convert a Unix timestamp to an aware UTC instant."""
+    return from_unix_timestamp(timestamp)
 
 
 def is_event_starting_soon(start_timestamp: int, window_minutes: int = 30) -> bool:
     """Check if an event is starting within the specified window."""
-    now = datetime.now()
+    now = utc_now()
     event_time = convert_timestamp_to_datetime(start_timestamp)
 
     delta_min = (event_time - now).total_seconds() / 60

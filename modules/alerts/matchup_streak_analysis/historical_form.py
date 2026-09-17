@@ -8,10 +8,11 @@ Extracted from streak_alerts.py (StreakAlertEngine methods).
 
 import logging
 from typing import Dict, List, Optional, Set, Tuple
-from datetime import datetime
 
+from infrastructure.settings import Config
 from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
+from shared.temporal import from_unix_timestamp, in_timezone
 
 from modules.competition.league_config import (
     get_grouping_method,
@@ -817,7 +818,14 @@ def get_team_last_results_by_id(
             logger.info(f"📊 Team {team_name} processed {len(all_results)} total results from {filter_type} '{filter_value}'{match_type_info}:")
             for i, result in enumerate(all_results[:5]):  # Show first 5
                 timestamp = result.get('startTimestamp', 0)
-                date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M') if timestamp > 0 else 'Invalid'
+                date_str = (
+                    in_timezone(
+                        from_unix_timestamp(timestamp),
+                        Config.TIMEZONE,
+                    ).strftime('%Y-%m-%d %H:%M')
+                    if timestamp > 0
+                    else 'Invalid'
+                )
                 own_rank = result.get('own_ranking', 0)
                 opp_rank = result.get('opponent_ranking', 0)
                 logger.info(f"  {i+1}. {date_str} - Winner: {result.get('winner', 'N/A')} ~{own_rank} vs ~{opp_rank} {result.get('opponent_name', 'N/A')}")

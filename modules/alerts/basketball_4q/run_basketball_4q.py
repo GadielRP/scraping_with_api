@@ -16,7 +16,7 @@ from modules.alerts.alerts_formatter.q4_alert import create_q4_alert_message
 from modules.alerts.basketball_4q.predictor import predictor_4q
 from infrastructure.persistence.models import Event
 from modules.sofascore import api_client
-from shared.timezone_utils import get_local_now
+from shared.temporal import as_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class Basketball4QMonitor:
                     f"({event['competition']}) - Started {minutes_since_start} minutes ago"
                 )
 
-            now = get_local_now()
+            now = utc_now()
             check_window_start = now - timedelta(minutes=140)
             check_window_end = now - timedelta(minutes=105)
 
@@ -280,8 +280,12 @@ class Basketball4QMonitor:
     def _calculate_minutes_since_start(self, start_time_utc) -> int:
         """Calculate minutes since event started."""
         try:
-            now = get_local_now()
-            time_diff = now - start_time_utc
+            now = utc_now()
+            event_start = as_utc(
+                start_time_utc,
+                field_name="basketball event start_time_utc",
+            )
+            time_diff = now - event_start
             return int(time_diff.total_seconds() / 60)
         except Exception as e:
             logger.error(f"Error calculating minutes since start: {e}")

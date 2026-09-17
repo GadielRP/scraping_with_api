@@ -34,7 +34,7 @@ from modules.odds_ingestion.market_odds_ingestion_service import (
 )
 from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.database import db_manager
-from shared.timezone_utils import get_local_now
+from shared.temporal import utc_now
 from sqlalchemy import or_
 from typing import Dict, List
 import logging
@@ -210,7 +210,7 @@ def reconcile_existing_season_events(
     cutoff_time=None,
 ) -> dict:
     if cutoff_time is None:
-        cutoff_time = get_local_now()
+        cutoff_time = utc_now()
 
     candidate_ids = get_season_events_missing_from_view(
         season_ids=season_ids,
@@ -533,7 +533,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
             logger.error(f"Error processing event {event_payload.get('id')}: {e}")
             continue
 
-    reconciliation_cutoff_time = get_local_now()
+    reconciliation_cutoff_time = utc_now()
     if fetch_odds:
         EventSourceMappingRepository.mark_odds_unavailable(
             missing_odds_event_ids,

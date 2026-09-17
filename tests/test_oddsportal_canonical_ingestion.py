@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from types import MappingProxyType, SimpleNamespace
 from unittest.mock import patch
 
@@ -334,7 +334,7 @@ def _seed_event_and_bookie(manager):
     with manager.get_session() as session:
         event = Event(
             slug="home-away",
-            start_time_utc=datetime(2026, 8, 4, 12, 0),
+            start_time_utc=datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",

@@ -6,6 +6,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from infrastructure.persistence.models import Competition, Event, Result, EventObservation, Season, Base
 from infrastructure.persistence.database import db_manager
+from infrastructure.settings import Config
+from shared.temporal import (
+    as_utc,
+    from_unix_timestamp,
+    local_day_bounds_utc,
+    utc_now,
+)
 from shared.timezone_utils import get_local_now
 from .season_repository import SeasonRepository
 from .participant_repository import ParticipantRepository
@@ -280,7 +287,9 @@ class EventRepository:
                 if event_obj:
                     event_obj.custom_id = event_payload.get('customId')
                     event_obj.slug = event_payload.get('slug') or event_obj.slug
-                    event_obj.start_time_utc = datetime.fromtimestamp(event_payload['startTimestamp'])
+                    event_obj.start_time_utc = from_unix_timestamp(
+                        event_payload['startTimestamp']
+                    )
                     event_obj.sport = event_payload.get('sport') or event_obj.sport
                     event_obj.country = event_payload.get('country')
                     # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
@@ -348,7 +357,9 @@ class EventRepository:
                     event_obj = Event(
                         custom_id=event_payload.get('customId'),
                         slug=event_payload.get('slug') or source_event_id,
-                        start_time_utc=datetime.fromtimestamp(event_payload['startTimestamp']),
+                        start_time_utc=from_unix_timestamp(
+                            event_payload['startTimestamp']
+                        ),
                         sport=event_payload.get('sport') or 'Unknown',
                         # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
                         competition=event_payload.get('competition') or 'Unknown',
@@ -451,7 +462,7 @@ class EventRepository:
         """
         try:
             with db_manager.get_session() as session:
-                now = get_local_now()
+                now = utc_now()
                 
                 # Calculate time window
                 window_start = now - timedelta(minutes=max_minutes_ago)
@@ -521,19 +532,25 @@ class EventRepository:
         if not corrections:
             return 0
         try:
-            event_id_to_time = {event_id: new_time for event_id, new_time in corrections}
+            event_id_to_time = {
+                event_id: as_utc(
+                    new_time,
+                    field_name=f"start time correction for event {event_id}",
+                )
+                for event_id, new_time in corrections
+            }
             with db_manager.get_session() as session:
                 events = (
                     session.query(Event)
                     .filter(Event.id.in_(list(event_id_to_time.keys())))
                     .all()
                 )
-                now_utc = get_local_now()
+                updated_at = get_local_now()
                 updated_count = 0
                 for event in events:
                     if event.id in event_id_to_time:
                         event.start_time_utc = event_id_to_time[event.id]
-                        event.updated_at = now_utc
+                        event.updated_at = updated_at
                         updated_count += 1
                 session.commit()
                 logger.info(f"Batch updated starting times for {updated_count} event(s)")
@@ -652,6 +669,10 @@ class EventRepository:
         competition_ids: Optional[List[int]] = None,
     ) -> List[Dict]:
         """Load canonical events in an indexed half-open start-time window."""
+        window_start = as_utc(window_start, field_name="window_start")
+        window_end = as_utc(window_end, field_name="window_end")
+        if window_end <= window_start:
+            raise ValueError("window_end must be later than window_start")
         try:
             with db_manager.get_session() as session:
                 query = session.query(Event).options(
@@ -699,7 +720,7 @@ class EventRepository:
         When ``competition_ids`` is provided, filtering is pushed into the
         database so unrelated events are never materialized in Python.
         """
-        now = datetime.now()
+        now = utc_now()
         return EventRepository.get_events_starting_between(
             now.replace(second=0, microsecond=0) - timedelta(minutes=5),
             now + timedelta(minutes=window_minutes, microseconds=1),
@@ -712,7 +733,7 @@ class EventRepository:
         Modern pre_start_check_job flow should use get_events_starting_soon()."""
         try:
             with db_manager.get_session() as session:
-                now = datetime.now()
+                now = utc_now()
                 window_start = now.replace(second=0, microsecond=0) - timedelta(minutes=5)
                 window_end = now + timedelta(minutes=window_minutes)
                 
@@ -769,7 +790,7 @@ class EventRepository:
         """Get recently started events without results in selected competitions."""
         try:     
             with db_manager.get_session() as session:
-                now = get_local_now()
+                now = utc_now()
                 window_start = now - timedelta(minutes=window_minutes, seconds=10)
                 window_start = window_start.replace(microsecond=0)
                 
@@ -810,8 +831,11 @@ class EventRepository:
         """Get all events for today"""
         try:
             with db_manager.get_session() as session:
-                today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                today_end = today_start + timedelta(days=1)
+                local_today = get_local_now().date()
+                today_start, today_end = local_day_bounds_utc(
+                    local_today,
+                    Config.TIMEZONE,
+                )
                 return session.query(Event).options(
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
@@ -830,8 +854,10 @@ class EventRepository:
             with db_manager.get_session() as session:
                 if hasattr(target_date, 'date'):
                     target_date = target_date.date()
-                day_start = datetime.combine(target_date, datetime.min.time())
-                day_end = day_start + timedelta(days=1)
+                day_start, day_end = local_day_bounds_utc(
+                    target_date,
+                    Config.TIMEZONE,
+                )
                 return session.query(Event).options(
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),
@@ -848,7 +874,7 @@ class EventRepository:
         """Get all events that should be finished"""
         try:
             with db_manager.get_session() as session:
-                now = datetime.now()
+                now = utc_now()
                 return session.query(Event).options(
                     joinedload(Event.home_participant),
                     joinedload(Event.away_participant),

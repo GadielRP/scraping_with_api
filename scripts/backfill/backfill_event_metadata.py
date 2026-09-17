@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, or_, cast, Date
+from sqlalchemy import Date, and_, cast, func, or_
 
 # ---------------------------------------------------------------------------
 # Project imports
@@ -51,6 +51,7 @@ from sqlalchemy import and_, or_, cast, Date
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
+from infrastructure.settings import Config
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.exceptions import (
@@ -58,6 +59,7 @@ from modules.sofascore.exceptions import (
     SofaScoreRateLimitException,
 )
 from scripts.sport_seasons_processing import season_to_process
+from shared.temporal import local_day_bounds_utc
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -313,15 +315,21 @@ def get_candidate_dates(
     """Return distinct event dates matching the current filters, ordered ASC."""
     try:
         with db_manager.get_session() as session:
+            local_event_date = cast(
+                func.timezone(Config.TIMEZONE, Event.start_time_utc),
+                Date,
+            )
             query = session.query(
-                cast(Event.start_time_utc, Date).label("event_date"),
+                local_event_date.label("event_date"),
             ).filter(Event.id > MIN_EVENT_ID)
 
             # Date bounds
             if args.from_date:
-                query = query.filter(Event.start_time_utc >= datetime.combine(args.from_date, datetime.min.time()))
+                from_start, _ = local_day_bounds_utc(args.from_date, Config.TIMEZONE)
+                query = query.filter(Event.start_time_utc >= from_start)
             if args.to_date:
-                query = query.filter(Event.start_time_utc < datetime.combine(args.to_date + timedelta(days=1), datetime.min.time()))
+                _, to_end = local_day_bounds_utc(args.to_date, Config.TIMEZONE)
+                query = query.filter(Event.start_time_utc < to_end)
 
             # Missing-only filter
             if args.missing_only:
@@ -335,7 +343,7 @@ def get_candidate_dates(
 
             # Resume
             if resume_date:
-                query = query.filter(cast(Event.start_time_utc, Date) >= resume_date)
+                query = query.filter(local_event_date >= resume_date)
 
             dates = query.distinct().order_by("event_date").all()
             return [row.event_date for row in dates]
@@ -353,8 +361,10 @@ def get_events_for_date(
     """Load BackfillEventCandidate rows for a single date."""
     try:
         with db_manager.get_session() as session:
-            day_start = datetime.combine(target_date, datetime.min.time())
-            day_end = day_start + timedelta(days=1)
+            day_start, day_end = local_day_bounds_utc(
+                target_date,
+                Config.TIMEZONE,
+            )
 
             query = session.query(
                 Event.id,

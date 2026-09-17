@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
@@ -15,19 +15,20 @@ from modules.pillars.odds_trajectory_context import (
     OddsSnapshotPoint,
     OddsTrajectoryContext,
 )
+from shared.temporal import as_utc
 
 from .models import P4ExtractionResult, P4Point, P4SeriesInput
 from .periods import SUPPORTED_BOOKIE_IDS, period_key, resolve_domain
 
 
 def _datetime_value(value: datetime) -> float:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc).timestamp()
-    return value.timestamp()
+    return as_utc(value, field_name="P4 trajectory timestamp").timestamp()
 
 
 def _minutes_before_start(start: datetime, value: datetime) -> Decimal:
-    return Decimal(str((start - value).total_seconds())) / Decimal("60")
+    start_utc = as_utc(start, field_name="event start")
+    value_utc = as_utc(value, field_name="P4 trajectory timestamp")
+    return Decimal(str((start_utc - value_utc).total_seconds())) / Decimal("60")
 
 
 def _slug(value: Any) -> str:

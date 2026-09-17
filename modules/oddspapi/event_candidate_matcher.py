@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
-from shared.timezone_utils import convert_utc_to_local
+from shared.temporal import as_utc
 
 from .fixture_normalizer import OddspapiFixtureIdentity
 
@@ -277,20 +277,16 @@ def _normalize_sport(value: object) -> str:
     return SPORT_ALIASES.get(normalized, normalized)
 
 
-def _fixture_start_time_local(fixture: OddspapiFixtureIdentity) -> object | None:
-    if fixture.start_time_local is not None:
-        return fixture.start_time_local
+def _fixture_start_time_utc(fixture: OddspapiFixtureIdentity) -> object | None:
     if fixture.start_time_utc is not None:
-        return convert_utc_to_local(fixture.start_time_utc, keep_tzinfo=False)
+        return as_utc(fixture.start_time_utc, field_name="fixture.start_time_utc")
     return None
 
 
-def _event_start_time_local(event_start_time) -> object | None:
+def _event_start_time_utc(event_start_time) -> object | None:
     if event_start_time is None:
         return None
-    if getattr(event_start_time, "tzinfo", None) is not None:
-        return convert_utc_to_local(event_start_time, keep_tzinfo=False)
-    return event_start_time
+    return as_utc(event_start_time, field_name="event.start_time_utc")
 
 
 def _stringify_values(values: Iterable[object]) -> list[str]:
@@ -672,8 +668,8 @@ class OddspapiEventCandidateMatcher:
         sport_score = self._sport_score(fixture_sport, event_sport)
 
         start_time_delta_minutes: float | None = None
-        fixture_start_time = _fixture_start_time_local(fixture)
-        event_start_time = _event_start_time_local(getattr(event, "start_time_utc", None))
+        fixture_start_time = _fixture_start_time_utc(fixture)
+        event_start_time = _event_start_time_utc(getattr(event, "start_time_utc", None))
         if fixture_start_time is not None and event_start_time is not None:
             delta = abs(event_start_time - fixture_start_time)
             start_time_delta_minutes = round(abs(delta.total_seconds()) / 60.0, 3)
@@ -842,7 +838,7 @@ class OddspapiEventCandidateMatcher:
             )
         )
 
-        fixture_start_time = _fixture_start_time_local(fixture)
+        fixture_start_time = _fixture_start_time_utc(fixture)
         if fixture_start_time is not None:
             window_start = fixture_start_time - timedelta(hours=1)
             window_end = fixture_start_time + timedelta(hours=1)

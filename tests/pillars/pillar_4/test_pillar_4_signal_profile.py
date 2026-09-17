@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -14,7 +14,7 @@ from modules.pillars.pillar_4.models import P4Point
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 
 
-KICKOFF = datetime(2026, 9, 12, 18, 0)
+KICKOFF = datetime(2026, 9, 12, 18, 0, tzinfo=timezone.utc)
 
 
 def _event(target: int = 5):
@@ -135,6 +135,31 @@ def test_profile_uses_snapshots_and_excludes_every_point_after_dynamic_target() 
     assert [point["VALUE"] for point in over_checkpoint["POINTS"]] == [2.05, 1.95, 1.85]
     assert over_checkpoint["STRUCTURAL_SIGNALS"]["NET_DIRECTION_RAW"] == "NEGATIVE"
     assert profile["STRUCTURAL_DOMAIN_SUMMARY"]["TOTALS"]["SERIES_IDS"]
+
+
+def test_p4_adapts_legacy_mexico_wall_clock_snapshots_before_time_math() -> None:
+    rows = [
+        _row(
+            minute=minute,
+            odds=odds,
+            collected_at=datetime(2026, 9, 12, hour, minute_of_hour),
+            source_collected_at=datetime(2026, 9, 12, hour, minute_of_hour),
+        )
+        for minute, odds, hour, minute_of_hour in (
+            (120, "2.05", 10, 0),
+            (30, "1.95", 11, 30),
+            (5, "1.85", 11, 55),
+        )
+    ]
+
+    result = calculate_pillar_4(
+        _event(5),
+        _context(rows, 5),
+        target_minute=5,
+    )
+
+    assert result["P4_STATUS"] == "ACTIVE"
+    assert result["raw"]["extraction_diagnostics"]["invalid_inputs"] == []
 
 
 def test_debug_logging_reports_inputs_formulas_signals_and_lineage(caplog) -> None:

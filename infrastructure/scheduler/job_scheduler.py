@@ -42,6 +42,7 @@ from modules.oddspapi.runtime import (
     refresh_oddspapi_account_usage_if_due,
 )
 from shared.runtime_observability import observe_operation
+from shared.temporal import UTC, in_timezone, utc_now
 from shared.timezone_utils import TIMEZONE, get_local_now
 
 logger = logging.getLogger(__name__)
@@ -66,10 +67,10 @@ class JobScheduler:
     def _setup_jobs(self):
         """Register all scheduled jobs."""
         for time_str in Config.DISCOVERY_TIMES:
-            schedule.every().day.at(time_str).do(self.job_discovery)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_discovery)
 
         for time_str in Config.DISCOVERY2_TIMES:
-            schedule.every().day.at(time_str).do(self.job_discovery2)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_discovery2)
 
         self._setup_pre_start_jobs()
         if Config.ENABLE_PRE_START_T_MINUS_ONE_JOB:
@@ -81,12 +82,12 @@ class JobScheduler:
                 Config.PRE_START_CLOSING_ODDS_MINUTE,
             )
 
-        schedule.every().day.at("04:00").do(self.job_midnight_sync)
-        schedule.every(3).days.at("05:00").do(self.job_clean_league_cache)
+        schedule.every().day.at("04:00", Config.TIMEZONE).do(self.job_midnight_sync)
+        schedule.every(3).days.at("05:00", Config.TIMEZONE).do(self.job_clean_league_cache)
 
         daily_discovery_fixed_times = getattr(Config, "DAILY_DISCOVERY_FIXED_TIMES", ["18:10"])
         for time_str in daily_discovery_fixed_times:
-            schedule.every().day.at(time_str).do(self.job_daily_discovery)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_daily_discovery)
 
         daily_discovery_interval = getattr(
             Config,
@@ -101,7 +102,7 @@ class JobScheduler:
             ["17:47"],
         )
         for time_str in oddspapi_fixture_discovery_times:
-            schedule.every().day.at(time_str).do(
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(
                 self.job_oddspapi_fixture_discovery,
                 _trigger="scheduled",
                 _scheduled_time=time_str,
@@ -288,14 +289,16 @@ class JobScheduler:
                 logger.exception(f"Error in Job C: {exc}")
 
     def job_t_minus_one_odds(self, *, scheduled_minute: int):
-        now = datetime.now()
-        scheduled_at = now.replace(
+        now_utc = utc_now()
+        now_local = in_timezone(now_utc, Config.TIMEZONE)
+        scheduled_local = now_local.replace(
             minute=scheduled_minute,
             second=0,
             microsecond=0,
         )
-        if scheduled_at > now:
-            scheduled_at -= timedelta(hours=1)
+        if scheduled_local > now_local:
+            scheduled_local -= timedelta(hours=1)
+        scheduled_at = scheduled_local.astimezone(UTC)
 
         if not self._t_minus_one_lock.acquire(blocking=False):
             logger.error(

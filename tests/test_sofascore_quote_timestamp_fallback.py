@@ -1,6 +1,6 @@
 """SofaScore live quotes must advance current_updated_at via extraction time."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from infrastructure.persistence.database import DatabaseManager
 from infrastructure.persistence.models import (
@@ -23,7 +23,7 @@ def test_sofascore_live_updates_quote_without_source_collected_at(tmp_path, monk
     with manager.get_session() as session:
         event = Event(
             slug="ss-ts",
-            start_time_utc=datetime(2026, 8, 10, 12, 0, 0),
+            start_time_utc=datetime(2026, 8, 10, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="EPL",
             home_team="Home",

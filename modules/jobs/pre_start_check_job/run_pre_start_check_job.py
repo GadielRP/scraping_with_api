@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from infrastructure.settings import Config
 from modules.alerts.matchup_streak_analysis.standings_engine import (
@@ -50,6 +49,7 @@ from modules.jobs.pre_start_check_job.timing import (
 )
 from modules.competition.tracked_competitions import tracked_competition_ids
 from modules.sofascore import api_client
+from shared.timezone_utils import get_local_now_aware
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +396,7 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
     """Run maintenance, odds ingestion, and key-moment evaluation in order."""
     logger.info(
         "🚀 PRE-START CHECK EXECUTED at %s",
-        datetime.now().strftime("%H:%M:%S"),
+        get_local_now_aware().strftime("%H:%M:%S %Z"),
     )
     previous_evidence_mode = getattr(
         api_client,

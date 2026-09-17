@@ -1,6 +1,6 @@
 """Unit tests for the single-responsibility snapshot writer."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from infrastructure.persistence.database import DatabaseManager
@@ -27,7 +27,7 @@ def seed_choice(manager):
     with manager.get_session() as session:
         event = Event(
             slug="snapshot-writer-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",

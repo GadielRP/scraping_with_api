@@ -5,6 +5,9 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import List, Set, Dict, Optional
 
+from infrastructure.settings import Config
+from shared.temporal import in_timezone
+
 logger = logging.getLogger(__name__)
 
 class TeamMatcher:
@@ -152,8 +155,11 @@ class TeamMatcher:
                 cand_dt = _parse_cand_datetime(cand)
                 if cand_dt:
                     try:
-                        naive_target = target_time_utc.replace(tzinfo=None)
-                        delta_days = abs((cand_dt.date() - naive_target.date()).days)
+                        target_local = in_timezone(
+                            target_time_utc,
+                            Config.TIMEZONE,
+                        )
+                        delta_days = abs((cand_dt.date() - target_local.date()).days)
                         time_penalty = min(delta_days * 20.0, 50.0)
                     except Exception:
                         pass

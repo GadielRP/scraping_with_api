@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 
 from infrastructure.persistence.repositories import EventRepository
+from infrastructure.settings import Config
+from shared.temporal import in_timezone, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +23,14 @@ def create_time_correction_message(
     else:
         participants = f"{event.home_participant.name} vs {event.away_participant.name}"
 
-    current_time_str = current_starting_time.strftime("%H:%M")
-    new_time_str = new_starting_time.strftime("%H:%M")
+    current_time_str = in_timezone(
+        current_starting_time,
+        Config.TIMEZONE,
+    ).strftime("%H:%M")
+    new_time_str = in_timezone(
+        new_starting_time,
+        Config.TIMEZONE,
+    ).strftime("%H:%M")
 
     time_diff = new_starting_time - current_starting_time
     if time_diff.total_seconds() > 0:
@@ -30,7 +38,7 @@ def create_time_correction_message(
     else:
         diff_str = f"{int(time_diff.total_seconds() / 60)} min"
 
-    now = datetime.now()
+    now = utc_now()
     if new_starting_time > now:
         footer = "Starting time corrected during pre-start check"
     else:

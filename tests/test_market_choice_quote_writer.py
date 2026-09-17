@@ -4,7 +4,7 @@ See docs/refactors/db-schema-odds-refactor.md (Fase 2) and
 tests/test_market_choice_quote_model.py (Fase 1 model-level constraints).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from infrastructure.persistence.database import DatabaseManager
 from infrastructure.persistence.models import Bookie, Event, Market, MarketChoice, MarketChoiceQuote
@@ -23,7 +23,7 @@ def seed_choice(manager):
     with manager.get_session() as session:
         event = Event(
             slug="test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Basketball",
             competition="WNBA",
             home_team="Home",

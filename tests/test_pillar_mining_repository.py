@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects import postgresql
@@ -73,7 +73,7 @@ def _event() -> Event:
     return Event(
         id=1,
         slug="home-away",
-        start_time_utc=datetime(2026, 8, 22, 18, 0),
+        start_time_utc=datetime(2026, 8, 22, 18, 0, tzinfo=timezone.utc),
         sport="Football",
         competition="League",
         home_team="Home",

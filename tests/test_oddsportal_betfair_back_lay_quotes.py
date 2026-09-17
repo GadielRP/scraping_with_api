@@ -11,7 +11,7 @@ MarketChoiceQuote.exchange_side.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from types import MappingProxyType
 from unittest.mock import patch
 
@@ -55,7 +55,7 @@ def _seed_event_and_betfair_bookie(manager):
     with manager.get_session() as session:
         event = Event(
             slug="oddsportal-betfair-back-lay",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Football",
             competition="Test League",
             home_team="Home",

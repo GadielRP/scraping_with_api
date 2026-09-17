@@ -113,10 +113,25 @@ def select_latest_current_player(
 
     selected = dict(base_player)
     for field_name in _CURRENT_OBSERVATION_FIELDS:
-        if field_name in historical_player:
-            selected[field_name] = historical_player[field_name]
-        elif field_name == "sourceCollectedAt":
-            # Do not let a stale /odds override hide the newer historical
-            # changedAt value from the canonical adapter payload.
-            selected.pop(field_name, None)
+        if field_name == "sourceCollectedAt":
+            if historical_player.get(field_name) not in (None, ""):
+                selected[field_name] = historical_player[field_name]
+            else:
+                # Do not let a stale /odds value hide the newer historical
+                # changedAt value from the canonical adapter payload. The
+                # repository falls back to changedAt when this field is absent.
+                selected.pop(field_name, None)
+            continue
+
+        if field_name not in historical_player:
+            continue
+
+        historical_value = historical_player[field_name]
+        if historical_value in (None, ""):
+            # /historical-odds is intentionally sparse. A null limit or
+            # exchangeMeta means that the historical endpoint did not provide
+            # that field, not that a richer /odds value should be erased.
+            continue
+
+        selected[field_name] = historical_value
     return selected

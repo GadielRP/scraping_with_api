@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event as sqlalchemy_event, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
@@ -30,6 +30,14 @@ class DatabaseManager:
                 pool_recycle=300,
                 connect_args=connect_args,
             )
+            if self.engine.dialect.name == "postgresql":
+                @sqlalchemy_event.listens_for(self.engine, "connect")
+                def _set_utc_session_timezone(dbapi_connection, _connection_record):
+                    cursor = dbapi_connection.cursor()
+                    try:
+                        cursor.execute("SET TIME ZONE 'UTC'")
+                    finally:
+                        cursor.close()
             self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=self.engine)
             logger.info(f"Database engine created for: {self.database_url}")
         except Exception as e:
@@ -106,9 +114,18 @@ class DatabaseManager:
         try:
             from sqlalchemy import inspect
             from sqlalchemy.types import String, Integer, Text, DateTime, Numeric, BigInteger
+            from infrastructure.persistence.migrations.event_timezones import (
+                migrate_event_timezones,
+            )
             
             inspector = inspect(self.engine)
             migrations_applied = []
+
+            # Event instants are a prerequisite for every later migration or
+            # query that compares event windows. Existing event values use the
+            # documented America/Mexico_City-naive convention; the focused
+            # migration converts them to absolute timestamptz instants.
+            migrations_applied.extend(migrate_event_timezones(self.engine))
             
             # Run one-time manual migrations FIRST (before generic column migration)
             # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
@@ -222,7 +239,11 @@ class DatabaseManager:
                     session.commit()
             
             if migrations_applied:
-                logger.info(f"✅ Migration completed: Added {len(migrations_applied)} column(s) - {', '.join(migrations_applied)}")
+                logger.info(
+                    "✅ Migration completed: applied %s schema change(s) - %s",
+                    len(migrations_applied),
+                    ", ".join(migrations_applied),
+                )
             else:
                 logger.info("✅ Database schema is up to date with models")
 
@@ -2139,9 +2160,14 @@ class DatabaseManager:
             str: SQL type string (e.g., 'VARCHAR(50)', 'INTEGER', 'NUMERIC(6,2)')
         """
         from sqlalchemy.types import String, Integer, Text, DateTime, Numeric, BigInteger
+        from infrastructure.persistence.types import UTCDateTime
         
         col_type = col.type
         
+        if isinstance(col_type, UTCDateTime):
+            if self.engine.dialect.name == "postgresql":
+                return "TIMESTAMP WITH TIME ZONE"
+            return "TIMESTAMP"
         if isinstance(col_type, Text):
             return "TEXT"
         elif isinstance(col_type, String):

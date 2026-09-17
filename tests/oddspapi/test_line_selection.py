@@ -352,6 +352,7 @@ def test_current_selection_prefers_newer_historical_tick_without_replacing_metad
         "active": True,
         "changedAt": "2026-06-20T11:55:00.500Z",
         "mainLine": True,
+        "exchangeMeta": {"lays": [{"price": 2.0}]},
         "sourceCollectedAt": "2026-06-20T11:55:00Z",
     }
     historical = {
@@ -359,6 +360,7 @@ def test_current_selection_prefers_newer_historical_tick_without_replacing_metad
         "active": True,
         "changedAt": "2026-06-20T11:56:00.250Z",
         "limit": 12,
+        "exchangeMeta": None,
     }
 
     selected = select_latest_current_player(base, historical)
@@ -367,7 +369,31 @@ def test_current_selection_prefers_newer_historical_tick_without_replacing_metad
     assert selected["changedAt"] == "2026-06-20T11:56:00.250Z"
     assert selected["limit"] == 12
     assert selected["mainLine"] is True
+    assert selected["exchangeMeta"] == {"lays": [{"price": 2.0}]}
     assert "sourceCollectedAt" not in selected
+
+
+def test_current_selection_does_not_erase_richer_values_with_historical_nulls():
+    base = {
+        "price": 1.90,
+        "active": True,
+        "limit": 40,
+        "exchangeMeta": {"lays": [{"price": 2.0}]},
+        "changedAt": "2026-06-20T11:55:00Z",
+    }
+    historical = {
+        "price": 1.85,
+        "active": True,
+        "limit": None,
+        "exchangeMeta": None,
+        "changedAt": "2026-06-20T11:56:00Z",
+    }
+
+    selected = select_latest_current_player(base, historical)
+
+    assert selected["price"] == 1.85
+    assert selected["limit"] == 40
+    assert selected["exchangeMeta"] == {"lays": [{"price": 2.0}]}
 
 
 def test_current_selection_keeps_base_for_distinct_or_equal_provider_tick():

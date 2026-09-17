@@ -1,12 +1,13 @@
 """Process 1 engine orchestration."""
 
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.dual_process_alert import create_candidate_report_message
+from infrastructure.settings import Config
+from shared.temporal import as_utc, in_timezone, utc_now
 
 from .candidate_search import AlertMatch, Process1CandidateSearch
 from .evaluator import MIN_SAMPLES, Process1Evaluator
@@ -67,8 +68,12 @@ class AlertEngine:
 
         for event in upcoming_events:
             try:
-                now = datetime.now()
-                time_diff = event.start_time_utc - now
+                now = utc_now()
+                event_start = as_utc(
+                    event.start_time_utc,
+                    field_name=f"event {event.id} start_time_utc",
+                )
+                time_diff = event_start - now
                 minutes_until_start = round(time_diff.total_seconds() / 60)
 
                 event_alerts = self.evaluate_single_event(event, minutes_until_start)
@@ -192,7 +197,10 @@ class AlertEngine:
             "competition": competition_name,
             "sport": event.sport,
             "discovery_source": event.discovery_source,
-            "start_time": event.start_time_utc.strftime("%H:%M"),
+            "start_time": in_timezone(
+                event.start_time_utc,
+                Config.TIMEZONE,
+            ).strftime("%H:%M"),
             "minutes_until_start": minutes_until_start,
             "odds_display": odds_display,
             "vars_display": vars_display,

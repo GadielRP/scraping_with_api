@@ -16,6 +16,7 @@ from modules.pillars.common import (
     classify_strength,
 )
 from modules.pillars.context import EventContext
+from shared.temporal import from_unix_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -153,16 +154,18 @@ def _extract_gf_series(results: Any, side_label: str, debug_mode: bool = False) 
                 opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
                 game_date = ""
                 if "startTimestamp" in result:
-                    import datetime
-                    game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                    game_date = (
+                        f" [{from_unix_timestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                    )
                 log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: GF could not be extracted (reason={reason}, raw={raw_value!r})")
             continue
         if debug_mode:
             opponent = result.get("opponent_name") or result.get("opponent") or "opponent"
             game_date = ""
             if "startTimestamp" in result:
-                import datetime
-                game_date = f" [{datetime.datetime.fromtimestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                game_date = (
+                    f" [{from_unix_timestamp(result['startTimestamp']).strftime('%Y-%m-%d')}]"
+                )
             log_lines.append(f"  Game {len(results) - index}{game_date} vs {opponent}: gf={gf} (extracted from key '{source_key}' with raw value {raw_value!r})")
         series.append(gf)
 

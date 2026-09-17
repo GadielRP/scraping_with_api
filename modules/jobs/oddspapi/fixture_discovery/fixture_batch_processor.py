@@ -65,12 +65,8 @@ def _db_sport_names(sport_keys: set[str]) -> list[str]:
 
 
 def _fixture_time(fixture: OddspapiFixtureIdentity) -> datetime | None:
-    # The existing candidate matcher compares Event.start_time_utc against
-    # fixture.start_time_local as naive values because canonical event rows
-    # currently use the local-naive storage convention.  The batch preload
-    # must use the exact same basis or it can exclude the correct event before
-    # the matcher gets a chance to score it.
-    return fixture.start_time_local or fixture.start_time_utc
+    """Return the provider kickoff on the canonical aware-UTC basis."""
+    return fixture.start_time_utc
 
 
 # Rare dual-perfect ties need human adjudication even when broad queue

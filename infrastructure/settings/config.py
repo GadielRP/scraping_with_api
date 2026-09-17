@@ -355,6 +355,11 @@ class Config:
     
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'America/Mexico_City')
+
+    # Persistence contract for legacy market snapshot columns that still use
+    # TIMESTAMP WITHOUT TIME ZONE. This describes the data already stored; it
+    # must not follow TIMEZONE if the presentation/business zone changes.
+    LEGACY_MARKET_SNAPSHOT_TIMEZONE = 'America/Mexico_City'
     
     # pre start check settings
     global_debug_mode = os.getenv('global_debug_mode', 'true').lower() == 'true'

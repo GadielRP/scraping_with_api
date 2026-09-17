@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Any
 
+from shared.temporal import as_utc
 from shared.timezone_utils import convert_utc_to_local
 
 logger = logging.getLogger(__name__)
@@ -44,8 +45,8 @@ def _parse_start_time(value: Any) -> tuple[datetime | None, datetime | None]:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
 
-    utc_time = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-    local_time = convert_utc_to_local(utc_time, keep_tzinfo=False)
+    utc_time = as_utc(parsed, field_name="Oddspapi fixture startTime")
+    local_time = convert_utc_to_local(utc_time, keep_tzinfo=True)
     return utc_time, local_time
 
 

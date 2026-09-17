@@ -9,7 +9,7 @@ applied via ``check_and_migrate_schema`` - the plain ORM UniqueConstraint
 alone would let two NULL-side rows through.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import inspect, text
@@ -40,7 +40,7 @@ def seed_choice(manager, *, choice_group=None):
     with manager.get_session() as session:
         event = Event(
             slug="test-event",
-            start_time_utc=datetime(2026, 6, 20, 12, 0, 0),
+            start_time_utc=datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
             sport="Basketball",
             competition="WNBA",
             home_team="Home",

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
+from shared.temporal import as_utc
+
 logger = logging.getLogger(__name__)
 
 
@@ -162,6 +164,11 @@ def build_event_context(
     start_time_utc = getattr(event_obj, "start_time_utc", None)
     if start_time_utc is None:
         missing.append("start_time_utc")
+    else:
+        start_time_utc = as_utc(
+            start_time_utc,
+            field_name="event_context.start_time_utc",
+        )
     if missing:
         logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
         return None

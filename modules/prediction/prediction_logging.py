@@ -4,10 +4,13 @@ Prediction Logging System
 """
 
 import logging
-from datetime import datetime
+from datetime import timedelta
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import joinedload
+
+from infrastructure.settings import Config
+from shared.temporal import in_timezone, local_day_bounds_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -139,21 +142,25 @@ class PredictionLogger:
     def update_predictions_with_results(self) -> Dict[str, int]:
         """Update prediction logs with actual results from completed events."""
         try:
-            from datetime import timedelta
-
             from infrastructure.persistence.database import db_manager
             from infrastructure.persistence.models import Event, PredictionLog, Result
 
             with db_manager.get_session() as session:
-                yesterday = datetime.now() - timedelta(days=1)
-                yesterday_date = yesterday.date()
+                yesterday_date = (
+                    in_timezone(utc_now(), Config.TIMEZONE).date()
+                    - timedelta(days=1)
+                )
+                yesterday_start, yesterday_end = local_day_bounds_utc(
+                    yesterday_date,
+                    Config.TIMEZONE,
+                )
 
                 logger.info("Updating predictions for events from %s", yesterday_date)
 
                 pending_predictions = session.query(PredictionLog).join(Event, PredictionLog.event_id == Event.id).filter(
                     PredictionLog.status == "pending",
-                    Event.start_time_utc >= yesterday_date,
-                    Event.start_time_utc < yesterday_date + timedelta(days=1),
+                    Event.start_time_utc >= yesterday_start,
+                    Event.start_time_utc < yesterday_end,
                 ).all()
 
                 if not pending_predictions:

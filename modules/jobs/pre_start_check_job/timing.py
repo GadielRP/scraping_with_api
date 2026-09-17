@@ -7,29 +7,33 @@ from datetime import datetime
 from typing import Collection
 
 from infrastructure.settings import Config
-from shared.timezone_utils import get_local_now_aware, TIMEZONE
+from shared.temporal import as_utc, utc_now
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 
 logger = logging.getLogger(__name__)
 
 
-def minutes_until_start(start_time_utc) -> int:
-    """Calculate minutes until event start."""
+def minutes_until_start(
+    start_time_utc: datetime | None,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Calculate minutes until an event from two absolute instants."""
     if start_time_utc is None:
         return 0
 
-    if start_time_utc.tzinfo is None:
-        start_local = TIMEZONE.localize(start_time_utc)
-    else:
-        start_local = start_time_utc
-
-    now = get_local_now_aware()
-    return round((start_local - now).total_seconds() / 60)
+    start_utc = as_utc(start_time_utc, field_name="start_time_utc")
+    now_utc = as_utc(now, field_name="now") if now is not None else utc_now()
+    return round((start_utc - now_utc).total_seconds() / 60)
 
 
-def minutes_since_start(start_time_utc) -> int:
+def minutes_since_start(
+    start_time_utc: datetime | None,
+    *,
+    now: datetime | None = None,
+) -> int:
     """Calculate minutes since event start as a negative number."""
-    return minutes_until_start(start_time_utc)
+    return minutes_until_start(start_time_utc, now=now)
 
 
 def should_extract_odds_for_event(

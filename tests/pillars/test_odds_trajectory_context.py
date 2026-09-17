@@ -97,8 +97,22 @@ def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
         .meta_by_minute[1]
     )
 
-    assert meta.collected_at.isoformat() == "2026-01-01T10:00:00"
-    assert meta.changed_at.isoformat() == "2026-01-01T09:59:30"
+    assert meta.collected_at.isoformat() == "2026-01-01T16:00:00+00:00"
+    assert meta.changed_at.isoformat() == "2026-01-01T15:59:30+00:00"
+
+
+def test_legacy_mexico_snapshot_times_enter_domain_as_aware_utc_instants() -> None:
+    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+
+    snapshot = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+        .snapshots[0]
+    )
+
+    assert snapshot.collected_at.isoformat() == "2026-01-01T16:00:00+00:00"
+    assert snapshot.source_collected_at.isoformat() == "2026-01-01T15:59:30+00:00"
 
 
 def test_choice_context_preserves_main_line() -> None:
