@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 import re
 from typing import Iterable
+import unicodedata
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,13 @@ class OddspapiDebugResponseWriter:
 
     @staticmethod
     def _filename_token(value: object, *, fallback: str) -> str:
-        token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
+        raw = str(value or "").strip()
+        normalized = (
+            unicodedata.normalize("NFKD", raw)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
+        token = re.sub(r"[^A-Za-z0-9._-]+", "_", normalized)
         return token.strip("._-") or fallback
 
     @classmethod

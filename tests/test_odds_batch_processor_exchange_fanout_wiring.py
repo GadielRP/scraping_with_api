@@ -292,6 +292,7 @@ def test_exchange_debug_files_are_unique_per_outcome(tmp_path, monkeypatch):
     assert first.exists() and second.exists()
 
 
+
 def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():
     """A caller-supplied fetcher/acquisition_service marks a custom
     test/pipeline path; we must not silently spin up real OddsPapiClient
@@ -319,3 +320,23 @@ def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():
     # This processor was built with a custom acquisition_service, so
     # _custom_pipeline is True and the executor must stay disabled.
     assert captured[0]["exchange_fetch_executor"] is None
+
+
+def test_debug_response_writer_unicode_team_names_normalization(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    writer = batch_module.OddspapiDebugResponseWriter
+
+    saved_path = writer.save(
+        event_id=286174,
+        fixture_id="id1000000872478580",
+        bookmakers=["pinnacle", "bet365", "betfair-ex"],
+        payload={"odds": []},
+        endpoint="odds",
+        minutes_until_start=5,
+        home_participant="Málaga CF",
+        away_participant="Villarreal",
+    )
+
+    assert saved_path is not None
+    assert "286174_Malaga_CF_Villarreal" in str(saved_path)
+    assert saved_path.exists()
