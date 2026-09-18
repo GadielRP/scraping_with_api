@@ -56,17 +56,10 @@ AGENTS.md
 GEMINI.md
 CLAUDE.md
 
-graphify-out/
-.graphify_version
+.graphifyignore
 
-
-# =========================================================
 # Graphify generated output
-# =========================================================
-
-# Keep the graph local, especially if it indexes local-only knowledge.
 graphify-out/
-
 .graphify_version
 
 
