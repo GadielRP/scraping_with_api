@@ -103,7 +103,9 @@ def test_each_series_chooses_its_own_strategy_and_excludes_invalid_timestamps():
         raw, source_sport_id="13", enable_significant_changes=True, kickoff_utc=KICKOFF,
         as_of_targets=OddspapiHistoricalOddsAsOf.targets_from_start(KICKOFF, [120, 0]),
     )
-    assert [(q.player_id, q.minutes_until_start) for q in result.as_of_quotes] == [("0", 30), ("1", 120), ("1", 0)]
+    assert [(q.player_id, q.minutes_until_start) for q in result.as_of_quotes] == [
+        ("0", 120), ("0", 30), ("0", 0), ("1", 120), ("1", 0)
+    ]
 
 
 def test_fractional_timestamp_survives_attach_and_no_targets_are_required():
@@ -117,7 +119,10 @@ def test_fractional_timestamp_survives_attach_and_no_targets_are_required():
 
 def test_order_and_timestamp_ties_follow_existing_normalizer():
     same_time = KICKOFF - timedelta(minutes=30)
-    result = read([tick(30, 2.5), tick(1440, 2), (same_time, {"price": 2.6, "createdAt": same_time.isoformat()})])
+    result = read(
+        [tick(30, 2.5), tick(1440, 2), (same_time, {"price": 2.6, "createdAt": same_time.isoformat()})],
+        as_of_targets=(),
+    )
     # Existing ties process the later payload entry first.
     assert result.as_of_quotes[0].price == 2.6
     assert player(result)["price"] == 2.5
@@ -133,4 +138,6 @@ def test_available_through_utc_passes_to_detector_closing_window():
         tick(1, 4.0),  # This tick is after T-5 cutoff, so reader filters it out
     ]
     result = read(ticks, available_through_utc=available_through)
-    assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [(9, 2.5), (6, 3.2)]
+    assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [
+        (120, 2.0), (30, 2.0), (9.0, 2.5), (6.0, 3.2), (5, 3.2)
+    ]

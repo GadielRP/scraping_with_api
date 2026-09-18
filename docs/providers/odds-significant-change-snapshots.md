@@ -23,10 +23,10 @@ El detector (`OddspapiHistoricalOddsChangeDetector`) recibe la conversión horar
 - La reversión debe volver a una diferencia estrictamente menor al umbral antes de completar la ventana. Revertir exactamente al final no invalida el candidato. Los microticks en la nueva zona no requieren precio idéntico.
 - Un tick se considera vigente hasta el siguiente válido; no se exige una frecuencia de actualizaciones para confirmar permanencia.
 - En el tramo posterior a `kickoff - ventana`, solo se evalúa el último tick válido hasta kickoff. Se emite sin confirmación si cambia al menos el umbral respecto al ancla vigente. No se registra un cierre estable automáticamente.
-- Con menos de 20 horas de historial limpio (o cuando ningún cambio califica), se reconstruyen los momentos configurados sobre la serie limpia. Este fallback mantiene los tiempos teóricos tradicionales (`momentQuotes`).
+- El reader combina los momentos canónicos configurados (`as_of_targets`) junto con los cambios significativos detectados en una sola pasada en memoria, deduplicando por timestamp de recolección y precio. Si no hay cambios significativos o el historial es insuficiente (< 20 horas), se conservan íntegros los momentos canónicos.
 - Los cambios dinámicos conservan microsegundos en `collected_at`, fecha del proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`. La consulta analítica sigue devolviendo minutos enteros por compatibilidad.
 
-Los snapshots ordinarios de apertura y cuota actual continúan existiendo; esta estrategia sustituye la reconstrucción analítica de momentos intermedios.
+Los snapshots ordinarios de apertura y cuota actual continúan existiendo; esta estrategia combina la proyección canónica fija con la detección adaptativa de eventos intermedios.
 
 ## Persistencia y coste
 

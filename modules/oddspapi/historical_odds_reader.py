@@ -138,38 +138,42 @@ class OddspapiHistoricalOddsReader:
                         if normalized is not None:
                             normalized_players[player_key] = normalized
                         if extract_as_of and as_of_slug:
-                            quotes = None
+                            canonical_quotes: list[HistoricalOddsAsOfQuote] = []
+                            if as_of_targets:
+                                canonical_quotes = (
+                                    OddspapiHistoricalOddsAsOf.from_ordered_ticks(
+                                        ticks,
+                                        targets=as_of_targets,
+                                        bookmaker_slug=as_of_slug,
+                                        source_market_id=source_market_id,
+                                        source_outcome_id=source_outcome_id,
+                                        player_id=player_key,
+                                        require_active_quotes=require_active_quotes,
+                                    )
+                                )
+
+                            significant_quotes: list[HistoricalOddsAsOfQuote] | None = None
                             if enable_significant_changes:
-                                quotes = OddspapiHistoricalOddsChangeDetector.detect_significant_changes(
-                                    ticks,
-                                    kickoff_utc=kickoff_utc,
-                                    bookmaker_slug=as_of_slug,
-                                    source_market_id=source_market_id,
-                                    source_outcome_id=source_outcome_id,
-                                    player_id=player_key,
-                                    min_change_magnitude_pct=min_change_magnitude_pct,
-                                    min_history_hours=min_history_hours,
-                                    flash_reversal_minutes=flash_reversal_minutes,
-                                    observation_cutoff_utc=available_through_utc,
+                                significant_quotes = (
+                                    OddspapiHistoricalOddsChangeDetector.detect_significant_changes(
+                                        ticks,
+                                        kickoff_utc=kickoff_utc,
+                                        bookmaker_slug=as_of_slug,
+                                        source_market_id=source_market_id,
+                                        source_outcome_id=source_outcome_id,
+                                        player_id=player_key,
+                                        min_change_magnitude_pct=min_change_magnitude_pct,
+                                        min_history_hours=min_history_hours,
+                                        flash_reversal_minutes=flash_reversal_minutes,
+                                        observation_cutoff_utc=available_through_utc,
+                                    )
                                 )
-                            # The adaptive reducer returns no moment quotes in
-                            # two cases: the series is too short for the
-                            # configured history window, or it has sufficient
-                            # history but no qualifying change.  Both cases
-                            # need the same fixed-moment representation.  An
-                            # empty tick series remains empty because the
-                            # fallback reducer has no value to carry forward.
-                            if quotes is None or not quotes:
-                                quotes = OddspapiHistoricalOddsAsOf.from_ordered_ticks(
-                                    ticks,
-                                    targets=as_of_targets,
-                                    bookmaker_slug=as_of_slug,
-                                    source_market_id=source_market_id,
-                                    source_outcome_id=source_outcome_id,
-                                    player_id=player_key,
-                                    require_active_quotes=require_active_quotes,
-                                )
-                            as_of_quotes.extend(quotes)
+
+                            combined = OddspapiHistoricalOddsReader._combine_as_of_quotes(
+                                canonical_quotes,
+                                significant_quotes,
+                            )
+                            as_of_quotes.extend(combined)
 
                     if normalized_players:
                         normalized_outcomes[source_outcome_id] = {
@@ -204,3 +208,37 @@ class OddspapiHistoricalOddsReader:
         if observed_utc.tzinfo is None:
             observed_utc = observed_utc.replace(tzinfo=timezone.utc)
         return observed_utc <= available_through_utc
+
+    @staticmethod
+    def _combine_as_of_quotes(
+        canonical_quotes: Sequence[HistoricalOddsAsOfQuote],
+        significant_quotes: Sequence[HistoricalOddsAsOfQuote] | None,
+    ) -> list[HistoricalOddsAsOfQuote]:
+        """Combine canonical checkpoint quotes with adaptive significant change quotes."""
+        if not significant_quotes:
+            return list(canonical_quotes)
+        if not canonical_quotes:
+            return list(significant_quotes)
+
+        # Merge both and deduplicate by (collected_at, price)
+        seen_collected_at: set[tuple[datetime, float]] = set()
+        combined: list[HistoricalOddsAsOfQuote] = []
+
+        all_quotes = sorted(
+            (*canonical_quotes, *significant_quotes),
+            key=lambda q: (
+                q.collected_at if q.collected_at.tzinfo is not None
+                else q.collected_at.replace(tzinfo=timezone.utc)
+            ),
+        )
+
+        for quote in all_quotes:
+            c_at = quote.collected_at
+            if c_at.tzinfo is None:
+                c_at = c_at.replace(tzinfo=timezone.utc)
+            key = (c_at, float(quote.price))
+            if key not in seen_collected_at:
+                seen_collected_at.add(key)
+                combined.append(quote)
+
+        return combined
