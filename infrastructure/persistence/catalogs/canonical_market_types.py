@@ -33,6 +33,7 @@ def _seed(
     sofascore_match=None,
     oddspapi_match=None,
     oddsportal_match=None,
+    enabled_for_ingestion=True,
 ):
     return {
         "canonical_market_name": name,
@@ -40,7 +41,7 @@ def _seed(
         "canonical_market_period": period,
         "market_family": family,
         "requires_choice_group": requires_group,
-        "enabled_for_ingestion": True,
+        "enabled_for_ingestion": enabled_for_ingestion,
         "enabled_for_trajectory": trajectory,
         "display_order": order,
         "sofascore_match": sofascore_match,
@@ -120,6 +121,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"1stquarterwinner"},
             "period_lock": "1st Quarter",
         },
+        enabled_for_ingestion=False,
     ),
     "1x2_first_to_fifth_inning": _seed(
         name="1X2 First To Fifth Inning",
@@ -211,6 +213,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"moneyline", "homeaway", "matchwinner", "winner"},
             "period_lock": "1st Quarter",
         },
+        enabled_for_ingestion=False,
     ),
     "home_away_full_time_including_overtime": _seed(
         name="Home/Away Full Time Including Overtime",
@@ -254,6 +257,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"firstsetwinner"},
             "period_lock": "1st Set",
         },
+        enabled_for_ingestion=False,
     ),
     "current_set_winner_current_set": _seed(
         name="Current Set Winner Current Set",
@@ -267,6 +271,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"currentsetwinner"},
             "period_lock": "Current Set",
         },
+        enabled_for_ingestion=False,
     ),
     "home_away_first_to_fifth_inning": _seed(
         name="Home/Away First To Fifth Inning",
@@ -346,6 +351,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "over_under_full_time_including_overtime": _seed(
         name="Over/Under Full Time Including Overtime",
@@ -390,6 +396,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"totals", "totals-points"},
             "period_lock": "1st Quarter",
         },
+        enabled_for_ingestion=False,
     ),
     "over_under_1st_period": _seed(
         name="Over/Under 1st Period",
@@ -403,6 +410,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"1stperiodgoals"},
             "period_lock": "1st Period",
         },
+        enabled_for_ingestion=False,
     ),
     "total_cards_full_time": _seed(
         name="Total Cards Full Time",
@@ -421,6 +429,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"totalcards", "totals-bookings"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "total_corners_full_time": _seed(
         name="Total Corners Full Time",
@@ -440,6 +449,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"corners2way", "totals-corners"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "total_sets_games_extra_time": _seed(
         name="Total Sets/Games Extra Time",
@@ -453,6 +463,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"totalsets/games"},
             "period_lock": "Extra Time",
         },
+        enabled_for_ingestion=False,
     ),
     "team_total_home_full_time": _seed(
         name="Team Total Home Full Time",
@@ -470,6 +481,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "team_total_away_full_time": _seed(
         name="Team Total Away Full Time",
@@ -487,6 +499,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "team_total_home_full_time_including_overtime": _seed(
         name="Team Total Home Full Time Including Overtime",
@@ -504,6 +517,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "team_total_away_full_time_including_overtime": _seed(
         name="Team Total Away Full Time Including Overtime",
@@ -521,6 +535,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "asian_handicap_full_time": _seed(
         name="Asian Handicap Full Time",
@@ -630,6 +645,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             },
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "draw_no_bet_full_time": _seed(
         name="Draw No Bet Full Time",
@@ -648,6 +664,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"drawnobet"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "double_chance_full_time": _seed(
         name="Double Chance Full Time",
@@ -666,6 +683,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"doublechance"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "both_teams_to_score_full_time": _seed(
         name="Both Teams To Score Full Time",
@@ -684,6 +702,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_type": {"bothteamsscore"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "both_teams_to_score_full_time_including_overtime": _seed(
         name="Both Teams To Score Full Time (Incl. Overtime)",
@@ -703,6 +722,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "market_name": {"both teams to score (incl. overtime and penalties)"},
             "period_lock": "Full Time",
         },
+        enabled_for_ingestion=False,
     ),
     "first_goal_full_time": _seed(
         name="First Goal Full Time",
@@ -718,6 +738,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Full Time",
             "outcome_role_sets": [{"1", "no_goal", "2"}],
         },
+        enabled_for_ingestion=False,
     ),
     "last_goal_full_time": _seed(
         name="Last Goal Full Time",
@@ -733,6 +754,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Full Time",
             "outcome_role_sets": [{"1", "no_goal", "2"}],
         },
+        enabled_for_ingestion=False,
     ),
     "first_team_to_score_full_time": _seed(
         name="First Team To Score Full Time",
@@ -752,6 +774,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Full Time",
             "skip_outcome_validation": True,
         },
+        enabled_for_ingestion=False,
     ),
     "next_goal_full_time": _seed(
         name="Next Goal Full Time",
@@ -766,6 +789,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Full Time",
             "skip_outcome_validation": True,
         },
+        enabled_for_ingestion=False,
     ),
     "tie_break_in_match_extra_time": _seed(
         name="Tie Break In Match Extra Time",
@@ -780,6 +804,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
             "period_lock": "Extra Time",
             "outcome_role_sets": [{"1", "2"}, {"yes", "no"}],
         },
+        enabled_for_ingestion=False,
     ),
 }
 

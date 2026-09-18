@@ -706,23 +706,23 @@ scp root@143.244.179.129:/tmp/latest_backup.dump.gz .\
 
 3) Reset your LOCAL database (safe)
 ```powershell
-# Copy/rename into db-init for convenience (optional)
-Copy-Item .\latest_backup.dump.gz .\db-init\local_backup.dump.gz -Force
-
 # Drop and recreate the local DB owned by 'sofascore' (avoids view/table dependency errors)
 docker compose exec postgres psql -U sofascore -d template1 -v ON_ERROR_STOP=1 `
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='sofascore_odds' AND pid <> pg_backend_pid();" `
   -c "DROP DATABASE IF EXISTS sofascore_odds;" `
   -c "CREATE DATABASE sofascore_odds OWNER sofascore;"
-
-# Alternative (if you prefer not to drop the DB): drop the old views first (legacy names)
-# docker compose exec postgres psql -U sofascore -d sofascore_odds -c "DROP VIEW IF EXISTS event_up_odds, event_down_odds, event_flat_odds;"
-
 ```
 
-4) Restore that backup into LOCAL Docker
+4) Copy backup to container and restore
 ```powershell
-docker compose exec postgres bash -lc "gunzip -c /docker-entrypoint-initdb.d/local_backup.dump.gz | pg_restore -U sofascore -d sofascore_odds --clean --if-exists --no-owner --no-privileges"
+# 4a) Copy the downloaded backup from your PC into the running Postgres container
+docker cp .\latest_backup.dump.gz sofascore-pg:/tmp/latest_backup.dump.gz
+
+# 4b) Unzip and restore the backup into sofascore_odds
+docker compose exec postgres bash -lc "gunzip -c /tmp/latest_backup.dump.gz | pg_restore -U sofascore -d sofascore_odds --clean --if-exists --no-owner --no-privileges"
+
+# 4c) Remove temporary dump file from the container to free space
+docker compose exec postgres rm /tmp/latest_backup.dump.gz
 ```
 
 4.5) Add computed columns (required after server backup restore)
@@ -762,3 +762,23 @@ Notes:
 - Your pgAdmin/DBeaver connection to LOCAL (127.0.0.1:5435) does not change; just click refresh to see the new data.
 - If a local-only marker table exists from earlier tests, it may be dropped by `--clean`. Recreate it if you still want the marker.
 - To start from an empty local DB and restore on first run, you can wipe the local volume and place a `backup.dump` in `db-init/`, then `docker compose up -d` (this rebuilds local data volume).
+
+### 16.1) Copy logs and debuggig files from server
+
+To pull logs from the server `./logs/...` to your local `./logs/...`:
+```powershell
+# use the following format: scp root@143.244.179.129:/opt/sofascore/logs/NN_Month/week_n/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\NN_Month\week_n
+
+scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_3/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3
+
+```
+
+To pull debugging files from server `./debug/...` to local `./debug/...`:
+```powershell
+# use the following scp command to pull all of the debugging directories and its files from oddspapi odds responses (/odds and /historical-odds)
+scp -r root@143.244.179.129:/opt/sofascore/debug/oddspapi_odds_responses/. C:\Users\gadie\Documents\projects\sofascore\debug\oddspapi_odds_responses
+
+# use the following scp command to pull all of the debugging directories and its files from pillar event context (/pillar_pipeline_objects)
+scp -r root@143.244.179.129:/opt/sofascore/debug/pillar_pipeline_objects/. 
+C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects
+```

@@ -12,7 +12,7 @@ Database model: `CanonicalMarketType` in [`infrastructure/persistence/models.py`
 The canonical market catalog defines the normalized reference types used across all sports and data providers (SofaScore, OddspAPI, OddsPortal).
 
 * **Total canonical market types:** 39
-* **All seeds are enabled for ingestion:** `enabled_for_ingestion = True`
+* **Markets enabled for ingestion:** 15 core market types (`1X2`, `Home/Away`, `Over/Under`, `Asian Handicap`, `Handicap` across full-time, 1st half, 1st-to-5th inning, and OT periods) have `enabled_for_ingestion = True`. All specials, props, team totals, quarters, and 1st periods are set to `False`.
 * **Trajectory-tracked markets:** 21 markets have `enabled_for_trajectory = True` for price velocity and line drift analysis (Pillar 4 and trajectory repositories).
 * **Renamed keys:** Historical key migrations are managed automatically by `CANONICAL_MARKET_KEY_RENAMES`.
 
