@@ -26,12 +26,8 @@ GEMINI.md
 
 docs/archive/
 docs/audits/
-
-# Investigaciones puntuales ya superadas por la implementación actual
-docs/pillars/event-230168-pre-start-p2-p3-mapping-investigation.md
-
-# Snapshot de auditoría; el roadmap es la fuente viva
-docs/refactors/database_audit.md
+docs/refactors/
+docts/operations/
 
 
 # ---------------------------------------------------------
