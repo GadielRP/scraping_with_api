@@ -11,6 +11,7 @@ from sqlalchemy import or_, select
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
     Bookie,
+    CanonicalMarketType,
     Event,
     Market,
     MarketChoice,
@@ -66,8 +67,8 @@ def _block_sort_key(block: ExternalMarketQuoteBlock) -> tuple:
         block.market_group or "",
         block.market_period or "",
         block.market_name or "",
-        block.choice_group is not None,
-        block.choice_group or "",
+        block.line_value is not None,
+        str(block.line_value or ""),
         block.bookie_name.casefold(),
         _SIDE_ORDER.get(block.exchange_side, 99),
         block.market_id,
@@ -240,7 +241,7 @@ def project_external_market_quote_rows(
                         market_name=metadata["market_name"],
                         market_group=metadata["market_group"],
                         market_period=metadata["market_period"],
-                        choice_group=metadata["choice_group"],
+                        line_value=metadata["line_value"],
                         is_live=bool(metadata["is_live"]),
                         aggregation="field_priority",
                         source=None,
@@ -301,7 +302,7 @@ def project_external_market_quote_rows(
                     market_name=metadata["market_name"],
                     market_group=metadata["market_group"],
                     market_period=metadata["market_period"],
-                    choice_group=metadata["choice_group"],
+                    line_value=metadata["line_value"],
                     is_live=bool(metadata["is_live"]),
                     aggregation="exchange",
                     source=source,
@@ -330,10 +331,10 @@ class MarketReadQueries:
                 Market.market_id.label("market_id"),
                 Market.bookie_id.label("bookie_id"),
                 Bookie.name.label("bookie_name"),
-                Market.market_name.label("market_name"),
-                Market.market_group.label("market_group"),
-                Market.market_period.label("market_period"),
-                Market.choice_group.label("choice_group"),
+                CanonicalMarketType.canonical_market_name.label("market_name"),
+                CanonicalMarketType.canonical_market_group.label("market_group"),
+                CanonicalMarketType.canonical_market_period.label("market_period"),
+                Market.line_value.label("line_value"),
                 Market.is_live.label("is_live"),
                 MarketChoice.choice_id.label("choice_id"),
                 MarketChoice.choice_name.label("choice_name"),
@@ -347,6 +348,10 @@ class MarketReadQueries:
                 MarketChoiceQuote.current_updated_at.label("current_updated_at"),
             )
             .join(Market, Market.event_id == Event.id)
+            .outerjoin(
+                CanonicalMarketType,
+                CanonicalMarketType.market_type_id == Market.market_type_id,
+            )
             .join(Bookie, Bookie.bookie_id == Market.bookie_id)
             .join(MarketChoice, MarketChoice.market_id == Market.market_id)
             .join(MarketChoiceQuote, MarketChoiceQuote.choice_id == MarketChoice.choice_id)

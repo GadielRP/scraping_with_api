@@ -30,7 +30,7 @@ class OddsTrajectoryPoint:
     market_name: Optional[str]
     market_group: Optional[str]
     market_period: Optional[str]
-    choice_group: Optional[str]
+    line_value: Optional[Decimal]
     bookie_id: Optional[int]
     bookie_name: Optional[str]
     choice_id: Optional[int]
@@ -61,7 +61,7 @@ class OddsTrajectoryPoint:
             "market_name": self.market_name,
             "market_group": self.market_group,
             "market_period": self.market_period,
-            "choice_group": self.choice_group,
+            "line_value": self.line_value,
             "bookie_id": self.bookie_id,
             "bookie_name": self.bookie_name,
             "choice_id": self.choice_id,
@@ -97,7 +97,7 @@ class OddsTrajectoryRepository:
             market_name=data.get("market_name"),
             market_group=data.get("market_group"),
             market_period=data.get("market_period"),
-            choice_group=data.get("choice_group"),
+            line_value=data.get("line_value"),
             bookie_id=data.get("bookie_id"),
             bookie_name=data.get("bookie_name"),
             choice_id=data.get("choice_id"),

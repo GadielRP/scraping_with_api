@@ -185,7 +185,7 @@ class OddspapiExchangeOutcomeSelector:
                         continue
                     if (
                         main_line_only
-                        and market_resolution.requires_choice_group
+                        and market_resolution.requires_line_value
                         and normalized_market_id not in line_selection.selected_market_ids
                         and not any(player.get("mainLine") is True for _, player in players)
                     ):

@@ -27,10 +27,16 @@ def build_pre_start_trajectory_query() -> TextClause:
                 requested.event_id,
                 requested.starts_at,
                 m.market_id,
-                m.market_name,
-                m.market_group,
-                m.market_period,
-                m.choice_group,
+                m.market_type_id,
+                cmt.canonical_market_key,
+                cmt.canonical_market_name AS market_name,
+                cmt.canonical_market_group AS market_group,
+                cmt.canonical_market_period AS market_period,
+                cmt.market_family,
+                cmt.display_order AS market_display_order,
+                cmt.requires_line_value,
+                cmt.enabled_for_trajectory,
+                m.line_value,
                 m.bookie_id,
                 mc.choice_id,
                 mc.choice_name,
@@ -47,6 +53,8 @@ def build_pre_start_trajectory_query() -> TextClause:
             JOIN markets m
               ON m.event_id = requested.event_id
              AND m.is_live = false
+            JOIN canonical_market_types cmt
+              ON cmt.market_type_id = m.market_type_id
             JOIN market_choices mc
               ON mc.market_id = m.market_id
             JOIN market_choice_quotes mcq
@@ -119,102 +127,38 @@ def build_pre_start_trajectory_query() -> TextClause:
              AND fallback_mapping.source_market_id = quote_context.source_market_id
              AND fallback_mapping.source_sport_id IS NULL
         ),
-        textual_canonical_match AS (
-            SELECT
-                source_mapped.*,
-                textual_type.canonical_market_key AS textual_canonical_market_key,
-                textual_type.canonical_market_name AS textual_market_name,
-                textual_type.canonical_market_group AS textual_market_group,
-                textual_type.canonical_market_period AS textual_market_period,
-                textual_type.market_family AS textual_market_family,
-                textual_type.requires_choice_group AS textual_requires_choice_group,
-                textual_type.enabled_for_trajectory AS textual_enabled_for_trajectory,
-                textual_type.display_order AS textual_market_display_order
-            FROM source_mapped
-            LEFT JOIN canonical_market_types textual_type
-              ON LOWER(REPLACE(REPLACE(REPLACE(
-                    COALESCE(source_mapped.market_name, ''), '-', ''
-                 ), '_', ''), ' ', '')) =
-                 LOWER(REPLACE(REPLACE(REPLACE(
-                    textual_type.canonical_market_name, '-', ''
-                 ), '_', ''), ' ', ''))
-             AND LOWER(REPLACE(REPLACE(REPLACE(
-                    COALESCE(source_mapped.market_group, ''), '-', ''
-                 ), '_', ''), ' ', '')) =
-                 LOWER(REPLACE(REPLACE(REPLACE(
-                    textual_type.canonical_market_group, '-', ''
-                 ), '_', ''), ' ', ''))
-             AND LOWER(REPLACE(REPLACE(REPLACE(
-                    COALESCE(source_mapped.market_period, ''), '-', ''
-                 ), '_', ''), ' ', '')) =
-                 LOWER(REPLACE(REPLACE(REPLACE(
-                    textual_type.canonical_market_period, '-', ''
-                 ), '_', ''), ' ', ''))
-        ),
         canonical_quotes AS (
             SELECT
-                textual.event_id,
-                textual.starts_at,
-                textual.market_id,
-                COALESCE(
-                    mapped_type.canonical_market_key,
-                    textual.textual_canonical_market_key
-                ) AS canonical_market_key,
-                COALESCE(
-                    mapped_type.market_family,
-                    textual.textual_market_family
-                ) AS market_family,
-                COALESCE(
-                    mapped_type.display_order,
-                    textual.textual_market_display_order
-                ) AS market_display_order,
-                COALESCE(
-                    mapped_type.canonical_market_name,
-                    textual.textual_market_name,
-                    textual.market_name
-                ) AS market_name,
-                COALESCE(
-                    mapped_type.canonical_market_group,
-                    textual.textual_market_group,
-                    textual.market_group
-                ) AS market_group,
-                COALESCE(
-                    mapped_type.canonical_market_period,
-                    textual.textual_market_period,
-                    textual.market_period
-                ) AS market_period,
-                textual.choice_group,
-                textual.bookie_id,
-                textual.bookie_name,
-                textual.choice_id,
-                textual.choice_name,
-                textual.main_line,
+                source_mapped.event_id,
+                source_mapped.starts_at,
+                source_mapped.market_id,
+                source_mapped.canonical_market_key,
+                source_mapped.market_family,
+                source_mapped.market_display_order,
+                source_mapped.market_name,
+                source_mapped.market_group,
+                source_mapped.market_period,
+                source_mapped.line_value,
+                source_mapped.bookie_id,
+                source_mapped.bookie_name,
+                source_mapped.choice_id,
+                source_mapped.choice_name,
+                source_mapped.main_line,
                 outcome_mapping.display_order AS choice_display_order,
-                textual.initial_odds,
-                textual.quote_id,
-                textual.source,
-                textual.exchange_side,
-                textual.exchange_level
-            FROM textual_canonical_match textual
-            LEFT JOIN canonical_market_types mapped_type
-              ON mapped_type.canonical_market_key =
-                 textual.mapped_canonical_market_key
+                source_mapped.initial_odds,
+                source_mapped.quote_id,
+                source_mapped.source,
+                source_mapped.exchange_side,
+                source_mapped.exchange_level
+            FROM source_mapped
             LEFT JOIN market_outcome_source_mappings outcome_mapping
               ON outcome_mapping.market_source_mapping_id =
-                 textual.market_source_mapping_id
-             AND outcome_mapping.source_outcome_id = textual.source_outcome_id
-            WHERE COALESCE(
-                    mapped_type.enabled_for_trajectory,
-                    textual.textual_enabled_for_trajectory,
-                    false
-                  ) = true
+                 source_mapped.market_source_mapping_id
+             AND outcome_mapping.source_outcome_id = source_mapped.source_outcome_id
+            WHERE source_mapped.enabled_for_trajectory = true
               AND (
-                    COALESCE(
-                        mapped_type.requires_choice_group,
-                        textual.textual_requires_choice_group,
-                        false
-                    ) = false
-                    OR textual.choice_group IS NOT NULL
+                    source_mapped.requires_line_value = false
+                    OR source_mapped.line_value IS NOT NULL
                   )
         )
         SELECT
@@ -226,7 +170,7 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.market_name,
             canonical.market_group,
             canonical.market_period,
-            canonical.choice_group,
+            canonical.line_value,
             canonical.bookie_id,
             canonical.bookie_name,
             canonical.choice_id,
@@ -269,7 +213,7 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.market_display_order NULLS LAST,
             canonical.market_group,
             canonical.market_period,
-            canonical.choice_group NULLS FIRST,
+            canonical.line_value NULLS FIRST,
             canonical.bookie_name,
             canonical.source,
             CASE canonical.exchange_side

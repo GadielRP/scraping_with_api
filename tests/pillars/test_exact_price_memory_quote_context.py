@@ -54,7 +54,7 @@ def test_pillar_5_selects_only_primary_unsided_sofascore_quote():
         market_name="Match Result",
         market_group="1X2",
         market_period="Full Time",
-        choice_group=None,
+        line_value=None,
         bookies=bookies,
     )
     context = OddsTrajectoryContext(

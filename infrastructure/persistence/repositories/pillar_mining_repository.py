@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.temporal import utc_now
@@ -62,6 +63,21 @@ class PillarMiningRepository:
         parent_unit_id: int | None,
     ) -> dict[str, Any]:
         now = utc_now()
+        raw_market_type_id = unit.dimensions.get("market_type_id") or unit.payload.get(
+            "market_type_id"
+        )
+        try:
+            market_type_id = int(raw_market_type_id) if raw_market_type_id is not None else None
+        except (TypeError, ValueError):
+            market_type_id = None
+        try:
+            line_value = (
+                Decimal(str(unit.line_value))
+                if unit.line_value not in (None, "")
+                else None
+            )
+        except (InvalidOperation, ValueError, TypeError):
+            line_value = None
         return {
             "run_id": run_id,
             "parent_unit_id": parent_unit_id,
@@ -78,10 +94,8 @@ class PillarMiningRepository:
             "direction": unit.direction,
             "strength": unit.strength,
             "target_minute": unit.target_minute,
-            "market_group": unit.market_group,
-            "market_period": unit.market_period,
-            "market_name": unit.market_name,
-            "choice_group": unit.choice_group,
+            "market_type_id": market_type_id,
+            "line_value": line_value,
             "choice_name": unit.choice_name,
             "bookie_id": unit.bookie_id,
             "quote_id": unit.quote_id,

@@ -28,9 +28,6 @@ from sqlalchemy.orm import joinedload
 
 from app.initialize import initialize_system
 from app.logging_setup import setup_logging
-from infrastructure.persistence.catalogs.canonical_market_types import (
-    CANONICAL_MARKET_TYPE_SEEDS,
-)
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories import EventRepository
@@ -48,9 +45,6 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
     start_oddsportal_scrape_for_events,
 )
-from modules.odds_ingestion.canonical_market_normalizer import (
-    CanonicalMarketNormalizer,
-)
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.sofascore import api_client
@@ -62,12 +56,12 @@ from shared.runtime_observability import observe_operation
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
 ENABLE_ALERT_PIPELINE = True
-ENABLE_PILLAR_PIPELINE = False
+ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
-ENABLE_SOFASCORE_ODDS_SIMULATION = False
-ENABLE_ODDSPAPI_ODDS_SIMULATION = False
+ENABLE_SOFASCORE_ODDS_SIMULATION = True
+ENABLE_ODDSPAPI_ODDS_SIMULATION = True
 ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
@@ -173,35 +167,6 @@ def _log_pipeline_eligibility(event_obj) -> bool:
     return True
 
 
-def _normalize_market_field(value) -> str:
-    return str(value or "").strip().lower().replace("-", " ")
-
-
-def _resolve_market_key_from_db_fields(market) -> str | None:
-    db_name = _normalize_market_field(market.market_name)
-    db_group = _normalize_market_field(market.market_group)
-    db_period = _normalize_market_field(market.market_period)
-
-    for key, seed in CANONICAL_MARKET_TYPE_SEEDS.items():
-        if (
-            db_name
-            == _normalize_market_field(seed["canonical_market_name"])
-            and db_group
-            == _normalize_market_field(seed["canonical_market_group"])
-            and db_period
-            == _normalize_market_field(seed["canonical_market_period"])
-        ):
-            return key
-
-    return CanonicalMarketNormalizer._resolve_sofascore_key(
-        {
-            "marketName": market.market_name,
-            "marketGroup": market.market_group,
-            "marketPeriod": market.market_period,
-        }
-    )
-
-
 def _find_matching_raw_market(
     market,
     adapted_response: dict | None,
@@ -280,17 +245,25 @@ def _log_persisted_market_odds(
             logger.info("-" * 100)
             logger.info(
                 "%sMARKET id=%s key=%r bookie=%r live=%s "
-                "name=%r group=%r period=%r choice_group=%r "
+                "name=%r group=%r period=%r line_value=%r "
                 "raw_name=%r",
                 "NEW " if has_new_snapshot else "",
                 market.market_id,
-                _resolve_market_key_from_db_fields(market),
+                market.canonical_market_type.canonical_market_key
+                if market.canonical_market_type
+                else None,
                 market.bookie.name if market.bookie else None,
                 market.is_live,
-                market.market_name,
-                market.market_group,
-                market.market_period,
-                market.choice_group,
+                market.canonical_market_type.canonical_market_name
+                if market.canonical_market_type
+                else None,
+                market.canonical_market_type.canonical_market_group
+                if market.canonical_market_type
+                else None,
+                market.canonical_market_type.canonical_market_period
+                if market.canonical_market_type
+                else None,
+                market.line_value,
                 raw_market.get("marketName") if raw_market else None,
             )
             for choice in sorted(

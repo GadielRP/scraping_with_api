@@ -77,7 +77,7 @@ def _build_test_index():
         canonical_market_name="Over/Under",
         canonical_market_group="Over/Under",
         canonical_market_period="Full Time",
-        requires_choice_group=True,
+        requires_line_value=True,
         source_handicap="2.5",
     )
     index.outcome_mappings[(2, "201")] = CanonicalOutcomeResolution(
@@ -95,7 +95,7 @@ def _build_test_index():
         canonical_market_name="Over/Under",
         canonical_market_group="Over/Under",
         canonical_market_period="Full Time",
-        requires_choice_group=True,
+        requires_line_value=True,
         source_handicap="3.5",
     )
     index.outcome_mappings[(3, "301")] = CanonicalOutcomeResolution(

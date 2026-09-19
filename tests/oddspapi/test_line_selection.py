@@ -33,7 +33,7 @@ def _fixture(specs):
         resolution = CanonicalMarketResolution(
             resolved=True, mapping_id=mid, canonical_market_key=f"{group}_{period}",
             canonical_market_name=f"{group} {period}", canonical_market_group=group,
-            canonical_market_period=period, requires_choice_group=True,
+            canonical_market_period=period, requires_line_value=True,
             source_handicap=spec.get("line", str(mid)),
         )
         index.market_mappings[("oddspapi", "13", str(mid))] = resolution
@@ -93,7 +93,7 @@ def test_adapter_does_not_report_discarded_complete_line_as_incomplete():
 
     assert not adapted.get("diagnostics", {}).get("skipped_incomplete_markets")
     assert [
-        market["choiceGroup"]
+        market["lineValue"]
         for market in adapted["bookmakers"][0]["markets"]
     ] == ["1"]
 
@@ -208,7 +208,7 @@ def test_current_lines_require_activity_even_when_suspended_observations_are_all
     cached = OddspapiMainlineOutcomeExtractor.extract(
         payload, market_mapping_index=index, require_active_quotes=False,
     )
-    assert [market["choiceGroup"] for market in adapted["bookmakers"][0]["markets"]] == ["2"]
+    assert [market["lineValue"] for market in adapted["bookmakers"][0]["markets"]] == ["2"]
     assert {row["source_market_id"] for row in cached} == {"2"}
 
 
@@ -221,7 +221,7 @@ def test_historical_ingestion_preserves_cached_line_despite_new_price_balance():
         payload, market_mapping_index=index, use_mainline_cache=True,
         persist_main_line_only=True, mainline_outcome_ids_by_bookmaker={"bet365": {"1-0", "1-1"}},
     )
-    assert [market["choiceGroup"] for market in adapted["bookmakers"][0]["markets"]] == ["1"]
+    assert [market["lineValue"] for market in adapted["bookmakers"][0]["markets"]] == ["1"]
 
 
 def test_adapter_marks_historical_current_tick_for_canonical_deduplication():

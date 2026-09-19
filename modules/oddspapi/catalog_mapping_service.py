@@ -112,6 +112,7 @@ def upsert_market_source_mapping_from_catalog_item(
             active_session.add(mapping)
 
         mapping.canonical_market_key = canonical_market_key
+        mapping.market_type_id = canonical_market_type.market_type_id
         mapping.source_market_name = source_market_name
         mapping.source_market_group = source_market_group
         mapping.source_period = source_period

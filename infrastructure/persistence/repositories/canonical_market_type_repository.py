@@ -6,10 +6,12 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.catalogs.canonical_market_types import (
     CANONICAL_MARKET_KEY_RENAMES,
+    CANONICAL_MARKET_TYPE_IDS,
     CANONICAL_MARKET_TYPE_SEEDS,
     persisted_seed_values,
 )
@@ -26,8 +28,11 @@ class CanonicalMarketTypeResolution:
     canonical_market_group: str
     canonical_market_period: str
     market_family: str
-    requires_choice_group: bool
+    requires_line_value: bool
     enabled_for_ingestion: bool
+    # Optional only for backwards-compatible adapter fixtures. Resolutions
+    # loaded from persistence always carry the stable numeric identifier.
+    market_type_id: Optional[int] = None
 
 
 class CanonicalMarketTypeRepository:
@@ -35,6 +40,9 @@ class CanonicalMarketTypeRepository:
     def _apply_canonical_key_renames(active_session: Session) -> int:
         """Rename deprecated canonical keys and remap dependent source mappings."""
         renamed = 0
+        mappings_available = "market_source_mappings" in inspect(
+            active_session.get_bind()
+        ).get_table_names()
         for old_key, new_key in CANONICAL_MARKET_KEY_RENAMES.items():
             if old_key == new_key:
                 continue
@@ -55,25 +63,29 @@ class CanonicalMarketTypeRepository:
                 continue
 
             if new_row is None:
-                new_row = CanonicalMarketType(canonical_market_key=new_key)
+                new_row = CanonicalMarketType(
+                    canonical_market_key=new_key,
+                    market_type_id=CANONICAL_MARKET_TYPE_IDS[new_key],
+                )
                 active_session.add(new_row)
+            new_row.market_type_id = CANONICAL_MARKET_TYPE_IDS[new_key]
             for field_name, field_value in persisted.items():
                 setattr(new_row, field_name, field_value)
             active_session.flush()
 
-            mapping_count = (
-                active_session.query(MarketSourceMapping)
-                .filter(MarketSourceMapping.canonical_market_key == old_key)
-                .update(
-                    {
-                        MarketSourceMapping.canonical_market_key: new_key,
-                        MarketSourceMapping.canonical_market_name: new_row.canonical_market_name,
-                        MarketSourceMapping.canonical_market_group: new_row.canonical_market_group,
-                        MarketSourceMapping.canonical_market_period: new_row.canonical_market_period,
-                    },
-                    synchronize_session=False,
+            mapping_count = 0
+            if mappings_available:
+                mapping_count = (
+                    active_session.query(MarketSourceMapping)
+                    .filter(MarketSourceMapping.canonical_market_key == old_key)
+                    .update(
+                        {
+                            MarketSourceMapping.canonical_market_key: new_key,
+                            MarketSourceMapping.market_type_id: new_row.market_type_id,
+                        },
+                        synchronize_session=False,
+                    )
                 )
-            )
             if old_row is not None:
                 active_session.delete(old_row)
             active_session.flush()
@@ -87,8 +99,12 @@ class CanonicalMarketTypeRepository:
         return renamed
 
     @staticmethod
-    def _sync_mapping_denormalized_fields(active_session: Session) -> int:
-        """Keep denormalized canonical fields on source mappings aligned with the seed catalog."""
+    def _sync_mapping_numeric_identity(active_session: Session) -> int:
+        """Keep numeric source-mapping identity aligned with the seed catalog."""
+        if "market_source_mappings" not in inspect(
+            active_session.get_bind()
+        ).get_table_names():
+            return 0
         updated = 0
         for canonical_market_key, values in CANONICAL_MARKET_TYPE_SEEDS.items():
             persisted = persisted_seed_values(values)
@@ -97,14 +113,8 @@ class CanonicalMarketTypeRepository:
                 .filter(MarketSourceMapping.canonical_market_key == canonical_market_key)
                 .update(
                     {
-                        MarketSourceMapping.canonical_market_name: persisted[
-                            "canonical_market_name"
-                        ],
-                        MarketSourceMapping.canonical_market_group: persisted[
-                            "canonical_market_group"
-                        ],
-                        MarketSourceMapping.canonical_market_period: persisted[
-                            "canonical_market_period"
+                        MarketSourceMapping.market_type_id: CANONICAL_MARKET_TYPE_IDS[
+                            canonical_market_key
                         ],
                     },
                     synchronize_session=False,
@@ -122,14 +132,18 @@ class CanonicalMarketTypeRepository:
             for canonical_market_key, values in CANONICAL_MARKET_TYPE_SEEDS.items():
                 row = active_session.get(CanonicalMarketType, canonical_market_key)
                 if row is None:
-                    row = CanonicalMarketType(canonical_market_key=canonical_market_key)
+                    row = CanonicalMarketType(
+                        canonical_market_key=canonical_market_key,
+                        market_type_id=CANONICAL_MARKET_TYPE_IDS[canonical_market_key],
+                    )
                     active_session.add(row)
+                row.market_type_id = CANONICAL_MARKET_TYPE_IDS[canonical_market_key]
                 for field_name, field_value in persisted_seed_values(values).items():
                     setattr(row, field_name, field_value)
                 seeded.append(row)
             active_session.flush()
 
-            sync_count = CanonicalMarketTypeRepository._sync_mapping_denormalized_fields(
+            sync_count = CanonicalMarketTypeRepository._sync_mapping_numeric_identity(
                 active_session
             )
             if sync_count:
@@ -151,17 +165,20 @@ class CanonicalMarketTypeRepository:
         session: Optional[Session] = None,
     ) -> dict[str, CanonicalMarketTypeResolution]:
         def _build(active_session: Session) -> dict[str, CanonicalMarketTypeResolution]:
-            query = active_session.query(CanonicalMarketType)
+            query = active_session.query(CanonicalMarketType).filter(
+                CanonicalMarketType.market_type_id.isnot(None)
+            )
             if enabled_only:
                 query = query.filter(CanonicalMarketType.enabled_for_ingestion.is_(True))
             return {
                 row.canonical_market_key: CanonicalMarketTypeResolution(
+                    market_type_id=int(row.market_type_id),
                     canonical_market_key=row.canonical_market_key,
                     canonical_market_name=row.canonical_market_name,
                     canonical_market_group=row.canonical_market_group,
                     canonical_market_period=row.canonical_market_period,
                     market_family=row.market_family,
-                    requires_choice_group=bool(row.requires_choice_group),
+                    requires_line_value=bool(row.requires_line_value),
                     enabled_for_ingestion=bool(row.enabled_for_ingestion),
                 )
                 for row in query.all()

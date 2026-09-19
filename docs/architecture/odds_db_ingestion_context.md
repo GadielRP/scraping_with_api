@@ -8,7 +8,7 @@ El modelo canónico de cuotas tiene esta jerarquía:
 
 ```text
 events
-  └── markets                 (evento + bookmaker + mercado + periodo + línea + is_live)
+  └── markets                 (evento + bookmaker + market_type_id + línea + is_live)
         └── market_choices    (resultado canónico: 1, x, 2, over, under, etc.)
               └── market_choice_quotes       (instrumento de precio actual)
                     └── market_choice_snapshots (histórico append-only)
@@ -87,7 +87,7 @@ Campos relevantes:
 | `canonical_market_name` | Nombre canónico, por ejemplo `1X2 Full Time`. |
 | `canonical_market_group` | Grupo, por ejemplo `1X2`, `Over/Under`, `Asian Handicap`. |
 | `canonical_market_period` | `Full Time`, `1st Half`, etc. |
-| `market_family`, `requires_choice_group` | Reglas del mercado. |
+| `market_family`, `requires_line_value` | Reglas del mercado. |
 | `enabled_for_ingestion` | Si el catálogo permite ingestión (`True` para los 39 tipos canónicos). |
 | `enabled_for_trajectory` | Si el mercado participa en análisis de trayectoria temporal (Pilar 4). |
 
@@ -105,7 +105,6 @@ Para auditar un mercado como 1X2 Full Time con `source_market_id = 101`, esta es
 | `source_market_id` | ID externo, por ejemplo `101`. |
 | `source_market_name`, `source_market_group`, `source_period` | Metadatos recibidos. |
 | `source_handicap` | Línea cuando aplica. |
-| `canonical_market_name`, `canonical_market_group`, `canonical_market_period` | Valores usados al crear `markets`. |
 
 ## 7. `market_outcome_source_mappings`
 
@@ -136,7 +135,7 @@ Representa un mercado canónico para un evento y un bookmaker. Es la primera tab
 Identidad lógica:
 
 ```text
-event_id + bookie_id + market_name + market_period + choice_group + is_live
+event_id + bookie_id + market_type_id + line_value + is_live
 ```
 
 Campos relevantes:
@@ -146,10 +145,8 @@ Campos relevantes:
 | `market_id` | Clave padre de `market_choices`. |
 | `event_id` | Evento canónico. |
 | `bookie_id` | Bookmaker canónico. |
-| `market_name` | Nombre canónico del mercado. |
-| `market_group` | Grupo canónico. |
-| `market_period` | Periodo: `Full Time`, `1st Half`, etc. |
-| `choice_group` | Línea, por ejemplo `2.5`; suele ser NULL en 1X2. |
+| `market_type_id` | FK al catálogo canónico; resuelve nombre, grupo y periodo. |
+| `line_value` | Línea numérica, por ejemplo `2.5`; suele ser NULL en 1X2. |
 | `is_live` | Clasificación temporal del mercado. El flujo significativo forzado en T−5 conserva `false`; usar el detector no convierte el mercado en live. |
 | `collected_at` | Instante de la escritura de la observación canónica (en UTC). |
 
@@ -298,10 +295,10 @@ SELECT
     e.id AS event_id,
     e.starts_at,
     m.market_id,
-    m.market_name,
-    m.market_group,
-    m.market_period,
-    m.choice_group,
+    cmt.canonical_market_name AS market_name,
+    cmt.canonical_market_group AS market_group,
+    cmt.canonical_market_period AS market_period,
+    m.line_value,
     m.is_live,
     b.bookie_id,
     b.name AS bookmaker,
@@ -327,6 +324,7 @@ SELECT
     s.exchange_size
 FROM events e
 JOIN markets m ON m.event_id = e.id
+JOIN canonical_market_types cmt ON cmt.market_type_id = m.market_type_id
 JOIN bookies b ON b.bookie_id = m.bookie_id
 JOIN market_choices mc ON mc.market_id = m.market_id
 LEFT JOIN market_choice_quotes q ON q.choice_id = mc.choice_id
@@ -334,9 +332,9 @@ LEFT JOIN market_choice_snapshots s ON s.quote_id = q.quote_id
 WHERE e.id = :event_id
 ORDER BY
     b.slug,
-    m.market_name,
-    m.market_period,
-    m.choice_group NULLS FIRST,
+    cmt.canonical_market_name,
+    cmt.canonical_market_period,
+    m.line_value NULLS FIRST,
     mc.choice_name,
     q.source,
     q.exchange_side NULLS FIRST,

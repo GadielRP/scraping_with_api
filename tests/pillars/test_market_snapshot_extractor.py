@@ -30,7 +30,7 @@ def _row(
         "market_group": market_group,
         "market_period": market_period,
         "market_name": market_name,
-        "choice_group": "7.5",
+        "line_value": "7.5",
         "bookie_id": 77,
         "bookie_name": "Future Book",
         "source": source,

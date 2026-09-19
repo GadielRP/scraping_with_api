@@ -15,12 +15,13 @@ from modules.oddspapi.format_utils import normalize_source, normalize_source_id
 class CanonicalMarketResolution:
     resolved: bool
     mapping_id: int | None = None
+    market_type_id: int | None = None
     canonical_market_key: str | None = None
     canonical_market_name: str | None = None
     canonical_market_group: str | None = None
     canonical_market_period: str | None = None
     market_family: str | None = None
-    requires_choice_group: bool = False
+    requires_line_value: bool = False
     source_handicap: str | None = None
     reason: str | None = None
 
@@ -83,12 +84,13 @@ class MarketMappingRepository:
                 market_mappings[market_key] = CanonicalMarketResolution(
                     resolved=True,
                     mapping_id=mapping.mapping_id,
-                    canonical_market_key=mapping.canonical_market_key,
-                    canonical_market_name=mapping.canonical_market_name,
-                    canonical_market_group=mapping.canonical_market_group,
-                    canonical_market_period=mapping.canonical_market_period,
+                    market_type_id=canonical_market_type.market_type_id,
+                    canonical_market_key=canonical_market_type.canonical_market_key,
+                    canonical_market_name=canonical_market_type.canonical_market_name,
+                    canonical_market_group=canonical_market_type.canonical_market_group,
+                    canonical_market_period=canonical_market_type.canonical_market_period,
                     market_family=canonical_market_type.market_family,
-                    requires_choice_group=bool(canonical_market_type.requires_choice_group),
+                    requires_line_value=bool(canonical_market_type.requires_line_value),
                     source_handicap=mapping.source_handicap,
                     reason="resolved_from_db_mapping",
                 )

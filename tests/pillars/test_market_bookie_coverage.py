@@ -212,7 +212,7 @@ def test_unique_complete_candidate_wins_over_incomplete_alternative(helper):
             market_group="Asian Handicap",
             market_period="Full Time",
             market_name="Asian Handicap Full Time",
-            choice_group="-2.5",
+            line_value="-2.5",
             bookie_id=302,
             prices={"1": 1.95},
         )

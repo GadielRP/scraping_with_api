@@ -100,7 +100,7 @@ def _candidate_diagnostics(
             {
                 "market_period": candidate.market_line.market_period,
                 "market_name": candidate.market_line.market_name,
-                "choice_group": candidate.market_line.choice_group,
+                "line_value": candidate.market_line.line_value,
                 "source": candidate.bookie.source,
                 "bookie_name": candidate.bookie.bookie_name,
                 "complete": candidate.line is not None

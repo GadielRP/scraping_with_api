@@ -61,7 +61,7 @@ class MarketIngestionResult:
     unmapped_outcomes_detected: int = 0
     skipped_missing_handicap_detected: int = 0
     skipped_incomplete_markets_detected: int = 0
-    skipped_missing_choice_group_detected: int = 0
+    skipped_missing_line_value_detected: int = 0
 
     dual_process_market_available: bool = False
     skipped: bool = False
@@ -724,7 +724,7 @@ class MarketOddsIngestionService:
         diagnostics = (normalized_response or {}).get("diagnostics") or {}
         unmapped_markets = len(diagnostics.get("unmapped_markets") or [])
         unmapped_choices = len(diagnostics.get("unmapped_choices") or [])
-        skipped_missing_choice_group = len(diagnostics.get("skipped_missing_choice_group") or [])
+        skipped_missing_line_value = len(diagnostics.get("skipped_missing_line_value") or [])
         markets = (normalized_response or {}).get("markets") or []
         choices_detected = sum(len(market.get("choices") or []) for market in markets)
         if not normalized_response or not normalized_response.get("markets"):
@@ -735,7 +735,7 @@ class MarketOddsIngestionService:
                 source=source,
                 unmapped_markets_detected=unmapped_markets,
                 unmapped_outcomes_detected=unmapped_choices,
-                skipped_missing_choice_group_detected=skipped_missing_choice_group,
+                skipped_missing_line_value_detected=skipped_missing_line_value,
                 skipped=True,
                 reason=reason,
             )
@@ -763,7 +763,7 @@ class MarketOddsIngestionService:
                 snapshots_saved=save_result.snapshots_saved,
                 unmapped_markets_detected=unmapped_markets,
                 unmapped_outcomes_detected=unmapped_choices,
-                skipped_missing_choice_group_detected=skipped_missing_choice_group,
+                skipped_missing_line_value_detected=skipped_missing_line_value,
                 dual_process_market_available=dual_process_available,
                 skipped=save_result.markets_saved <= 0,
                 reason=None if save_result.markets_saved > 0 else "no markets saved",

@@ -158,13 +158,13 @@ def create_odds_alert_message(event_data: Dict, markets: List[Dict], minutes_unt
         message += f"🔵 <b>SOFASCORE'S ODDS:</b>\n"
         for market in markets:
             market_name = market.get('market_name', 'Unknown')
-            choice_group = market.get('choice_group')
+            line_value = market.get('line_value')
             
             live_label = " (LIVE)" if market.get('is_live') else ""
             message += f"📊 <b>{market_name}{live_label}</b>\n"
             
-            if choice_group:
-                message += f"  <i>Line: {choice_group}</i>\n"
+            if line_value is not None:
+                message += f"  <i>Line: {line_value}</i>\n"
             
             message += _format_market_choices(market, indent="  ")
             message += "\n"
@@ -266,8 +266,8 @@ def _format_external_quote_blocks(blocks: Sequence[ExternalMarketQuoteBlock]) ->
             for block in sorted(
                 market_blocks,
                 key=lambda item: (
-                    item.choice_group is not None,
-                    item.choice_group or "",
+                    item.line_value is not None,
+                    str(item.line_value or ""),
                     item.bookie_name.casefold(),
                     {None: 0, "back": 1, "lay": 2}.get(item.exchange_side, 9),
                     item.market_id,
@@ -276,8 +276,8 @@ def _format_external_quote_blocks(blocks: Sequence[ExternalMarketQuoteBlock]) ->
                 display = block.bookie_name
                 if block.aggregation == "exchange":
                     display += f" ({(block.exchange_side or 'Unspecified').title()})"
-                elif block.market_group in {"Asian Handicap", "Over/Under"} and block.choice_group:
-                    display += f" [{block.choice_group}]"
+                elif block.market_group in {"Asian Handicap", "Over/Under"} and block.line_value is not None:
+                    display += f" [{block.line_value}]"
                 if block.is_live:
                     display += " (LIVE)"
 

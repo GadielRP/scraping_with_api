@@ -21,7 +21,7 @@ def _point(quote_id):
         market_name="Result",
         market_group="1X2",
         market_period="Full Time",
-        choice_group=None,
+        line_value=None,
         bookie_id=1,
         bookie_name="SofaScore",
         choice_id=3,
@@ -45,6 +45,7 @@ def _point(quote_id):
 def test_point_serialization_keeps_quote_identity():
     payload = _point(99).to_dict()
     assert payload["quote_id"] == 99
+    assert payload["line_value"] is None
     assert payload["source"] == "sofascore"
     assert payload["exchange_side"] is None
     assert payload["exchange_level"] == 0

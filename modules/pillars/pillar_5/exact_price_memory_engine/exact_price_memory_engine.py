@@ -125,7 +125,7 @@ def _build_insufficient_result(
     selected_market_group: Optional[str] = None,
     selected_market_period: Optional[str] = None,
     selected_market_name: Optional[str] = None,
-    selected_choice_group: Optional[str] = None,
+    selected_line_value: Optional[str] = None,
     selected_bookie_name: Optional[str] = None,
     candidate_line_count: int = 0,
     current_home_odds: Optional[Decimal] = None,
@@ -165,7 +165,7 @@ def _build_insufficient_result(
             "market_group": selected_market_group,
             "market_period": selected_market_period,
             "market_name": selected_market_name,
-            "choice_group": selected_choice_group,
+            "line_value": selected_line_value,
             "bookie_name": selected_bookie_name,
             "candidate_line_count": candidate_line_count,
             "target_minute": CURRENT_TARGET_MINUTE,
@@ -252,7 +252,7 @@ def _extract_current_price_set(
         "selected_market_group": None,
         "selected_market_period": None,
         "selected_market_name": None,
-        "selected_choice_group": None,
+        "selected_line_value": None,
         "selected_bookie_name": None,
         "candidate_line_count": 0,
         "current_home_odds": None,
@@ -301,13 +301,13 @@ def _extract_current_price_set(
         for market_period in sorted(periods):
             market_names = periods[market_period]
             for market_name in sorted(market_names):
-                choice_groups = market_names[market_name]
-                for choice_group_key in sorted(choice_groups):
-                    market_line = choice_groups[choice_group_key]
-                    selected_choice_group = market_line.choice_group
+                line_values = market_names[market_name]
+                for line_value_key in sorted(line_values):
+                    market_line = line_values[line_value_key]
+                    selected_line_value = market_line.line_value
                     if debug_mode:
-                        _debug_line("Evaluando línea de mercado: group=%s, period=%s, name=%s, choice_group=%s",
-                                    market_group, market_period, market_name, selected_choice_group)
+                        _debug_line("Evaluando línea de mercado: group=%s, period=%s, name=%s, line_value=%s",
+                                    market_group, market_period, market_name, selected_line_value)
                     for bookie_key in sorted(market_line.bookies):
                         bookie = market_line.bookies[bookie_key]
                         if debug_mode:
@@ -365,7 +365,7 @@ def _extract_current_price_set(
                                 "selected_market_group": market_group,
                                 "selected_market_period": market_period,
                                 "selected_market_name": market_name,
-                                "selected_choice_group": selected_choice_group,
+                                "selected_line_value": selected_line_value,
                                 "selected_bookie_name": bookie.bookie_name,
                                 "current_home_odds": current_home_odds,
                                 "current_draw_odds": current_draw_odds,
@@ -414,7 +414,7 @@ def calculate_p5_exact_price_memory_engine(
     selected_market_group = selected_price_set.get("selected_market_group")
     selected_market_period = selected_price_set.get("selected_market_period")
     selected_market_name = selected_price_set.get("selected_market_name")
-    selected_choice_group = selected_price_set.get("selected_choice_group")
+    selected_line_value = selected_price_set.get("selected_line_value")
     selected_bookie_name = selected_price_set.get("selected_bookie_name")
     candidate_line_count = int(selected_price_set.get("candidate_line_count") or 0)
     current_home_odds = selected_price_set.get("current_home_odds")
@@ -453,7 +453,7 @@ def calculate_p5_exact_price_memory_engine(
             selected_market_group=selected_market_group,
             selected_market_period=selected_market_period,
             selected_market_name=selected_market_name,
-            selected_choice_group=selected_choice_group,
+            selected_line_value=selected_line_value,
             selected_bookie_name=selected_bookie_name,
             candidate_line_count=candidate_line_count,
             current_home_odds=current_home_odds,
@@ -521,7 +521,7 @@ def calculate_p5_exact_price_memory_engine(
             selected_market_group=selected_market_group,
             selected_market_period=selected_market_period,
             selected_market_name=selected_market_name,
-            selected_choice_group=selected_choice_group,
+            selected_line_value=selected_line_value,
             selected_bookie_name=selected_bookie_name,
             candidate_line_count=candidate_line_count,
             current_home_odds=current_home_odds,
@@ -637,7 +637,7 @@ def calculate_p5_exact_price_memory_engine(
             "market_group": selected_market_group,
             "market_period": selected_market_period,
             "market_name": selected_market_name,
-            "choice_group": selected_choice_group,
+            "line_value": selected_line_value,
             "bookie_name": selected_bookie_name,
             "candidate_line_count": candidate_line_count,
             "target_minute": CURRENT_TARGET_MINUTE,

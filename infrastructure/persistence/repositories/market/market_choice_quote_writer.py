@@ -2,7 +2,7 @@
 
 A quote row is keyed by (choice_id, source, exchange_side, exchange_level),
 where exchange_side is None for non-exchange bookies (no back/lay split) -
-the same NULL convention as Market.choice_group - and can receive its
+the same NULL convention as Market.line_value - and can receive its
 ``initial_*`` and ``current_*`` slots from independent write cycles (e.g.
 opening odds arrive at T-120, a later poll only refreshes ``current_odds``
 at T-5). ``upsert`` merges into whichever slots have new data instead of

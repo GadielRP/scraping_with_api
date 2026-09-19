@@ -61,7 +61,7 @@ def _semantic_id(template: P4SeriesInput, value_type: str, source_scope: str) ->
             template.market_group,
             template.market_period,
             template.market_name,
-            template.choice_group_key,
+            template.line_value_key,
             source_scope,
             "CHECKPOINT_VIEW",
             value_type,
@@ -146,8 +146,8 @@ def _combine(
         market_group=left.market_group,
         market_period=left.market_period,
         market_name=left.market_name,
-        choice_group=left.choice_group,
-        choice_group_key=left.choice_group_key,
+        line_value=left.line_value,
+        line_value_key=left.line_value_key,
         choice_name=choice_name,
         choice_id=None,
         main_line=(
@@ -187,7 +187,7 @@ def _edge_series(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput]:
             series.market_group,
             series.market_period,
             series.market_name,
-            series.choice_group_key,
+            series.line_value_key,
             series.bookie_id,
             series.bookie_name,
             series.source,
@@ -228,7 +228,7 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
             series.market_group,
             series.market_period,
             series.market_name,
-            series.choice_group_key,
+            series.line_value_key,
         )
         groups.setdefault(key, []).append(series)
 
@@ -324,7 +324,7 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInp
             series.market_group,
             series.market_period,
             series.market_name,
-            series.choice_group_key,
+            series.line_value_key,
             normalize_token(series.choice_name),
         )
         groups.setdefault(key, {"back": [], "lay": []})[

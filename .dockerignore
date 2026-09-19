@@ -3,6 +3,7 @@
 **
 
 !Dockerfile
+!alembic.ini
 !main.py
 !requirements.txt
 !requirements_cloud.txt

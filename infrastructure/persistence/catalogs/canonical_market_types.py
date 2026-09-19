@@ -14,7 +14,7 @@ PERSISTED_SEED_FIELDS = frozenset(
         "canonical_market_group",
         "canonical_market_period",
         "market_family",
-        "requires_choice_group",
+        "requires_line_value",
         "enabled_for_ingestion",
         "enabled_for_trajectory",
         "display_order",
@@ -27,7 +27,7 @@ def _seed(
     group,
     period,
     family,
-    requires_group,
+    requires_line_value,
     trajectory,
     order,
     sofascore_match=None,
@@ -40,7 +40,7 @@ def _seed(
         "canonical_market_group": group,
         "canonical_market_period": period,
         "market_family": family,
-        "requires_choice_group": requires_group,
+        "requires_line_value": requires_line_value,
         "enabled_for_ingestion": enabled_for_ingestion,
         "enabled_for_trajectory": trajectory,
         "display_order": order,
@@ -61,6 +61,51 @@ CANONICAL_MARKET_KEY_RENAMES = {
     "corners_2_way_full_time": "total_corners_full_time",
 }
 
+# Stable storage identities for high-cardinality foreign keys.  These values
+# are append-only: never recycle or renumber an existing id when adding a new
+# market type.  Public/provider contracts continue to use the textual key.
+CANONICAL_MARKET_TYPE_IDS = {
+    "1x2_full_time": 1,
+    "1x2_1st_half": 2,
+    "1x2_1st_quarter": 3,
+    "1x2_first_to_fifth_inning": 4,
+    "home_away_full_time": 5,
+    "home_away_1st_half": 6,
+    "home_away_1st_quarter": 7,
+    "home_away_full_time_including_overtime": 8,
+    "first_set_winner_1st_set": 9,
+    "current_set_winner_current_set": 10,
+    "home_away_first_to_fifth_inning": 11,
+    "over_under_full_time": 12,
+    "sets_over_under_full_time": 13,
+    "over_under_full_time_including_overtime": 14,
+    "over_under_1st_half": 15,
+    "over_under_1st_quarter": 16,
+    "over_under_1st_period": 17,
+    "total_cards_full_time": 18,
+    "total_corners_full_time": 19,
+    "total_sets_games_extra_time": 20,
+    "team_total_home_full_time": 21,
+    "team_total_away_full_time": 22,
+    "team_total_home_full_time_including_overtime": 23,
+    "team_total_away_full_time_including_overtime": 24,
+    "asian_handicap_full_time": 25,
+    "asian_handicap_1st_half": 26,
+    "asian_handicap_full_time_including_overtime": 27,
+    "handicap_full_time_including_overtime": 28,
+    "handicap_first_to_fifth_inning": 29,
+    "european_handicap_full_time": 30,
+    "draw_no_bet_full_time": 31,
+    "double_chance_full_time": 32,
+    "both_teams_to_score_full_time": 33,
+    "both_teams_to_score_full_time_including_overtime": 34,
+    "first_goal_full_time": 35,
+    "last_goal_full_time": 36,
+    "first_team_to_score_full_time": 37,
+    "next_goal_full_time": 38,
+    "tie_break_in_match_extra_time": 39,
+}
+
 
 CANONICAL_MARKET_TYPE_SEEDS = {
     "1x2_full_time": _seed(
@@ -68,7 +113,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="1X2",
         period="Full Time",
         family="side_3way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=10,
         sofascore_match={
@@ -91,7 +136,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="1X2",
         period="1st Half",
         family="side_3way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=11,
         sofascore_match={
@@ -109,7 +154,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="1X2",
         period="1st Quarter",
         family="side_3way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=12,
         sofascore_match={
@@ -128,7 +173,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="1X2",
         period="1st to 5th Inning",
         family="side_3way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=13,
         oddspapi_match={
@@ -146,7 +191,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Home/Away",
         period="Full Time",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=20,
         sofascore_match={
@@ -183,7 +228,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Home/Away",
         period="1st Half",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=21,
         sofascore_match={
@@ -201,7 +246,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Home/Away",
         period="1st Quarter",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=22,
         sofascore_match={
@@ -220,7 +265,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Home/Away",
         period="Full Time Including Overtime",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=23,
         sofascore_match={
@@ -250,7 +295,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="First Set Winner",
         period="1st Set",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=24,
         oddspapi_match={
@@ -264,7 +309,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Current Set Winner",
         period="Current Set",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=25,
         oddspapi_match={
@@ -278,7 +323,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Home/Away",
         period="1st to 5th Inning",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=True,
         order=26,
         oddspapi_match={
@@ -296,7 +341,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under",
         period="Full Time",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=30,
         sofascore_match={
@@ -335,7 +380,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Total Sets",
         period="Full Time",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=31,
         sofascore_match={
@@ -358,7 +403,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under",
         period="Full Time Including Overtime",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=31,
         oddspapi_match={
@@ -376,7 +421,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under",
         period="1st Half",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=32,
         oddspapi_match={
@@ -389,7 +434,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under",
         period="1st Quarter",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=33,
         oddspapi_match={
@@ -403,7 +448,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under",
         period="1st Period",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=34,
         oddspapi_match={
@@ -417,7 +462,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Total Cards",
         period="Full Time",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=34,
         sofascore_match={
@@ -436,7 +481,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Total Corners",
         period="Full Time",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=35,
         sofascore_match={
@@ -456,7 +501,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Total Sets/Games",
         period="Extra Time",
         family="total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=36,
         oddspapi_match={
@@ -470,7 +515,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under Team 1",
         period="Full Time",
         family="team_total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=37,
         oddspapi_match={
@@ -488,7 +533,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under Team 2",
         period="Full Time",
         family="team_total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=38,
         oddspapi_match={
@@ -506,7 +551,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under Team 1",
         period="Full Time Including Overtime",
         family="team_total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=39,
         oddspapi_match={
@@ -524,7 +569,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Over/Under Team 2",
         period="Full Time Including Overtime",
         family="team_total",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=40,
         oddspapi_match={
@@ -542,7 +587,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Asian Handicap",
         period="Full Time",
         family="spread_2way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=50,
         sofascore_match={
@@ -568,7 +613,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Asian Handicap",
         period="1st Half",
         family="spread_2way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=51,
         oddspapi_match={
@@ -584,7 +629,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Asian Handicap",
         period="Full Time Including Overtime",
         family="spread_2way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=52,
         oddspapi_match={
@@ -600,7 +645,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Handicap",
         period="Full Time Including Overtime",
         family="spread_2way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=53,
         oddspapi_match={
@@ -617,7 +662,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Handicap",
         period="1st to 5th Inning",
         family="spread_2way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=True,
         order=54,
         oddspapi_match={
@@ -634,7 +679,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="European Handicap",
         period="Full Time",
         family="side_3way",
-        requires_group=True,
+        requires_line_value=True,
         trajectory=False,
         order=53,
         oddspapi_match={
@@ -652,7 +697,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Draw No Bet",
         period="Full Time",
         family="side_2way",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=60,
         sofascore_match={
@@ -671,7 +716,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Double Chance",
         period="Full Time",
         family="side_combo",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=61,
         sofascore_match={
@@ -690,7 +735,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Both Teams To Score",
         period="Full Time",
         family="decision",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=62,
         sofascore_match={
@@ -709,7 +754,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Both Teams To Score",
         period="Full Time Including Overtime",
         family="decision",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=63,
         sofascore_match={
@@ -729,7 +774,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="First Goal",
         period="Full Time",
         family="goal_team",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=70,
         oddspapi_match={
@@ -745,7 +790,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Last Goal",
         period="Full Time",
         family="goal_team",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=71,
         oddspapi_match={
@@ -761,7 +806,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="First Team To Score",
         period="Full Time",
         family="goal_team",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=72,
         sofascore_match={
@@ -781,7 +826,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Next Goal",
         period="Full Time",
         family="goal_team",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=73,
         oddspapi_match={
@@ -796,7 +841,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         group="Tie Break In Match",
         period="Extra Time",
         family="decision",
-        requires_group=False,
+        requires_line_value=False,
         trajectory=False,
         order=80,
         oddspapi_match={
@@ -807,6 +852,14 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         enabled_for_ingestion=False,
     ),
 }
+
+if set(CANONICAL_MARKET_TYPE_IDS) != set(CANONICAL_MARKET_TYPE_SEEDS):
+    missing_ids = sorted(set(CANONICAL_MARKET_TYPE_SEEDS) - set(CANONICAL_MARKET_TYPE_IDS))
+    orphan_ids = sorted(set(CANONICAL_MARKET_TYPE_IDS) - set(CANONICAL_MARKET_TYPE_SEEDS))
+    raise RuntimeError(
+        "Canonical market type ids and seeds are out of sync: "
+        f"missing_ids={missing_ids}, orphan_ids={orphan_ids}"
+    )
 
 
 def get_canonical_market_type_seed(canonical_market_key: str) -> dict | None:

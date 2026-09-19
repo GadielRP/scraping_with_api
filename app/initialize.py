@@ -19,14 +19,22 @@ def initialize_system() -> bool:
             logger.error("Database connection failed")
             return False
 
-        db_manager.create_tables()
+        if Config.AUTO_CREATE_SCHEMA:
+            db_manager.create_tables()
 
-        if not db_manager.check_and_migrate_schema():
+        if Config.REQUIRE_ALEMBIC_SCHEMA and not db_manager.verify_schema_at_head():
             logger.error(
-                "Schema validation/migration failed; application startup is "
-                "blocked to prevent writes against an incompatible schema."
+                "Schema validation failed; application startup is blocked. "
+                "Apply migrations with `alembic upgrade head` before starting "
+                "the application."
             )
             return False
+
+        if not Config.REQUIRE_ALEMBIC_SCHEMA:
+            logger.warning(
+                "Alembic schema verification is disabled; this mode is intended "
+                "only for SQLite/local development."
+            )
 
         create_or_replace_views(db_manager.engine)
         create_or_replace_materialized_views(db_manager.engine)

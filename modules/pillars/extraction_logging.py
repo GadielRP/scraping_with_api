@@ -87,10 +87,10 @@ def log_snapshot_inputs(logger: logging.Logger, snapshot: Any, *, pillar: str) -
             trace.get("market_name"),
         )
         logger.info(
-            f"{pillar} DEBUG | input lineage | name=%s | choice=%s | choice_group=%s | exchange_side=%s | level=%s",
+            f"{pillar} DEBUG | input lineage | name=%s | choice=%s | line_value=%s | exchange_side=%s | level=%s",
             name,
             trace.get("choice_name"),
-            trace.get("choice_group"),
+            trace.get("line_value"),
             trace.get("exchange_side"),
             trace.get("exchange_level"),
         )

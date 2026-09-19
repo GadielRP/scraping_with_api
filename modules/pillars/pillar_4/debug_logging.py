@@ -147,7 +147,7 @@ def log_p4_extraction(
         )
         logger.info(
             "P4 DEBUG | input series lineage | series_id=%s | domain=%s | "
-            "market_group=%s | period=%s | market_name=%s | choice_group=%s | "
+            "market_group=%s | period=%s | market_name=%s | line_value=%s | "
             "choice=%s | bookie_id=%s | bookie=%s | source=%s | "
             "exchange_side=%s | level=%s",
             series.series_id,
@@ -155,7 +155,7 @@ def log_p4_extraction(
             series.market_group,
             series.market_period,
             series.market_name,
-            series.choice_group,
+            series.line_value,
             series.choice_name,
             series.bookie_id,
             series.bookie_name,

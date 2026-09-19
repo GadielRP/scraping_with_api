@@ -7,6 +7,7 @@ tests/test_market_choice_quote_model.py (Fase 1 model-level constraints).
 from datetime import datetime, timezone
 
 from infrastructure.persistence.database import DatabaseManager
+from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_IDS
 from infrastructure.persistence.models import Bookie, Event, Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories.market.market_choice_quote_writer import (
     MarketChoiceQuoteWriter,
@@ -36,9 +37,7 @@ def seed_choice(manager):
         market = Market(
             event_id=event.id,
             bookie_id=bookie.bookie_id,
-            market_name="Home/Away Full Time",
-            market_group="1X2",
-            market_period="Full Time",
+            market_type_id=CANONICAL_MARKET_TYPE_IDS["1x2_full_time"],
             is_live=False,
         )
         session.add(market)

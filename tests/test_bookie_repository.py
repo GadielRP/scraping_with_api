@@ -199,20 +199,3 @@ def test_upsert_mapping_updates_when_name_changes(tmp_path):
 
     assert mapping2.source_bookie_name == "Pinnacle"
     assert mapping2.updated_at >= first_updated_at
-
-
-def test_check_and_migrate_schema_seeds_canonical_bookies(tmp_path):
-    manager = DatabaseManager(f"sqlite:///{tmp_path / 'seeded_bookies.db'}")
-    manager.create_tables()
-
-    assert manager.check_and_migrate_schema() is True
-
-    with manager.get_session() as session:
-        slugs = {slug for (slug,) in session.query(Bookie.slug).all()}
-        sofascore = session.query(Bookie).filter(Bookie.slug == "sofascore").one()
-
-    assert "sofascore" in slugs
-    assert "bet365" in slugs
-    assert "pinnacle" in slugs
-    assert "betfair-ex" in slugs
-    assert sofascore.bookie_id == 1

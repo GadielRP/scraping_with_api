@@ -31,7 +31,7 @@ class OddsExtractor:
             - market_group: Group classification (e.g., "Home/Away", "Over/Under")
             - market_period: Period the market applies to (e.g., "Match", "1st quarter")
             - is_live: Whether this is a live market
-            - choice_group: For over/under markets, the line (e.g., "229.5")
+            - line_value: For over/under markets, the line (e.g., "229.5")
             - choices: List of choice data with initial and current odds
         """
         try:
@@ -106,7 +106,7 @@ class OddsExtractor:
                 'market_group': market.get('marketGroup', ''),
                 'market_period': market.get('marketPeriod', 'Match'),
                 'is_live': market.get('isLive', False),
-                'choice_group': market.get('choiceGroup'),  # For over/under lines
+                'line_value': market.get('lineValue', market.get('choiceGroup')),  # Provider fallback at ingress only
                 'choices': processed_choices
             }
             

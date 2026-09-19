@@ -150,7 +150,7 @@ def main() -> int:
     bookmakers_payload = _load_json_file(bookmakers_path) if bookmakers_path else None
     markets_hash = _payload_hash(markets_path)
 
-    if not db_manager.check_and_migrate_schema():
+    if not db_manager.verify_schema_at_head():
         print("schema_ready=false")
         return 1
 

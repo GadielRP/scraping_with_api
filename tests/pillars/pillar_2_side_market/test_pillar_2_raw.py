@@ -93,7 +93,7 @@ def _add_market(
     market_group: str,
     market_period: str,
     market_name: str,
-    choice_group: str | None,
+    line_value: str | None,
     bookie_id: int,
     prices: dict[str, float],
     exchange_side: str | None = None,
@@ -110,7 +110,7 @@ def _add_market(
                 "market_group": market_group,
                 "market_period": market_period,
                 "market_name": market_name,
-                "choice_group": choice_group,
+                "line_value": line_value,
                 "choice_name": choice_name,
                 "choice_id": index,
                 "bookie_id": bookie_id,
@@ -189,7 +189,7 @@ def _complete_rows(
             market_group=group,
             market_period=period,
             market_name=name,
-            choice_group=line,
+            line_value=line,
             bookie_id=bookie_id,
             prices={"1": prices[0], "2": prices[1]},
         )
@@ -203,7 +203,7 @@ def _complete_rows(
             market_group="1X2",
             market_period="Full Time",
             market_name="1X2 Full Time",
-            choice_group=None,
+            line_value=None,
             bookie_id=4,
             prices={"1": prices[0], "x": prices[1], "2": prices[2]},
             exchange_side=exchange_side,
@@ -220,7 +220,7 @@ def _complete_rows(
                 market_group="Asian Handicap",
                 market_period="Full Time",
                 market_name="Asian Handicap Full Time",
-                choice_group=betfair_ah_line,
+                line_value=betfair_ah_line,
                 bookie_id=4,
                 prices={"1": prices[0], "2": prices[1]},
                 exchange_side=exchange_side,
@@ -234,7 +234,7 @@ def _complete_rows(
                 market_group="Asian Handicap",
                 market_period="1st Half",
                 market_name="Asian Handicap 1st Half",
-                choice_group=betfair_1h_ah_line,
+                line_value=betfair_1h_ah_line,
                 bookie_id=4,
                 prices={"1": prices[0], "2": prices[1]},
                 exchange_side=exchange_side,
@@ -629,7 +629,7 @@ def test_partial_first_half_ah_line_preserves_individual_price_edges() -> None:
             and row["market_group"] == "Asian Handicap"
             and row["bookie_id"] == 302
         ):
-            row["choice_group"] = None
+            row["line_value"] = None
     result = _calculate(rows)
     asian_handicap = _profile(result)["1H"]["AH"]
 
@@ -659,7 +659,7 @@ def test_multiple_partial_first_half_candidates_remain_ambiguous() -> None:
         market_group="Asian Handicap",
         market_period="1st Half",
         market_name="Asian Handicap 1st Half",
-        choice_group="-0.75",
+        line_value="-0.75",
         bookie_id=302,
         prices={"1": 1.91},
     )
@@ -681,7 +681,7 @@ def test_multiple_complete_ah_candidates_remain_ambiguous(caplog) -> None:
         market_group="Asian Handicap",
         market_period="Full Time",
         market_name="Asian Handicap Full Time",
-        choice_group="-0.75",
+        line_value="-0.75",
         bookie_id=302,
         prices={"1": 1.91, "2": 1.99},
     )
@@ -706,7 +706,7 @@ def test_unique_handicap_lines_from_ingestion_can_differ_between_books():
         if row["market_group"] == "Asian Handicap":
             row["market_group"] = "Handicap"
             row["market_name"] = "Handicap Full Time"
-            row["choice_group"] = "-1.5" if row["bookie_id"] == 302 else "1.5"
+            row["line_value"] = "-1.5" if row["bookie_id"] == 302 else "1.5"
     result = _calculate(rows)
     handicap = result["P2_SIGNAL_PROFILE"]["FT"]["HANDICAP"]
     assert result["P2_STATUS"] == "PARTIAL"
@@ -764,7 +764,7 @@ def test_p2_supports_home_away_and_handicap_with_2way_exchange() -> None:
             market_group=group,
             market_period=period,
             market_name=name,
-            choice_group=line,
+            line_value=line,
             bookie_id=bookie_id,
             prices={"1": prices[0], "2": prices[1]},
         )
@@ -778,7 +778,7 @@ def test_p2_supports_home_away_and_handicap_with_2way_exchange() -> None:
             market_group="Home/Away",
             market_period="Full Time Including Overtime",
             market_name="Home/Away Full Time Including Overtime",
-            choice_group=None,
+            line_value=None,
             bookie_id=4,
             prices=prices,
             exchange_side=exchange_side,
@@ -814,7 +814,7 @@ def test_p2_keeps_asian_handicap_and_handicap_variables_independent() -> None:
             market_group="Handicap",
             market_period="Full Time",
             market_name="Handicap Full Time",
-            choice_group="-1.5",
+            line_value="-1.5",
             bookie_id=bookie_id,
             prices={"1": prices[0], "2": prices[1]},
         )
@@ -849,7 +849,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="Full Time Including Overtime",
         market_name="Home/Away Full Time Including Overtime",
-        choice_group=None,
+        line_value=None,
         bookie_id=302,
         prices={"1": 1.74, "2": 2.18},
     )
@@ -859,7 +859,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Handicap",
         market_period="Full Time Including Overtime",
         market_name="Handicap Full Time Including Overtime",
-        choice_group="-1.5",
+        line_value="-1.5",
         bookie_id=302,
         prices={"1": 2.45, "2": 1.58},
     )
@@ -869,7 +869,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="1st Half",
         market_name="Home/Away 1st Half",
-        choice_group=None,
+        line_value=None,
         bookie_id=302,
         prices={"1": 1.78, "2": 2.10},
     )
@@ -879,7 +879,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Handicap",
         market_period="1st to 5th Inning",
         market_name="Handicap First To Fifth Inning",
-        choice_group="-0.5",
+        line_value="-0.5",
         bookie_id=302,
         prices={"1": 1.95, "2": 1.88},
     )
@@ -891,7 +891,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="Full Time Including Overtime",
         market_name="Home/Away Full Time Including Overtime",
-        choice_group=None,
+        line_value=None,
         bookie_id=3,
         prices={"1": 1.72, "2": 2.20},
     )
@@ -901,7 +901,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Handicap",
         market_period="Full Time Including Overtime",
         market_name="Handicap Full Time Including Overtime",
-        choice_group="-1.5",
+        line_value="-1.5",
         bookie_id=3,
         prices={"1": 2.50, "2": 1.55},
     )
@@ -911,7 +911,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="1st Half",
         market_name="Home/Away 1st Half",
-        choice_group=None,
+        line_value=None,
         bookie_id=3,
         prices={"1": 1.75, "2": 2.15},
     )
@@ -921,7 +921,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Handicap",
         market_period="1st to 5th Inning",
         market_name="Handicap First To Fifth Inning",
-        choice_group="-0.5",
+        line_value="-0.5",
         bookie_id=3,
         prices={"1": 1.98, "2": 1.85},
     )
@@ -933,7 +933,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="Full Time Including Overtime",
         market_name="Home/Away Full Time Including Overtime",
-        choice_group=None,
+        line_value=None,
         bookie_id=4,
         prices={"1": 1.75, "2": 2.22},
         exchange_side="back",
@@ -945,7 +945,7 @@ def test_event_230168_pre_start_p2_resolves_complete_active() -> None:
         market_group="Home/Away",
         market_period="Full Time Including Overtime",
         market_name="Home/Away Full Time Including Overtime",
-        choice_group=None,
+        line_value=None,
         bookie_id=4,
         prices={"1": 1.77, "2": 2.26},
         exchange_side="lay",

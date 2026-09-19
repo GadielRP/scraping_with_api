@@ -216,6 +216,18 @@ def _parse_x_requested_with_value(
 class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
+    # Production PostgreSQL schemas are migrated by the deployment job.  A
+    # SQLite database remains convenient for local tests, where create_all()
+    # is intentionally allowed and Alembic verification is opt-in.
+    _database_is_postgres = DATABASE_URL.startswith('postgresql')
+    AUTO_CREATE_SCHEMA = os.getenv(
+        'AUTO_CREATE_SCHEMA',
+        'false' if _database_is_postgres else 'true',
+    ).strip().lower() in {'1', 'true', 'yes', 'on'}
+    REQUIRE_ALEMBIC_SCHEMA = os.getenv(
+        'REQUIRE_ALEMBIC_SCHEMA',
+        'true' if _database_is_postgres else 'false',
+    ).strip().lower() in {'1', 'true', 'yes', 'on'}
     # Connection timeout in seconds for PostgreSQL (prevents long OS-level waits)
     DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
     

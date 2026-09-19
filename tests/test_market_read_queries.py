@@ -44,7 +44,7 @@ def _row(
         "market_name": "Match Result",
         "market_group": "1X2",
         "market_period": "Full Time",
-        "choice_group": None,
+        "line_value": None,
         "is_live": False,
         "choice_id": choice_id,
         "choice_name": choice_name,

@@ -12,7 +12,7 @@ class ChoiceNormalizationContext:
     canonical_market_key: str | None = None
     home_team: str | None = None
     away_team: str | None = None
-    choice_group: str | None = None
+    line_value: str | None = None
     choice_index: int | None = None
     total_choices: int | None = None
 
@@ -21,7 +21,7 @@ class ChoiceNormalizationContext:
 class ChoiceNormalizationResult:
     resolved: bool
     canonical_choice_name: str | None = None
-    choice_group: str | None = None
+    line_value: str | None = None
     reason: str | None = None
 
 
@@ -90,11 +90,11 @@ class ChoiceNormalizer:
         if not raw:
             return ChoiceNormalizationResult(False, reason="missing_choice_name")
 
-        choice_group = context.choice_group
+        line_value = context.line_value
         value = raw
         match = ChoiceNormalizer._PREFIXED_CHOICE.match(raw)
         if match:
-            choice_group = match.group(1).strip() or choice_group
+            line_value = match.group(1).strip() or line_value
             value = match.group(2).strip()
 
         token = value.casefold()
@@ -104,12 +104,12 @@ class ChoiceNormalizer:
             canonical = {"1": "1", "x": "x", "draw": "x", "2": "2"}.get(token)
         elif family in {"side_2way", "spread_2way"}:
             canonical = ChoiceNormalizer._team_side(value, context)
-            if family == "spread_2way" and canonical and choice_group:
+            if family == "spread_2way" and canonical and line_value:
                 try:
-                    line_val = float(choice_group)
+                    line_val = float(line_value)
                     # CONVENCIÓN DE SPREAD / HANDICAP:
                     # En mercados spread_2way (como Asian Handicap / Point Spread), guardamos un único
-                    # mercado en la base de datos cuya línea de referencia (choice_group) corresponde al
+                    # mercado en la base de datos cuya línea de referencia (line_value) corresponde al
                     # equipo local (Home, canonical == "1").
                     # La línea del equipo visitante (Away, canonical == "2") es siempre el inverso matemático
                     # de la del local (-line_val).
@@ -118,11 +118,11 @@ class ChoiceNormalizer:
                     if canonical == "2":
                         line_val = -line_val
                     if line_val == 0:
-                        choice_group = "0"
+                        line_value = "0"
                     elif line_val.is_integer():
-                        choice_group = str(int(line_val))
+                        line_value = str(int(line_val))
                     else:
-                        choice_group = str(line_val).rstrip("0").rstrip(".")
+                        line_value = str(line_val).rstrip("0").rstrip(".")
                 except (TypeError, ValueError):
                     pass
         elif family in {"total", "team_total"}:
@@ -140,23 +140,23 @@ class ChoiceNormalizer:
                 canonical = ChoiceNormalizer._fallback_by_position(family, context.choice_index, context.total_choices)
                 if canonical:
                     # En mercados de spread, ajustar el signo si la elección resultante es "2".
-                    if family == "spread_2way" and choice_group:
+                    if family == "spread_2way" and line_value:
                         try:
-                            line_val = float(choice_group)
+                            line_val = float(line_value)
                             if canonical == "2":
                                 line_val = -line_val
                             if line_val == 0:
-                                choice_group = "0"
+                                line_value = "0"
                             elif line_val.is_integer():
-                                choice_group = str(int(line_val))
+                                line_value = str(int(line_val))
                             else:
-                                choice_group = str(line_val).rstrip("0").rstrip(".")
+                                line_value = str(line_val).rstrip("0").rstrip(".")
                         except (TypeError, ValueError):
                             pass
 
         if canonical is None:
-            return ChoiceNormalizationResult(False, choice_group=choice_group, reason="unsupported_choice_for_market_family")
-        return ChoiceNormalizationResult(True, canonical, choice_group)
+            return ChoiceNormalizationResult(False, line_value=line_value, reason="unsupported_choice_for_market_family")
+        return ChoiceNormalizationResult(True, canonical, line_value)
 
     @staticmethod
     def _fallback_by_position(family: str, index: int, total: int) -> str | None:

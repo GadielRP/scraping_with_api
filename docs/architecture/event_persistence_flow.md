@@ -105,7 +105,7 @@ Persists the raw odds snapshot for the canonical internal event ID. All three en
 2. **Canonical Normalization** — calls `CanonicalMarketNormalizer.normalize_sofascore_response()` ([canonical_market_normalizer.py](../modules/odds_ingestion/canonical_market_normalizer.py)). This resolves SofaScore market names (e.g. `"Full Time"` + group `"1X2"`) to canonical market type keys (e.g. `"1x2_full_time"`) and normalizes choice labels (Home/Draw/Away, Over/Under).
 3. **Persistence** — calls the internal `_save_normalized()` method which delegates to `MarketRepository.save_markets_from_response_with_stats(event_id, normalized_response, bookie_id=1, source=source)` ([market_repository.py](../infrastructure/persistence/repositories/market_repository.py)). This upserts rows across `markets`, `choices`, and `odds_snapshots` tables.
 4. **Dual-Process Check** — verifies whether the event has dual-process-compatible odds via `DualProcessOddsRepository.event_has_dual_process_odds(event_id)`.
-5. **Result** — returns a `MarketIngestionResult` dataclass summarizing counts (`markets_detected`, `markets_saved`, `choices_saved`, `snapshots_saved`, etc.) and any diagnostics (unmapped markets, missing choice groups).
+5. **Result** — returns a `MarketIngestionResult` dataclass summarizing counts (`markets_detected`, `markets_saved`, `choices_saved`, `snapshots_saved`, etc.) and any diagnostics (unmapped markets, missing required line values).
 
 ---
 

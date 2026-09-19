@@ -47,7 +47,7 @@ class PillarMiningUnit:
     market_group: str | None = None
     market_period: str | None = None
     market_name: str | None = None
-    choice_group: str | None = None
+    line_value: str | None = None
     choice_name: str | None = None
     bookie_id: int | None = None
     quote_id: int | None = None

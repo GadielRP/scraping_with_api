@@ -100,10 +100,12 @@ un módulo y el módulo pertenece al resumen. Los campos `score`, `direction`,
 adaptador debe inventarlos cuando el pilar no los produjo.
 
 Dimensiones de mercado usadas frecuentemente tienen columnas propias:
-`market_group`, `market_period`, `market_name`, `choice_group`, `choice_name`,
-`bookie_id`, `quote_id`, `source`, `exchange_side` y `exchange_level`. Una
-dimensión nueva o poco usada va en `dimensions` hasta que exista una consulta y
-volumen que justifiquen promoverla a columna.
+`market_type_id`, `line_value`, `choice_name`, `bookie_id`, `quote_id`,
+`source`, `exchange_side` y `exchange_level`. El nombre, grupo y periodo del
+mercado se resuelven mediante `canonical_market_types`; no se duplican como
+columnas en `pillar_mining_units`. Una dimensión nueva o poco usada va en
+`dimensions` hasta que exista una consulta y volumen que justifiquen
+promoverla a columna.
 
 ### 3.3 Metric value
 

@@ -1,12 +1,10 @@
 from sqlalchemy import Column, Integer, String, Numeric, BigInteger, Text, CheckConstraint, ForeignKey, UniqueConstraint, Boolean, Index, JSON, SmallInteger
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from shared.temporal import utc_now
+from infrastructure.persistence.orm_base import Base
 from infrastructure.persistence.types import UTCDateTime
-
-Base = declarative_base()
 
 
 class Participant(Base):
@@ -396,10 +394,11 @@ class PillarMiningUnit(Base):
     direction = Column(String(50))
     strength = Column(String(50))
     target_minute = Column(SmallInteger)
-    market_group = Column(String(100))
-    market_period = Column(String(100))
-    market_name = Column(Text)
-    choice_group = Column(Text)
+    market_type_id = Column(
+        SmallInteger,
+        ForeignKey('canonical_market_types.market_type_id', ondelete='RESTRICT'),
+    )
+    line_value = Column(Numeric(18, 6))
     choice_name = Column(Text)
     bookie_id = Column(
         Integer,
@@ -457,11 +456,7 @@ class PillarMiningUnit(Base):
             'unit_type',
             'canonical_status',
         ),
-        Index(
-            'idx_pillar_mining_unit_market',
-            'market_group',
-            'market_period',
-        ),
+        Index('idx_pillar_mining_unit_market_type', 'market_type_id', 'line_value'),
         Index('idx_pillar_mining_unit_bookie', 'bookie_id'),
         Index(
             'idx_pillar_mining_unit_dimensions_gin',
@@ -570,339 +565,16 @@ class BookieSourceMapping(Base):
     )
 
 
-class CanonicalMarketType(Base):
-    __tablename__ = "canonical_market_types"
-
-    canonical_market_key = Column(Text, primary_key=True)
-    canonical_market_name = Column(Text, nullable=False)
-    canonical_market_group = Column(Text, nullable=False)
-    canonical_market_period = Column(Text, nullable=False)
-    market_family = Column(Text, nullable=False)
-    requires_choice_group = Column(Boolean, nullable=False, default=False)
-    enabled_for_ingestion = Column(Boolean, nullable=False, default=True)
-    enabled_for_trajectory = Column(Boolean, nullable=False, default=False)
-    display_order = Column(Integer)
-    created_at = Column(UTCDateTime(), default=utc_now)
-    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
-
-    source_mappings = relationship(
-        "MarketSourceMapping",
-        back_populates="canonical_market_type",
-    )
-
-    __table_args__ = (
-        Index(
-            "idx_canonical_market_types_group_period",
-            "canonical_market_group",
-            "canonical_market_period",
-        ),
-        Index(
-            "idx_canonical_market_types_enabled",
-            "enabled_for_ingestion",
-            "enabled_for_trajectory",
-        ),
-    )
-
-
-class MarketSourceMapping(Base):
-    __tablename__ = "market_source_mappings"
-
-    mapping_id = Column(Integer, primary_key=True, autoincrement=True)
-    canonical_market_key = Column(
-        Text,
-        ForeignKey("canonical_market_types.canonical_market_key", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    source = Column(Text, nullable=False)
-    source_sport_id = Column(Text, nullable=True)
-    source_market_id = Column(Text, nullable=False)
-    source_market_name = Column(Text, nullable=False)
-    source_market_group = Column(Text)
-    source_period = Column(Text)
-    source_handicap = Column(Text)
-    player_prop = Column(Boolean)
-    canonical_market_name = Column(Text, nullable=False)
-    canonical_market_group = Column(Text, nullable=False)
-    canonical_market_period = Column(Text, nullable=False)
-    match_method = Column(Text, nullable=False, default="catalog_rule")
-    confidence = Column(Numeric(5, 3))
-    created_at = Column(UTCDateTime(), default=utc_now)
-    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
-
-    canonical_market_type = relationship(
-        "CanonicalMarketType",
-        back_populates="source_mappings",
-    )
-    outcome_mappings = relationship(
-        "MarketOutcomeSourceMapping",
-        back_populates="market_source_mapping",
-        cascade="all, delete-orphan",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "source",
-            "source_sport_id",
-            "source_market_id",
-            name="unique_market_source_mapping",
-        ),
-        Index("idx_market_source_mappings_canonical_key", "canonical_market_key"),
-        Index(
-            "idx_market_source_mappings_source_market",
-            "source",
-            "source_sport_id",
-            "source_market_id",
-        ),
-        Index(
-            "idx_market_source_mappings_group_period",
-            "canonical_market_group",
-            "canonical_market_period",
-        ),
-    )
-
-
-class MarketOutcomeSourceMapping(Base):
-    __tablename__ = "market_outcome_source_mappings"
-
-    outcome_mapping_id = Column(Integer, primary_key=True, autoincrement=True)
-    market_source_mapping_id = Column(
-        Integer,
-        ForeignKey("market_source_mappings.mapping_id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    source_outcome_id = Column(Text, nullable=False)
-    source_outcome_name = Column(Text, nullable=False)
-    canonical_choice_name = Column(Text, nullable=False)
-    display_order = Column(Integer)
-    created_at = Column(UTCDateTime(), default=utc_now)
-    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
-
-    market_source_mapping = relationship(
-        "MarketSourceMapping",
-        back_populates="outcome_mappings",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "market_source_mapping_id",
-            "source_outcome_id",
-            name="unique_market_outcome_source_mapping",
-        ),
-        Index("idx_market_outcome_source_mappings_market", "market_source_mapping_id"),
-        Index("idx_market_outcome_source_mappings_choice", "canonical_choice_name"),
-    )
-
-
-class SourceCatalogSync(Base):
-    __tablename__ = "source_catalog_syncs"
-
-    sync_id = Column(Integer, primary_key=True, autoincrement=True)
-    source = Column(Text, nullable=False)
-    catalog_type = Column(Text, nullable=False)
-    language = Column(Text)
-    file_path = Column(Text, nullable=False)
-    payload_hash = Column(Text, nullable=False)
-    item_count = Column(Integer, nullable=False)
-    imported_at = Column(UTCDateTime(), default=utc_now)
-    created_at = Column(UTCDateTime(), default=utc_now)
-
-    __table_args__ = (
-        Index("idx_source_catalog_syncs_source_type", "source", "catalog_type"),
-        Index("idx_source_catalog_syncs_hash", "payload_hash"),
-    )
-
-
-class Market(Base):
-    """
-    Stores individual betting markets for an event.
-    
-    Each event can have multiple canonical markets (1X2 Full Time, Over/Under Full Time, Asian Handicap Full Time, etc.)
-    Each market belongs to a specific bookie.
-    Each market has multiple choices stored in MarketChoice table.
-    """
-    __tablename__ = 'markets'
-    
-    # Primary Key
-    market_id = Column(Integer, primary_key=True, autoincrement=True)
-    
-    # Foreign Keys
-    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
-    bookie_id = Column(Integer, ForeignKey('bookies.bookie_id', ondelete='CASCADE'), nullable=False)
-    
-    # Market description
-    market_name = Column(Text, nullable=False)  # "Home/Away Full Time", "Over/Under Full Time"
-    market_group = Column(Text)  # "1X2", "Home/Away", "Over/Under", "Asian Handicap"
-    market_period = Column(Text, nullable=False, default="Full Time")  # "Full Time", "1st Half"
-    choice_group = Column(Text)  # For Over/Under: "2.5", "3.5", etc. NULL for non-line markets
-    is_live = Column(Boolean, default=False, nullable=False)
-    
-    # Timestamps
-    collected_at = Column(UTCDateTime(), default=utc_now, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        # Each bookie can have one market per event+name+line+live-status combination
-        UniqueConstraint('event_id', 'bookie_id', 'market_name', 'market_period', 'choice_group', 'is_live', name='unique_market_per_event_bookie'),
-        Index('idx_markets_event_bookie_live_name_period', 'event_id', 'bookie_id', 'is_live', 'market_name', 'market_period'),
-        Index('idx_markets_event_bookie_live_group_period', 'event_id', 'bookie_id', 'is_live', 'market_group', 'market_period'),
-    )
-    
-    # Relationships
-    event = relationship("Event", back_populates="markets")
-    bookie = relationship("Bookie", back_populates="markets")
-    choices = relationship("MarketChoice", back_populates="market", cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return f"<Market(market_id={self.market_id}, name='{self.market_name}', choice_group='{self.choice_group}')>"
-
-
-class MarketChoice(Base):
-    """
-    Stores individual odds choices for a market.
-    
-    Each market has canonical choices (e.g., "1", "x", "2" or "over", "under").
-    """
-    __tablename__ = 'market_choices'
-    
-    # Primary Key
-    choice_id = Column(Integer, primary_key=True, autoincrement=True)
-    
-    # Foreign Key: links to the parent market
-    market_id = Column(Integer, ForeignKey('markets.market_id', ondelete='CASCADE'), nullable=False)
-    
-    # Choice identification
-    choice_name = Column(Text, nullable=False)  # "1", "x", "2", "over", "under", "yes", "no", "no_goal"
-    
-    # Constraints
-    __table_args__ = (
-        UniqueConstraint('market_id', 'choice_name', name='unique_choice_per_market'),
-        Index('idx_market_choices_market_choice_name', 'market_id', 'choice_name'),
-    )
-    
-    # Relationships
-    market = relationship("Market", back_populates="choices")
-    quotes = relationship("MarketChoiceQuote", back_populates="choice", cascade="all, delete-orphan")
-    
-    def __repr__(self):
-        return (
-            f"<MarketChoice(choice_id={self.choice_id}, "
-            f"market_id={self.market_id}, name='{self.choice_name}')>"
-        )
-
-
-class MarketChoiceSnapshot(Base):
-    """
-    Append-only price ticks for one exact quote.
-
-    Quote identity belongs to MarketChoiceQuote. A snapshot stores only its
-    lineage FK and values that can vary for each observation.
-    """
-    __tablename__ = 'market_choice_snapshots'
-    
-    snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
-    quote_id = Column(
-        Integer,
-        ForeignKey('market_choice_quotes.quote_id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    odds_value = Column(Numeric(8, 3), nullable=False)
-    collected_at = Column(UTCDateTime(), default=utc_now, nullable=False)
-    source_collected_at = Column(UTCDateTime())
-    source_limit = Column(Numeric(12, 3))
-    exchange_size = Column(Numeric(18, 3))
-    
-    # Constraints & Indexes
-    __table_args__ = (
-        Index(
-            'idx_market_choice_snapshots_quote_collected',
-            quote_id,
-            collected_at.desc(),
-            snapshot_id.desc(),
-        ),
-    )
-    
-    # Relationships
-    quote = relationship("MarketChoiceQuote", back_populates="snapshots")
-
-
-class MarketChoiceQuote(Base):
-    """
-    Current-state price instrument for one canonical choice, scoped by source
-    and exchange side/level (e.g. Betfair back vs lay from OddsPortal vs Oddspapi).
-
-    This is the "current state" counterpart to MarketChoiceSnapshot's pure
-    append-only history: exactly one row per (choice, source, exchange_side,
-    exchange_level), updated in place as new prices arrive, independently for
-    initial_odds and current_odds so partial arrival (initial-only, current-only,
-    or either one first) never requires special-case handling.
-
-    See docs/refactors/db-schema-odds-refactor.md for the full design rationale.
-    """
-    __tablename__ = 'market_choice_quotes'
-
-    quote_id = Column(Integer, primary_key=True, autoincrement=True)
-    choice_id = Column(Integer, ForeignKey('market_choices.choice_id', ondelete='CASCADE'), nullable=False)
-
-    # Identity of the price instrument. exchange_side is NULL for non-exchange
-    # bookies (single price, no back/lay split) - same NULL-for-"not
-    # applicable" convention as Market.choice_group, instead of a 'single'
-    # sentinel string.
-    #
-    # Postgres/SQLite both treat NULL != NULL in UNIQUE constraints, so the
-    # plain UniqueConstraint below does NOT by itself reject two NULL-side
-    # rows for the same (choice_id, source, exchange_level). Real enforcement
-    # is the functional index
-    # unique_market_choice_quote_side_null_safe (choice_id, source,
-    # COALESCE(exchange_side, ''), exchange_level), created in
-    # database.py::_migrate_market_choice_quotes. It has a different name so
-    # it doesn't collide with (and get skipped by "IF NOT EXISTS" behind) the
-    # plain constraint's own auto-created index - mirrors how Market keeps
-    # unique_market_per_event_bookie alongside the functional
-    # unique_market_per_event_bookie_period_line.
-    source = Column(Text, nullable=False)
-    exchange_side = Column(Text)
-    exchange_level = Column(SmallInteger, nullable=False, default=0, server_default=text("0"))
-
-    # Metadata of this instrument (previously only available on snapshots)
-    main_line = Column(Boolean)
-    source_market_id = Column(Text)
-    source_outcome_id = Column(Text)
-    bookmaker_outcome_id = Column(Text)
-    source_limit = Column(Numeric(12, 3))
-
-    # Current state (independently nullable by design, see class docstring)
-    initial_odds = Column(Numeric(8, 3))
-    initial_captured_at = Column(UTCDateTime())
-    current_odds = Column(Numeric(8, 3))
-    current_updated_at = Column(UTCDateTime())
-    movement = Column(SmallInteger, default=0)  # -1 = dropped, 0 = unchanged, +1 = increased
-
-    created_at = Column(UTCDateTime(), default=utc_now)
-    updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
-
-    __table_args__ = (
-        # NOTE: incomplete on its own for NULL exchange_side (see comment on
-        # the column above) - kept for ORM/introspection parity with the rest
-        # of the schema. Real protection is the functional index created in
-        # database.py::_migrate_market_choice_quotes.
-        UniqueConstraint(
-            'choice_id', 'source', 'exchange_side', 'exchange_level',
-            name='unique_market_choice_quote',
-        ),
-        Index('idx_market_choice_quotes_choice', 'choice_id'),
-        Index('idx_market_choice_quotes_source', 'source'),
-    )
-
-    # Relationships
-    choice = relationship("MarketChoice", back_populates="quotes")
-    snapshots = relationship("MarketChoiceSnapshot", back_populates="quote")
-
-    def __repr__(self):
-        return (
-            f"<MarketChoiceQuote(quote_id={self.quote_id}, choice_id={self.choice_id}, "
-            f"source='{self.source}', exchange_side='{self.exchange_side}', "
-            f"initial={self.initial_odds}, current={self.current_odds})>"
-        )
+from infrastructure.persistence.odds_models import (
+    CanonicalMarketType,
+    Market,
+    MarketChoice,
+    MarketChoiceQuote,
+    MarketChoiceSnapshot,
+    MarketOutcomeSourceMapping,
+    MarketSourceMapping,
+    SourceCatalogSync,
+)
 
 
 class PredictionLog(Base):
@@ -1110,9 +782,9 @@ def build_dual_process_event_odds_view_sql(
         SELECT
             m.event_id,
             m.market_id,
-            m.market_name,
-            m.market_group,
-            m.market_period,
+            cmt.canonical_market_name AS market_name,
+            cmt.canonical_market_group AS market_group,
+            cmt.canonical_market_period AS market_period,
             m.bookie_id,
             m.collected_at,
             mc.choice_name,
@@ -1125,6 +797,7 @@ def build_dual_process_event_odds_view_sql(
                 m.collected_at
             ) AS latest_snapshot_at
         FROM markets m
+        JOIN canonical_market_types cmt ON cmt.market_type_id = m.market_type_id
         JOIN market_choices mc ON mc.market_id = m.market_id
         {quote_join}
         LEFT JOIN LATERAL (
@@ -1137,10 +810,10 @@ def build_dual_process_event_odds_view_sql(
         WHERE m.bookie_id = 1
           AND m.is_live = false
           AND (
-              m.market_name IN ({market_values})
-              OR m.market_group IN ({market_values})
+              cmt.canonical_market_name IN ({market_values})
+              OR cmt.canonical_market_group IN ({market_values})
           )
-          AND m.market_period IN ({period_values})
+          AND cmt.canonical_market_period IN ({period_values})
           AND mc.choice_name IN ('1', 'x', '2')
     ),
     pivoted AS (
@@ -1384,8 +1057,7 @@ MV_ALERT_EVENTS_INDEXES_SQL = [
 ]
 
 DUAL_PROCESS_MARKET_INDEXES_SQL = [
-    "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_name_period ON markets (event_id, bookie_id, is_live, market_name, market_period);",
-    "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_group_period ON markets (event_id, bookie_id, is_live, market_group, market_period);",
+    "CREATE INDEX IF NOT EXISTS idx_markets_event_bookie_live_type_line ON markets (event_id, bookie_id, is_live, market_type_id, line_value);",
     "CREATE INDEX IF NOT EXISTS idx_market_choices_market_choice_name ON market_choices (market_id, choice_name);",
     """CREATE INDEX IF NOT EXISTS idx_market_choice_quotes_dual_sofascore
        ON market_choice_quotes (choice_id, quote_id)
@@ -1508,5 +1180,5 @@ def refresh_materialized_views(engine):
 # Views are created explicitly after migrations via create_or_replace_views().
 # Do not register view DDL on Base.metadata.after_create: create_all() may run
 # before additive migrations on existing databases, and views can reference
-# columns that are about to be added by check_and_migrate_schema().
+# columns that are managed by Alembic migrations before these views are built.
 # NOTE: Materialized views are created after schema migrations in main.py.

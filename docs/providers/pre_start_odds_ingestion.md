@@ -775,7 +775,10 @@ Pre-start persist does **not** hardcode “only 1X2 / Over-Under / AH”. By def
 The real allowlist is the catalog in `market_source_mappings` where `source='oddspapi'`. A payload market survives only if:
 
 1. `(source, source_sport_id, source_market_id)` resolves to a canonical key (`1x2_full_time`, `over_under_full_time`, `asian_handicap_full_time`, `home_away_full_time`, …). In historical flows, `HistoricalPayloadSelector` validates this mapping in memory before series normalization.
-2. Line markets (`requires_choice_group`) have a handicap that becomes `markets.choice_group` (e.g. `"2.5"`). Missing handicap → skip. In historical flows, `HistoricalPayloadSelector` ensures line markets match cached mainline selections.
+2. Line markets (`requires_line_value`) have a signed decimal handicap that
+   becomes `markets.line_value` (e.g. `-2.5`). Missing handicap → skip. In
+   historical flows, `HistoricalPayloadSelector` ensures line markets match
+   cached mainline selections.
 3. Every expected mapped outcome for that market is present after filtering. Missing `x` on a 1X2 market drops the **whole** market (`skipped_incomplete_markets`).
 4. Optional extra filters (all empty in product settings today): `allowed_market_keys` / `allowed_market_groups` / `allowed_market_periods` (enforced upstream in memory by `HistoricalPayloadSelector`).
 
@@ -786,7 +789,7 @@ Exchange historical **planning** is narrower: `exchange_market_keys` in `setting
 ### 6.3.1 Current line selection and reconciliation
 
 The pure ingestion policy `oddspapi_line_selection.py` owns selection for `/odds`
-markets with `requires_choice_group=True`. The adapter, mainline cache extractor,
+markets with `requires_line_value=True`. The adapter, mainline cache extractor,
 and mainline-only exchange historical request planner use the same decision.
 Selection is independent per bookmaker, canonical market and period; it does not
 force different bookmakers to share a line.
@@ -851,7 +854,7 @@ blocker; persisted aggregate diagnostic fields retain their existing contract.
 | `momentQuotes` | live or forced historical as-of reconstruction | extra snapshot rows on the primary quote |
 | `persistCurrentSnapshot` | `historical_snapshot_policy.should_persist_current_snapshot`, controlled by `deduplicate_historical_current_snapshots` | provider-neutral instruction to omit only the duplicate primary current snapshot |
 
-Identity of a `markets` row: `(event_id, bookie_id, market_name, market_period, choice_group, is_live)`. Prices never live there.
+Canonical identity of a `markets` row: `(event_id, bookie_id, market_type_id, line_value, is_live)`. `line_value` is nullable for non-line markets. Names, groups, and periods are read from `canonical_market_types`; prices never live on `markets`.
 
 ### 6.4.1 Timestamp semantics
 
@@ -914,9 +917,9 @@ Catalog that translates OddsPapi market/outcome ids into canonical names. Unmapp
 | `source` | `oddspapi`. |
 | `source_sport_id` | Sport-scoped mapping (same market id can differ by sport). |
 | `source_market_id` | OddsPapi market id. |
-| `canonical_market_key` | e.g. `1x2_full_time`. |
-| `canonical_market_name` / `_group` / `_period` | Written onto `markets`. |
-| `source_handicap` | When required, becomes `markets.choice_group`. |
+| `market_type_id` | Stable numeric FK to `canonical_market_types`; preferred join for persistence and reads. |
+| `canonical_market_key` | Stable business key used to identify the canonical catalog row. |
+| `source_handicap` | When required, becomes numeric `markets.line_value`. |
 | `canonical_choice_name` (outcome table) | Written onto `market_choices.choice_name`. |
 
 #### `oddspapi_mainline_outcome_cache` (write on `/odds`)
@@ -940,10 +943,8 @@ Catalog that translates OddsPapi market/outcome ids into canonical names. Unmapp
 | `market_id` | surrogate PK | Canonical market shell. |
 | `event_id` | canonical event | Parent event. |
 | `bookie_id` | resolved bookie | Pinnacle vs Bet365 vs Betfair are **different** market rows. |
-| `market_name` | from mapping | e.g. `1X2 Full Time`. |
-| `market_group` | from mapping | e.g. `1X2`, `Over/Under`, `Asian handicap`. |
-| `market_period` | from mapping | e.g. `Full Time`. |
-| `choice_group` | handicap / NULL | Line value (`2.5`) or NULL for 1X2 / ML. |
+| `market_type_id` | canonical catalog FK | Stable semantic identity; resolves name/group/period through `canonical_market_types`. |
+| `line_value` | numeric handicap / NULL | Signed line (`-2.5`) or NULL for 1X2 / ML. |
 | `is_live` | payload `isLive` | Live vs pre-match market identity. |
 | `collected_at` | job local now | Last time this shell was touched. **Not a price.** |
 

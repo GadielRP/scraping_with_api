@@ -2,7 +2,7 @@
 adapter + MarketOddsIngestionService + MarketRepository pipeline.
 
 Fase 3 fix (docs/refactors/db-schema-odds-refactor.md): back and lay used to
-be persisted as choice_group='Back'/'Lay', splitting one outcome into two
+be persisted as line_value='Back'/'Lay', splitting one outcome into two
 disconnected Market rows with no shared identity. This test proves the fix:
 back and lay now share ONE market/choice, disambiguated only by
 MarketChoiceQuote.exchange_side.
@@ -44,7 +44,7 @@ CANONICAL_TYPES = MappingProxyType(
             canonical_market_group="1X2",
             canonical_market_period="Full Time",
             market_family="side_3way",
-            requires_choice_group=False,
+            requires_line_value=False,
             enabled_for_ingestion=True,
         )
     }
@@ -120,7 +120,7 @@ def test_oddsportal_betfair_back_lay_share_one_market_and_choice(tmp_path):
         )
         assert len(markets) == 1
         market = markets[0]
-        assert market.choice_group is None
+        assert market.line_value is None
 
         choices = {choice.choice_name: choice for choice in market.choices}
         assert set(choices) == {"1", "x", "2"}

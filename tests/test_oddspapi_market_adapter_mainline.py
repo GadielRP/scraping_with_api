@@ -30,7 +30,7 @@ def test_adapter_applies_cached_mainline_and_filters_non_mainline(monkeypatch):
             resolved=True,
             reason=None,
             mapping_id=1,
-            requires_choice_group=True,
+            requires_line_value=True,
             source_handicap=2.5,
             canonical_market_key="over_under_full_time",
             canonical_market_name="Over/Under",

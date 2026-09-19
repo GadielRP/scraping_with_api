@@ -100,8 +100,7 @@ def initialize_database():
     
     Steps:
     1. Test database connection
-    2. Create tables if they don't exist
-    3. Run schema migrations (adds missing columns like season_id, round, etc.)
+    2. Verify that the deployment already applied the Alembic schema
     """
     logger.info("Initializing database schema...")
     
@@ -110,12 +109,9 @@ def initialize_database():
             logger.error("❌ Database connection failed - cannot proceed")
             return False
         
-        logger.info("Creating database tables if they don't exist...")
-        db_manager.create_tables()
-        
-        logger.info("Checking and applying schema migrations...")
-        if not db_manager.check_and_migrate_schema():
-            logger.warning("⚠️ Schema migration check failed, but continuing...")
+        logger.info("Verifying the Alembic schema...")
+        if not db_manager.verify_schema_at_head():
+            logger.warning("⚠️ Alembic schema verification failed")
         
         logger.info("✅ Database schema initialized successfully")
         return True

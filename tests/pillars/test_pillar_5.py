@@ -124,7 +124,7 @@ def _build_odds_trajectory_context(
         market_name="Match Result",
         market_group=market_group,
         market_period="Full-time",
-        choice_group="Full time",
+        line_value="Full time",
         bookies={bookie_name: bookie},
     )
 

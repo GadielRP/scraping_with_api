@@ -1,5 +1,10 @@
 # 🔍 Auditoría de Calidad: `database.py`
 
+> Nota de vigencia: este documento es una auditoría histórica previa a la
+> adopción de Alembic. La Fase 3 retiró el orquestador automático de migraciones
+> del runtime; para el estado actual consulta
+> `docs/audits/2026-09-18-phase3-market-contract-local.md`.
+
 **Archivo:** [database.py](file:///c:/Users/gadie/Documents/projects/sofascore/infrastructure/persistence/database.py)
 **Tamaño:** 1,700 líneas · 84 KB · 1 clase (`DatabaseManager`) · 27 métodos · 1 instancia global
 

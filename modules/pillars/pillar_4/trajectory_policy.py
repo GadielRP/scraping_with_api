@@ -51,7 +51,7 @@ def _base_series_id(
     market_group: str,
     market_period: str,
     market_name: str,
-    choice_group: str | None,
+    line_value: str | None,
     choice_name: str,
     bookie_id: int | None,
     bookie_name: str,
@@ -65,7 +65,7 @@ def _base_series_id(
         market_group,
         market_period,
         market_name,
-        choice_group or "NO_LINE",
+        line_value or "NO_LINE",
         choice_name,
         bookie_id if bookie_id is not None else bookie_name,
         source or "UNKNOWN_SOURCE",
@@ -347,7 +347,7 @@ def _line_series(
         for target in expected_targets:
             line_candidates: dict[Decimal, list[P4Point]] = defaultdict(list)
             for observation in related:
-                line = _decimal_line(observation["choice_group"])
+                line = _decimal_line(observation["line_value"])
                 if line is None:
                     continue
                 point = observation["projected"].get(target)
@@ -404,7 +404,7 @@ def _line_series(
             market_group=market_group,
             market_period=market_period,
             market_name=market_name,
-            choice_group="LINE_SELECTION",
+            line_value="LINE_SELECTION",
             choice_name="MARKET_LINE",
             bookie_id=bookie_id,
             bookie_name=bookie_name,
@@ -424,8 +424,8 @@ def _line_series(
                 market_group=market_group,
                 market_period=market_period,
                 market_name=market_name,
-                choice_group=None,
-                choice_group_key="LINE_SELECTION",
+                line_value=None,
+                line_value_key="LINE_SELECTION",
                 choice_name="MARKET_LINE",
                 choice_id=None,
                 main_line=True,
@@ -521,14 +521,14 @@ def extract_p4_trajectory_inputs(
 
     for market_group, periods in sorted(context.markets.items()):
         for market_period, names in sorted(periods.items()):
-            for market_name, choice_groups in sorted(names.items()):
+            for market_name, line_values in sorted(names.items()):
                 domain = resolve_domain(market_group, market_name)
                 if domain is None:
                     continue
-                for choice_group_key, market_line in sorted(choice_groups.items()):
-                    choice_group = market_line.choice_group
-                    if choice_group_key == "__default__":
-                        choice_group = None
+                for line_value_key, market_line in sorted(line_values.items()):
+                    line_value = market_line.line_value
+                    if line_value_key == "__default__":
+                        line_value = None
                     for _, bookie in sorted(market_line.bookies.items()):
                         if bookie.bookie_id not in SUPPORTED_BOOKIE_IDS:
                             continue
@@ -541,7 +541,7 @@ def extract_p4_trajectory_inputs(
                                 market_group=market_group,
                                 market_period=market_period,
                                 market_name=market_name,
-                                choice_group=choice_group,
+                                line_value=line_value,
                                 choice_name=choice.choice_name,
                                 bookie_id=bookie.bookie_id,
                                 bookie_name=bookie.bookie_name,
@@ -569,7 +569,7 @@ def extract_p4_trajectory_inputs(
                                 target_minutes=expected_targets,
                                 tolerance_minutes=tolerance,
                             )
-                            if choice_group is not None and projected:
+                            if line_value is not None and projected:
                                 line_observations.append(
                                     {
                                         "domain": domain,
@@ -582,7 +582,7 @@ def extract_p4_trajectory_inputs(
                                         "source": bookie.source,
                                         "exchange_side": bookie.exchange_side,
                                         "exchange_level": bookie.exchange_level,
-                                        "choice_group": choice_group,
+                                        "line_value": line_value,
                                         "projected": projected,
                                     }
                                 )
@@ -593,8 +593,8 @@ def extract_p4_trajectory_inputs(
                                 "market_group": market_group,
                                 "market_period": market_period,
                                 "market_name": market_name,
-                                "choice_group": choice_group,
-                                "choice_group_key": choice_group_key,
+                                "line_value": line_value,
+                                "line_value_key": line_value_key,
                                 "choice_name": choice.choice_name,
                                 "choice_id": choice.choice_id,
                                 "main_line": choice.main_line,

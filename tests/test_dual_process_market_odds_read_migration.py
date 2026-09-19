@@ -18,11 +18,15 @@ def test_dual_process_event_odds_view_uses_market_tables():
     assert "FROM markets m" in sql
     assert "JOIN market_choices mc" in sql
     assert "FROM market_choice_snapshots mcs" in sql
+    assert "JOIN canonical_market_types cmt" in sql
     assert "m.bookie_id = 1" in sql
     assert "m.is_live = false" in sql
-    assert "m.market_name IN ('Full time', 'Home/Away')" in sql
-    assert "OR m.market_group IN ('Full time', 'Home/Away')" in sql
-    assert "m.market_period IN ('Full-time', 'Match')" in sql
+    assert "cmt.canonical_market_name IN ('Full time', 'Home/Away')" in sql
+    assert "OR cmt.canonical_market_group IN ('Full time', 'Home/Away')" in sql
+    assert "cmt.canonical_market_period IN ('Full-time', 'Match')" in sql
+    assert "m.market_name" not in sql
+    assert "m.market_group" not in sql
+    assert "m.market_period" not in sql
     assert "ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC" in sql
 
 

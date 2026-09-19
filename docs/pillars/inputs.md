@@ -128,7 +128,7 @@ class OddsTrajectoryPoint:
     market_name: str | None
     market_group: str | None
     market_period: str | None
-    choice_group: str | None
+    line_value: Decimal | None
     bookie_id: int | None
     bookie_name: str | None
     choice_id: int | None
@@ -178,12 +178,17 @@ class OddsTrajectoryContext:
 
 ### Market Hierarchy
 
+The trajectory context is a read-model projection. `market_name`,
+`market_group`, and `market_period` are resolved from
+`canonical_market_types`; they are not duplicated identity columns on
+`markets`. Market identity uses `market_type_id` and nullable `line_value`.
+
 ```text
 markets
 └── market_group
     └── market_period
         └── market_name
-            └── choice_group_key
+            └── line_value_key
                 └── MarketLineOddsTrajectory
                     └── bookies
                         └── bookie_key
@@ -202,7 +207,7 @@ class MarketLineOddsTrajectory:
     market_name: str
     market_group: str
     market_period: str
-    choice_group: str | None
+    line_value: str | None
     bookies: dict[str, BookieOddsTrajectory] = field(default_factory=dict)
 ```
 

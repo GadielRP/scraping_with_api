@@ -115,7 +115,7 @@ def _trajectory_counts(context, raw_row_count: int | None = None) -> dict:
     market_groups = context.markets or {}
     market_period_count = 0
     market_name_count = 0
-    choice_group_count = 0
+    line_value_count = 0
     bookie_count = 0
     choice_count = 0
     odds_point_count = 0
@@ -127,9 +127,9 @@ def _trajectory_counts(context, raw_row_count: int | None = None) -> dict:
         for market_period, market_names in periods.items():
             structure[market_group][market_period] = sorted(market_names.keys())
             market_name_count += len(market_names)
-            for choice_groups in market_names.values():
-                choice_group_count += len(choice_groups)
-                for market_line in choice_groups.values():
+            for line_values in market_names.values():
+                line_value_count += len(line_values)
+                for market_line in line_values.values():
                     bookie_count += len(market_line.bookies)
                     for bookie in market_line.bookies.values():
                         choice_count += len(bookie.choices)
@@ -145,7 +145,7 @@ def _trajectory_counts(context, raw_row_count: int | None = None) -> dict:
         "market_group_count": len(market_groups),
         "market_period_count": market_period_count,
         "market_name_count": market_name_count,
-        "choice_group_count": choice_group_count,
+        "line_value_count": line_value_count,
         "bookie_count": bookie_count,
         "choice_count": choice_count,
         "odds_point_count": odds_point_count,
@@ -503,7 +503,7 @@ def main() -> int:
     # but OddsPapi does not call it (adapter + DB mappings are the OddsPapi path).
     _ = CanonicalMarketNormalizer
 
-    schema_ready = db_manager.check_and_migrate_schema()
+    schema_ready = db_manager.verify_schema_at_head()
     if not schema_ready:
         report = {
             "mode": "dry-run" if dry_run else "commit",

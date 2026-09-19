@@ -476,7 +476,8 @@ The current routes do not invoke Over/Under or Asian Handicap extraction. Those 
 2. chooses the line whose two displayed prices have the smallest absolute difference;
 3. expands that line;
 4. reads bookies and the two prices from expanded rows;
-5. stores the selected line as `handicap`/`choice_group` metadata.
+5. stores the selected line as `handicap` metadata, which is persisted as
+   numeric `markets.line_value`.
 
 This is a “closest prices” main-line heuristic, not a hard-coded totals or handicap value.
 
@@ -542,6 +543,13 @@ ScrapeAttemptResult
   failed_reason
   failed_step_idx
 ```
+
+The `MarketExtraction` names above are provider-side extraction fields. They
+are not columns in the canonical `markets` table. Before persistence, the
+OddsPortal adapter resolves the market to `canonical_market_key` and
+`market_type_id`, and converts a numeric handicap or total to `line_value`.
+Canonical display names, groups, and periods are resolved from
+`canonical_market_types`.
 
 ## 14. Recovery and retry semantics
 
@@ -614,7 +622,9 @@ By design:
 2. Resolves bookmakers using preloaded `OddsPortalIngestionReferenceData`:
    - Matching bookmakers are looked up by `source_slug` against existing database bookmaker records where `source="oddsportal"`.
    - Unresolved bookmaker slugs are skipped (logged as warnings). Persistence never auto-creates bookmaker records (`allow_create=False`).
-3. Betfair Exchange is mapped using source name `Betfair Exchange` and slug `betfair-ex`. Back and Lay are saved as separate `choice_group` values, optionally suffixed by handicap.
+3. Betfair Exchange is mapped using source name `Betfair Exchange` and slug
+   `betfair-ex`. Back and Lay share one market/line; `exchange_side` on each
+   quote keeps Back and Lay distinct at the choice level.
 4. Saves market records atomically via `MarketRepository.save_markets_for_bookmaker_batch()`.
 
 The recorded `saved` count represents saved market records, not raw bookmaker rows or individual choices.

@@ -68,7 +68,7 @@ def build_enrichment_from_index(
                 market_family=getattr(resolution, "market_family", None),
                 canonical_choice_name=getattr(outcome_resolution, "canonical_choice_name", None),
                 handicap=getattr(resolution, "source_handicap", None),
-                choice_group=getattr(resolution, "source_handicap", None),
+                line_value=getattr(resolution, "source_handicap", None),
             )
 
     return result

@@ -88,7 +88,7 @@ class SofaScoreMarketAdapter:
 
         market_group = SofaScoreMarketAdapter._normalize_text(entry.get("marketGroup"))
         market_period = SofaScoreMarketAdapter._normalize_text(entry.get("marketPeriod"))
-        choice_group = SofaScoreMarketAdapter._normalize_text(entry.get("choiceGroup"))
+        line_value = SofaScoreMarketAdapter._normalize_text(entry.get("choiceGroup"))
 
         # Prefer SofaScore catalog marketId (e.g. 1 for "Full time" 1X2) as the
         # stable sourceMarketId written on quotes. sourceId/id are instance ids
@@ -109,7 +109,7 @@ class SofaScoreMarketAdapter:
 
         market = {
             "marketName": market_name,
-            "choiceGroup": choice_group,
+            "lineValue": line_value,
             "isLive": bool(entry.get("isLive", False)),
             "choices": choices,
         }
@@ -165,7 +165,6 @@ class SofaScoreMarketAdapter:
                 source_outcome_id = choice.get("outcomeId")
             normalized.append({
                 "name": name,
-                "choiceGroup": SofaScoreMarketAdapter._normalize_text(choice.get("choiceGroup")),
                 "initialFractionalValue": choice.get("initialFractionalValue"),
                 "fractionalValue": choice.get("fractionalValue"),
                 "initialDecimalValue": choice.get("initialDecimalValue"),

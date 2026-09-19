@@ -120,12 +120,12 @@ def _is_better_candidate(candidate: "OddsPointMeta", current: "OddsPointMeta") -
     return _candidate_rank(candidate) < _candidate_rank(current)
 
 
-def _normalize_choice_group_key(choice_group: Optional[str]) -> str:
-    if choice_group is None:
+def _normalize_line_value_key(line_value: Optional[str]) -> str:
+    if line_value is None:
         return "__default__"
-    if not str(choice_group).strip():
+    if not str(line_value).strip():
         return "__default__"
-    return choice_group
+    return line_value
 
 
 def _normalize_market_period_key(value: str) -> str:
@@ -276,7 +276,7 @@ class MarketLineOddsTrajectory:
     market_name: str
     market_group: str
     market_period: str
-    choice_group: Optional[str]
+    line_value: Optional[str]
     bookies: Dict[str, BookieOddsTrajectory] = field(default_factory=dict)
 
 
@@ -301,10 +301,10 @@ class OddsTrajectoryContext:
                 market_group: {
                     market_period: {
                         market_name: {
-                            choice_group_key: _market_line_to_dict(market_line)
-                            for choice_group_key, market_line in choice_groups.items()
+                            line_value_key: _market_line_to_dict(market_line)
+                            for line_value_key, market_line in line_values.items()
                         }
-                        for market_name, choice_groups in market_names.items()
+                        for market_name, line_values in market_names.items()
                     }
                     for market_period, market_names in periods.items()
                 }
@@ -374,9 +374,9 @@ def _filter_market_tree(
                 continue
 
             filtered_names: Dict[str, Dict[str, MarketLineOddsTrajectory]] = {}
-            for market_name, choice_groups in names.items():
-                filtered_choice_groups: Dict[str, MarketLineOddsTrajectory] = {}
-                for choice_group_key, market_line in choice_groups.items():
+            for market_name, line_values in names.items():
+                filtered_line_values: Dict[str, MarketLineOddsTrajectory] = {}
+                for line_value_key, market_line in line_values.items():
                     filtered_bookies = {
                         bookie_key: _copy_bookie_trajectory(bookie)
                         for bookie_key, bookie in market_line.bookies.items()
@@ -385,17 +385,17 @@ def _filter_market_tree(
                     if not filtered_bookies:
                         continue
 
-                    filtered_choice_groups[choice_group_key] = MarketLineOddsTrajectory(
+                    filtered_line_values[line_value_key] = MarketLineOddsTrajectory(
                         market_id=market_line.market_id,
                         market_name=market_line.market_name,
                         market_group=market_line.market_group,
                         market_period=market_line.market_period,
-                        choice_group=market_line.choice_group,
+                        line_value=market_line.line_value,
                         bookies=filtered_bookies,
                     )
 
-                if filtered_choice_groups:
-                    filtered_names[market_name] = filtered_choice_groups
+                if filtered_line_values:
+                    filtered_names[market_name] = filtered_line_values
 
             if filtered_names:
                 filtered_periods[period] = filtered_names
@@ -496,7 +496,7 @@ def _market_line_to_dict(market_line: MarketLineOddsTrajectory) -> Dict[str, Any
         "market_name": market_line.market_name,
         "market_group": market_line.market_group,
         "market_period": market_line.market_period,
-        "choice_group": market_line.choice_group,
+        "line_value": market_line.line_value,
         "bookies": {
             bookie_key: _bookie_to_dict(bookie)
             for bookie_key, bookie in market_line.bookies.items()
@@ -570,32 +570,32 @@ def _get_market_line_container(
     market_group: str,
     market_period: str,
     market_name: str,
-    choice_group_key: str,
+    line_value_key: str,
     market_id: Optional[int],
 ) -> MarketLineOddsTrajectory:
     market_groups = markets.setdefault(market_group, {})
     market_periods = market_groups.setdefault(market_period, {})
     market_names = market_periods.setdefault(market_name, {})
-    market_line = market_names.get(choice_group_key)
+    market_line = market_names.get(line_value_key)
     if market_line is None:
         market_line = MarketLineOddsTrajectory(
             market_id=None,
             market_name=market_name,
             market_group=market_group,
             market_period=market_period,
-            choice_group=None if choice_group_key == "__default__" else choice_group_key,
+            line_value=None if line_value_key == "__default__" else line_value_key,
         )
-        market_names[choice_group_key] = market_line
+        market_names[line_value_key] = market_line
     elif market_line.market_id is None and market_id is not None:
         market_line = MarketLineOddsTrajectory(
             market_id=market_id,
             market_name=market_line.market_name,
             market_group=market_line.market_group,
             market_period=market_line.market_period,
-            choice_group=market_line.choice_group,
+            line_value=market_line.line_value,
             bookies=market_line.bookies,
         )
-        market_names[choice_group_key] = market_line
+        market_names[line_value_key] = market_line
     return market_line
 
 
@@ -728,8 +728,8 @@ def build_odds_trajectory_context(
         if event_id is None and current_event_id is not None:
             event_id = current_event_id
 
-        choice_group_value = _coerce_text(row.get("choice_group"))
-        choice_group_key = _normalize_choice_group_key(choice_group_value)
+        line_value = _coerce_text(row.get("line_value"))
+        line_value_key = _normalize_line_value_key(line_value)
         bookie_name = _coerce_text(row.get("bookie_name")) or "__unknown__"
         bookie_id = _coerce_int(row.get("bookie_id"))
         source = (_coerce_text(row.get("source")) or "unknown").lower()
@@ -746,7 +746,7 @@ def build_odds_trajectory_context(
             market_group=market_group,
             market_period=market_period,
             market_name=market_name,
-            choice_group_key=choice_group_key,
+            line_value_key=line_value_key,
             market_id=_coerce_int(row.get("market_id")),
         )
         bookie = _get_bookie_container(
@@ -847,7 +847,7 @@ def get_market_line(
     market_group: str,
     market_period: str,
     market_name: Optional[str] = None,
-    choice_group: Optional[str] = None,
+    line_value: Optional[str] = None,
 ) -> Optional[MarketLineOddsTrajectory]:
     market_groups = context.markets.get(market_group)
     if not market_groups:
@@ -867,8 +867,8 @@ def get_market_line(
     if not market_lines:
         return None
 
-    choice_group_key = _normalize_choice_group_key(choice_group)
-    return market_lines.get(choice_group_key)
+    line_value_key = _normalize_line_value_key(line_value)
+    return market_lines.get(line_value_key)
 
 
 def get_choice_odds_values(

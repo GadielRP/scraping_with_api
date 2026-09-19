@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 import modules.oddspapi.client as oddspapi_client_module
 
+from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_IDS
 from infrastructure.persistence.repositories import EventOddsSourceState
 from infrastructure.persistence.repositories.market.market_read_models import (
     ExternalChoiceQuote,
@@ -1761,10 +1762,10 @@ def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():
             market_id=1,
             bookie_id=2,
             bookie_name="Betfair Exchange",
-            market_name="Home/Away Full Time Including Overtime",
-            market_group="Home/Away",
-            market_period="Full Time Including Overtime",
-            choice_group=None,
+            market_type_id=CANONICAL_MARKET_TYPE_IDS[
+                "home_away_full_time_including_overtime"
+            ],
+            line_value=None,
             is_live=False,
             aggregation="exchange",
             source="oddsportal",

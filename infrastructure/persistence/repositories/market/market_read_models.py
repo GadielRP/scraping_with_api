@@ -40,7 +40,7 @@ class ExternalMarketQuoteBlock:
     market_name: str
     market_group: Optional[str]
     market_period: str
-    choice_group: Optional[str]
+    line_value: Optional[Decimal]
     is_live: bool
     aggregation: Literal["field_priority", "exchange"]
     source: Optional[str]

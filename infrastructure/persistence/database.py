@@ -6,9 +6,16 @@ from typing import Generator
 import logging
 import traceback
 from infrastructure.settings import Config
-from infrastructure.persistence.models import Base
+from infrastructure.persistence.orm_base import Base
+# Import model modules for mapper/metadata registration without making the
+# declarative registry depend on this engine/session module.
+from infrastructure.persistence import models as _registered_models  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+# Application startup validates this revision; schema changes are applied by
+# the deployment migration job (`alembic upgrade head`), not by every process.
+ALEMBIC_HEAD_REVISION = "20260918_04"
 
 class DatabaseManager:
     def __init__(self, database_url: str = None):
@@ -90,168 +97,97 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")
             return False
-    
-    def check_and_migrate_schema(self) -> bool:
-        """
-        Automatically detect and apply schema migrations by comparing models.py with database.
-        This is a generic migration system that syncs database with SQLAlchemy models.
-        
-        Capabilities:
-        - Detects missing columns in existing tables
-        - Adds missing columns with appropriate types and defaults
-        - Handles NOT NULL constraints with defaults
-        - Creates indexes for new columns when appropriate
-        - Runs one-time manual migrations (e.g., markets→bookies)
-        
-        Limitations:
-        - Does NOT drop columns (requires manual intervention via _migrate_* methods)
-        - Does NOT modify existing column types (requires manual intervention)
-        - Does NOT rename columns (requires manual intervention)
-        
-        Returns:
-            bool: True if schema is up to date or successfully migrated, False on error
+
+    def verify_schema_at_head(self, expected_revision: str = ALEMBIC_HEAD_REVISION) -> bool:
+        """Read-only production gate for the versioned database schema.
+
+        This deliberately performs no DDL and no backfill.  A deployment must
+        run Alembic before the application is allowed to write odds.
         """
         try:
             from sqlalchemy import inspect
-            from sqlalchemy.types import String, Integer, Text, DateTime, Numeric, BigInteger
-            from infrastructure.persistence.migrations.temporal_schema import (
-                migrate_temporal_schema,
-            )
-            
+
             inspector = inspect(self.engine)
-            migrations_applied = []
-
-            # The temporal contract is a prerequisite for later migrations and
-            # queries. Every historical naive instant is interpreted using the
-            # documented America/Mexico_City provenance and converted to
-            # PostgreSQL timestamptz before application code can read it.
-            migrations_applied.extend(migrate_temporal_schema(self.engine))
-            
-            # Run one-time manual migrations FIRST (before generic column migration)
-            # This ensures complex migrations (e.g., backfilling NOT NULL columns) run
-            # before the generic migration tries to add them with NOT NULL constraint.
-            self._migrate_pillar_mining_schema_v2()
-            self._migrate_market_mapping_schema_cleanup()
-            self._migrate_canonical_market_types()
-            self._migrate_market_source_mappings()
-            self._migrate_market_outcome_source_mappings()
-            self._migrate_source_catalog_syncs()
-            self._migrate_markets_to_bookies()
-            self._migrate_bookie_source_mappings()
-            self._migrate_market_period_not_null()
-            self._migrate_market_choice_quotes()
-            self._validate_market_choice_snapshot_schema()
-            self._validate_market_choice_price_state_schema()
-            self._migrate_event_source_resolution_queue()
-            
-            # Check and fix column order (bookie_id should be next to event_id)
-            self._reorder_markets_columns()
-            self._migrate_market_period_identity()
-
-            # Ensure normalized event entity tables/links exist before generic column sync.
-            self._migrate_events_to_participants_competitions()
-            self._migrate_daily_discovery_log_run_slots()
-            self._migrate_events_to_canonical_identity()
-            from infrastructure.persistence.repositories.event_source_mapping_repository import (
-                EventSourceMappingRepository,
-            )
-            from infrastructure.persistence.repositories.oddspapi_fixture_discovery_run_repository import (
-                OddspapiFixtureDiscoveryRunRepository,
-            )
-
-            EventSourceMappingRepository.ensure_participant_link_schema()
-            OddspapiFixtureDiscoveryRunRepository.ensure_run_scope_schema()
-            self._migrate_oddspapi_api_key_usage()
-            self._migrate_oddspapi_mainline_outcome_cache()
-            
-            # Re-create inspector after manual migrations may have changed schema
-            inspector = inspect(self.engine)
-            
-            # Iterate through all tables defined in models
-            for table_name, table in Base.metadata.tables.items():
-                # Get actual columns in database
-                try:
-                    db_columns = {col['name']: col for col in inspector.get_columns(table_name)}
-                except Exception:
-                    # Table doesn't exist yet, skip migration (will be created by create_tables)
-                    logger.debug(f"Table {table_name} doesn't exist yet, skipping migration check")
-                    continue
-                
-                # Get expected columns from model
-                model_columns = {col.name: col for col in table.columns}
-                
-                # Find missing columns (in model but not in database)
-                missing_columns = set(model_columns.keys()) - set(db_columns.keys())
-                
-                if not missing_columns:
-                    logger.debug(f"✅ Table '{table_name}' schema is up to date")
-                    continue
-                
-                # Apply migrations for missing columns
-                logger.info(f"🔄 Migrating table '{table_name}': Found {len(missing_columns)} missing column(s)")
-                
-                with self.get_session() as session:
-                    for col_name in missing_columns:
-                        col = model_columns[col_name]
-                        
-                        # Skip computed columns (they're generated by database)
-                        if hasattr(col, 'computed') and col.computed is not None:
-                            logger.debug(f"  ⏭️ Skipping computed column: {col_name}")
-                            continue
-                        
-                        # Build column type string
-                        col_type = self._get_column_type_sql(col)
-                        
-                        # Build NULL/NOT NULL constraint
-                        nullable_str = "" if col.nullable else "NOT NULL"
-                        
-                        # Build DEFAULT constraint
-                        default_str = ""
-                        if col.default is not None:
-                            if hasattr(col.default, 'arg'):
-                                # Scalar default value
-                                default_value = col.default.arg
-                                if isinstance(default_value, str):
-                                    default_str = f"DEFAULT '{default_value}'"
-                                elif callable(default_value):
-                                    # Skip callable defaults (like datetime.now) - they're for ORM, not DB
-                                    default_str = ""
-                                else:
-                                    default_str = f"DEFAULT {default_value}"
-                        
-                        # Build and execute ALTER TABLE statement
-                        alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} {nullable_str} {default_str}".strip()
-                        
-                        logger.info(f"  ➕ Adding column: {col_name} ({col_type})")
-                        logger.debug(f"  SQL: {alter_sql}")
-                        
-                        session.execute(text(alter_sql))
-                        migrations_applied.append(f"{table_name}.{col_name}")
-                        
-                        # Create index if column name suggests it should be indexed
-                        # (discovery_source, sport, gender, etc.)
-                        if any(keyword in col_name.lower() for keyword in ['source', 'sport', 'type', 'status', 'gender']):
-                            index_name = f"idx_{table_name}_{col_name}"
-                            index_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({col_name})"
-                            logger.info(f"  📊 Creating index: {index_name}")
-                            session.execute(text(index_sql))
-                    
-                    session.commit()
-            
-            if migrations_applied:
-                logger.info(
-                    "✅ Migration completed: applied %s schema change(s) - %s",
-                    len(migrations_applied),
-                    ", ".join(migrations_applied),
+            tables = set(inspector.get_table_names())
+            if "alembic_version" not in tables:
+                logger.error(
+                    "Schema is not versioned: alembic_version is missing; "
+                    "run `alembic upgrade head`."
                 )
-            else:
-                logger.info("✅ Database schema is up to date with models")
+                return False
 
+            with self.engine.connect() as connection:
+                revisions = {
+                    str(row[0])
+                    for row in connection.execute(
+                        text("SELECT version_num FROM alembic_version")
+                    )
+                }
+            if revisions != {expected_revision}:
+                logger.error(
+                    "Schema revision mismatch: expected=%s actual=%s; "
+                    "run `alembic upgrade head`.",
+                    expected_revision,
+                    sorted(revisions),
+                )
+                return False
+
+            required_columns = {
+                "canonical_market_types": {"market_type_id", "requires_line_value"},
+                "market_source_mappings": {"market_type_id"},
+                "markets": {"market_type_id", "line_value"},
+            }
+            for table, columns in required_columns.items():
+                if table not in tables:
+                    logger.error("Schema table is missing: %s", table)
+                    return False
+                actual_columns = {
+                    item["name"] for item in inspector.get_columns(table)
+                }
+                missing = columns - actual_columns
+                if missing:
+                    logger.error(
+                        "Schema columns are missing from %s: %s",
+                        table,
+                        sorted(missing),
+                    )
+                    return False
+            forbidden_columns = {
+                "markets": {
+                    "market_name",
+                    "market_group",
+                    "market_period",
+                    "choice_group",
+                },
+                "market_source_mappings": {
+                    "canonical_market_name",
+                    "canonical_market_group",
+                    "canonical_market_period",
+                },
+                "pillar_mining_units": {
+                    "market_name",
+                    "market_group",
+                    "market_period",
+                    "choice_group",
+                },
+            }
+            for table, columns in forbidden_columns.items():
+                if table not in tables:
+                    continue
+                actual_columns = {
+                    item["name"] for item in inspector.get_columns(table)
+                }
+                remaining = columns & actual_columns
+                if remaining:
+                    logger.error(
+                        "Legacy market columns remain in %s: %s",
+                        table,
+                        sorted(remaining),
+                    )
+                    return False
             return True
-                    
-        except Exception as e:
-            logger.error(f"❌ Schema migration failed: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.error("Schema verification failed", exc_info=True)
             return False
 
     def _create_table_and_indexes(self, model, index_statements: list[str]) -> None:
@@ -284,31 +220,6 @@ class DatabaseManager:
                 old_table,
             )
 
-    def _migrate_canonical_market_types(self):
-        """Ensure canonical market catalog tables exist and sync seed catalog into DB.
-
-        Seed applies:
-        - CANONICAL_MARKET_KEY_RENAMES (e.g. corners_2_way_full_time -> total_corners_full_time)
-        - upsert of CANONICAL_MARKET_TYPE_SEEDS into canonical_market_types
-        - remapped/synced denormalized fields on market_source_mappings
-        """
-        from infrastructure.persistence.models import CanonicalMarketType
-        from infrastructure.persistence.repositories.canonical_market_type_repository import (
-            CanonicalMarketTypeRepository,
-        )
-
-        self._create_table_and_indexes(
-            CanonicalMarketType,
-            [
-                "CREATE INDEX IF NOT EXISTS idx_canonical_market_types_group_period "
-                "ON canonical_market_types (canonical_market_group, canonical_market_period)",
-                "CREATE INDEX IF NOT EXISTS idx_canonical_market_types_enabled "
-                "ON canonical_market_types (enabled_for_ingestion, enabled_for_trajectory)",
-            ],
-        )
-        with self.get_session() as session:
-            CanonicalMarketTypeRepository.seed_canonical_market_types(session)
-
     def _migrate_market_source_mappings(self):
         """Ensure market source mappings table exists with runtime indexes."""
         from infrastructure.persistence.models import MarketSourceMapping
@@ -322,43 +233,12 @@ class DatabaseManager:
                 "ON market_source_mappings (canonical_market_key)",
                 "CREATE INDEX IF NOT EXISTS idx_market_source_mappings_source_market "
                 "ON market_source_mappings (source, source_sport_id, source_market_id)",
-                "CREATE INDEX IF NOT EXISTS idx_market_source_mappings_group_period "
-                "ON market_source_mappings (canonical_market_group, canonical_market_period)",
             ],
         )
 
     def _migrate_market_mapping_schema_cleanup(self):
-        """Drop removed columns and rename market mapping fields to the final canonical schema."""
-        from sqlalchemy import inspect
-
-        inspector = inspect(self.engine)
-        table_names = set(inspector.get_table_names())
-        with self.get_session() as session:
-            if "market_source_mappings" in table_names:
-                columns = {col["name"] for col in inspector.get_columns("market_source_mappings")}
-                if "source_market_type" in columns and "source_market_group" not in columns:
-                    session.execute(
-                        text(
-                            "ALTER TABLE market_source_mappings "
-                            "RENAME COLUMN source_market_type TO source_market_group"
-                        )
-                    )
-                    columns.remove("source_market_type")
-                    columns.add("source_market_group")
-                session.execute(text("DROP INDEX IF EXISTS idx_market_source_mappings_supported"))
-                if "is_supported" in columns:
-                    session.execute(
-                        text("ALTER TABLE market_source_mappings DROP COLUMN is_supported")
-                    )
-
-            if "canonical_market_types" in table_names:
-                columns = {col["name"] for col in inspector.get_columns("canonical_market_types")}
-                if "is_supported" in columns:
-                    session.execute(
-                        text("ALTER TABLE canonical_market_types DROP COLUMN is_supported")
-                    )
-            session.commit()
-
+        """Retained only for old SQLite tooling; PostgreSQL uses Alembic."""
+        return None
     def _migrate_market_outcome_source_mappings(self):
         """Ensure market outcome source mappings table exists with runtime indexes."""
         from infrastructure.persistence.models import MarketOutcomeSourceMapping
@@ -388,221 +268,6 @@ class DatabaseManager:
                 "ON source_catalog_syncs (payload_hash)",
             ],
         )
-
-    def _migrate_markets_to_bookies(self):
-        """
-        One-time migration: transition markets table from sofascore_market_id to bookie_id.
-        
-        Steps:
-        1. Ensure default 'SofaScore' bookie exists (id=1)
-        2. If 'sofascore_market_id' column still exists in markets table:
-           a. Drop old unique constraint
-           b. Set bookie_id=1 on all existing rows
-           c. Drop sofascore_market_id column
-           d. Add new unique constraint
-        
-        This migration is idempotent — safe to run multiple times.
-        """
-        try:
-            from sqlalchemy import inspect
-            from infrastructure.persistence.models import Bookie
-            inspector = inspect(self.engine)
-            
-            # Check if bookies table exists
-            if 'bookies' not in inspector.get_table_names():
-                logger.debug("Bookies table doesn't exist yet, skipping bookie migration")
-                return
-            
-            # Ensure default SofaScore bookie exists
-            with self.get_session() as session:
-                result = session.execute(text("SELECT bookie_id FROM bookies WHERE slug = 'sofascore'")).fetchone()
-                if not result:
-                    session.execute(text(
-                        "INSERT INTO bookies (name, slug) VALUES ('SofaScore', 'sofascore')"
-                    ))
-                    session.flush()
-                    logger.info("📌 Created default 'SofaScore' bookie")
-            
-            # Check if markets table still has sofascore_market_id (migration needed)
-            if 'markets' not in inspector.get_table_names():
-                return
-            
-            db_column_details = {
-                col['name']: col
-                for col in inspector.get_columns('markets')
-            }
-            db_columns = set(db_column_details)
-            
-            # Check if we need to migrate from sofascore_market_id or if we just need to fix the constraint
-            needs_sofascore_migration = 'sofascore_market_id' in db_columns
-            
-            # Check existing unique constraint columns
-            needs_constraint_fix = True
-            try:
-                # Use inspector to check unique constraint columns
-                u_constraints = inspector.get_unique_constraints('markets')
-                for uc in u_constraints:
-                    if uc['name'] == 'unique_market_per_event_bookie':
-                        if 'is_live' in uc['column_names']:
-                            needs_constraint_fix = False
-                        break
-            except Exception as e:
-                logger.debug(f"Error checking existing constraints: {e}")
-
-            # A ForeignKey declared on the SQLAlchemy model may already have
-            # created ``markets_bookie_id_fkey``.  Older migrations also added
-            # the equivalent named ``fk_markets_bookie`` constraint manually.
-            # Treat either equivalent FK as sufficient and clean only the
-            # known redundant auto-generated constraint when the named FK is
-            # present too.
-            bookie_foreign_keys = []
-            try:
-                bookie_foreign_keys = [
-                    foreign_key
-                    for foreign_key in inspector.get_foreign_keys('markets')
-                    if foreign_key.get('constrained_columns') == ['bookie_id']
-                    and foreign_key.get('referred_table') == 'bookies'
-                    and foreign_key.get('referred_columns') == ['bookie_id']
-                ]
-            except Exception as e:
-                logger.debug(f"Error checking markets bookie foreign keys: {e}")
-
-            canonical_bookie_fk = next(
-                (
-                    foreign_key
-                    for foreign_key in bookie_foreign_keys
-                    if foreign_key.get('name') == 'fk_markets_bookie'
-                ),
-                None,
-            )
-            redundant_bookie_fk = next(
-                (
-                    foreign_key
-                    for foreign_key in bookie_foreign_keys
-                    if foreign_key.get('name') == 'markets_bookie_id_fkey'
-                ),
-                None,
-            )
-            same_bookie_fk_delete_action = (
-                canonical_bookie_fk is not None
-                and redundant_bookie_fk is not None
-                and str(
-                    (canonical_bookie_fk.get('options') or {}).get('ondelete') or ''
-                ).upper()
-                == str(
-                    (redundant_bookie_fk.get('options') or {}).get('ondelete') or ''
-                ).upper()
-            )
-            needs_bookie_fk_fix = not bookie_foreign_keys or (
-                canonical_bookie_fk is not None
-                and redundant_bookie_fk is not None
-                and same_bookie_fk_delete_action
-            )
-
-            if (
-                not needs_sofascore_migration
-                and not needs_constraint_fix
-                and not needs_bookie_fk_fix
-            ):
-                logger.debug("✅ Markets table already migrated and unique constraint is correct")
-                return
-            
-            if needs_sofascore_migration:
-                logger.info("🔄 Migrating markets table: removing sofascore_market_id, adding bookie support")
-            elif needs_constraint_fix:
-                logger.info("🔄 Fixing markets table: updating unique_market_per_event_bookie constraint to include 'is_live'")
-            elif needs_bookie_fk_fix:
-                logger.info("🔄 Normalizing markets bookie foreign-key constraints")
-            
-            # Get the SofaScore bookie_id
-            with self.get_session() as session:
-                sofascore_bookie = session.execute(
-                    text("SELECT bookie_id FROM bookies WHERE slug = 'sofascore'")
-                ).fetchone()
-                sofascore_bookie_id = sofascore_bookie[0]
-                
-                # 1. Drop old unique constraint (if exists) only while doing
-                # the legacy column migration.  The statement is idempotent.
-                if needs_sofascore_migration:
-                    session.execute(text(
-                        "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event"
-                    ))
-                    logger.info("  🗑️ Dropped old constraint: unique_market_per_event")
-                
-                # 2. Add bookie_id column if not present (auto-migration may have added it as nullable)
-                if 'bookie_id' not in db_columns:
-                    session.execute(text(
-                        "ALTER TABLE markets ADD COLUMN bookie_id INTEGER"
-                    ))
-                    logger.info("  ➕ Added bookie_id column")
-                
-                # 3. Set all existing rows to SofaScore bookie when the
-                # column was newly introduced or is still nullable.
-                bookie_column_is_nullable = (
-                    db_column_details.get('bookie_id', {}).get('nullable', True)
-                )
-                if needs_sofascore_migration or bookie_column_is_nullable:
-                    updated = session.execute(text(
-                        f"UPDATE markets SET bookie_id = {sofascore_bookie_id} WHERE bookie_id IS NULL"
-                    ))
-                    logger.info(f"  📝 Set bookie_id={sofascore_bookie_id} on {updated.rowcount} existing market(s)")
-                
-                # 4. Make bookie_id NOT NULL and add FK
-                if needs_sofascore_migration or bookie_column_is_nullable:
-                    session.execute(text(
-                        "ALTER TABLE markets ALTER COLUMN bookie_id SET NOT NULL"
-                    ))
-                    logger.info("  🔒 Set bookie_id to NOT NULL")
-                
-                if not bookie_foreign_keys:
-                    session.execute(text(
-                        "ALTER TABLE markets ADD CONSTRAINT fk_markets_bookie "
-                        "FOREIGN KEY (bookie_id) REFERENCES bookies(bookie_id) ON DELETE CASCADE"
-                    ))
-                    logger.info("  🔗 Added FK constraint: fk_markets_bookie")
-                else:
-                    logger.info(
-                        "  ✅ Existing equivalent bookie FK found; skipping duplicate creation"
-                    )
-
-                if (
-                    canonical_bookie_fk is not None
-                    and redundant_bookie_fk is not None
-                    and same_bookie_fk_delete_action
-                ):
-                    session.execute(text(
-                        "ALTER TABLE markets DROP CONSTRAINT IF EXISTS markets_bookie_id_fkey"
-                    ))
-                    logger.info(
-                        "  🧹 Removed redundant auto-generated FK: markets_bookie_id_fkey"
-                    )
-                
-                # 5. Drop sofascore_market_id column (only if it exists)
-                if needs_sofascore_migration:
-                    session.execute(text(
-                        "ALTER TABLE markets DROP COLUMN sofascore_market_id"
-                    ))
-                    logger.info("  🗑️ Dropped column: sofascore_market_id")
-                
-                # 6. Add new unique constraint (updated to include is_live)
-                if needs_sofascore_migration or needs_constraint_fix:
-                    # Always try to drop it first if we are here for a fix
-                    session.execute(text(
-                        "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event_bookie"
-                    ))
-                    
-                    session.execute(text(
-                        "ALTER TABLE markets ADD CONSTRAINT unique_market_per_event_bookie "
-                        "UNIQUE (event_id, bookie_id, market_name, market_period, choice_group, is_live)"
-                    ))
-                    logger.info("  ✅ Added new constraint: unique_market_per_event_bookie (includes is_live)")
-                
-                session.commit()
-                logger.info("✅ Markets→Bookies migration completed successfully")
-                
-        except Exception as e:
-            logger.error(f"❌ Markets→Bookies migration failed: {e}")
-            logger.error(traceback.format_exc())
 
     def _migrate_bookie_source_mappings(self):
         """Create and seed canonical/source bookie mappings without creating new canonical bookies."""
@@ -770,20 +435,17 @@ class DatabaseManager:
         See docs/refactors/db-schema-odds-refactor.md (Fase 1) for the design
         rationale: this table is the current-state cache for a price
         instrument scoped by (choice, source, exchange_side, exchange_level),
-        replacing the ad-hoc side/source handling previously smuggled into
-        Market.choice_group (OddsPortal) or market_choice_snapshots (Oddspapi).
+        replacing ad-hoc side/source handling previously mixed into the odds
+        persistence layer.
 
-        exchange_side is NULL for non-exchange bookies (mirrors
-        Market.choice_group's NULL convention rather than a 'single'
+        exchange_side is NULL for non-exchange bookies rather than a 'single'
         sentinel). NULL != NULL in a UNIQUE constraint (Postgres and SQLite
         alike), so the plain UniqueConstraint declared on the ORM model
         (unique_market_choice_quote) does not by itself reject duplicate
         NULL-side rows. Real enforcement is this functional index using
         COALESCE(exchange_side, ''), deliberately named differently so
         "CREATE ... IF NOT EXISTS" doesn't silently no-op against the plain
-        constraint's own auto-created index of the same name - the same
-        pattern used for Market's unique_market_per_event_bookie_period_line
-        (see _migrate_market_period_identity).
+        constraint's own auto-created index of the same name.
 
         Tables created under the earlier 'single'-sentinel design still have
         ``exchange_side TEXT NOT NULL DEFAULT 'single'``. create_all(checkfirst)
@@ -887,47 +549,6 @@ class DatabaseManager:
             logger.info("Market choice quotes schema is ready")
         except Exception as e:
             logger.error(f"Market choice quotes migration failed: {e}")
-            logger.error(traceback.format_exc())
-
-    def _migrate_market_period_not_null(self):
-        """Backfill market_period and enforce the canonical Full Time default when supported by the dialect."""
-        try:
-            from sqlalchemy import inspect
-
-            inspector = inspect(self.engine)
-            if 'markets' not in inspector.get_table_names():
-                return
-
-            db_columns = {col['name'] for col in inspector.get_columns('markets')}
-            if 'market_period' not in db_columns:
-                logger.debug("markets.market_period not present yet, skipping not-null migration")
-                return
-
-            with self.get_session() as session:
-                session.execute(text("""
-                    UPDATE markets
-                    SET market_period = 'Full Time'
-                    WHERE market_period IS NULL OR TRIM(market_period) = ''
-                """))
-
-                if self.engine.dialect.name == 'postgresql':
-                    try:
-                        session.execute(text(
-                            "ALTER TABLE markets ALTER COLUMN market_period SET DEFAULT 'Full Time'"
-                        ))
-                    except Exception as exc:
-                        logger.debug("Could not set markets.market_period default: %s", exc)
-                    try:
-                        session.execute(text(
-                            "ALTER TABLE markets ALTER COLUMN market_period SET NOT NULL"
-                        ))
-                    except Exception as exc:
-                        logger.debug("Could not set markets.market_period NOT NULL: %s", exc)
-
-                session.commit()
-                logger.info("markets.market_period backfill completed")
-        except Exception as e:
-            logger.error(f"Market period not-null migration failed: {e}")
             logger.error(traceback.format_exc())
 
     def _validate_market_choice_snapshot_schema(self):
@@ -1144,167 +765,6 @@ class DatabaseManager:
                     pass
             except Exception:
                 pass
-
-    def _migrate_market_period_identity(self):
-        """Make market identity period-aware for normalized odds ingestion."""
-        try:
-            from sqlalchemy import inspect
-
-            inspector = inspect(self.engine)
-            if 'markets' not in inspector.get_table_names():
-                return
-
-            with self.get_session() as session:
-                session.execute(text(
-                    "DROP INDEX IF EXISTS unique_market_per_event_bookie_period_line"
-                ))
-                session.execute(text(
-                    "ALTER TABLE markets DROP CONSTRAINT IF EXISTS unique_market_per_event_bookie"
-                ))
-                session.commit()
-
-            with self.get_session() as session:
-                self._deduplicate_markets_for_period_identity(session)
-
-            with self.get_session() as session:
-                try:
-                    session.execute(text(
-                        "ALTER TABLE markets ADD CONSTRAINT unique_market_per_event_bookie "
-                        "UNIQUE (event_id, bookie_id, market_name, market_period, choice_group, is_live)"
-                    ))
-                    logger.info("Ensured period-aware markets unique constraint")
-                except Exception as exc:
-                    logger.warning("Could not rebuild period-aware markets constraint: %s", exc)
-                    session.rollback()
-
-            with self.get_session() as session:
-                try:
-                    session.execute(text(
-                        "CREATE UNIQUE INDEX IF NOT EXISTS unique_market_per_event_bookie_period_line "
-                        "ON markets (event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live)"
-                    ))
-                    logger.info("Ensured functional unique index unique_market_per_event_bookie_period_line")
-                except Exception as exc:
-                    logger.error("Could not create functional market uniqueness index after dedupe: %s", exc)
-                    session.rollback()
-        except Exception as e:
-            logger.error(f"Market period identity migration failed: {e}")
-            logger.error(traceback.format_exc())
-
-    def _deduplicate_markets_for_period_identity(self, session):
-        """Merge duplicate markets that differ only by NULL choice_group uniqueness semantics."""
-        session.execute(text("""
-            DO $$
-            DECLARE
-                dup RECORD;
-                dup_choice RECORD;
-                dup_quote RECORD;
-                keeper_choice_id INTEGER;
-                keeper_quote_id INTEGER;
-            BEGIN
-                FOR dup IN
-                    WITH ranked AS (
-                        SELECT
-                            market_id,
-                            FIRST_VALUE(market_id) OVER (
-                                PARTITION BY event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live
-                                ORDER BY collected_at DESC NULLS LAST, market_id DESC
-                            ) AS keeper_id,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY event_id, bookie_id, market_name, COALESCE(market_period, ''), COALESCE(choice_group, ''), is_live
-                                ORDER BY collected_at DESC NULLS LAST, market_id DESC
-                            ) AS rn
-                        FROM markets
-                    )
-                    SELECT market_id, keeper_id
-                    FROM ranked
-                    WHERE rn > 1
-                LOOP
-                    FOR dup_choice IN
-                        SELECT *
-                        FROM market_choices
-                        WHERE market_id = dup.market_id
-                    LOOP
-                        SELECT choice_id
-                        INTO keeper_choice_id
-                        FROM market_choices
-                        WHERE market_id = dup.keeper_id
-                          AND choice_name = dup_choice.choice_name
-                        LIMIT 1;
-
-                        IF keeper_choice_id IS NULL THEN
-                            UPDATE market_choices
-                            SET market_id = dup.keeper_id
-                            WHERE choice_id = dup_choice.choice_id;
-                        ELSE
-                            FOR dup_quote IN
-                                SELECT *
-                                FROM market_choice_quotes
-                                WHERE choice_id = dup_choice.choice_id
-                            LOOP
-                                SELECT quote_id
-                                INTO keeper_quote_id
-                                FROM market_choice_quotes
-                                WHERE choice_id = keeper_choice_id
-                                  AND source = dup_quote.source
-                                  AND exchange_side IS NOT DISTINCT FROM dup_quote.exchange_side
-                                  AND exchange_level = dup_quote.exchange_level
-                                LIMIT 1;
-
-                                IF keeper_quote_id IS NULL THEN
-                                    UPDATE market_choice_quotes
-                                    SET choice_id = keeper_choice_id
-                                    WHERE quote_id = dup_quote.quote_id;
-                                ELSE
-                                    UPDATE market_choice_snapshots
-                                    SET quote_id = keeper_quote_id
-                                    WHERE quote_id = dup_quote.quote_id;
-
-                                    UPDATE market_choice_quotes keeper_quote
-                                    SET
-                                        initial_odds = COALESCE(keeper_quote.initial_odds, dup_quote.initial_odds),
-                                        initial_captured_at = COALESCE(keeper_quote.initial_captured_at, dup_quote.initial_captured_at),
-                                        current_odds = COALESCE(dup_quote.current_odds, keeper_quote.current_odds),
-                                        current_updated_at = COALESCE(dup_quote.current_updated_at, keeper_quote.current_updated_at),
-                                        source_market_id = COALESCE(keeper_quote.source_market_id, dup_quote.source_market_id),
-                                        source_outcome_id = COALESCE(keeper_quote.source_outcome_id, dup_quote.source_outcome_id),
-                                        bookmaker_outcome_id = COALESCE(keeper_quote.bookmaker_outcome_id, dup_quote.bookmaker_outcome_id),
-                                        main_line = COALESCE(keeper_quote.main_line, dup_quote.main_line),
-                                        source_limit = COALESCE(dup_quote.source_limit, keeper_quote.source_limit)
-                                    WHERE keeper_quote.quote_id = keeper_quote_id;
-
-                                    DELETE FROM market_choice_quotes
-                                    WHERE quote_id = dup_quote.quote_id;
-                                END IF;
-                            END LOOP;
-
-                            UPDATE market_choices keeper
-                            SET
-                                initial_odds = COALESCE(keeper.initial_odds, dup_choice.initial_odds),
-                                current_odds = COALESCE(dup_choice.current_odds, keeper.current_odds),
-                                change = COALESCE(dup_choice.change, keeper.change)
-                            WHERE keeper.choice_id = keeper_choice_id;
-
-                            DELETE FROM market_choices
-                            WHERE choice_id = dup_choice.choice_id;
-                        END IF;
-                    END LOOP;
-
-                    UPDATE markets keeper
-                    SET
-                        market_group = COALESCE(keeper.market_group, duplicate.market_group),
-                        collected_at = GREATEST(keeper.collected_at, duplicate.collected_at)
-                    FROM markets duplicate
-                    WHERE keeper.market_id = dup.keeper_id
-                      AND duplicate.market_id = dup.market_id;
-
-                    DELETE FROM markets
-                    WHERE market_id = dup.market_id;
-                END LOOP;
-            END $$;
-        """))
-        session.commit()
-        logger.info("Merged duplicate markets for period-aware uniqueness")
 
     def _migrate_events_to_participants_competitions(self):
         """

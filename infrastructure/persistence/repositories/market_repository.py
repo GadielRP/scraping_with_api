@@ -8,12 +8,18 @@ from sqlalchemy import and_
 from sqlalchemy.orm import selectinload
 
 from infrastructure.persistence.models import (
+    CanonicalMarketType,
     Market,
     MarketChoice,
     MarketChoiceQuote,
     MarketChoiceSnapshot,
 )
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.catalogs.canonical_market_types import (
+    CANONICAL_MARKET_TYPE_IDS,
+    CANONICAL_MARKET_TYPE_SEEDS,
+    persisted_seed_values,
+)
 from infrastructure.persistence.market_write_policy import (
     market_write_policy_for_source,
 )
@@ -97,6 +103,29 @@ class MarketRepository:
             return Decimal(str(value))
         except (InvalidOperation, ValueError, TypeError):
             return None
+
+    @staticmethod
+    def _normalize_line_value(value) -> Optional[Decimal]:
+        """Normalize a market line to a finite signed decimal.
+
+        Empty values are valid for non-line markets.  Invalid non-empty values
+        are rejected at the repository boundary instead of becoming a second
+        textual market identity.
+        """
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        try:
+            normalized = Decimal(str(value).strip())
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValueError(f"invalid numeric line value: {value!r}")
+        if not normalized.is_finite():
+            raise ValueError(f"invalid numeric line value: {value!r}")
+        return normalized
+
+    @staticmethod
+    def _market_line_value(market) -> Optional[Decimal]:
+        """Read the canonical numeric line value."""
+        return MarketRepository._normalize_line_value(market.line_value)
 
     @staticmethod
     def _float_or_none(value):
@@ -206,24 +235,97 @@ class MarketRepository:
                 .all()
             )
 
-            def market_identity(bookie_id, name, period, choice_group, is_live):
+            canonical_keys = {
+                str(market_data.get("canonicalMarketKey") or "").strip().lower()
+                for batch in batches
+                for market_data in (batch.get("markets") or [])
+                if str(market_data.get("canonicalMarketKey") or "").strip()
+            }
+            canonical_types_by_key = {}
+            canonical_types = []
+            if canonical_keys:
+                canonical_types_by_key = {
+                    row.canonical_market_key: row
+                    for row in (
+                        session.query(CanonicalMarketType)
+                        .filter(CanonicalMarketType.canonical_market_key.in_(canonical_keys))
+                        .all()
+                    )
+                }
+                # create_tables() is intentionally lighter than the startup
+                # migration in tests and local tooling. Materialize only known
+                # catalog keys in this same transaction so canonical writes do
+                # not silently fall back to provider display text.
+                for canonical_key in canonical_keys - canonical_types_by_key.keys():
+                    seed = CANONICAL_MARKET_TYPE_SEEDS.get(canonical_key)
+                    market_type_id = CANONICAL_MARKET_TYPE_IDS.get(canonical_key)
+                    if seed is None or market_type_id is None:
+                        continue
+                    canonical_type = CanonicalMarketType(
+                        canonical_market_key=canonical_key,
+                        market_type_id=market_type_id,
+                        **persisted_seed_values(seed),
+                    )
+                    session.add(canonical_type)
+                    canonical_types_by_key[canonical_key] = canonical_type
+            canonical_types = session.query(CanonicalMarketType).all()
+            if not canonical_types and not canonical_keys:
+                for canonical_key, seed in CANONICAL_MARKET_TYPE_SEEDS.items():
+                    market_type_id = CANONICAL_MARKET_TYPE_IDS.get(canonical_key)
+                    if market_type_id is None:
+                        continue
+                    row = CanonicalMarketType(
+                        canonical_market_key=canonical_key,
+                        market_type_id=market_type_id,
+                        **persisted_seed_values(seed),
+                    )
+                    session.add(row)
+                    canonical_types.append(row)
+
+            def resolve_catalog_type(market_data):
+                canonical_key = str(
+                    market_data.get("canonicalMarketKey") or ""
+                ).strip().lower()
+                if canonical_key:
+                    return canonical_types_by_key.get(canonical_key)
+                normalized = tuple(
+                    str(market_data.get(field) or "").strip().casefold()
+                    for field in ("marketName", "marketGroup", "marketPeriod")
+                )
+                matches = [
+                    row
+                    for row in canonical_types
+                    if (
+                        row.canonical_market_name.strip().casefold(),
+                        row.canonical_market_group.strip().casefold(),
+                        row.canonical_market_period.strip().casefold(),
+                    )
+                    == normalized
+                ]
+                return matches[0] if len(matches) == 1 else None
+
+            def canonical_market_identity(
+                bookie_id,
+                market_type_id,
+                line_value,
+                is_live,
+            ):
                 return (
                     int(bookie_id),
-                    MarketRepository._normalize_market_name(name),
-                    MarketRepository._normalize_market_period(period),
-                    MarketRepository._normalize_string_or_none(choice_group),
+                    int(market_type_id),
+                    MarketRepository._normalize_line_value(line_value),
                     bool(is_live),
                 )
 
-            market_index = {
-                market_identity(
+            canonical_market_index = {
+                canonical_market_identity(
                     market.bookie_id,
-                    market.market_name,
-                    market.market_period,
-                    market.choice_group,
+                    market.market_type_id,
+                    MarketRepository._market_line_value(market),
                     market.is_live,
                 ): market
                 for market in existing_markets
+                if market.market_type_id is not None
             }
             prepared_markets = []
 
@@ -242,6 +344,24 @@ class MarketRepository:
                     or "unknown"
                 )
                 for market_data in batch.get("markets") or []:
+                    canonical_market_key = str(
+                        market_data.get("canonicalMarketKey") or ""
+                    ).strip().lower()
+                    canonical_market_type = resolve_catalog_type(market_data)
+                    if canonical_market_type is not None and not canonical_market_key:
+                        canonical_market_key = canonical_market_type.canonical_market_key
+                    if canonical_market_type is None:
+                        skipped_market_count += 1
+                        operation_logger.error(
+                            "Canonical persistence skipped market: event=%s source=%s "
+                            "bookie_id=%s canonical_market_key=%s reason=unknown_canonical_market_key",
+                            event_id,
+                            source,
+                            bookie_id,
+                            canonical_market_key,
+                        )
+                        continue
+
                     eligible_choices = []
                     seen_choice_sides = set()
                     missing_initial_choices = []
@@ -322,60 +442,95 @@ class MarketRepository:
                         )
                         continue
 
-                    market_name = MarketRepository._normalize_market_name(
-                        market_data.get("marketName")
-                    )
-                    if not market_name:
+                    raw_line_value = market_data.get("lineValue")
+                    try:
+                        line_value = MarketRepository._normalize_line_value(
+                            raw_line_value
+                        )
+                    except ValueError:
                         skipped_market_count += 1
-                        operation_logger.warning(
+                        operation_logger.error(
                             "Canonical persistence skipped market: event=%s source=%s "
-                            "bookmaker=%s bookmaker_slug=%s bookie_id=%s "
-                            "reason=market_name_missing policy=%s",
+                            "bookie_id=%s canonical_market_key=%s "
+                            "reason=invalid_numeric_line_value value=%r",
                             event_id,
                             source,
-                            source_bookie_name,
-                            source_bookie_slug,
                             bookie_id,
-                            write_policy.name,
+                            canonical_market_key,
+                            raw_line_value,
                         )
                         continue
-                    market_group = MarketRepository._normalize_market_group(
-                        market_data.get("marketGroup")
-                    )
-                    market_period = MarketRepository._normalize_market_period(
-                        market_data.get("marketPeriod")
-                    )
-                    choice_group = MarketRepository._normalize_string_or_none(
-                        market_data.get("choiceGroup")
-                    )
+                    if (
+                        canonical_market_type is not None
+                        and canonical_market_type.requires_line_value
+                        and line_value is None
+                    ):
+                        skipped_market_count += 1
+                        operation_logger.error(
+                            "Canonical persistence skipped market: event=%s source=%s "
+                            "bookie_id=%s canonical_market_key=%s "
+                            "reason=required_line_value_missing",
+                            event_id,
+                            source,
+                            bookie_id,
+                            canonical_market_key,
+                        )
+                        continue
                     is_live = bool(market_data.get("isLive", False))
-                    identity = market_identity(
-                        bookie_id,
-                        market_name,
-                        market_period,
-                        choice_group,
-                        is_live,
+                    market_type_id = (
+                        int(canonical_market_type.market_type_id)
+                        if canonical_market_type is not None
+                        else None
                     )
-                    market = market_index.get(identity)
+                    canonical_identity = (
+                        canonical_market_identity(
+                            bookie_id,
+                            market_type_id,
+                            line_value,
+                            is_live,
+                        )
+                        if market_type_id is not None
+                        else None
+                    )
+                    market = (
+                        canonical_market_index.get(canonical_identity)
+                        if canonical_identity is not None
+                        else None
+                    )
+                    if (
+                        market is not None
+                        and market_type_id is not None
+                        and market.market_type_id not in {None, market_type_id}
+                    ):
+                        skipped_market_count += 1
+                        operation_logger.error(
+                            "Canonical persistence skipped conflicting market identity: "
+                            "event=%s source=%s market_id=%s existing_market_type_id=%s "
+                            "incoming_market_type_id=%s",
+                            event_id,
+                            source,
+                            market.market_id,
+                            market.market_type_id,
+                            market_type_id,
+                        )
+                        continue
                     if market is None:
                         market = Market(
                             event_id=event_id,
                             bookie_id=bookie_id,
-                            market_name=market_name,
-                            market_group=market_group,
-                            market_period=market_period,
-                            choice_group=choice_group,
+                            market_type_id=market_type_id,
+                            line_value=line_value,
                             is_live=is_live,
                             collected_at=collected_at,
                         )
                         session.add(market)
                     else:
-                        market.market_name = market_name
-                        market.market_group = market_group
-                        market.market_period = market_period
-                        market.choice_group = choice_group
+                        if market_type_id is not None:
+                            market.market_type_id = market_type_id
+                        market.line_value = line_value
                         market.collected_at = collected_at
-                    market_index[identity] = market
+                    if canonical_identity is not None:
+                        canonical_market_index[canonical_identity] = market
                     prepared_markets.append((market, eligible_choices))
                     persisted_bookie_ids.add(bookie_id)
                     result.markets_saved += 1
@@ -396,7 +551,7 @@ class MarketRepository:
             # from a NULL-side-only map and not from the frozen choice mirror.
             existing_choice_ids = [
                 choice.choice_id
-                for market in market_index.values()
+                for market in existing_markets
                 for choice in market.choices
                 if choice.choice_id is not None
             ]
@@ -789,7 +944,7 @@ class MarketRepository:
                         result.snapshots_saved += 1
 
             MarketRepository._demote_superseded_mainlines(
-                market_index=market_index,
+                market_index=canonical_market_index,
                 quote_index=quote_index,
                 prepared_choices=prepared_choices,
                 source=source,
@@ -843,7 +998,7 @@ class MarketRepository:
         All state is already loaded; this is linear work with no extra queries.
         """
         def family(market):
-            return (market.bookie_id, market.market_name, market.market_period, market.is_live)
+            return (market.bookie_id, market.market_type_id, market.is_live)
 
         market_by_choice = {
             choice.choice_id: market
@@ -853,15 +1008,16 @@ class MarketRepository:
         selected_lines: dict[tuple, set] = {}
         for market, choice, choice_data, *_ in prepared_choices:
             market_by_choice[choice.choice_id] = market
-            if market.choice_group is not None and choice_data.get("mainLine") is True:
-                selected_lines.setdefault(family(market), set()).add(market.choice_group)
+            current_line = MarketRepository._market_line_value(market)
+            if current_line is not None and choice_data.get("mainLine") is True:
+                selected_lines.setdefault(family(market), set()).add(current_line)
 
         for (choice_id, quote_source, _, _), quote in quote_index.items():
             market = market_by_choice.get(choice_id)
             if quote_source != source or market is None or quote.main_line is not True:
                 continue
             selected = selected_lines.get(family(market), set())
-            if len(selected) == 1 and market.choice_group not in selected:
+            if len(selected) == 1 and MarketRepository._market_line_value(market) not in selected:
                 quote.main_line = False
 
     @staticmethod
@@ -1069,20 +1225,6 @@ class MarketRepository:
         return None
 
     @staticmethod
-    def _normalize_market_name(name: str) -> str:
-        if name is None:
-            return None
-        normalized = str(name).strip()
-        return normalized or None
-
-    @staticmethod
-    def _normalize_market_group(group: str) -> str:
-        if group is None:
-            return None
-        normalized = str(group).strip()
-        return normalized or None
-
-    @staticmethod
     def get_external_markets_for_event(event_id: int):
         """Return the canonical quote-aware external market blocks."""
         from infrastructure.persistence.repositories.market.market_quote_read_policy import (
@@ -1121,8 +1263,3 @@ class MarketRepository:
                 return count
         except Exception:
             return 0
-
-    @staticmethod
-    def _normalize_market_period(period: str) -> str:
-        """Apply only defensive trimming; provider semantics are normalized upstream."""
-        return MarketRepository._normalize_string_or_none(period) or "Full Time"

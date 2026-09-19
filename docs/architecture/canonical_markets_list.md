@@ -20,7 +20,7 @@ The canonical market catalog defines the normalized reference types used across 
 
 ## 1. Side Markets (1X2, Home/Away, Sets, Draw No Bet)
 
-| Key | Name | Group | Period | Family | Group Req. | Trajectory | Order |
+| Key | Name | Group | Period | Family | Line Req. | Trajectory | Order |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: |
 | `1x2_full_time` | 1X2 Full Time | 1X2 | Full Time | `side_3way` | No | Yes | 10 |
 | `1x2_1st_half` | 1X2 1st Half | 1X2 | 1st Half | `side_3way` | No | Yes | 11 |
@@ -39,9 +39,9 @@ The canonical market catalog defines the normalized reference types used across 
 
 ## 2. Totals (Over/Under, Cards, Corners, Sets)
 
-All total markets require `choice_group` to specify the line threshold (e.g. `2.5`, `215.5`, `9.5`).
+All total markets require `line_value` to specify the line threshold (e.g. `2.5`, `215.5`, `9.5`).
 
-| Key | Name | Group | Period | Family | Group Req. | Trajectory | Order |
+| Key | Name | Group | Period | Family | Line Req. | Trajectory | Order |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: |
 | `over_under_full_time` | Over/Under Full Time | Over/Under | Full Time | `total` | Yes | Yes | 30 |
 | `sets_over_under_full_time` | Sets Over/Under Full Time | Total Sets | Full Time | `total` | Yes | No | 31 |
@@ -59,9 +59,9 @@ All total markets require `choice_group` to specify the line threshold (e.g. `2.
 
 ## 3. Team Totals
 
-Team totals require `choice_group` for the line threshold (e.g. `1.5`, `105.5`).
+Team totals require `line_value` for the line threshold (e.g. `1.5`, `105.5`).
 
-| Key | Name | Group | Period | Family | Group Req. | Trajectory | Order |
+| Key | Name | Group | Period | Family | Line Req. | Trajectory | Order |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: |
 | `team_total_home_full_time` | Team Total Home Full Time | Over/Under Team 1 | Full Time | `team_total` | Yes | Yes | 37 |
 | `team_total_away_full_time` | Team Total Away Full Time | Over/Under Team 2 | Full Time | `team_total` | Yes | Yes | 38 |
@@ -72,9 +72,9 @@ Team totals require `choice_group` for the line threshold (e.g. `1.5`, `105.5`).
 
 ## 4. Handicaps / Spreads
 
-Handicap and spread markets require `choice_group` to specify the spread or handicap value (e.g. `-1.5`, `+3.5`).
+Handicap and spread markets require `line_value` to specify the spread or handicap value (e.g. `-1.5`, `+3.5`).
 
-| Key | Name | Group | Period | Family | Group Req. | Trajectory | Order |
+| Key | Name | Group | Period | Family | Line Req. | Trajectory | Order |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: |
 | `asian_handicap_full_time` | Asian Handicap Full Time | Asian Handicap | Full Time | `spread_2way` | Yes | Yes | 50 |
 | `asian_handicap_1st_half` | Asian Handicap 1st Half | Asian Handicap | 1st Half | `spread_2way` | Yes | Yes | 51 |
@@ -87,7 +87,7 @@ Handicap and spread markets require `choice_group` to specify the spread or hand
 
 ## 5. Specials, Combinations & Props
 
-| Key | Name | Group | Period | Family | Group Req. | Trajectory | Order |
+| Key | Name | Group | Period | Family | Line Req. | Trajectory | Order |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: |
 | `double_chance_full_time` | Double Chance Full Time | Double Chance | Full Time | `side_combo` | No | No | 61 |
 | `both_teams_to_score_full_time` | Both Teams To Score Full Time | Both Teams To Score | Full Time | `decision` | No | No | 62 |
@@ -104,7 +104,7 @@ Handicap and spread markets require `choice_group` to specify the spread or hand
 
 The ingestion normalizer ([`modules/odds_ingestion/choice_normalization.py`](file:///c:/Users/gadie/Documents/projects/sofascore/modules/odds_ingestion/choice_normalization.py)) standardizes choices according to the `market_family` attribute:
 
-| Market Family | Canonical Choice Roles | Parameterized By `choice_group` | Notes |
+| Market Family | Canonical Choice Roles | Parameterized By `line_value` | Notes |
 | :--- | :--- | :---: | :--- |
 | `side_3way` | `1`, `x`, `2` | No (except European Handicap) | 3-way regulation results (Home, Draw, Away). |
 | `side_2way` | `1`, `2` | No | 2-way moneyline, match winner, draw no bet, or set winner. |

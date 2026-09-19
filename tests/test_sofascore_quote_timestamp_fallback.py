@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from infrastructure.persistence.database import DatabaseManager
+from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_IDS
 from infrastructure.persistence.models import (
     Bookie,
     Event,
@@ -35,9 +36,7 @@ def test_sofascore_live_updates_quote_without_source_collected_at(tmp_path, monk
         market = Market(
             event_id=event.id,
             bookie_id=bookie.bookie_id,
-            market_name="1X2 Full Time",
-            market_group="1X2",
-            market_period="Full Time",
+            market_type_id=CANONICAL_MARKET_TYPE_IDS["1x2_full_time"],
             is_live=False,
         )
         session.add(market)

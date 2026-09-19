@@ -39,7 +39,7 @@ class QuoteTrace:
     market_group: str
     market_period: str
     market_name: str
-    choice_group: str | None
+    line_value: str | None
     bookie_id: int | None
     bookie_name: str
     source: str | None
@@ -58,7 +58,7 @@ class QuoteTrace:
             "market_group": self.market_group,
             "market_period": self.market_period,
             "market_name": self.market_name,
-            "choice_group": self.choice_group,
+            "line_value": self.line_value,
             "bookie_id": self.bookie_id,
             "bookie_name": self.bookie_name,
             "source": self.source,
@@ -297,7 +297,7 @@ def _read_projected_quote(
             market_group=market_line.market_group,
             market_period=market_line.market_period,
             market_name=market_line.market_name,
-            choice_group=market_line.choice_group,
+            line_value=market_line.line_value,
             bookie_id=bookie.bookie_id,
             bookie_name=bookie.bookie_name,
             source=bookie.source,
@@ -348,7 +348,7 @@ def extract_market_snapshot(
                     "market_group": market_line.market_group,
                     "market_period": market_line.market_period,
                     "market_name": market_line.market_name,
-                    "choice_group": market_line.choice_group,
+                    "line_value": market_line.line_value,
                     "bookie_id": request.bookie_id,
                     "sources": sorted(
                         str(bookie.source or "unknown")
@@ -363,9 +363,9 @@ def extract_market_snapshot(
         bookie = matching_bookies[0]
         line = None
         if request.line_input_name:
-            line = _decimal(market_line.choice_group)
+            line = _decimal(market_line.line_value)
             if line is None:
-                if market_line.choice_group is None or not str(market_line.choice_group).strip():
+                if market_line.line_value is None or not str(market_line.line_value).strip():
                     missing.add(request.line_input_name)
                 else:
                     invalid.add(request.line_input_name)

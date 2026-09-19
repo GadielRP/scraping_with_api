@@ -24,7 +24,7 @@ class CanonicalChoicePayload:
     source_collected_at: str | None = None
     # 'back' | 'lay' for a Betfair Exchange choice, None for every other
     # bookie. See docs/refactors/db-schema-odds-refactor.md (Fase 3): this
-    # replaces the old choice_group='Back'/'Lay' encoding, which forced back
+    # replaces the old line_value='Back'/'Lay' encoding, which forced back
     # and lay into two separate Market rows instead of one market with two
     # priced sides per outcome.
     exchange_side: str | None = None
@@ -54,7 +54,7 @@ class CanonicalMarketPayload:
     market_name: str
     market_group: str
     market_period: str
-    choice_group: str | None
+    line_value: str | None
     choices: tuple[CanonicalChoicePayload, ...]
     is_live: bool = False
 
@@ -64,7 +64,7 @@ class CanonicalMarketPayload:
             "marketName": self.market_name,
             "marketGroup": self.market_group,
             "marketPeriod": self.market_period,
-            "choiceGroup": self.choice_group,
+            "lineValue": self.line_value,
             "isLive": self.is_live,
             "choices": [choice.as_repository_dict() for choice in self.choices],
         }
@@ -221,12 +221,12 @@ class OddsPortalMarketAdapter:
                 )
                 continue
 
-            requires_choice_group = bool(canonical_type.requires_choice_group)
+            requires_line_value = bool(canonical_type.requires_line_value)
             cls._build_regular_bookmaker_markets(
                 extraction,
                 canonical_key=canonical_key,
                 canonical_type=canonical_type,
-                requires_choice_group=requires_choice_group,
+                requires_line_value=requires_line_value,
                 reference_time=reference_time,
                 markets_by_bookie=markets_by_bookie,
                 diagnostics=diagnostics,
@@ -235,7 +235,7 @@ class OddsPortalMarketAdapter:
                 extraction,
                 canonical_key=canonical_key,
                 canonical_type=canonical_type,
-                requires_choice_group=requires_choice_group,
+                requires_line_value=requires_line_value,
                 reference_time=reference_time,
                 markets_by_bookie=markets_by_bookie,
                 diagnostics=diagnostics,
@@ -262,7 +262,7 @@ class OddsPortalMarketAdapter:
         *,
         canonical_key: str,
         canonical_type,
-        requires_choice_group: bool,
+        requires_line_value: bool,
         reference_time: datetime,
         markets_by_bookie: dict[tuple[str, str], list["CanonicalMarketPayload"]],
         diagnostics: list[dict],
@@ -271,13 +271,13 @@ class OddsPortalMarketAdapter:
         for source_bookie in getattr(extraction, "bookie_odds", None) or []:
             source_name = str(getattr(source_bookie, "name", "") or "").strip()
             source_slug = cls._slugify(source_name)
-            choice_group = cls._line(getattr(source_bookie, "handicap", None))
-            if not source_name or not source_slug or (requires_choice_group and choice_group is None):
+            line_value = cls._line(getattr(source_bookie, "handicap", None))
+            if not source_name or not source_slug or (requires_line_value and line_value is None):
                 diagnostics.append(
                     {
                         "canonicalMarketKey": canonical_key,
                         "sourceBookie": source_name,
-                        "reason": "missing_bookie_identity_or_required_choice_group",
+                        "reason": "missing_bookie_identity_or_required_line_value",
                     }
                 )
                 continue
@@ -323,7 +323,7 @@ class OddsPortalMarketAdapter:
                     market_name=canonical_type.canonical_market_name,
                     market_group=canonical_type.canonical_market_group,
                     market_period=canonical_type.canonical_market_period,
-                    choice_group=choice_group,
+                    line_value=line_value,
                     choices=choices,
                 )
             )
@@ -335,7 +335,7 @@ class OddsPortalMarketAdapter:
         *,
         canonical_key: str,
         canonical_type,
-        requires_choice_group: bool,
+        requires_line_value: bool,
         reference_time: datetime,
         markets_by_bookie: dict[tuple[str, str], list["CanonicalMarketPayload"]],
         diagnostics: list[dict],
@@ -343,10 +343,10 @@ class OddsPortalMarketAdapter:
         """Betfair Exchange: back and lay are two prices for the SAME outcome.
 
         Fase 3 fix (docs/refactors/db-schema-odds-refactor.md): back and lay
-        used to be encoded as choice_group='Back'/'Lay', which produced two
+        used to be encoded as line_value='Back'/'Lay', which produced two
         separate Market rows sharing no identity with each other or with the
         line ("Back 2.5" vs "Lay 2.5" instead of just "2.5"). Now both sides
-        land in the SAME market (choice_group is the line only, like every
+        land in the SAME market (line_value is the line only, like every
         other bookie) and each CanonicalChoicePayload carries its own
         exchange_side, so MarketChoiceQuoteWriter can persist back/lay as two
         independent quotes for one MarketChoice.
@@ -354,13 +354,13 @@ class OddsPortalMarketAdapter:
         betfair = getattr(extraction, "betfair", None)
         if betfair is None:
             return
-        choice_group_line = cls._line(getattr(betfair, "handicap", None))
-        if requires_choice_group and choice_group_line is None:
+        line_value = cls._line(getattr(betfair, "handicap", None))
+        if requires_line_value and line_value is None:
             diagnostics.append(
                 {
                     "canonicalMarketKey": canonical_key,
                     "sourceBookie": "Betfair Exchange",
-                    "reason": "missing_required_choice_group",
+                    "reason": "missing_required_line_value",
                 }
             )
             return
@@ -407,7 +407,7 @@ class OddsPortalMarketAdapter:
                 market_name=canonical_type.canonical_market_name,
                 market_group=canonical_type.canonical_market_group,
                 market_period=canonical_type.canonical_market_period,
-                choice_group=choice_group_line,
+                line_value=line_value,
                 choices=tuple(all_choices),
             )
         )

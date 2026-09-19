@@ -84,7 +84,7 @@ def _book_rows(
                 "market_group": "Over/Under",
                 "market_period": period,
                 "market_name": market_name,
-                "choice_group": line,
+                "line_value": line,
                 "bookie_id": bookie_id,
                 "bookie_name": bookie_name,
                 "source": "oddspapi",
@@ -134,7 +134,7 @@ def _exchange_rows(
                 "market_group": "Over/Under",
                 "market_period": "1st Half" if first_half else "Full Time",
                 "market_name": "Over/Under 1st Half" if first_half else "Over/Under Full Time",
-                "choice_group": line,
+                "line_value": line,
                 "bookie_id": 4,
                 "bookie_name": "Betfair",
                 "source": "oddspapi",
@@ -460,7 +460,7 @@ def test_betfair_first_half_ou_survives_without_first_half_bookmakers() -> None:
 def test_betfair_ft_ou_different_line_keeps_readings_but_cross_comparison_is_null() -> None:
     rows = _complete_rows(include_betfair_ou=True)
     rows = [
-        {**row, "choice_group": "3.0"}
+        {**row, "line_value": "3.0"}
         if row.get("bookie_id") == 4
         else row
         for row in rows
@@ -637,10 +637,10 @@ def test_traceability_contains_complete_quote_lineage() -> None:
     assert trace["market_group"] == "Over/Under"
     assert trace["market_period"] == "Full Time"
     assert trace["market_name"] == "Over/Under Full Time"
-    assert trace["choice_group"] == "2.5"
+    assert trace["line_value"] == "2.5"
     assert trace["bookie_id"] == 302
     assert trace["choice_name"] == "over"
-    assert result["raw"]["input_trace"]["PIN_FT_OU_LINE"]["choice_group"] == "2.5"
+    assert result["raw"]["input_trace"]["PIN_FT_OU_LINE"]["line_value"] == "2.5"
 
 
 def test_period_registry_has_ft_required_and_first_half_optional() -> None:

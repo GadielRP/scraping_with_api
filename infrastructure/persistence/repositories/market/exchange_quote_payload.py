@@ -4,7 +4,7 @@ Both Oddspapi and OddsPortal adapters need to describe a two-sided exchange
 price (Betfair back/lay) to the persistence layer. Before this refactor each
 provider used a different, ad-hoc shape (Oddspapi: a loose ``exchangeQuotes``
 list of dicts; OddsPortal: duplicate ``Market`` rows keyed by
-``choice_group='Back'/'Lay'``). ``ExchangeQuotePayload`` is the single typed
+``line_value='Back'/'Lay'``). ``ExchangeQuotePayload`` is the single typed
 shape both adapters build going forward, consumed uniformly by
 ``MarketChoiceQuoteWriter``.
 
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 #: Non-exchange bookies (single price, no back/lay split) use side=None,
-#: the same NULL-for-"not applicable" convention as Market.choice_group.
+#: the same NULL-for-"not applicable" convention as Market.line_value.
 #: Real-world uniqueness for NULL sides is enforced with a functional
 #: COALESCE(exchange_side, '') index - see MarketChoiceQuote in models.py.
 _VALID_SIDES = {None, "back", "lay"}

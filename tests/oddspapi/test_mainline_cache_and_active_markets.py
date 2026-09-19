@@ -24,7 +24,7 @@ def _home_away_index() -> MarketMappingIndex:
         canonical_market_name="Home/Away",
         canonical_market_group="Main",
         canonical_market_period="Full Time",
-        requires_choice_group=False,
+        requires_line_value=False,
     )
     return MarketMappingIndex(
         market_mappings={

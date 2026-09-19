@@ -198,7 +198,7 @@ def select_current_lines(
         )
         if (
             not resolution.resolved
-            or not resolution.requires_choice_group
+            or not resolution.requires_line_value
             or market.get("isLive", is_live)
         ):
             continue

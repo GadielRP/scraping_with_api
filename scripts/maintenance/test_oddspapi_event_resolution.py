@@ -223,7 +223,7 @@ def main() -> int:
         logger.error(str(exc))
         return 1
 
-    schema_ready = db_manager.check_and_migrate_schema()
+    schema_ready = db_manager.verify_schema_at_head()
     if not schema_ready:
         report = {
             "mode": "validation",

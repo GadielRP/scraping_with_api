@@ -65,8 +65,8 @@ class P4SeriesInput:
     market_group: str
     market_period: str
     market_name: str
-    choice_group: str | None
-    choice_group_key: str
+    line_value: str | None
+    line_value_key: str
     choice_name: str
     choice_id: int | None
     main_line: bool | None
@@ -90,8 +90,8 @@ class P4SeriesInput:
             "MARKET_GROUP": self.market_group,
             "MARKET_PERIOD": self.market_period,
             "MARKET_NAME": self.market_name,
-            "CHOICE_GROUP_KEY": self.choice_group_key,
-            "CHOICE_GROUP": self.choice_group,
+            "CHOICE_GROUP_KEY": self.line_value_key,
+            "CHOICE_GROUP": self.line_value,
             "CHOICE_NAME": self.choice_name,
             "CHOICE_ID": self.choice_id,
             "MAIN_LINE": self.main_line,

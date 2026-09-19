@@ -229,12 +229,12 @@ class OddspapiMarketAdapter:
                     )
                     continue
 
-                choice_group = None
-                if market_resolution.requires_choice_group:
-                    choice_group = OddspapiMarketAdapter._format_line(
+                line_value = None
+                if market_resolution.requires_line_value:
+                    line_value = OddspapiMarketAdapter._format_line(
                         market_resolution.source_handicap
                     )
-                    if choice_group is None:
+                    if line_value is None:
                         OddspapiMarketAdapter._append_diagnostic(
                             diagnostics,
                             "skipped_missing_handicap",
@@ -250,7 +250,7 @@ class OddspapiMarketAdapter:
                     market_resolution.canonical_market_name,
                     market_resolution.canonical_market_group,
                     market_resolution.canonical_market_period,
-                    choice_group,
+                    line_value,
                     bool(market_data.get("isLive", payload.get("isLive", False))),
                 )
 
@@ -422,7 +422,7 @@ class OddspapiMarketAdapter:
                         "marketName": market_resolution.canonical_market_name,
                         "marketGroup": market_resolution.canonical_market_group,
                         "marketPeriod": market_resolution.canonical_market_period,
-                        "choiceGroup": choice_group,
+                        "lineValue": line_value,
                         "isLive": market_key[-1],
                         "choices": [],
                     },

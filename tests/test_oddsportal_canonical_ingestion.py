@@ -34,14 +34,14 @@ from modules.oddsportal.dataclasses import (
 )
 
 
-def _canonical_type(key, name, group, period, family, requires_group=False):
+def _canonical_type(key, name, group, period, family, requires_line_value=False):
     return CanonicalMarketTypeResolution(
         canonical_market_key=key,
         canonical_market_name=name,
         canonical_market_group=group,
         canonical_market_period=period,
         market_family=family,
-        requires_choice_group=requires_group,
+        requires_line_value=requires_line_value,
         enabled_for_ingestion=True,
     )
 
@@ -130,9 +130,9 @@ def test_adapter_transports_per_choice_tooltip_timestamps():
 
 
 def test_adapter_shares_one_market_between_betfair_back_and_lay():
-    """Fase 3 fix: back/lay used to be encoded as choice_group='Back'/'Lay',
+    """Fase 3 fix: back/lay used to be encoded as line_value='Back'/'Lay',
     splitting them into two unrelated Market rows. They must now land in the
-    SAME market (choice_group is the line only, like every other bookie),
+    SAME market (line_value is the line only, like every other bookie),
     with each choice tagged with its own exchange_side so back and lay stay
     disambiguated at the choice level instead of the market level.
     """
@@ -172,7 +172,7 @@ def test_adapter_shares_one_market_between_betfair_back_and_lay():
     assert betfair.source_slug == "betfair-ex"
     assert len(betfair.markets) == 1
     market = betfair.markets[0]
-    assert market.choice_group is None
+    assert market.line_value is None
     assert [choice.name for choice in market.choices] == [
         "1", "x", "2", "1", "x", "2",
     ]
@@ -252,7 +252,7 @@ def _oddspapi_market_response(*, include_uncovered_market=False):
             "marketName": "1X2 Full Time",
             "marketGroup": "1X2",
             "marketPeriod": "Full Time",
-            "choiceGroup": None,
+            "lineValue": None,
             "isLive": False,
             "choices": [
                 {"name": "1", "initialOdds": "1.82", "currentOdds": "1.44"},
@@ -267,7 +267,7 @@ def _oddspapi_market_response(*, include_uncovered_market=False):
                 "marketName": "Over/Under Full Time",
                 "marketGroup": "Over/Under",
                 "marketPeriod": "Full Time",
-                "choiceGroup": "8.5",
+                "lineValue": "8.5",
                 "isLive": False,
                 "choices": [
                     {"name": "over", "initialOdds": "1.90", "currentOdds": "1.95"},
@@ -388,10 +388,11 @@ def test_service_persists_one_canonical_event_batch_with_one_session(tmp_path):
 
     with original_get_session() as session:
         market = session.query(Market).one()
+        market_type = market.canonical_market_type
         choices = session.query(MarketChoice).order_by(MarketChoice.choice_name).all()
         quotes = _primary_quotes_by_choice_name(session, source="oddsportal")
-    assert market.market_name == "1X2 Full Time"
-    assert market.market_period == "Full Time"
+    assert market_type.canonical_market_name == "1X2 Full Time"
+    assert market_type.canonical_market_period == "Full Time"
     assert [choice.choice_name for choice in choices] == ["1", "2", "x"]
     # MarketChoice is pure identity now; price state lives in MarketChoiceQuote.
     assert all(not hasattr(choice, "initial_odds") for choice in choices)
@@ -493,7 +494,11 @@ def test_market_not_covered_by_oddsportal_keeps_oddspapi_initial(tmp_path):
     with manager.get_session() as session:
         uncovered_market = (
             session.query(Market)
-            .filter(Market.market_name == "Over/Under Full Time")
+            .filter(
+                Market.canonical_market_type.has(
+                    canonical_market_name="Over/Under Full Time"
+                )
+            )
             .one()
         )
         uncovered_quotes = {

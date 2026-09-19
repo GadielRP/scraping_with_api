@@ -2,10 +2,10 @@
 
 See docs/refactors/db-schema-odds-refactor.md §5 for the design rationale:
 exchange_side is NULL for non-exchange bookies (same NULL-for-"not
-applicable" convention as Market.choice_group). NULL != NULL in a UNIQUE
+applicable" convention as Market.line_value). NULL != NULL in a UNIQUE
 constraint, so real duplicate-row protection is the functional index
 ``unique_market_choice_quote_side_null_safe`` (COALESCE(exchange_side, '')),
-applied via ``check_and_migrate_schema`` - the plain ORM UniqueConstraint
+applied by the Alembic migration - the plain ORM UniqueConstraint
 alone would let two NULL-side rows through.
 """
 
@@ -16,6 +16,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from infrastructure.persistence.database import DatabaseManager
+from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_IDS
 from infrastructure.persistence.models import (
     Bookie,
     Event,
@@ -29,14 +30,12 @@ from infrastructure.persistence.models import (
 def make_manager(tmp_path):
     manager = DatabaseManager(f"sqlite:///{tmp_path / 'market_choice_quotes.db'}")
     manager.create_tables()
-    # create_tables() only runs Base.metadata.create_all(), which applies the
-    # plain (NULL-unsafe) UniqueConstraint from __table_args__. The real
-    # NULL-safe functional index is only created by the manual migration.
-    manager.check_and_migrate_schema()
+    # SQLite tests intentionally do not run PostgreSQL Alembic DDL. The real
+    # NULL-safe functional index is installed by the deployment migration.
     return manager
 
 
-def seed_choice(manager, *, choice_group=None):
+def seed_choice(manager, *, line_value=None):
     with manager.get_session() as session:
         event = Event(
             slug="test-event",
@@ -53,10 +52,8 @@ def seed_choice(manager, *, choice_group=None):
         market = Market(
             event_id=event.id,
             bookie_id=bookie.bookie_id,
-            market_name="Home/Away Full Time",
-            market_group="1X2",
-            market_period="Full Time",
-            choice_group=choice_group,
+            market_type_id=CANONICAL_MARKET_TYPE_IDS["1x2_full_time"],
+            line_value=line_value,
             is_live=False,
         )
         session.add(market)
@@ -114,6 +111,8 @@ def test_duplicate_null_side_quote_for_same_source_is_rejected(tmp_path):
     functional COALESCE(exchange_side, '') unique index, even though NULL
     is otherwise never equal to NULL."""
     manager = make_manager(tmp_path)
+    if manager.engine.dialect.name != "postgresql":
+        pytest.skip("NULL-safe quote indexes are installed by Alembic on PostgreSQL")
     choice_id = seed_choice(manager)
 
     with manager.get_session() as session:
@@ -274,7 +273,7 @@ def test_startup_normalizes_quote_sentinel_and_rejects_expanded_snapshot_schema(
             )
         )
 
-    # Call the quotes migration directly: a full check_and_migrate_schema()
+    # Call the quotes migration directly: deployment migrations are explicit.
     # would abort earlier on sqlite test DBs (event-identity validation) and
     # never reach this step - the production path still runs it after that.
     manager._migrate_market_choice_quotes()

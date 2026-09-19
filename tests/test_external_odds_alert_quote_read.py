@@ -33,7 +33,7 @@ def _block(
     side=None,
     choices=(),
     bookie="Pinnacle",
-    choice_group=None,
+    line_value=None,
 ):
     return ExternalMarketQuoteBlock(
         market_id=100,
@@ -42,7 +42,7 @@ def _block(
         market_name="Match Result",
         market_group="1X2",
         market_period="Full Time",
-        choice_group=choice_group,
+        line_value=line_value,
         is_live=False,
         aggregation=aggregation,
         source=source,

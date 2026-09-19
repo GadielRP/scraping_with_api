@@ -53,7 +53,7 @@ class CanonicalMarketNormalizer:
         diagnostics = {
             "unmapped_markets": [],
             "unmapped_choices": [],
-            "skipped_missing_choice_group": [],
+            "skipped_missing_line_value": [],
         }
         canonical_types = CanonicalMarketTypeRepository.build_index(enabled_only=True)
         normalized_markets = []
@@ -68,14 +68,14 @@ class CanonicalMarketNormalizer:
                     "marketName": raw_market.get("marketName"),
                     "marketGroup": raw_market.get("marketGroup"),
                     "marketPeriod": raw_market.get("marketPeriod"),
-                    "choiceGroup": raw_market.get("choiceGroup"),
+                    "lineValue": raw_market.get("lineValue"),
                     "reason": "unsupported_sofascore_market_shape",
                 }
                 diagnostics["unmapped_markets"].append(detail)
                 logger.warning(
-                    "Unsupported SofaScore market skipped: marketName=%s marketGroup=%s marketPeriod=%s choiceGroup=%s reason=%s",
+                    "Unsupported SofaScore market skipped: marketName=%s marketGroup=%s marketPeriod=%s lineValue=%s reason=%s",
                     detail["marketName"], detail["marketGroup"], detail["marketPeriod"],
-                    detail["choiceGroup"], detail["reason"],
+                    detail["lineValue"], detail["reason"],
                 )
                 continue
 
@@ -86,7 +86,7 @@ class CanonicalMarketNormalizer:
                     "marketName": raw_market.get("marketName"),
                     "marketGroup": raw_market.get("marketGroup"),
                     "marketPeriod": raw_market.get("marketPeriod"),
-                    "choiceGroup": raw_market.get("choiceGroup"),
+                    "lineValue": raw_market.get("lineValue"),
                     "canonicalMarketKey": canonical_key,
                     "reason": "canonical_market_type_unavailable",
                 }
@@ -94,7 +94,10 @@ class CanonicalMarketNormalizer:
                 logger.warning("Enabled canonical market type unavailable; SofaScore market skipped: %s", detail)
                 continue
 
-            market_choice_group = CanonicalMarketNormalizer._text(raw_market.get("choiceGroup"))
+            # The provider adapter owns the external SofaScore field name
+            # (choiceGroup) and exposes the canonical internal contract as
+            # lineValue.  The normalizer must only consume that internal key.
+            market_line_value = CanonicalMarketNormalizer._text(raw_market.get("lineValue"))
             # Catalog marketId is the stable SofaScore market key we persist as
             # quote.source_market_id (e.g. "1"). Prefer it over instance ids.
             market_source_market_id = None
@@ -114,9 +117,9 @@ class CanonicalMarketNormalizer:
                     canonical_market_key=canonical_key,
                     home_team=home_team,
                     away_team=away_team,
-                    choice_group=(
-                        market_choice_group
-                        or CanonicalMarketNormalizer._text(raw_choice.get("choiceGroup"))
+                    line_value=(
+                        market_line_value
+                        or CanonicalMarketNormalizer._text(raw_choice.get("lineValue"))
                     ),
                     choice_index=idx,
                     total_choices=total_choices_count,
@@ -137,11 +140,11 @@ class CanonicalMarketNormalizer:
                     diagnostics["unmapped_choices"].append(detail)
                     logger.warning("Unsupported SofaScore choice skipped: %s", detail)
                     continue
-                market_choice_group = market_choice_group or choice_result.choice_group
+                market_line_value = market_line_value or choice_result.line_value
                 choice = {
                     key: value
                     for key, value in raw_choice.items()
-                    if key not in {"name", "choiceGroup"}
+                    if key not in {"name", "lineValue"}
                 }
                 choice["name"] = choice_result.canonical_choice_name
                 # Always stamp catalog sourceMarketId onto the persisted choice
@@ -152,7 +155,7 @@ class CanonicalMarketNormalizer:
 
             if not choices:
                 continue
-            if canonical_type.requires_choice_group and not market_choice_group:
+            if canonical_type.requires_line_value and not market_line_value:
                 detail = {
                     "source": "sofascore",
                     "canonicalMarketKey": canonical_key,
@@ -160,10 +163,11 @@ class CanonicalMarketNormalizer:
                     "marketName": raw_market.get("marketName"),
                     "marketGroup": raw_market.get("marketGroup"),
                     "marketPeriod": raw_market.get("marketPeriod"),
-                    "reason": "missing_required_choice_group",
+                    "lineValue": raw_market.get("lineValue"),
+                    "reason": "missing_required_line_value",
                 }
-                diagnostics["skipped_missing_choice_group"].append(detail)
-                logger.warning("SofaScore market missing required choiceGroup; skipped: %s", detail)
+                diagnostics["skipped_missing_line_value"].append(detail)
+                logger.warning("SofaScore market missing required lineValue; skipped: %s", detail)
                 continue
 
             normalized_markets.append({
@@ -171,7 +175,7 @@ class CanonicalMarketNormalizer:
                 "marketName": canonical_type.canonical_market_name,
                 "marketGroup": canonical_type.canonical_market_group,
                 "marketPeriod": canonical_type.canonical_market_period,
-                "choiceGroup": market_choice_group,
+                "lineValue": market_line_value,
                 "isLive": bool(raw_market.get("isLive", False)),
                 "choices": choices,
             })

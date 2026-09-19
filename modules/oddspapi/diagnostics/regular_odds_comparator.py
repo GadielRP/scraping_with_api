@@ -203,7 +203,7 @@ class EnrichmentInfo:
     market_family: str | None = None
     canonical_choice_name: str | None = None
     handicap: str | None = None
-    choice_group: str | None = None
+    line_value: str | None = None
 
 
 # ---------------------------------------------------------------------------

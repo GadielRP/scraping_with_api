@@ -11,6 +11,7 @@ docs/refactors/db-schema-odds-refactor.md (Fase 2).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -84,10 +85,11 @@ def _batch(*, initial_odds=None, current_odds=None, exchange_quotes=None):
             "bookie_id": None,  # filled in by caller
             "markets": [
                 {
+                    "canonicalMarketKey": "1x2_full_time",
                     "marketName": "1X2 Full Time",
                     "marketGroup": "1X2",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": None,
+                    "lineValue": None,
                     "isLive": False,
                     "choices": [choice],
                 }
@@ -246,10 +248,11 @@ def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(
             "bookie_id": bookie_id,
             "markets": [
                 {
-                    "marketName": "Correct Score Full Time",
-                    "marketGroup": "Correct Score",
+                    "canonicalMarketKey": "1x2_full_time",
+                    "marketName": "1X2 Full Time",
+                    "marketGroup": "1X2",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": None,
+                    "lineValue": None,
                     "isLive": False,
                     "choices": choices,
                 }
@@ -287,9 +290,9 @@ def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(
                 record_selects,
             )
 
-    # Existing market + selectin-loaded choices + all source quotes. There is
-    # no SELECT per choice/quote, so 25 choices still cost three reads.
-    assert len(select_statements) == 3
+    # Existing markets, canonical catalog, choices and source quotes are read
+    # in a constant number of set-based queries; there is no SELECT per choice.
+    assert len(select_statements) == 5
     assert sum("market_choice_quotes" in statement for statement in select_statements) == 1
 
 
@@ -324,7 +327,6 @@ def test_opening_snapshot_gate_uses_exchange_side_quote_not_null_row(tmp_path):
     default policy keeps opening snapshots enabled.
     """
     manager = _make_manager(tmp_path, "opening-gate-side.db")
-    manager.check_and_migrate_schema()
     event_id, bookie_id = _seed_event_and_bookie(manager)
 
     batch = [
@@ -332,10 +334,11 @@ def test_opening_snapshot_gate_uses_exchange_side_quote_not_null_row(tmp_path):
             "bookie_id": bookie_id,
             "markets": [
                 {
+                    "canonicalMarketKey": "home_away_full_time",
                     "marketName": "Home/Away Full Time",
-                    "marketGroup": "1X2",
+                    "marketGroup": "Home/Away",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": None,
+                    "lineValue": None,
                     "isLive": False,
                     "choices": [
                         {
@@ -581,10 +584,11 @@ def test_oddspapi_missing_changed_at_still_writes_live_current(tmp_path):
             "bookie_id": bookie_id,
             "markets": [
                 {
+                    "canonicalMarketKey": "1x2_full_time",
                     "marketName": "1X2 Full Time",
                     "marketGroup": "1X2",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": None,
+                    "lineValue": None,
                     "isLive": False,
                     "choices": [{"name": "1", "decimalValue": 1.483}],
                 }
@@ -655,10 +659,11 @@ def test_line_shift_demotes_superseded_mainline(tmp_path):
             "bookie_id": bookie_id,
             "markets": [
                 {
+                    "canonicalMarketKey": "asian_handicap_full_time",
                     "marketName": "Asian Handicap Full Time",
                     "marketGroup": "Asian Handicap",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": "-2.0",
+                    "lineValue": "-2.0",
                     "choices": [
                         {
                             "name": "1",
@@ -683,10 +688,11 @@ def test_line_shift_demotes_superseded_mainline(tmp_path):
             "bookie_id": bookie_id,
             "markets": [
                 {
+                    "canonicalMarketKey": "asian_handicap_full_time",
                     "marketName": "Asian Handicap Full Time",
                     "marketGroup": "Asian Handicap",
                     "marketPeriod": "Full Time",
-                    "choiceGroup": "-2.25",
+                    "lineValue": "-2.25",
                     "choices": [
                         {
                             "name": "1",
@@ -729,8 +735,8 @@ def test_line_shift_demotes_superseded_mainline(tmp_path):
             markets = session.query(Market).all()
             assert len(markets) == 2
 
-            m_20 = next(m for m in markets if m.choice_group == "-2.0")
-            m_225 = next(m for m in markets if m.choice_group == "-2.25")
+            m_20 = next(m for m in markets if m.line_value == Decimal("-2.0"))
+            m_225 = next(m for m in markets if m.line_value == Decimal("-2.25"))
 
             quotes_20 = [
                 q for c in m_20.choices for q in c.quotes if q.source == "oddspapi"
@@ -751,8 +757,9 @@ def test_selected_line_can_return_and_cleans_preexisting_ambiguous_lines(tmp_pat
 
     def batches(lines):
         return [{"bookie_id": bookie_id, "markets": [
-            {"marketName": "Handicap Full Time", "marketGroup": "Handicap",
-             "marketPeriod": "Full Time", "choiceGroup": line,
+                {"canonicalMarketKey": "asian_handicap_full_time",
+                 "marketName": "Asian Handicap Full Time", "marketGroup": "Asian Handicap",
+                 "marketPeriod": "Full Time", "lineValue": line,
              "choices": [{"name": side, "currentOdds": 1.95, "mainLine": True}
                          for side in ("1", "2")]}
             for line in lines
@@ -760,19 +767,23 @@ def test_selected_line_can_return_and_cleans_preexisting_ambiguous_lines(tmp_pat
 
     def flags():
         with manager.get_session() as session:
-            return {market.choice_group: {quote.main_line for choice in market.choices for quote in choice.quotes}
+            return {market.line_value: {quote.main_line for choice in market.choices for quote in choice.quotes}
                     for market in session.query(Market).all()}
 
     with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
         # Simulate the old ambiguous state, including new choices in one batch.
         MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5", "1.5"]), source="oddspapi")
-        assert flags() == {"-1.5": {True}, "1.5": {True}}
+        assert flags() == {Decimal("-1.5"): {True}, Decimal("1.5"): {True}}
         MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["1.5"]), source="oddspapi")
-        assert flags() == {"-1.5": {False}, "1.5": {True}}
+        assert flags() == {Decimal("-1.5"): {False}, Decimal("1.5"): {True}}
         MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5"]), source="oddspapi")
-        assert flags() == {"-1.5": {True}, "1.5": {False}}
+        assert flags() == {Decimal("-1.5"): {True}, Decimal("1.5"): {False}}
         MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-0.5"]), source="oddspapi")
-        assert flags() == {"-1.5": {False}, "1.5": {False}, "-0.5": {True}}
+        assert flags() == {
+            Decimal("-1.5"): {False},
+            Decimal("1.5"): {False},
+            Decimal("-0.5"): {True},
+        }
 
     with manager.get_session() as session:
         # Selection changes must preserve the history on demoted quotes.
