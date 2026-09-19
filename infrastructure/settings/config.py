@@ -636,8 +636,21 @@ class Config:
         True
     )
 
-    # Sports to exclude from alert evaluation (but not odds extraction)
-    EXCLUDED_SPORTS = _parse_env_list('EXCLUDED_SPORTS', ['Table tennis', 'Darts'])
+    # Sports supported by discovery and alert evaluation.
+    SUPPORTED_SPORTS = _parse_env_list(
+        'SUPPORTED_SPORTS',
+        [
+            'Football',
+            'American football',
+            'Basketball',
+            'Volleyball',
+            'Tennis',
+            'Tennis doubles',
+            'Ice hockey',
+            'Handball',
+            'Baseball',
+        ],
+    )
 
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)

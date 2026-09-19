@@ -6,6 +6,7 @@ import logging
 from typing import Dict, List
 
 from infrastructure.settings import Config
+from modules.jobs.discovery_filters import is_supported_sport
 from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,13 @@ def filter_events_present_in_odds_feed(events_response: Dict, odds_event_ids: se
             return []
 
         all_events = events_response["events"]
-        filtered_events = [event for event in all_events if event.get("id") and event.get("id") in odds_event_ids]
+        filtered_events = [
+            event
+            for event in all_events
+            if event.get("id")
+            and event.get("id") in odds_event_ids
+            and is_supported_sport(event)
+        ]
         logger.info("Filtered %s events with odds out of %s total events", len(filtered_events), len(all_events))
         return filtered_events
     except Exception as exc:
@@ -36,12 +43,16 @@ def filter_events_starting_after_threshold(events: List[Dict], min_minutes_away:
         min_start_timestamp = current_timestamp + (min_minutes_away * 60)
 
         upcoming_events = []
-        excluded_count = 0
+        unsupported_count = 0
+        filtered_count = 0
         for event in events:
+            if not is_supported_sport(event):
+                unsupported_count += 1
+                continue
             start_timestamp = event.get("startTimestamp")
             if not start_timestamp:
                 logger.debug("Event %s has no startTimestamp, skipping", event.get("id", "unknown"))
-                excluded_count += 1
+                filtered_count += 1
                 continue
 
             if start_timestamp >= min_start_timestamp:
@@ -55,12 +66,13 @@ def filter_events_starting_after_threshold(events: List[Dict], min_minutes_away:
                     time_diff_minutes,
                     min_minutes_away,
                 )
-                excluded_count += 1
+                filtered_count += 1
 
         logger.info(
-            "Filtered %s upcoming events (excluded %s events that already started or are starting soon)",
+            "Filtered %s upcoming events (unsupported_sport=%s, too_soon_or_started=%s)",
             len(upcoming_events),
-            excluded_count,
+            unsupported_count,
+            filtered_count,
         )
         return upcoming_events
     except Exception as exc:

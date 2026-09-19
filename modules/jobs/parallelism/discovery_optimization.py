@@ -14,6 +14,8 @@ from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
+from .event_filters import is_supported_sport
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,13 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
             event_data = api_client.normalize_event_payload(event_response, discovery_source="team_streaks")
             if not event_data:
                 logger.debug("Failed to structure event data for team %s", team_id)
+                return None
+            if not is_supported_sport(event_data):
+                logger.debug(
+                    "Skipping unsupported sport event %s for team %s",
+                    _event_payload(event_data).get("id"),
+                    team_id,
+                )
                 return None
 
             logger.debug("Fetched event %s for team %s", _event_payload(event_data).get("id"), team_id)

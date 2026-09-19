@@ -13,6 +13,7 @@ from infrastructure.persistence.repositories import (
 )
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import is_tracked_competition
+from modules.jobs.discovery_filters import is_supported_sport_name
 from modules.jobs.pre_start_check_job.alert_pipeline import (
     evaluate_and_dispatch_alerts_batch,
 )
@@ -200,7 +201,7 @@ def _hydrate_missing_tennis_metadata(
         # API call on events that evaluation will drop anyway.
         if (
             event_obj.round != "regular_season"
-            or event_obj.sport in Config.EXCLUDED_SPORTS
+            or not is_supported_sport_name(event_obj.sport)
             or event_obj.id in scheduler.recently_rescheduled
         ):
             skipped_by_filters += 1
@@ -303,7 +304,7 @@ def _build_evaluation_payloads(
         len(event_plan.candidates),
     )
     prepared: list[dict] = []
-    skipped_excluded_or_rescheduled = 0
+    skipped_unsupported_or_rescheduled = 0
     skipped_context_build = 0
     skipped_non_regular = 0
 
@@ -317,11 +318,11 @@ def _build_evaluation_payloads(
         event_obj = candidate.get("event_obj")
         if event_obj is None:
             event_obj = scheduler.event_repo.get_event_by_id(event_id)
-        if not event_obj or event_obj.sport in Config.EXCLUDED_SPORTS:
-            skipped_excluded_or_rescheduled += 1
+        if not event_obj or not is_supported_sport_name(event_obj.sport):
+            skipped_unsupported_or_rescheduled += 1
             continue
         if event_obj.id in scheduler.recently_rescheduled:
-            skipped_excluded_or_rescheduled += 1
+            skipped_unsupported_or_rescheduled += 1
             continue
 
         initial_minutes = candidate.get("minutes_until_start")
@@ -363,10 +364,10 @@ def _build_evaluation_payloads(
 
     logger.info(
         "🧩 END EventContext construction "
-        "(contexts_built=%s skipped_excluded_or_rescheduled=%s "
+        "(contexts_built=%s skipped_unsupported_or_rescheduled=%s "
         "skipped_context_build=%s skipped_non_regular=%s)",
         len(prepared),
-        skipped_excluded_or_rescheduled,
+        skipped_unsupported_or_rescheduled,
         skipped_context_build,
         skipped_non_regular,
     )

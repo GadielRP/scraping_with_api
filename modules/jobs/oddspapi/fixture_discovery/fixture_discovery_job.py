@@ -10,6 +10,7 @@ from time import monotonic
 from infrastructure.persistence.database import db_manager
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
+from modules.jobs.discovery_filters import is_supported_sport, is_supported_sport_name
 
 from .constants import (
     DEFAULT_HAS_ODDS,
@@ -115,7 +116,11 @@ class OddspapiFixtureDiscoveryJob:
         batch_processor: OddspapiFixtureBatchProcessor | None = None,
     ) -> None:
         self.client = client
-        self.sports = dict(sports or DISCOVERY_SPORT_IDS)
+        self.sports = {
+            sport_slug: sport_id
+            for sport_slug, sport_id in (sports or DISCOVERY_SPORT_IDS).items()
+            if is_supported_sport_name(sport_slug)
+        }
         self.create_mappings = create_mappings
         self.persist_queue = persist_queue
         self.status_id = int(status_id)
@@ -212,6 +217,14 @@ class OddspapiFixtureDiscoveryJob:
                             )
                             payload = []
                         fixtures = extract_fixture_list(payload)
+                        write_index = 0
+                        for fixture in fixtures:
+                            if not is_supported_sport(fixture):
+                                continue
+                            fixtures[write_index] = fixture
+                            write_index += 1
+                        if write_index != len(fixtures):
+                            del fixtures[write_index:]
                         sport_summary.fixtures_fetched += len(fixtures)
                         logger.info(
                             "Oddspapi fixtures fetched sport=%s count=%s",

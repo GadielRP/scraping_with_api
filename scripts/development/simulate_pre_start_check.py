@@ -32,6 +32,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
+from modules.jobs.discovery_filters import is_supported_sport_name
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     build_pre_start_event_candidates,
 )
@@ -456,14 +457,21 @@ def _run_pre_start_check_simulation(
         )
         return True
 
+    supported_events = []
     for event_obj in eligible_events:
-        if event_obj.sport in Config.EXCLUDED_SPORTS:
+        if not is_supported_sport_name(event_obj.sport):
             logger.warning(
-                "Event %s sport %r is excluded from production alert/pillar "
-                "evaluation; provider ingestion can still run.",
+                "Event %s sport %r is unsupported by production alert/pillar evaluation.",
                 event_obj.id,
                 event_obj.sport,
             )
+            continue
+        supported_events.append(event_obj)
+
+    eligible_events = supported_events
+    if not eligible_events:
+        logger.info("Simulation complete: no supported sports were provided.")
+        return True
 
     events_data = [
         EventRepository._build_event_data_with_legacy_fallback(event_obj)

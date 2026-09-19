@@ -17,7 +17,7 @@ Unlike reactive discovery channels (such as dropping odds, high-value streaks, o
 
 ## Supported Sports
 
-Configured via `DEFAULT_DAILY_DISCOVERY_SPORTS` in [`constants.py`](file:///c:/Users/gadie/Documents/projects/sofascore/modules/jobs/daily_discovery/constants.py):
+Discovery accepts only sports listed in `Config.SUPPORTED_SPORTS` from [`config.py`](file:///c:/Users/gadie/Documents/projects/sofascore/infrastructure/settings/config.py). The daily job requests the following configured scopes:
 
 * `basketball`
 * `tennis`

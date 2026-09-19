@@ -6,6 +6,7 @@ import logging
 from datetime import timedelta
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
+from modules.jobs.discovery_filters import is_supported_sport_name
 from shared.temporal import now_in_timezone, utc_now
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
@@ -45,6 +46,7 @@ def run_daily_discovery(sports=None, date_str=None, run_slot=None):
         date_str = now_in_timezone(Config.TIMEZONE).strftime("%Y-%m-%d")
     if sports is None:
         sports = DEFAULT_DAILY_DISCOVERY_SPORTS
+    sports = [sport for sport in sports if is_supported_sport_name(sport)]
     return DailyDiscoveryExtractor().discover_events_for_date(date_str, sports=sports, run_slot=run_slot)
 
 
@@ -79,13 +81,21 @@ def run_daily_discovery_job() -> None:
             target_date_obj = current_utc
         today_str = target_date_obj.strftime("%Y-%m-%d")
 
+        discovery_sports = [
+            sport for sport in DEFAULT_DAILY_DISCOVERY_SPORTS
+            if is_supported_sport_name(sport)
+        ]
         DailyDiscoveryRepository.initialize_sports_for_slot(
             today_str,
             run_slot,
-            DEFAULT_DAILY_DISCOVERY_SPORTS,
+            discovery_sports,
         )
 
-        pending_sports = DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
+        pending_sports = [
+            sport
+            for sport in DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
+            if is_supported_sport_name(sport)
+        ]
         if not pending_sports:
             logger.info(
                 "Daily discovery slot %s for %s is already completed for all sports.",

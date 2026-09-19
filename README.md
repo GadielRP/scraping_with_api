@@ -261,7 +261,7 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `ENABLE_ODDSPAPI_PRE_START_ODDS` - enables Oddspapi odds ingestion inside the normal pre-start run.
 *   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_MARKET_KEYS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
 *   Proxy toggles and credentials (if scraping behind a proxy).
-*   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `EXCLUDED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
+*   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `SUPPORTED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
 Initialise the database. Run:
 

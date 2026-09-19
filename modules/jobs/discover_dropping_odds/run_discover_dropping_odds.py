@@ -8,7 +8,11 @@ import os
 from datetime import datetime
 
 from modules.sofascore import api_client
-from modules.jobs.parallelism import filter_upcoming_events, process_with_parallel_db_ops
+from modules.jobs.parallelism import (
+    filter_upcoming_events,
+    is_supported_sport_name,
+    process_with_parallel_db_ops,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +30,17 @@ def run_discover_dropping_odds() -> None:
     logger.info("Starting Job A: Event Discovery with Odds Processing")
 
     dropping_sports = [
-        "football",
-        "basketball",
-        "volleyball",
-        "american-football",
-        "ice-hockey",
-        "baseball",
-        "rugby",
+        sport
+        for sport in (
+            "football",
+            "basketball",
+            "volleyball",
+            "american-football",
+            "ice-hockey",
+            "baseball",
+            "rugby",
+        )
+        if is_supported_sport_name(sport)
     ]
 
     processed_event_ids = set()

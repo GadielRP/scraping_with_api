@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Tuple
 
+from modules.jobs.discovery_filters import is_supported_sport
+
 from .event_normalizer import normalize_event_payload
 
 logger = logging.getLogger(__name__)
@@ -48,13 +50,13 @@ def extract_events_from_high_value_streaks(response: Dict) -> Tuple[List[Dict], 
         if "general" in response:
             for item in response["general"]:
                 event = item.get("event")
-                if event:
+                if event and is_supported_sport(event):
                     events.append(event)
 
         if "head2head" in response:
             for item in response["head2head"]:
                 event = item.get("event")
-                if event:
+                if event and is_supported_sport(event):
                     events_h2h.append(event)
 
         logger.info(
@@ -75,6 +77,7 @@ def extract_events_and_odds_from_dropping_response(
 ) -> Tuple[List[Dict], Dict]:
     events: List[Dict] = []
     odds_map: Dict = {}
+    supported_event_ids: set[str] = set()
 
     try:
         if not response or "events" not in response:
@@ -83,18 +86,25 @@ def extract_events_and_odds_from_dropping_response(
 
         for event in response["events"]:
             try:
+                if not is_supported_sport(event):
+                    continue
                 event_data = normalize_event_payload(event, discovery_source)
                 event_payload = event_data.get("event", event_data)
                 required_fields = ["id", "slug", "startTimestamp", "sport", "competition", "homeTeam", "awayTeam"]
                 if all(event_payload.get(field) for field in required_fields):
                     events.append(event_data)
+                    supported_event_ids.add(str(event_payload["id"]))
                 else:
                     logger.info("Event %s missing required fields", event.get("id"))
             except Exception as exc:
                 logger.error("Error processing event: %s", exc)
 
         if odds_extraction and "oddsMap" in response:
-            odds_map = response["oddsMap"]
+            odds_map = {
+                event_id: odds_data
+                for event_id, odds_data in response["oddsMap"].items()
+                if str(event_id) in supported_event_ids
+            }
             logger.info("Extracted %s odds entries from response", len(odds_map))
 
         return events, odds_map

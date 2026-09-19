@@ -7,6 +7,7 @@ from typing import Dict, List
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from modules.sofascore import api_client as default_api_client
+from modules.jobs.discovery_filters import is_supported_sport, is_supported_sport_name
 from shared.shutdown import is_shutdown_requested
 
 from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
@@ -31,6 +32,7 @@ class DailyDiscoveryExtractor:
     ) -> Dict[str, int]:
         if sports is None:
             sports = DEFAULT_DAILY_DISCOVERY_SPORTS
+        sports = [sport for sport in sports if is_supported_sport_name(sport)]
 
         normalized_run_slot = (run_slot or "AM").strip().upper()
         if normalized_run_slot not in {"AM", "PM"}:
@@ -117,7 +119,11 @@ class DailyDiscoveryExtractor:
                         try:
                             ut_events_response = self.api_client.get_unique_tournament_scheduled_events(ut_id, date)
                             if ut_events_response and "events" in ut_events_response:
-                                all_events.extend(ut_events_response["events"])
+                                all_events.extend(
+                                    event
+                                    for event in ut_events_response["events"]
+                                    if is_supported_sport(event)
+                                )
                         except Exception as exc:
                             logger.warning("Failed to fetch events for tournament %s: %s", ut_id, exc)
 

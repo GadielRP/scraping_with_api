@@ -1,9 +1,7 @@
 # Canonical market identity
 
 This document describes the current market persistence contract used by the
-repository. It is intentionally limited to the runtime architecture; the
-historical migration plan and local migration audits live under
-`docs/refactors/` and `docs/audits/`.
+repository.
 
 ## Source of truth
 

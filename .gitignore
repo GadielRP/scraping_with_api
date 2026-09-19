@@ -57,6 +57,7 @@ GEMINI.md
 CLAUDE.md
 
 .graphifyignore
+graphify-env.ps1
 
 # Graphify generated output
 graphify-out/

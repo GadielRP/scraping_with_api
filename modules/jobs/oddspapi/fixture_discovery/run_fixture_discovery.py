@@ -13,6 +13,7 @@ from modules.oddspapi.runtime import (
     oddspapi_account_usage_refresh_enabled,
     refresh_oddspapi_account_usage_if_due,
 )
+from modules.jobs.discovery_filters import is_supported_sport_name
 
 from .constants import (
     DEFAULT_LOOKAHEAD_DAYS,
@@ -78,7 +79,11 @@ def _resolve_window(args: argparse.Namespace) -> tuple[datetime, datetime]:
 
 def _resolve_sports(value: str | None) -> dict[str, int]:
     if not value:
-        return dict(DISCOVERY_SPORT_IDS)
+        return {
+            slug: sport_id
+            for slug, sport_id in DISCOVERY_SPORT_IDS.items()
+            if is_supported_sport_name(slug)
+        }
     requested = [slug.strip().casefold() for slug in value.split(",") if slug.strip()]
     unknown = [slug for slug in requested if slug not in DISCOVERY_SPORT_IDS]
     if unknown:
@@ -88,7 +93,11 @@ def _resolve_sports(value: str | None) -> dict[str, int]:
         )
     if not requested:
         raise ValueError("--sports must contain at least one sport slug")
-    return {slug: DISCOVERY_SPORT_IDS[slug] for slug in requested}
+    return {
+        slug: DISCOVERY_SPORT_IDS[slug]
+        for slug in requested
+        if is_supported_sport_name(slug)
+    }
 
 
 def current_utc_day_window(

@@ -1,71 +1,9 @@
-"""Shared helpers for filtering discovery events."""
+"""Compatibility exports for shared discovery event filters."""
 
-from __future__ import annotations
+from modules.jobs.discovery_filters import (
+    filter_upcoming_events,
+    is_supported_sport,
+    is_supported_sport_name,
+)
 
-import logging
-from typing import Dict, List
-
-from infrastructure.settings import Config
-from shared.temporal import now_in_timezone
-
-logger = logging.getLogger(__name__)
-
-
-def _event_payload(event: Dict) -> Dict:
-    return event.get("event", event)
-
-
-def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
-    """Keep only events that start at least ``min_minutes_away`` minutes from now."""
-    if not events:
-        return []
-
-    try:
-        current_time = now_in_timezone(Config.TIMEZONE)
-        current_timestamp = int(current_time.timestamp())
-        min_start_timestamp = current_timestamp + (min_minutes_away * 60)
-
-        upcoming_events = []
-        filtered_count = 0
-
-        for event in events:
-            event_payload = _event_payload(event)
-            event_id = event_payload.get("id", "unknown")
-            start_timestamp = event_payload.get("startTimestamp")
-            if not start_timestamp:
-                logger.debug("Event %s has no startTimestamp, skipping", event_id)
-                filtered_count += 1
-                continue
-
-            if start_timestamp >= min_start_timestamp:
-                upcoming_events.append(event)
-                continue
-
-            time_diff_minutes = (start_timestamp - current_timestamp) / 60
-            if time_diff_minutes < 0:
-                logger.debug(
-                    "Filtered out event %s: already started (%.1f minutes ago)",
-                    event_id,
-                    abs(time_diff_minutes),
-                )
-            else:
-                logger.debug(
-                    "Filtered out event %s: starts in %.1f minutes (< %s min threshold)",
-                    event_id,
-                    time_diff_minutes,
-                    min_minutes_away,
-                )
-            filtered_count += 1
-
-        if filtered_count > 0:
-            logger.info(
-                "Filtered %s upcoming events (excluded %s events that already started or are starting soon)",
-                len(upcoming_events),
-                filtered_count,
-            )
-
-        return upcoming_events
-    except Exception as exc:
-        logger.error("Error filtering upcoming events: %s", exc)
-        return events
-
+__all__ = ["filter_upcoming_events", "is_supported_sport", "is_supported_sport_name"]
