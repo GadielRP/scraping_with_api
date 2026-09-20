@@ -1,7 +1,7 @@
 import logging
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import refresh_materialized_views
+from infrastructure.persistence.views.view_manager import refresh_materialized_views
 
 
 def refresh_alert_data():

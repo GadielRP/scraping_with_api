@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 from infrastructure.persistence.database import DatabaseManager
@@ -165,25 +165,6 @@ def test_run_joins_results_and_event_delete_cascades_graph(
         assert session.query(PillarMiningRun).count() == 0
         assert session.query(PillarMiningUnit).count() == 0
         assert session.query(PillarMiningMetricValue).count() == 0
-
-
-def test_schema_migration_drops_experiment_and_is_idempotent(tmp_path) -> None:
-    manager = DatabaseManager(f"sqlite:///{tmp_path / 'mining_migration.db'}")
-    with manager.engine.begin() as connection:
-        connection.execute(
-            text("CREATE TABLE pillar_mining_observations (id INTEGER PRIMARY KEY)")
-        )
-
-    manager._migrate_pillar_mining_schema_v2()
-    manager._migrate_pillar_mining_schema_v2()
-
-    table_names = set(inspect(manager.engine).get_table_names())
-    assert "pillar_mining_observations" not in table_names
-    assert {
-        "pillar_mining_runs",
-        "pillar_mining_units",
-        "pillar_mining_metric_values",
-    } <= table_names
 
 
 def test_postgresql_run_upsert_is_atomic() -> None:

@@ -19,7 +19,8 @@ logging.basicConfig(
 logger = logging.getLogger("process_null_seasons")
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Event, refresh_materialized_views
+from infrastructure.persistence.models import Event
+from infrastructure.persistence.views.view_manager import refresh_materialized_views
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher

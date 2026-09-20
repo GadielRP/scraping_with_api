@@ -1,15 +1,12 @@
 import logging
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import (
-    create_or_replace_materialized_views,
-    create_or_replace_views,
-)
+from infrastructure.persistence.schema_version import verify_schema_at_head
 from infrastructure.settings import Config
 
 
 def initialize_system() -> bool:
-    """Initialize the database and reporting views."""
+    """Check the deployed schema before starting application work."""
     logger = logging.getLogger(__name__)
 
     try:
@@ -19,25 +16,19 @@ def initialize_system() -> bool:
             logger.error("Database connection failed")
             return False
 
-        if Config.AUTO_CREATE_SCHEMA:
+        is_postgresql = db_manager.engine.dialect.name == "postgresql"
+        if Config.AUTO_CREATE_SCHEMA and not is_postgresql:
             db_manager.create_tables()
 
-        if Config.REQUIRE_ALEMBIC_SCHEMA and not db_manager.verify_schema_at_head():
+        if (is_postgresql or Config.REQUIRE_ALEMBIC_SCHEMA) and not verify_schema_at_head(
+            db_manager.engine
+        ):
             logger.error(
                 "Schema validation failed; application startup is blocked. "
                 "Apply migrations with `alembic upgrade head` before starting "
                 "the application."
             )
             return False
-
-        if not Config.REQUIRE_ALEMBIC_SCHEMA:
-            logger.warning(
-                "Alembic schema verification is disabled; this mode is intended "
-                "only for SQLite/local development."
-            )
-
-        create_or_replace_views(db_manager.engine)
-        create_or_replace_materialized_views(db_manager.engine)
 
         logger.info("System initialized successfully")
         return True

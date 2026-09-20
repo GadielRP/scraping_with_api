@@ -30,6 +30,24 @@ services:
       retries: 5
       start_period: 10s
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        REQUIREMENTS_FILE: ${REQUIREMENTS_FILE:-requirements_cloud.txt}
+    image: sofascore-app:latest
+    restart: "no"
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sofascore}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sofascore_odds}
+      APP_DB_ROLE: ${APP_DB_ROLE:-sofascore_app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [ "alembic", "upgrade", "head" ]
+
   app:
     container_name: sofascore-app
     build:
@@ -49,7 +67,7 @@ services:
       # Important:
       # This overrides the DATABASE_URL from .env only inside the app container.
       # Outside Docker, python main.py still uses DATABASE_URL from .env.
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sofascore}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sofascore_odds}
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL must use a PostgreSQL role without DDL privileges}
       TIMEZONE: ${TIMEZONE:-America/Mexico_City}
       TZ: ${TIMEZONE:-America/Mexico_City}
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
@@ -57,6 +75,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
     volumes:
       - ./logs:/app/logs

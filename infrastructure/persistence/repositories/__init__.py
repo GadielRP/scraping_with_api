@@ -36,6 +36,10 @@ from .oddspapi_fixture_discovery_run_repository import (
 )
 from .oddspapi_mainline_cache_repository import OddspapiMainlineCacheRepository
 from .pillar_mining_repository import PillarMiningRepository
+from .pillar_5_price_memory_repository import (
+    HistoricalPriceMatch,
+    Pillar5PriceMemoryRepository,
+)
 
 __all__ = [
     'EventRepository',
@@ -66,4 +70,6 @@ __all__ = [
     'OddspapiFixtureDiscoveryRunRepository',
     'OddspapiMainlineCacheRepository',
     'PillarMiningRepository',
+    'HistoricalPriceMatch',
+    'Pillar5PriceMemoryRepository',
 ]

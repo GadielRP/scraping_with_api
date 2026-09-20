@@ -142,7 +142,10 @@ MANAGED_VIEWS = (
     "basketball_results",
     "season_events_with_results",
 )
-MANAGED_MATERIALIZED_VIEWS = ("mv_alert_events",)
+MANAGED_MATERIALIZED_VIEWS = (
+    "mv_alert_events",
+    "mv_p5_price_memory",
+)
 
 
 def _identifier(value: str) -> str:

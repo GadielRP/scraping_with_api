@@ -27,6 +27,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from app.logging_setup import setup_logging  # noqa: E402
 from infrastructure.persistence.database import db_manager  # noqa: E402
+from infrastructure.persistence.schema_version import verify_schema_at_head  # noqa: E402
 from infrastructure.persistence.repositories.event_repository import EventRepository  # noqa: E402
 from infrastructure.persistence.repositories.event_source_mapping_repository import (  # noqa: E402
     EventSourceMappingRepository,
@@ -503,7 +504,7 @@ def main() -> int:
     # but OddsPapi does not call it (adapter + DB mappings are the OddsPapi path).
     _ = CanonicalMarketNormalizer
 
-    schema_ready = db_manager.verify_schema_at_head()
+    schema_ready = verify_schema_at_head(db_manager.engine)
     if not schema_ready:
         report = {
             "mode": "dry-run" if dry_run else "commit",

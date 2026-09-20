@@ -48,8 +48,8 @@ def _drop_indexes(names: Sequence[str]) -> None:
 
 
 def _drop_dependent_views() -> None:
-    # These reporting objects are recreated by create_or_replace_views() after
-    # the migration. CASCADE removes only dependent view definitions/indexes;
+    # The later reporting-views revision recreates these objects. CASCADE removes
+    # only dependent view definitions/indexes;
     # it never deletes base odds rows.
     bind = op.get_bind()
     for object_name in (

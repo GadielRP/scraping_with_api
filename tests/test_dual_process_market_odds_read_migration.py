@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from infrastructure.persistence.models import (
+from infrastructure.persistence.views.dual_process_views import (
     EVENT_ALL_ODDS_VIEW_SQL,
     MV_ALERT_EVENTS_SQL,
     build_dual_process_event_odds_view_sql,

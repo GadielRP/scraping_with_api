@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Iterable, List, Optional
 
-from sqlalchemy import inspect, text, tuple_
+from sqlalchemy import tuple_
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
@@ -25,103 +25,6 @@ class EventOddsSourceState:
 
 class EventSourceMappingRepository:
     """Repository for canonical event to external source ID mappings."""
-
-    PARTICIPANT_LINK_COLUMNS = ("participant_home_id", "participant_away_id")
-    PARTICIPANT_LINK_FOREIGN_KEYS = (
-        (
-            "fk_event_source_mappings_participant_home_id",
-            ("participant_home_id",),
-            "ALTER TABLE event_source_mappings ADD CONSTRAINT "
-            "fk_event_source_mappings_participant_home_id "
-            "FOREIGN KEY (participant_home_id) "
-            "REFERENCES participants(participant_id) ON DELETE SET NULL",
-        ),
-        (
-            "fk_event_source_mappings_participant_away_id",
-            ("participant_away_id",),
-            "ALTER TABLE event_source_mappings ADD CONSTRAINT "
-            "fk_event_source_mappings_participant_away_id "
-            "FOREIGN KEY (participant_away_id) "
-            "REFERENCES participants(participant_id) ON DELETE SET NULL",
-        ),
-    )
-    PARTICIPANT_LINK_INDEXES = (
-        "CREATE INDEX IF NOT EXISTS "
-        "idx_event_source_mappings_participant_home_id "
-        "ON event_source_mappings (participant_home_id)",
-        "CREATE INDEX IF NOT EXISTS "
-        "idx_event_source_mappings_participant_away_id "
-        "ON event_source_mappings (participant_away_id)",
-    )
-
-    @staticmethod
-    def ensure_participant_link_schema() -> None:
-        """Ensure participant foreign keys and indexes exist on source mappings."""
-        try:
-            inspector = inspect(db_manager.engine)
-            if "event_source_mappings" not in set(inspector.get_table_names()):
-                return
-
-            EventSourceMappingRepository._ensure_participant_link_columns(inspector)
-            inspector = inspect(db_manager.engine)
-            EventSourceMappingRepository._ensure_participant_link_foreign_keys(inspector)
-            EventSourceMappingRepository._ensure_participant_link_indexes()
-            logger.info("Event source mapping participant schema is ready")
-        except Exception:
-            logger.exception("Event source mapping participant schema migration failed")
-
-    @staticmethod
-    def _ensure_participant_link_columns(inspector) -> None:
-        existing_columns = {
-            column["name"]
-            for column in inspector.get_columns("event_source_mappings")
-        }
-        with db_manager.get_session() as session:
-            for column_name in EventSourceMappingRepository.PARTICIPANT_LINK_COLUMNS:
-                if column_name in existing_columns:
-                    continue
-                session.execute(
-                    text(
-                        "ALTER TABLE event_source_mappings "
-                        f"ADD COLUMN {column_name} INTEGER"
-                    )
-                )
-                logger.info("Added event_source_mappings.%s", column_name)
-            session.commit()
-
-    @staticmethod
-    def _ensure_participant_link_foreign_keys(inspector) -> None:
-        if db_manager.engine.dialect.name != "postgresql":
-            return
-
-        existing_fk_columns = {
-            tuple(constraint.get("constrained_columns") or [])
-            for constraint in inspector.get_foreign_keys("event_source_mappings")
-        }
-        with db_manager.get_session() as session:
-            for constraint_name, constrained_columns, statement in (
-                EventSourceMappingRepository.PARTICIPANT_LINK_FOREIGN_KEYS
-            ):
-                if constrained_columns in existing_fk_columns:
-                    continue
-                try:
-                    with session.begin_nested():
-                        session.execute(text(statement))
-                    logger.info("Added FK constraint %s", constraint_name)
-                except Exception as exc:
-                    logger.debug(
-                        "FK constraint %s may already exist or be equivalent: %s",
-                        constraint_name,
-                        exc,
-                    )
-            session.commit()
-
-    @staticmethod
-    def _ensure_participant_link_indexes() -> None:
-        with db_manager.get_session() as session:
-            for statement in EventSourceMappingRepository.PARTICIPANT_LINK_INDEXES:
-                session.execute(text(statement))
-            session.commit()
 
     @staticmethod
     def _normalize_source(source: str) -> str:

@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import refresh_materialized_views
+from infrastructure.persistence.views.view_manager import refresh_materialized_views
 from infrastructure.persistence.repositories import (
     EventRepository,
     OddspapiFixtureDiscoveryRunRepository,
@@ -262,14 +262,6 @@ class JobScheduler:
             run_discover_dropping_odds()
         except Exception as exc:
             logger.error(f"Error in Job A: {exc}")
-        finally:
-            logger.info("Running database migration cleanup (orphan event source mappings) after Job A")
-            try:
-                db_manager.cleanup_orphan_event_source_mappings()
-                logger.info("Database orphan event clean up ended")
-            except Exception as cleanup_exc:
-                logger.error(f"Failed to run database migration cleanup in Job A: {cleanup_exc}")
-
     def job_discovery2(self):
         logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
         try:

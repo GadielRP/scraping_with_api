@@ -33,6 +33,7 @@ from modules.odds_ingestion.market_odds_ingestion_service import (
     MarketOddsIngestionService,
 )
 from infrastructure.persistence.models import Event, Result
+from infrastructure.persistence.schema_version import verify_schema_at_head
 from infrastructure.persistence.database import db_manager
 from shared.temporal import utc_now
 from sqlalchemy import or_
@@ -95,14 +96,8 @@ season_to_process = [
 
 
 def initialize_database():
-    """
-    Initialize database schema - creates tables and applies migrations.
-    
-    Steps:
-    1. Test database connection
-    2. Verify that the deployment already applied the Alembic schema
-    """
-    logger.info("Initializing database schema...")
+    """Require a reachable database at the deployed Alembic revision."""
+    logger.info("Checking database schema...")
     
     try:
         if not db_manager.test_connection():
@@ -110,10 +105,11 @@ def initialize_database():
             return False
         
         logger.info("Verifying the Alembic schema...")
-        if not db_manager.verify_schema_at_head():
-            logger.warning("⚠️ Alembic schema verification failed")
+        if not verify_schema_at_head(db_manager.engine):
+            logger.error("Alembic schema verification failed")
+            return False
         
-        logger.info("✅ Database schema initialized successfully")
+        logger.info("Database schema is ready")
         return True
         
     except Exception as e:

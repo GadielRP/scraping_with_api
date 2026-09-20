@@ -6,7 +6,6 @@ import logging
 import os
 from typing import Any
 
-from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from infrastructure.persistence.database import db_manager
@@ -33,124 +32,6 @@ class OddspapiFixtureDiscoveryRunRepository:
             }
         )
         return ','.join(normalized) or OddspapiFixtureDiscoveryRunRepository.DEFAULT_SPORT_SCOPE
-
-    @staticmethod
-    def ensure_run_scope_schema() -> None:
-        """Migrate durable runs to date+sport scope and non-null slot metadata."""
-        try:
-            inspector = inspect(db_manager.engine)
-            if 'oddspapi_fixture_discovery_runs' not in set(inspector.get_table_names()):
-                return
-
-            dialect_name = db_manager.engine.dialect.name
-            OddspapiFixtureDiscoveryRunRepository._ensure_sport_scope_column(inspector)
-            OddspapiFixtureDiscoveryRunRepository._backfill_run_metadata(dialect_name)
-            inspector = inspect(db_manager.engine)
-            OddspapiFixtureDiscoveryRunRepository._ensure_run_scope_uniqueness(
-                inspector,
-                dialect_name,
-            )
-            OddspapiFixtureDiscoveryRunRepository._ensure_run_scope_index()
-            logger.info("Oddspapi fixture-discovery run scope schema is ready")
-        except Exception:
-            logger.exception("Oddspapi fixture-discovery run scope migration failed")
-
-    @staticmethod
-    def _ensure_sport_scope_column(inspector) -> None:
-        columns = {
-            column['name']
-            for column in inspector.get_columns('oddspapi_fixture_discovery_runs')
-        }
-        if 'sport_scope' in columns:
-            return
-        with db_manager.get_session() as session:
-            session.execute(text(
-                "ALTER TABLE oddspapi_fixture_discovery_runs "
-                "ADD COLUMN sport_scope VARCHAR(255)"
-            ))
-            session.commit()
-
-    @staticmethod
-    def _backfill_run_metadata(dialect_name: str) -> None:
-        with db_manager.get_session() as session:
-            if dialect_name == 'postgresql':
-                session.execute(text(
-                    "UPDATE oddspapi_fixture_discovery_runs SET "
-                    "sport_scope = COALESCE("
-                    "NULLIF(BTRIM(sport_scope), ''), "
-                    "NULLIF((SELECT STRING_AGG(LOWER(item->>'sport_slug'), ',' "
-                    "ORDER BY LOWER(item->>'sport_slug')) "
-                    "FROM JSONB_ARRAY_ELEMENTS("
-                    "COALESCE(summary->'sports', '[]'::jsonb)) AS item "
-                    "WHERE NULLIF(BTRIM(item->>'sport_slug'), '') IS NOT NULL), ''), "
-                    "'all'), "
-                    "scheduled_local_date = COALESCE("
-                    "scheduled_local_date, TO_CHAR(started_at, 'YYYY-MM-DD')), "
-                    "scheduled_time = COALESCE("
-                    "scheduled_time, TO_CHAR(started_at, 'HH24:MI'))"
-                ))
-                session.execute(text(
-                    "ALTER TABLE oddspapi_fixture_discovery_runs "
-                    "ALTER COLUMN sport_scope SET DEFAULT 'all', "
-                    "ALTER COLUMN sport_scope SET NOT NULL, "
-                    "ALTER COLUMN scheduled_local_date SET NOT NULL, "
-                    "ALTER COLUMN scheduled_time SET NOT NULL"
-                ))
-            else:
-                session.execute(text(
-                    "UPDATE oddspapi_fixture_discovery_runs SET "
-                    "sport_scope = COALESCE(NULLIF(TRIM(sport_scope), ''), 'all'), "
-                    "scheduled_local_date = COALESCE("
-                    "scheduled_local_date, STRFTIME('%Y-%m-%d', started_at)), "
-                    "scheduled_time = COALESCE("
-                    "scheduled_time, STRFTIME('%H:%M', started_at))"
-                ))
-            session.commit()
-
-    @staticmethod
-    def _ensure_run_scope_uniqueness(inspector, dialect_name: str) -> None:
-        unique_constraints = {
-            tuple(constraint.get('column_names') or ()): constraint.get('name')
-            for constraint in inspector.get_unique_constraints(
-                'oddspapi_fixture_discovery_runs'
-            )
-        }
-        expected_columns = ('target_date', 'sport_scope')
-        if dialect_name == 'postgresql':
-            with db_manager.get_session() as session:
-                if ('target_date',) in unique_constraints:
-                    session.execute(text(
-                        "ALTER TABLE oddspapi_fixture_discovery_runs "
-                        "DROP CONSTRAINT IF EXISTS "
-                        "unique_oddspapi_fixture_discovery_target_date"
-                    ))
-                if expected_columns not in unique_constraints:
-                    session.execute(text(
-                        "ALTER TABLE oddspapi_fixture_discovery_runs "
-                        "ADD CONSTRAINT unique_oddspapi_fixture_discovery_target_scope "
-                        "UNIQUE (target_date, sport_scope)"
-                    ))
-                session.commit()
-            return
-
-        with db_manager.get_session() as session:
-            session.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                "unique_oddspapi_fixture_discovery_target_scope "
-                "ON oddspapi_fixture_discovery_runs (target_date, sport_scope)"
-            ))
-            session.commit()
-
-    @staticmethod
-    def _ensure_run_scope_index() -> None:
-        with db_manager.get_session() as session:
-            session.execute(text(
-                "CREATE INDEX IF NOT EXISTS "
-                "idx_oddspapi_fixture_discovery_runs_status_target_scope "
-                "ON oddspapi_fixture_discovery_runs "
-                "(status, target_date, sport_scope)"
-            ))
-            session.commit()
 
     @staticmethod
     def has_success(target_date: str, sport_scope: str = DEFAULT_SPORT_SCOPE) -> bool:

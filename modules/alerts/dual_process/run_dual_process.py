@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from modules.alerts.dual_process.process_1 import alert_engine
 from modules.alerts.dual_process.process_2 import Process2Engine
+from infrastructure.settings import Config
 from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)

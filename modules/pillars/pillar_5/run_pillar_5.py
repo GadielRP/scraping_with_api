@@ -1,59 +1,109 @@
-"""Pillar 5 orchestrator."""
+"""Orchestrator for Pillar 5 Exact Price Memory."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
+from infrastructure.settings import Config
 from modules.pillars.context import EventContext
-from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
-from modules.pillars.pillar_5.exact_price_memory_engine.exact_price_memory_engine import (
-    ENGINE_VERSION,
-    calculate_p5_exact_price_memory_engine,
+from modules.pillars.extraction_logging import log_extraction_diagnostics
+from modules.pillars.market_snapshot_extractor import (
+    TargetMinuteSelection,
+    select_target_minute,
 )
+from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
+
+from .periods import (
+    FULL_TIME_PRICE_MEMORY_SCOPE,
+    P5_PRICE_MEMORY_PERIOD_SCOPES,
+    resolve_pillar_status,
+)
+from .snapshot_policy import extract_p5_market_snapshot
 
 logger = logging.getLogger(__name__)
+
+ENGINE_VERSION = "p5_price_memory_v3_0"
+
+
+def _empty_inputs() -> dict[str, float | None]:
+    return {
+        name: None
+        for scope in P5_PRICE_MEMORY_PERIOD_SCOPES
+        for name in scope.input_names()
+    }
 
 
 def calculate_pillar_5(
     event_context: EventContext,
-    ft_1x2_odds_trajectory: OddsTrajectoryContext | None = None,
+    odds_trajectory_context: OddsTrajectoryContext | None = None,
+    *,
+    target_selection: TargetMinuteSelection | None = None,
     debug_mode: bool = False,
-) -> Dict[str, Any]:
-    """Calculate Pillar 5 and return a serializable pillar payload."""
-    ft_1x2_odds_trajectory = (
-        ft_1x2_odds_trajectory
+) -> dict[str, Any]:
+    """Calculate Pillar 5 snapshot and return a serializable pillar payload."""
+    odds_context = (
+        odds_trajectory_context
         or getattr(event_context, "ft_1x2_odds_trajectory_context", None)
+        or getattr(event_context, "odds_trajectory_context", None)
     )
-    if ft_1x2_odds_trajectory is None:
-        full_context = getattr(event_context, "odds_trajectory_context", None)
-        if full_context is not None:
-            ft_1x2_odds_trajectory = full_context.filter_by_market_groups(
-                allowed_groups={"1X2", "Home/Away"}
-            )
-    if ft_1x2_odds_trajectory is None:
-        raise ValueError("EventContext is missing ft_1x2_odds_trajectory_context for P5")
+
+    if target_selection is None:
+        target_selection = select_target_minute(
+            odds_context,
+            flow_id="pillar_5_price_memory",
+            expected_event_id=event_context.event_id,
+            allowed_target_minutes=getattr(Config, "PRE_START_ODDS_MOMENTS", None),
+            evaluation_minute=getattr(event_context, "minutes_until_start", None),
+        )
+
     logger.info(
-        "P5 orchestrator start for event_id=%s participants=%s debug_mode=%s start_time=%s",
+        "P5 orchestrator start for event_id=%s participants=%s debug_mode=%s target_minute=%s",
         event_context.event_id,
         event_context.participants_label,
         debug_mode,
-        event_context.starts_at,
+        target_selection.target_minute,
     )
-    engine_result = calculate_p5_exact_price_memory_engine(
-        event_context=event_context,
-        ft_1x2_odds_trajectory=ft_1x2_odds_trajectory,
+
+    extraction = extract_p5_market_snapshot(
+        event_context.event_id,
+        odds_context,
+        target_selection,
+    )
+
+    periods = extraction.period_diagnostics()
+    log_extraction_diagnostics(
+        logger,
+        pillar="P5",
+        event_id=event_context.event_id,
+        target_minute=extraction.target_minute,
+        periods=periods,
+        full_time_requirement="any complete bookie: 1X2 or Home/Away",
         debug_mode=debug_mode,
     )
-    pillar_status = engine_result.get("P5_STATUS", "INSUFFICIENT_DATA")
+
+    pillar_status = resolve_pillar_status(
+        required_complete=extraction.full_time.status == "COMPLETE",
+        required_usable=extraction.full_time.usable,
+        optional_complete=True,
+    )
+
+    snapshot = extraction.snapshot
+    if snapshot is None:
+        inputs = _empty_inputs()
+        traces: dict[str, dict[str, Any]] = {}
+        if extraction.full_time_snapshot is not None:
+            inputs.update(extraction.full_time_snapshot.input_values())
+            traces.update(extraction.full_time_snapshot.traces())
+    else:
+        inputs = snapshot.input_values()
+        traces = snapshot.traces()
+
     logger.info(
-        "P5 orchestrator done for %s: status=%s direction=%s score=%.3f strength=%s sample_size=%s",
+        "P5 orchestrator done for %s: status=%s target_minute=%s",
         event_context.participants_label,
         pillar_status,
-        engine_result.get("P5_DIRECTION"),
-        engine_result.get("P5", 0.0),
-        engine_result.get("P5_STRENGTH"),
-        engine_result.get("sample_size"),
+        extraction.target_minute,
     )
 
     return {
@@ -62,16 +112,20 @@ def calculate_pillar_5(
         "engine_version": ENGINE_VERSION,
         "event_id": event_context.event_id,
         "participants": event_context.participants_label,
+        "P5_TARGET_MINUTE": extraction.target_minute,
         "P5_STATUS": pillar_status,
         "status": pillar_status,
-        "modules": [engine_result],
-        "P5_VALID": engine_result.get("P5_VALID"),
-        "P5_DIRECTION": engine_result.get("P5_DIRECTION"),
-        "P5": engine_result.get("P5"),
-        "P5_STRENGTH": engine_result.get("P5_STRENGTH"),
+        "PERIODS": periods,
+        "MISSING_INPUTS": list(extraction.missing_inputs),
+        "INVALID_INPUTS": list(extraction.invalid_inputs),
+        "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
         "raw": {
-            "module_count": 1,
-            "module_ids": [engine_result.get("module_id")],
-            "exact_price_memory_engine": engine_result.get("raw", {}),
+            "inputs": inputs,
+            "traces": traces,
+            "extraction_diagnostics": extraction.extraction_diagnostics,
+            "abort_reason": extraction.abort_reason,
         },
     }
+
+
+__all__ = ["ENGINE_VERSION", "calculate_pillar_5"]

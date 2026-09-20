@@ -14,6 +14,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from infrastructure.persistence.database import db_manager  # noqa: E402
+from infrastructure.persistence.schema_version import verify_schema_at_head  # noqa: E402
 from infrastructure.persistence.models import BookieSourceMapping, SourceCatalogSync  # noqa: E402
 from infrastructure.persistence.repositories.canonical_market_type_repository import (  # noqa: E402
     CanonicalMarketTypeRepository,
@@ -150,7 +151,7 @@ def main() -> int:
     bookmakers_payload = _load_json_file(bookmakers_path) if bookmakers_path else None
     markets_hash = _payload_hash(markets_path)
 
-    if not db_manager.verify_schema_at_head():
+    if not verify_schema_at_head(db_manager.engine):
         print("schema_ready=false")
         return 1
 

@@ -1,2 +1,1 @@
-"""Focused, idempotent schema migrations used by the current startup runner."""
-
+"""Legacy schema utilities; PostgreSQL DDL is managed by Alembic."""

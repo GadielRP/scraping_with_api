@@ -58,7 +58,10 @@ from modules.pillars.pillar_4.run_pillar_4 import (
     ENGINE_VERSION as P4_ENGINE_VERSION,
     calculate_pillar_4,
 )
-from modules.pillars.pillar_5.run_pillar_5 import calculate_pillar_5
+from modules.pillars.pillar_5.run_pillar_5 import (
+    ENGINE_VERSION as P5_ENGINE_VERSION,
+    calculate_pillar_5,
+)
 from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
 )
@@ -442,22 +445,29 @@ def _log_p3_signal_profile_summary(participants: str, result: dict[str, Any]) ->
         )
 
 
-def _build_p5_error_result(event_context, ft_1x2_odds_trajectory, exc: Exception) -> dict:
+def _build_p5_error_result(
+    event_context,
+    ft_1x2_odds_trajectory,
+    exc: Exception,
+    target_selection=None,
+) -> dict:
     return {
         "pillar_id": "pillar_5",
         "pillar_name": "Exact Price Memory",
+        "engine_version": P5_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
+        "P5_TARGET_MINUTE": getattr(target_selection, "target_minute", None),
         "P5_STATUS": "ERROR",
         "status": "ERROR",
-        "modules": [],
-        "P5_VALID": False,
-        "P5_DIRECTION": "NONE",
-        "P5": 0.0,
-        "P5_STRENGTH": "NONE",
+        "PERIODS": {},
+        "MISSING_INPUTS": [],
+        "INVALID_INPUTS": [],
+        "AMBIGUOUS_INPUTS": [],
         "error": str(exc),
         "raw": {
             "reason": "pillar_5_exception",
+            "target_selection": getattr(target_selection, "diagnostics", {}),
             "odds_trajectory_available": getattr(ft_1x2_odds_trajectory, "available", False),
             "target_minutes_expected": getattr(ft_1x2_odds_trajectory, "target_minutes_expected", []),
             "target_minutes_present": getattr(ft_1x2_odds_trajectory, "target_minutes_present", []),
@@ -894,32 +904,10 @@ class EventPillarProcessor:
                         if ft_1x2_odds_trajectory.markets else "None",
                     )
 
-                ft_1x2_odds_trajectory = ft_1x2_odds_trajectory.filter_by_bookie_ids(
-                    allowed_bookie_ids={1}
-                )
-
-                if self.debug_mode:
-                    remaining_bookie_ids = sorted({
-                        bookie.bookie_id
-                        for periods in ft_1x2_odds_trajectory.markets.values()
-                        for market_period in periods.values()
-                        for market_name in market_period.values()
-                        for market_line in market_name.values()
-                        for bookie in market_line.bookies.values()
-                        if bookie.bookie_id is not None
-                    })
-                    logger.info(
-                        "P5: Context after bookie filtering for event %s (%s): available=%s, markets=%s, bookie_ids=%s",
-                        event_id,
-                        event_context.participants_label,
-                        ft_1x2_odds_trajectory.available,
-                        {group: list(periods.keys()) for group, periods in ft_1x2_odds_trajectory.markets.items()}
-                        if ft_1x2_odds_trajectory.markets else "None",
-                        remaining_bookie_ids if remaining_bookie_ids else "None",
-                    )
-
                 p5_result = calculate_pillar_5(
                     event_context=event_context,
+                    odds_trajectory_context=ft_1x2_odds_trajectory,
+                    target_selection=target_selection,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -933,17 +921,14 @@ class EventPillarProcessor:
                     event_context,
                     ft_1x2_odds_trajectory,
                     exc,
+                    target_selection=target_selection,
                 )
 
             logger.info(
-                "P5 calculated for %s: status=%s valid=%s direction=%s score=%.3f strength=%s sample_size=%s",
+                "P5 calculated for %s: status=%s target_minute=%s",
                 event_context.participants_label,
                 p5_result.get("P5_STATUS"),
-                p5_result.get("P5_VALID"),
-                p5_result.get("P5_DIRECTION"),
-                p5_result.get("P5", 0),
-                p5_result.get("P5_STRENGTH"),
-                p5_result.get("sample_size"),
+                p5_result.get("P5_TARGET_MINUTE"),
             )
         else:
             logger.info(

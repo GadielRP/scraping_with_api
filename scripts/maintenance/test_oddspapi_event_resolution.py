@@ -210,6 +210,7 @@ def main() -> int:
     _configure_runtime_logging()
 
     from infrastructure.persistence.database import db_manager  # noqa: E402
+    from infrastructure.persistence.schema_version import verify_schema_at_head  # noqa: E402
     from infrastructure.persistence.models import EventSourceResolutionQueue  # noqa: E402
     from infrastructure.persistence.repositories.event_source_mapping_repository import (  # noqa: E402
         EventSourceMappingRepository,
@@ -223,7 +224,7 @@ def main() -> int:
         logger.error(str(exc))
         return 1
 
-    schema_ready = db_manager.verify_schema_at_head()
+    schema_ready = verify_schema_at_head(db_manager.engine)
     if not schema_ready:
         report = {
             "mode": "validation",

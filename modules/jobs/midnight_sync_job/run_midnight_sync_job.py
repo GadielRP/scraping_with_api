@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import refresh_materialized_views
+from infrastructure.persistence.views.view_manager import refresh_materialized_views
 from modules.jobs.results_collection_job import run_results_collection_previous_day
 from modules.prediction import prediction_logger
 

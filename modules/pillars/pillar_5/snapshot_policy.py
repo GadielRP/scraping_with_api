@@ -1,0 +1,343 @@
+"""P5-specific assembly and completeness policy over the shared extractor."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from modules.pillars.market_candidate_selection import select_market_candidate
+from modules.pillars.market_coverage import PeriodDiagnostics
+from modules.pillars.market_snapshot_extractor import (
+    ChoiceRequest,
+    MarketCandidate,
+    MarketSnapshotExtraction,
+    MarketSnapshotRequest,
+    TargetMinuteSelection,
+    extract_market_snapshot,
+)
+from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
+
+from .models import (
+    ExchangeSnapshot,
+    P5ExtractionResult,
+    P5FullTimeSnapshot,
+    ThreeWayMarketSnapshot,
+    TwoWayMarketSnapshot,
+)
+from .periods import (
+    Book1X2InputSpec,
+    FULL_TIME_PRICE_MEMORY_SCOPE,
+    PriceMemoryPeriodScope,
+)
+
+PINNACLE_BOOKIE_ID = 302
+BET365_BOOKIE_ID = 3
+BETFAIR_EXCHANGE_BOOKIE_ID = 4
+SOFASCORE_BOOKIE_ID = 1
+
+
+@dataclass
+class _PeriodGate:
+    missing: set[str] = field(default_factory=set)
+    invalid: set[str] = field(default_factory=set)
+    ambiguous: set[str] = field(default_factory=set)
+
+    def diagnostics(self, *, complete: bool) -> PeriodDiagnostics:
+        return PeriodDiagnostics.from_gate(
+            complete=complete,
+            missing_inputs=self.missing,
+            invalid_inputs=self.invalid,
+            ambiguous_inputs=self.ambiguous,
+        )
+
+
+def _book_request(
+    spec: Book1X2InputSpec,
+    *,
+    identities: tuple,
+    bookie_id: int,
+) -> MarketSnapshotRequest:
+    choices = [
+        ChoiceRequest("1", "1", spec.home),
+        ChoiceRequest("2", "2", spec.away),
+    ]
+    if spec.draw is not None:
+        choices.append(ChoiceRequest("x", "x", spec.draw))
+
+    return MarketSnapshotRequest(
+        identities=identities,
+        bookie_id=bookie_id,
+        choices=tuple(choices),
+    )
+
+
+def _exchange_request(
+    exchange_side: str,
+    *,
+    identities: tuple,
+    is_2way: bool = False,
+) -> MarketSnapshotRequest:
+    prefix = {
+        "1": "BF_HOME",
+        "x": "BF_DRAW",
+        "2": "BF_AWAY",
+    }
+    side_upper = exchange_side.upper()
+    choice_keys = ("1", "2") if is_2way else ("1", "x", "2")
+    choices = [
+        ChoiceRequest(
+            key=key,
+            choice_name=key,
+            input_name=f"{prefix[key]}_{side_upper}_1X2_FULL_TIME_ODDS_PRICE",
+            exchange_size_input_name=f"{prefix[key]}_{side_upper}_1X2_FULL_TIME_EXCHANGE_SIZE",
+        )
+        for key in choice_keys
+    ]
+    return MarketSnapshotRequest(
+        identities=identities,
+        bookie_id=BETFAIR_EXCHANGE_BOOKIE_ID,
+        exchange_side=exchange_side,
+        exchange_level=0,
+        choices=tuple(choices),
+    )
+
+
+def _extract_book(
+    context: OddsTrajectoryContext,
+    *,
+    target_minute: int,
+    request: MarketSnapshotRequest,
+    gate: _PeriodGate,
+) -> ThreeWayMarketSnapshot | None:
+    extraction = extract_market_snapshot(
+        context,
+        target_minute=target_minute,
+        request=request,
+    )
+    selection = select_market_candidate(extraction, request)
+    gate.missing.update(selection.missing)
+    gate.invalid.update(selection.invalid)
+    gate.ambiguous.update(selection.ambiguous)
+
+    if selection.candidate is None:
+        return None
+
+    cand = selection.candidate
+    home = cand.choices.get("1")
+    away = cand.choices.get("2")
+    draw = cand.choices.get("x")
+
+    if home is None or away is None:
+        return None
+
+    return ThreeWayMarketSnapshot(home=home, draw=draw, away=away)
+
+
+def _extract_exchange_side(
+    context: OddsTrajectoryContext,
+    *,
+    target_minute: int,
+    request: MarketSnapshotRequest,
+    gate: _PeriodGate,
+) -> ThreeWayMarketSnapshot | None:
+    extraction = extract_market_snapshot(
+        context,
+        target_minute=target_minute,
+        request=request,
+    )
+    selection = select_market_candidate(extraction, request)
+    gate.missing.update(selection.missing)
+    gate.invalid.update(selection.invalid)
+    gate.ambiguous.update(selection.ambiguous)
+
+    if selection.candidate is None:
+        return None
+
+    cand = selection.candidate
+    home = cand.choices.get("1")
+    away = cand.choices.get("2")
+    draw = cand.choices.get("x")
+
+    if home is None or away is None:
+        return None
+
+    return ThreeWayMarketSnapshot(home=home, draw=draw, away=away)
+
+
+def extract_p5_market_snapshot(
+    event_id: int,
+    context: OddsTrajectoryContext | None,
+    target_selection: TargetMinuteSelection,
+    *,
+    scope: PriceMemoryPeriodScope = FULL_TIME_PRICE_MEMORY_SCOPE,
+) -> P5ExtractionResult:
+    """Extract Full Time 1X2 / Home-Away snapshot for Pillar 5."""
+    if target_selection.target_minute is None or context is None:
+        return P5ExtractionResult(
+            target_minute=None,
+            full_time_snapshot=None,
+            full_time=PeriodDiagnostics.empty(),
+            abort_reason=target_selection.reason if target_selection else "missing_context",
+            extraction_diagnostics={
+                "event_id": event_id,
+                "target_selection": target_selection.diagnostics if target_selection else {},
+            },
+        )
+
+    target_minute = target_selection.target_minute
+    all_missing: set[str] = set()
+    all_invalid: set[str] = set()
+    all_ambiguous: set[str] = set()
+
+    bookie_diagnostics: dict[str, PeriodDiagnostics] = {}
+
+    # 1. Pinnacle
+    pin_gate = _PeriodGate()
+    pin_snap = _extract_book(
+        context,
+        target_minute=target_minute,
+        request=_book_request(scope.pinnacle, identities=scope.identities, bookie_id=PINNACLE_BOOKIE_ID),
+        gate=pin_gate,
+    )
+    pin_complete = pin_snap is not None and pin_snap.is_complete()
+    bookie_diagnostics["pinnacle"] = pin_gate.diagnostics(complete=pin_complete)
+    all_missing.update(pin_gate.missing)
+    all_invalid.update(pin_gate.invalid)
+    all_ambiguous.update(pin_gate.ambiguous)
+
+    # 2. Bet365
+    b365_gate = _PeriodGate()
+    b365_snap = _extract_book(
+        context,
+        target_minute=target_minute,
+        request=_book_request(scope.bet365, identities=scope.identities, bookie_id=BET365_BOOKIE_ID),
+        gate=b365_gate,
+    )
+    b365_complete = b365_snap is not None and b365_snap.is_complete()
+    bookie_diagnostics["bet365"] = b365_gate.diagnostics(complete=b365_complete)
+    all_missing.update(b365_gate.missing)
+    all_invalid.update(b365_gate.invalid)
+    all_ambiguous.update(b365_gate.ambiguous)
+
+    # 3. SofaScore
+    sofa_gate = _PeriodGate()
+    sofa_snap = _extract_book(
+        context,
+        target_minute=target_minute,
+        request=_book_request(scope.sofascore, identities=scope.identities, bookie_id=SOFASCORE_BOOKIE_ID),
+        gate=sofa_gate,
+    )
+    sofa_complete = sofa_snap is not None and sofa_snap.is_complete()
+    bookie_diagnostics["sofascore"] = sofa_gate.diagnostics(complete=sofa_complete)
+    all_missing.update(sofa_gate.missing)
+    all_invalid.update(sofa_gate.invalid)
+    all_ambiguous.update(sofa_gate.ambiguous)
+
+    # 4. Betfair Exchange
+    exchange_snap: ExchangeSnapshot | None = None
+    if scope.includes_exchange:
+        ex_gate = _PeriodGate()
+        back_gate = _PeriodGate()
+        back_snap = _extract_exchange_side(
+            context,
+            target_minute=target_minute,
+            request=_exchange_request("back", identities=scope.identities),
+            gate=back_gate,
+        )
+        if back_snap is None and not back_gate.ambiguous:
+            alt_gate = _PeriodGate()
+            alt_back = _extract_exchange_side(
+                context,
+                target_minute=target_minute,
+                request=_exchange_request("back", identities=scope.identities, is_2way=True),
+                gate=alt_gate,
+            )
+            if alt_back is not None:
+                back_snap, back_gate = alt_back, alt_gate
+
+        lay_gate = _PeriodGate()
+        lay_snap = _extract_exchange_side(
+            context,
+            target_minute=target_minute,
+            request=_exchange_request("lay", identities=scope.identities),
+            gate=lay_gate,
+        )
+        if lay_snap is None and not lay_gate.ambiguous:
+            alt_gate = _PeriodGate()
+            alt_lay = _extract_exchange_side(
+                context,
+                target_minute=target_minute,
+                request=_exchange_request("lay", identities=scope.identities, is_2way=True),
+                gate=alt_gate,
+            )
+            if alt_lay is not None:
+                lay_snap, lay_gate = alt_lay, alt_gate
+
+        ex_gate.missing.update(back_gate.missing | lay_gate.missing)
+        ex_gate.invalid.update(back_gate.invalid | lay_gate.invalid)
+        ex_gate.ambiguous.update(back_gate.ambiguous | lay_gate.ambiguous)
+
+        ex_complete = (
+            back_snap is not None
+            and back_snap.is_complete()
+            and lay_snap is not None
+            and lay_snap.is_complete()
+        )
+        bookie_diagnostics["betfair"] = ex_gate.diagnostics(complete=ex_complete)
+        all_missing.update(ex_gate.missing)
+        all_invalid.update(ex_gate.invalid)
+        all_ambiguous.update(ex_gate.ambiguous)
+
+        if back_snap is not None or lay_snap is not None:
+            exchange_snap = ExchangeSnapshot(back=back_snap, lay=lay_snap)
+
+    period_diagnostics = PeriodDiagnostics.from_bookies(bookie_diagnostics)
+
+    # Determine period label
+    periods = {
+        snap.home.trace.market_period
+        for snap in (pin_snap, b365_snap, sofa_snap)
+        if snap is not None and snap.home is not None
+    }
+    if exchange_snap is not None:
+        if exchange_snap.back is not None and exchange_snap.back.home is not None:
+            periods.add(exchange_snap.back.home.trace.market_period)
+        if exchange_snap.lay is not None and exchange_snap.lay.home is not None:
+            periods.add(exchange_snap.lay.home.trace.market_period)
+
+    period_name = next(iter(periods)) if len(periods) == 1 else "Full Time"
+
+    snapshot = P5FullTimeSnapshot(
+        period=period_name,
+        period_scope=scope,
+        pinnacle=pin_snap,
+        bet365=b365_snap,
+        sofascore=sofa_snap,
+        betfair=exchange_snap,
+    )
+
+    reason = None if period_diagnostics.usable else "period_completeness_gate_failed"
+
+    return P5ExtractionResult(
+        target_minute=target_minute,
+        full_time_snapshot=snapshot if snapshot.has_any_input() else None,
+        full_time=period_diagnostics,
+        abort_reason=reason,
+        missing_inputs=tuple(sorted(all_missing)),
+        invalid_inputs=tuple(sorted(all_invalid)),
+        ambiguous_inputs=tuple(sorted(all_ambiguous)),
+        extraction_diagnostics={
+            "event_id": event_id,
+            "target_minute": target_minute,
+            "bookie_diagnostics": {k: v.to_dict() for k, v in bookie_diagnostics.items()},
+        },
+    )
+
+
+__all__ = [
+    "BET365_BOOKIE_ID",
+    "BETFAIR_EXCHANGE_BOOKIE_ID",
+    "PINNACLE_BOOKIE_ID",
+    "SOFASCORE_BOOKIE_ID",
+    "extract_p5_market_snapshot",
+]
