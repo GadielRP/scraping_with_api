@@ -49,6 +49,7 @@ def build_p5_price_memory_view_sql(
                 m.collected_at
             ) AS quote_timestamp
         FROM markets m
+        JOIN events e ON e.id = m.event_id
         JOIN canonical_market_types cmt ON cmt.market_type_id = m.market_type_id
         JOIN market_choices mc ON mc.market_id = m.market_id
         JOIN LATERAL (
@@ -64,6 +65,7 @@ def build_p5_price_memory_view_sql(
             SELECT mcs.odds_value, mcs.collected_at
             FROM market_choice_snapshots mcs
             WHERE mcs.quote_id = mcq.quote_id
+              AND (mcs.collected_at <= e.starts_at OR e.starts_at IS NULL)
             ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
             LIMIT 1
         ) latest ON TRUE
@@ -75,6 +77,7 @@ def build_p5_price_memory_view_sql(
     pivoted_markets AS (
         SELECT
             cq.event_id,
+            cq.market_id,
             cq.bookie_id,
             cq.market_group,
             cq.market_period,
@@ -83,30 +86,43 @@ def build_p5_price_memory_view_sql(
             MAX(CASE WHEN cq.choice_name = '2' THEN cq.odds_price END) AS odds_away,
             MAX(cq.quote_timestamp) AS last_sync_at
         FROM choice_quotes cq
-        GROUP BY cq.event_id, cq.bookie_id, cq.market_group, cq.market_period
+        GROUP BY cq.event_id, cq.market_id, cq.bookie_id, cq.market_group, cq.market_period
+    ),
+    ranked_markets AS (
+        SELECT
+            pm.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY pm.event_id, pm.bookie_id, pm.market_group, pm.market_period
+                ORDER BY pm.last_sync_at DESC, pm.market_id DESC
+            ) AS rn
+        FROM pivoted_markets pm
+        WHERE pm.odds_home IS NOT NULL
+          AND pm.odds_away IS NOT NULL
     )
     SELECT
-        pm.event_id,
+        rm.event_id,
         e.sport,
         e.competition_id,
-        pm.bookie_id,
-        pm.market_group,
-        pm.market_period,
+        e.season_id,
+        e.country,
+        rm.bookie_id,
+        rm.market_group,
+        rm.market_period,
+        (rm.odds_draw IS NOT NULL) AS has_draw,
         e.starts_at,
-        pm.odds_home,
-        pm.odds_draw,
-        pm.odds_away,
+        rm.odds_home,
+        rm.odds_draw,
+        rm.odds_away,
         r.home_score,
         r.away_score,
         r.winner AS winner_side,
-        pm.last_sync_at
-    FROM pivoted_markets pm
-    JOIN events e ON e.id = pm.event_id
-    JOIN results r ON r.event_id = pm.event_id
-    WHERE r.home_score IS NOT NULL
-      AND r.away_score IS NOT NULL
-      AND pm.odds_home IS NOT NULL
-      AND pm.odds_away IS NOT NULL;
+        rm.last_sync_at
+    FROM ranked_markets rm
+    JOIN events e ON e.id = rm.event_id
+    JOIN results r ON r.event_id = rm.event_id
+    WHERE rm.rn = 1
+      AND r.home_score IS NOT NULL
+      AND r.away_score IS NOT NULL;
     """
 
 
@@ -119,13 +135,13 @@ MV_P5_PRICE_MEMORY_INDEXES_SQL = [
     # Fast 1X2 composite lookup (with draw)
     (
         "CREATE INDEX IF NOT EXISTS idx_mv_p5_lookup_1x2 "
-        "ON mv_p5_price_memory (bookie_id, market_group, market_period, odds_home, odds_draw, odds_away) "
+        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, odds_home, odds_draw, odds_away, starts_at DESC) "
         "WHERE odds_draw IS NOT NULL;"
     ),
     # Fast 2-way Home/Away lookup (without draw)
     (
         "CREATE INDEX IF NOT EXISTS idx_mv_p5_lookup_2way "
-        "ON mv_p5_price_memory (bookie_id, market_group, market_period, odds_home, odds_away) "
+        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, odds_home, odds_away, starts_at DESC) "
         "WHERE odds_draw IS NULL;"
     ),
     # Chronological ordering index

@@ -21,6 +21,7 @@ class HistoricalPriceMatch:
     bookie_id: int
     market_group: str
     market_period: str
+    has_draw: bool
     starts_at: datetime
     odds_home: float
     odds_draw: float | None
@@ -28,7 +29,16 @@ class HistoricalPriceMatch:
     home_score: int
     away_score: int
     winner_side: str
+    season_id: int | None = None
+    country: str | None = None
     last_sync_at: datetime | None = None
+
+
+def _to_3dp_decimal(val: float | Decimal) -> Decimal:
+    """Normalize odds value to Decimal with 3 decimal places."""
+    if isinstance(val, Decimal):
+        return val.quantize(Decimal("0.001"))
+    return Decimal(str(val)).quantize(Decimal("0.001"))
 
 
 class Pillar5PriceMemoryRepository:
@@ -46,9 +56,14 @@ class Pillar5PriceMemoryRepository:
         odds_home: float | Decimal,
         odds_away: float | Decimal,
         odds_draw: float | Decimal | None = None,
+        has_draw: bool | None = None,
         sport: str | None = None,
         competition_id: int | None = None,
-        limit: int = 50,
+        season_id: int | None = None,
+        country: str | None = None,
+        current_event_id: int | None = None,
+        current_starts_at: datetime | None = None,
+        limit: int | None = None,
     ) -> list[HistoricalPriceMatch]:
         """Find finished historical events matching exact odds for the given market scope."""
         conditions = [
@@ -62,16 +77,19 @@ class Pillar5PriceMemoryRepository:
             "bookie_id": bookie_id,
             "market_group": market_group,
             "market_period": market_period,
-            "odds_home": float(odds_home),
-            "odds_away": float(odds_away),
-            "limit": limit,
+            "odds_home": _to_3dp_decimal(odds_home),
+            "odds_away": _to_3dp_decimal(odds_away),
         }
 
         if odds_draw is not None:
             conditions.append("odds_draw = :odds_draw")
-            params["odds_draw"] = float(odds_draw)
+            params["odds_draw"] = _to_3dp_decimal(odds_draw)
         else:
             conditions.append("odds_draw IS NULL")
+
+        if has_draw is not None:
+            conditions.append("has_draw = :has_draw")
+            params["has_draw"] = has_draw
 
         if sport is not None:
             conditions.append("sport = :sport")
@@ -81,6 +99,27 @@ class Pillar5PriceMemoryRepository:
             conditions.append("competition_id = :competition_id")
             params["competition_id"] = competition_id
 
+        if season_id is not None:
+            conditions.append("season_id = :season_id")
+            params["season_id"] = season_id
+
+        if country is not None:
+            conditions.append("country = :country")
+            params["country"] = country
+
+        if current_event_id is not None:
+            conditions.append("event_id != :current_event_id")
+            params["current_event_id"] = current_event_id
+
+        if current_starts_at is not None:
+            conditions.append("starts_at < :current_starts_at")
+            params["current_starts_at"] = current_starts_at
+
+        limit_clause = f"LIMIT {limit}" if limit is not None else ""
+        if limit is not None:
+            params["limit"] = limit
+            limit_clause = "LIMIT :limit"
+
         where_clause = " AND ".join(conditions)
         sql = text(
             f"""
@@ -88,9 +127,12 @@ class Pillar5PriceMemoryRepository:
                 event_id,
                 sport,
                 competition_id,
+                season_id,
+                country,
                 bookie_id,
                 market_group,
                 market_period,
+                has_draw,
                 starts_at,
                 odds_home,
                 odds_draw,
@@ -102,7 +144,7 @@ class Pillar5PriceMemoryRepository:
             FROM mv_p5_price_memory
             WHERE {where_clause}
             ORDER BY starts_at DESC
-            LIMIT :limit
+            {limit_clause}
             """
         )
 
@@ -113,9 +155,12 @@ class Pillar5PriceMemoryRepository:
                     event_id=row["event_id"],
                     sport=row["sport"],
                     competition_id=row["competition_id"],
+                    season_id=row["season_id"],
+                    country=row["country"],
                     bookie_id=row["bookie_id"],
                     market_group=row["market_group"],
                     market_period=row["market_period"],
+                    has_draw=bool(row["has_draw"]),
                     starts_at=row["starts_at"],
                     odds_home=float(row["odds_home"]),
                     odds_draw=float(row["odds_draw"]) if row["odds_draw"] is not None else None,

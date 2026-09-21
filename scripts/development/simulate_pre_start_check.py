@@ -57,11 +57,11 @@ from shared.runtime_observability import observe_operation
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
 ENABLE_ALERT_PIPELINE = True
-ENABLE_PILLAR_PIPELINE = True
+ENABLE_PILLAR_PIPELINE = False
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
-ENABLE_SOFASCORE_ODDS_SIMULATION = False
+ENABLE_SOFASCORE_ODDS_SIMULATION = True
 ENABLE_ODDSPAPI_ODDS_SIMULATION = False
 ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
 
@@ -71,7 +71,7 @@ ENABLE_PILLAR_2 = True  # Pillar 2 - Side Market Signal Profile
 ENABLE_PILLAR_3 = True  # Pillar 3 - Over/Under Market Signal Profile
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
 ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
-ENABLE_CUSTOM_PILLAR_FILTER = False  # Set True to override production pillar selection with the toggles above
+ENABLE_CUSTOM_PILLAR_FILTER = True  # Set True to override production pillar selection with the toggles above
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
