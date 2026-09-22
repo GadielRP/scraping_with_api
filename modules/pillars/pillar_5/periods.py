@@ -90,7 +90,7 @@ class Book1X2InputSpec:
 
 @dataclass(frozen=True, slots=True)
 class PriceMemoryPeriodScope:
-    """Identity and input policy for Pillar 5 Full Time price memory scope."""
+    """Identity and input policy for one Pillar 5 moneyline scope."""
 
     key: str
     display_name: str
@@ -122,20 +122,26 @@ class PriceMemoryPeriodScope:
         return tuple(names)
 
 
+# These are the only moneyline identities that P5 can evaluate.  The period is
+# part of the identity: a regulation market and a definitive (including
+# overtime/extras) market are never aliases of one another.
+P5_MONEYLINE_IDENTITIES: tuple[MarketIdentity, ...] = (
+    MarketIdentity("1X2", "Full Time", "1X2 Full Time"),
+    MarketIdentity("Home/Away", "Full Time", "Home/Away Full Time"),
+    MarketIdentity(
+        "Home/Away",
+        "Full Time Including Overtime",
+        "Home/Away Full Time Including Overtime",
+    ),
+)
+
+
 FULL_TIME_PRICE_MEMORY_SCOPE = PriceMemoryPeriodScope(
     key="full_time",
     display_name="Full Time",
     metric_token="FULL_TIME",
     required=True,
-    identities=(
-        MarketIdentity("1X2", "Full Time", "1X2 Full Time"),
-        MarketIdentity("1X2", "Full Time Including Overtime", "1X2 Full Time"),
-        MarketIdentity("1X2", "Full Time Including Overtime", "1X2 Full Time Including Overtime"),
-        MarketIdentity("Home/Away", "Full Time", "Home/Away Full Time"),
-        MarketIdentity("Home/Away", "Full Time Including Overtime", "Home/Away Full Time Including Overtime"),
-        MarketIdentity("Home/Away", "Full Time Including Overtime", "Home/Away Full Time"),
-        MarketIdentity("Home/Away", "Full Time", "Home/Away Full Time Including Overtime"),
-    ),
+    identities=P5_MONEYLINE_IDENTITIES,
     pinnacle=Book1X2InputSpec(
         home=PIN_HOME_1X2_FULL_TIME_ODDS_PRICE,
         draw=PIN_DRAW_1X2_FULL_TIME_ODDS_PRICE,
@@ -201,6 +207,7 @@ __all__ = [
     "P5_PRICE_MEMORY_MARKET_GROUPS",
     "P5_PRICE_MEMORY_MARKET_PERIODS",
     "P5_PRICE_MEMORY_PERIOD_SCOPES",
+    "P5_MONEYLINE_IDENTITIES",
     "PINNACLE_1X2_INPUT_NAMES",
     "PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE",
     "PIN_DRAW_1X2_FULL_TIME_ODDS_PRICE",

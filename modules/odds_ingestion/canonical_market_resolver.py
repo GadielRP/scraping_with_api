@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 from typing import Callable
 
-from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_SEEDS
+from infrastructure.persistence.catalogs.canonical_market_types import (
+    CANONICAL_MARKET_TYPE_SEEDS,
+    FULL_TIME_PERIODS,
+)
 from modules.oddspapi.format_utils import normalized_compact, normalized_token
 from modules.oddspapi.period_aliases import resolve_canonical_period
 from modules.oddspapi.sport_filters import is_allowed_sport_id
@@ -117,7 +120,14 @@ def _sofascore_rule_matches(rule: dict, name: str, group: str, period: str) -> b
     if market_groups and group not in market_groups:
         return False
     if market_periods and period not in market_periods:
-        return False
+        if (
+            "including overtime" in name
+            or "incl. overtime" in name
+            or "including overtime" in group
+        ) and period in FULL_TIME_PERIODS:
+            pass
+        else:
+            return False
     return bool(market_names or market_groups or market_periods)
 
 

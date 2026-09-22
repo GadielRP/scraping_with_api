@@ -60,7 +60,7 @@ class ExchangeSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class P5FullTimeSnapshot:
-    """Consolidated market reading for Pillar 5 Full Time price memory."""
+    """Consolidated moneyline reading for Pillar 5 price memory."""
 
     period: str | None
     period_scope: PriceMemoryPeriodScope

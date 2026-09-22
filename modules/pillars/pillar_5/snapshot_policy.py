@@ -29,6 +29,7 @@ from .periods import (
     FULL_TIME_PRICE_MEMORY_SCOPE,
     PriceMemoryPeriodScope,
 )
+from .market_selection import select_p5_moneyline_target
 
 PINNACLE_BOOKIE_ID = 302
 BET365_BOOKIE_ID = 3
@@ -56,12 +57,13 @@ def _book_request(
     *,
     identities: tuple,
     bookie_id: int,
+    market_group: str,
 ) -> MarketSnapshotRequest:
     choices = [
         ChoiceRequest("1", "1", spec.home),
         ChoiceRequest("2", "2", spec.away),
     ]
-    if spec.draw is not None:
+    if market_group == "1X2" and spec.draw is not None:
         choices.append(ChoiceRequest("x", "x", spec.draw))
 
     return MarketSnapshotRequest(
@@ -171,7 +173,7 @@ def extract_p5_market_snapshot(
     *,
     scope: PriceMemoryPeriodScope = FULL_TIME_PRICE_MEMORY_SCOPE,
 ) -> P5ExtractionResult:
-    """Extract Full Time 1X2 / Home-Away snapshot for Pillar 5."""
+    """Extract one exact canonical moneyline snapshot for Pillar 5."""
     if target_selection.target_minute is None or context is None:
         return P5ExtractionResult(
             target_minute=None,
@@ -183,6 +185,34 @@ def extract_p5_market_snapshot(
                 "target_selection": target_selection.diagnostics if target_selection else {},
             },
         )
+
+    moneyline_selection = select_p5_moneyline_target(
+        context,
+        supported_identities=scope.identities,
+    )
+    moneyline_target = moneyline_selection.target
+    if moneyline_target is None:
+        marker = ("P5_MONEYLINE_TARGET",)
+        period_diagnostics = PeriodDiagnostics.from_gate(
+            complete=False,
+            missing_inputs=marker if not moneyline_selection.is_ambiguous else (),
+            ambiguous_inputs=marker if moneyline_selection.is_ambiguous else (),
+        )
+        return P5ExtractionResult(
+            target_minute=target_selection.target_minute,
+            full_time_snapshot=None,
+            full_time=period_diagnostics,
+            abort_reason=moneyline_selection.reason,
+            missing_inputs=marker if not moneyline_selection.is_ambiguous else (),
+            ambiguous_inputs=marker if moneyline_selection.is_ambiguous else (),
+            extraction_diagnostics={
+                "event_id": event_id,
+                "target_minute": target_selection.target_minute,
+                "moneyline_selection": moneyline_selection.to_dict(),
+            },
+        )
+
+    identities = (moneyline_target.identity,)
 
     target_minute = target_selection.target_minute
     all_missing: set[str] = set()
@@ -196,7 +226,12 @@ def extract_p5_market_snapshot(
     pin_snap = _extract_book(
         context,
         target_minute=target_minute,
-        request=_book_request(scope.pinnacle, identities=scope.identities, bookie_id=PINNACLE_BOOKIE_ID),
+        request=_book_request(
+            scope.pinnacle,
+            identities=identities,
+            bookie_id=PINNACLE_BOOKIE_ID,
+            market_group=moneyline_target.market_group,
+        ),
         gate=pin_gate,
     )
     pin_complete = pin_snap is not None and pin_snap.is_complete()
@@ -210,7 +245,12 @@ def extract_p5_market_snapshot(
     b365_snap = _extract_book(
         context,
         target_minute=target_minute,
-        request=_book_request(scope.bet365, identities=scope.identities, bookie_id=BET365_BOOKIE_ID),
+        request=_book_request(
+            scope.bet365,
+            identities=identities,
+            bookie_id=BET365_BOOKIE_ID,
+            market_group=moneyline_target.market_group,
+        ),
         gate=b365_gate,
     )
     b365_complete = b365_snap is not None and b365_snap.is_complete()
@@ -224,7 +264,12 @@ def extract_p5_market_snapshot(
     sofa_snap = _extract_book(
         context,
         target_minute=target_minute,
-        request=_book_request(scope.sofascore, identities=scope.identities, bookie_id=SOFASCORE_BOOKIE_ID),
+        request=_book_request(
+            scope.sofascore,
+            identities=identities,
+            bookie_id=SOFASCORE_BOOKIE_ID,
+            market_group=moneyline_target.market_group,
+        ),
         gate=sofa_gate,
     )
     sofa_complete = sofa_snap is not None and sofa_snap.is_complete()
@@ -241,37 +286,25 @@ def extract_p5_market_snapshot(
         back_snap = _extract_exchange_side(
             context,
             target_minute=target_minute,
-            request=_exchange_request("back", identities=scope.identities),
+            request=_exchange_request(
+                "back",
+                identities=identities,
+                is_2way=moneyline_target.is_two_way,
+            ),
             gate=back_gate,
         )
-        if back_snap is None and not back_gate.ambiguous:
-            alt_gate = _PeriodGate()
-            alt_back = _extract_exchange_side(
-                context,
-                target_minute=target_minute,
-                request=_exchange_request("back", identities=scope.identities, is_2way=True),
-                gate=alt_gate,
-            )
-            if alt_back is not None:
-                back_snap, back_gate = alt_back, alt_gate
 
         lay_gate = _PeriodGate()
         lay_snap = _extract_exchange_side(
             context,
             target_minute=target_minute,
-            request=_exchange_request("lay", identities=scope.identities),
+            request=_exchange_request(
+                "lay",
+                identities=identities,
+                is_2way=moneyline_target.is_two_way,
+            ),
             gate=lay_gate,
         )
-        if lay_snap is None and not lay_gate.ambiguous:
-            alt_gate = _PeriodGate()
-            alt_lay = _extract_exchange_side(
-                context,
-                target_minute=target_minute,
-                request=_exchange_request("lay", identities=scope.identities, is_2way=True),
-                gate=alt_gate,
-            )
-            if alt_lay is not None:
-                lay_snap, lay_gate = alt_lay, alt_gate
 
         ex_gate.missing.update(back_gate.missing | lay_gate.missing)
         ex_gate.invalid.update(back_gate.invalid | lay_gate.invalid)
@@ -293,19 +326,10 @@ def extract_p5_market_snapshot(
 
     period_diagnostics = PeriodDiagnostics.from_bookies(bookie_diagnostics)
 
-    # Determine period label
-    periods = {
-        snap.home.trace.market_period
-        for snap in (pin_snap, b365_snap, sofa_snap)
-        if snap is not None and snap.home is not None
-    }
-    if exchange_snap is not None:
-        if exchange_snap.back is not None and exchange_snap.back.home is not None:
-            periods.add(exchange_snap.back.home.trace.market_period)
-        if exchange_snap.lay is not None and exchange_snap.lay.home is not None:
-            periods.add(exchange_snap.lay.home.trace.market_period)
-
-    period_name = next(iter(periods)) if len(periods) == 1 else "Full Time"
+    # The selector already established the settlement contract.  Keep this
+    # label even when a bookmaker is missing; never infer Full Time from a
+    # mixed or incomplete set of traces.
+    period_name = moneyline_target.market_period
 
     snapshot = P5FullTimeSnapshot(
         period=period_name,
@@ -329,6 +353,8 @@ def extract_p5_market_snapshot(
         extraction_diagnostics={
             "event_id": event_id,
             "target_minute": target_minute,
+            "moneyline_selection": moneyline_selection.to_dict(),
+            "selected_market_identity": moneyline_target.to_dict(),
             "bookie_diagnostics": {k: v.to_dict() for k, v in bookie_diagnostics.items()},
         },
     )

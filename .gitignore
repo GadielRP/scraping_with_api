@@ -111,6 +111,7 @@ pre_start_check_oddsportal_case.txt
 pre_start_check_oddsportal_case_only_oddsportal_logs.txt
 
 docs/lectures
+docs/audits
 
 # =========================================================
 # Local CSV/data exports

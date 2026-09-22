@@ -8,10 +8,9 @@ from __future__ import annotations
 FULL_TIME_PERIODS = {"full time", "full-time"}
 FULL_TIME_INCLUDING_OVERTIME_PERIODS = {
     "match",
-    "full time",
-    "full-time",
     "full time including overtime",
     "full-time including overtime",
+    "extra time",
 }
 FIRST_HALF_PERIODS = {"1st half", "p1"}
 SECOND_HALF_PERIODS = {"2nd half", "p2"}

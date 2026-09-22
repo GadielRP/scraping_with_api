@@ -55,7 +55,10 @@ class CanonicalMarketNormalizer:
             "unmapped_choices": [],
             "skipped_missing_line_value": [],
         }
-        canonical_types = CanonicalMarketTypeRepository.build_index(enabled_only=True)
+        all_canonical_types = CanonicalMarketTypeRepository.build_index(enabled_only=False)
+        canonical_types = {
+            k: v for k, v in all_canonical_types.items() if v.enabled_for_ingestion
+        }
         normalized_markets = []
 
         for raw_market in (normalized_response or {}).get("markets", []):
@@ -72,26 +75,52 @@ class CanonicalMarketNormalizer:
                     "reason": "unsupported_sofascore_market_shape",
                 }
                 diagnostics["unmapped_markets"].append(detail)
-                logger.warning(
-                    "Unsupported SofaScore market skipped: marketName=%s marketGroup=%s marketPeriod=%s lineValue=%s reason=%s",
+                logger.info(
+                    "Unsupported SofaScore market skipped (reason=unsupported_market_shape): marketName=%s marketGroup=%s marketPeriod=%s lineValue=%s",
                     detail["marketName"], detail["marketGroup"], detail["marketPeriod"],
-                    detail["lineValue"], detail["reason"],
+                    detail["lineValue"],
                 )
                 continue
 
             canonical_type = canonical_types.get(canonical_key)
             if canonical_type is None:
-                detail = {
-                    "source": "sofascore",
-                    "marketName": raw_market.get("marketName"),
-                    "marketGroup": raw_market.get("marketGroup"),
-                    "marketPeriod": raw_market.get("marketPeriod"),
-                    "lineValue": raw_market.get("lineValue"),
-                    "canonicalMarketKey": canonical_key,
-                    "reason": "canonical_market_type_unavailable",
-                }
-                diagnostics["unmapped_markets"].append(detail)
-                logger.warning("Enabled canonical market type unavailable; SofaScore market skipped: %s", detail)
+                unfiltered_type = all_canonical_types.get(canonical_key)
+                if unfiltered_type is not None and not unfiltered_type.enabled_for_ingestion:
+                    detail = {
+                        "source": "sofascore",
+                        "marketName": raw_market.get("marketName"),
+                        "marketGroup": raw_market.get("marketGroup"),
+                        "marketPeriod": raw_market.get("marketPeriod"),
+                        "lineValue": raw_market.get("lineValue"),
+                        "canonicalMarketKey": canonical_key,
+                        "reason": "market_disabled_for_ingestion",
+                    }
+                    diagnostics["unmapped_markets"].append(detail)
+                    logger.info(
+                        "SofaScore market '%s' (group='%s', period='%s', key='%s') is disabled for ingestion; skipped",
+                        detail["marketName"],
+                        detail["marketGroup"],
+                        detail["marketPeriod"],
+                        canonical_key,
+                    )
+                else:
+                    detail = {
+                        "source": "sofascore",
+                        "marketName": raw_market.get("marketName"),
+                        "marketGroup": raw_market.get("marketGroup"),
+                        "marketPeriod": raw_market.get("marketPeriod"),
+                        "lineValue": raw_market.get("lineValue"),
+                        "canonicalMarketKey": canonical_key,
+                        "reason": "canonical_market_type_not_found",
+                    }
+                    diagnostics["unmapped_markets"].append(detail)
+                    logger.warning(
+                        "Canonical market type '%s' for SofaScore market '%s' (group='%s', period='%s') not found in database; skipped",
+                        canonical_key,
+                        detail["marketName"],
+                        detail["marketGroup"],
+                        detail["marketPeriod"],
+                    )
                 continue
 
             # The provider adapter owns the external SofaScore field name

@@ -228,7 +228,9 @@ From `modules/odds_ingestion/provider_odds_phase.py`:
 
 ## 5. SofaScore provider phase
 
-Entrypoint: `providers/sofascore/odds_phase.py` → `run_sofascore_pre_start_odds`.
+Entrypoint: `modules/jobs/pre_start_check_job/providers/sofascore/odds_phase.py` → `run_sofascore_pre_start_odds`.
+
+This section documents the end-to-end resolution of SofaScore odds payloads: raw response extraction, adapter normalization, semantic rule matching against canonical market types, choice/line resolution, spread convention inversion, and canonical database persistence.
 
 ```mermaid
 flowchart TD
@@ -243,21 +245,152 @@ flowchart TD
     F -- yes --> G[collect event_id for bulk mark]
     F -- no --> H{payload empty?}
     H -- yes --> S
-    H -- no --> I[save_from_sofascore_response]
-    I --> J{markets saved / dual-process available?}
-    J -- yes --> K[enrich_tennis_observations]
-    J -- no --> S
-    G --> L[mark_missing_endpoints_unavailable]
+    H -- no --> I[SofaScoreMarketAdapter.from_event_odds_response]
+    I --> J[CanonicalMarketNormalizer.normalize_sofascore_response]
+    J --> K[resolve_sofascore_key / rule matching]
+    K --> L[ChoiceNormalizer.normalize_choice_name]
+    L --> M[MarketRepository.save_canonical_bookmaker_batches]
+    M --> N{markets saved / dual-process available?}
+    N -- yes --> O[enrich_tennis_observations]
+    N -- no --> S
+    G --> P[mark_missing_endpoints_unavailable]
 ```
 
-Persist path:
+### 5.1 End-to-End Market Resolution Stages
 
-1. `SofaScoreMarketAdapter.from_event_odds_response` — every choice `mainLine=True`; `sourceMarketId` prefers catalog `marketId`.
-2. `CanonicalMarketNormalizer.normalize_sofascore_response`.
-3. `MarketRepository.save_canonical_bookmaker_batches(event_id, [{bookie_id: 1, markets}], source="sofascore")`.
-4. Quote upsert + snapshot append. SofaScore is a single-bookmaker source (`bookie_id=1`).
+```text
+SofaScore HTTP payload (markets array)
+    ↓
+1. SofaScoreMarketAdapter
+   - Unifies market structure (structureType 1 vs 2)
+   - Extracts sourceMarketId (prefers catalog marketId over transient instance id)
+   - Maps choiceGroup -> lineValue (e.g. "2.5", "9.5")
+   - Emits raw choices with mainLine=True
+    ↓
+2. resolve_sofascore_key (canonical_market_resolver.py)
+   - Matches semantic tokens (marketName, marketGroup, marketPeriod) against CANONICAL_MARKET_TYPE_SEEDS
+   - Validates outcome role sets (e.g. {"1", "x", "2"} -> side_3way vs {"1", "2"} -> side_2way)
+   - Disambiguates candidate ties (e.g. 1X2 Full Time vs Home/Away Full Time)
+    ↓
+3. CanonicalMarketNormalizer & ChoiceNormalizer (choice_normalization.py)
+   - Verifies enabled_for_ingestion in canonical_market_types
+   - Parses outcome names (e.g. "Over", "Under", "Yes", "No", "1", "X", "2", "(-1.25) Oriente Petrolero")
+   - Cleans team names and resolves side ("1" = Home, "2" = Away)
+   - Inverts spread line for away team choice ("2") to align both choices to home reference
+   - Enforces requires_line_value check
+    ↓
+4. MarketRepository.save_canonical_bookmaker_batches
+   - Single-bookmaker batch: [{bookie_id: 1, markets}]
+   - Upserts canonical markets & market_choices
+   - Upserts market_choice_quotes (source="sofascore", source_market_id=marketId)
+   - Appends market_choice_snapshots
+```
 
-Confirmed 404s are batched once at the end for `source="sofascore"`.
+### 5.2 Step-by-Step Resolution Mechanics
+
+#### Step 1: Adapter Normalization (`SofaScoreMarketAdapter`)
+- **Structure**: SofaScore payloads (see e.g. `debug/sofascore_odds_responses/16317959_odds_reponse.json`) provide a list of market objects. Structure types typically distinguish fixed outcome markets (`structureType: 1`) from line-based markets (`structureType: 2`).
+- **Stable Market ID**: Prefer the catalog `marketId` (e.g., `1` for Full Time 1X2, `9` for Match Goals, `17` for Asian Handicap) as `sourceMarketId`, rather than the event-instance `sourceId` or `id`.
+- **Line Value Extraction**: SofaScore stores totals and handicap lines in `choiceGroup` (e.g., `"1.5"`, `"2.5"`, `"9.5"`). The adapter exposes this as the canonical `lineValue`.
+
+#### Step 2: Canonical Market Key Resolution (`resolve_sofascore_key`)
+Matches raw market metadata against seeds in `infrastructure/persistence/catalogs/canonical_market_types.py`:
+1. **Semantic Token Normalization**: `marketName`, `marketGroup`, and `marketPeriod` are stripped, lowercased, and hyphen-normalized.
+2. **Rule Matching**: A seed's `sofascore_match` dictionary defines allowed sets for `market_name`, `market_group`, and `market_period`.
+3. **Role Validation & Disambiguation**: When multiple seeds match (e.g. Home/Away vs 1X2 in sports where period names overlap):
+   - Extracts outcome roles (`1`, `x`, `2`, `over`, `under`, `yes`, `no`, `1x`, `x2`, `12`, `no_goal`).
+   - Validates roles against `OUTCOME_VALIDATORS` (e.g., `_is_side_3way` requires `{"1", "x", "2"}`; `_is_side_2way` requires `{"1", "2"}`).
+   - If roles are `{"1", "x", "2"}` → resolves to `1x2_full_time` / `1x2_1st_half`.
+   - If roles are `{"1", "2"}` → resolves to `home_away_full_time` or `home_away_full_time_including_overtime`.
+
+#### Step 3: Choice and Line Normalization (`ChoiceNormalizer`)
+1. **Prefix Handicap Extraction**: For Asian Handicap / Spreads formatted like `"(-1.25) Oriente Petrolero"`:
+   - Regex `^\(\s*([-+]?\d+(?:\.\d+)?)\s*\)\s*(.+)$` extracts `line_value = "-1.25"` and raw team name `"Oriente Petrolero"`.
+2. **Team Side Resolution**: `_clean_team_name` normalizes team strings (removes accents, spaces, punctuation, and common suffixes/prefixes like `fc`, `cf`, `ud`, `sc`, `club`) and matches against event `home_team` (resolves to `"1"`) or `away_team` (resolves to `"2"`).
+3. **Spread Line Inversion Convention**:
+   - In `spread_2way` markets (Asian Handicap / Point Spread), the database stores a single market record with a canonical `line_value` referenced to the **Home team ("1")**.
+   - When the choice is `"2"` (Away team), the adapter inverts the sign (`line_val = -line_val`) so both `"1"` and `"2"` choices share the exact same canonical market `line_value`.
+4. **Positional Fallback**: If textual/team matching fails, `_fallback_by_position` uses positional index patterns (e.g. index 0/1/2 for 3-way, 0/1 for 2-way/totals).
+
+#### Step 4: Line Value Enforcement
+If `canonical_type.requires_line_value` is `True` (e.g., `over_under_full_time`, `asian_handicap_full_time`) and no valid `lineValue` was derived, the market is skipped and recorded in `diagnostics["skipped_missing_line_value"]`.
+
+### 5.3 Concrete Examples from Debug Responses (`debug/sofascore_odds_responses`)
+
+#### Example A: Football 1X2 and Match Goals (`16317959_odds_reponse.json`)
+```json
+{
+  "marketId": 1,
+  "marketName": "Full time",
+  "marketGroup": "1X2",
+  "marketPeriod": "Full-time",
+  "choices": [{"name": "1", ...}, {"name": "X", ...}, {"name": "2", ...}]
+}
+```
+- **Resolution**:
+  - `resolve_sofascore_key` matches `market_name: {"full time"}`, `market_group: {"1x2"}`, `market_period: FULL_TIME_PERIODS`.
+  - Roles `{"1", "x", "2"}` validate `_is_side_3way`.
+  - Canonical Key: `1x2_full_time`.
+  - Choices canonicalized to `"1"`, `"x"`, `"2"`.
+
+```json
+{
+  "structureType": 2,
+  "marketId": 9,
+  "marketName": "Match goals",
+  "choiceGroup": "2.5",
+  "marketGroup": "Match goals",
+  "marketPeriod": "Full-time",
+  "choices": [{"name": "Over", ...}, {"name": "Under", ...}]
+}
+```
+- **Resolution**:
+  - `choiceGroup: "2.5"` → `lineValue: "2.5"`.
+  - Matches `market_name: {"match goals"}`, `market_group: {"match goals"}`, `market_period: FULL_TIME_PERIODS`.
+  - Canonical Key: `over_under_full_time` with `lineValue = "2.5"`.
+  - Choices canonicalized to `"over"`, `"under"`.
+
+#### Example B: Asian Handicap with Prefixed Team Names (`191149_16748586_t_5.json`)
+```json
+{
+  "marketId": 17,
+  "marketName": "Asian handicap",
+  "marketGroup": "Asian Handicap",
+  "marketPeriod": "Full-time",
+  "choices": [
+    {"name": "(-1.25) Oriente Petrolero", "fractionalValue": "1/1"},
+    {"name": "(1.25) CD San Antonio", "fractionalValue": "4/5"}
+  ]
+}
+```
+- **Resolution**:
+  - Canonical Key: `asian_handicap_full_time` (family: `spread_2way`).
+  - Choice 1: `"(-1.25) Oriente Petrolero"` → regex yields line `"-1.25"`, name `"Oriente Petrolero"` (Home) → Choice `"1"`, `lineValue = "-1.25"`.
+  - Choice 2: `"(1.25) CD San Antonio"` → regex yields line `"1.25"`, name `"CD San Antonio"` (Away) → Choice `"2"`.
+  - **Spread sign inversion**: For Choice `"2"`, line `1.25` is inverted to `-1.25`. Both choices are stored under the same canonical market line `"-1.25"`.
+
+#### Example C: Tennis Match Winner (`190830_16737904_t_-5.json`)
+```json
+{
+  "marketId": 1,
+  "marketName": "Full time",
+  "marketGroup": "Home/Away",
+  "marketPeriod": "Match",
+  "choices": [{"name": "1", ...}, {"name": "2", ...}]
+}
+```
+- **Resolution**:
+  - `marketPeriod: "Match"` is matched in `FULL_TIME_INCLUDING_OVERTIME_PERIODS`.
+  - Roles `{"1", "2"}` validate `_is_side_2way`.
+  - Canonical Key: `home_away_full_time_including_overtime`.
+  - Choices canonicalized to `"1"`, `"2"`.
+
+### 5.4 Persistence and Bookmaker Invariants
+- SofaScore is treated as a single canonical bookmaker (`bookie_id = 1`).
+- Writes are executed via `MarketRepository.save_canonical_bookmaker_batches(event_id, [{"bookie_id": 1, "markets": normalized_markets}], source="sofascore")`.
+- `market_choice_quotes` records `source="sofascore"`, `source_market_id = catalog_market_id` (e.g. `"1"`, `"9"`, `"17"`), and `exchange_side = NULL`.
+- `market_choice_snapshots` appends price observations for each choice quote.
+- Confirmed 404 responses are marked in bulk via `mark_missing_endpoints_unavailable(source="sofascore")`.
 
 ## 6. OddspAPI provider phase
 
@@ -325,7 +458,8 @@ sequenceDiagram
     W->>C: get_odds / get_historical_odds / get_fixtures
     C->>S: acquire(endpoint)
     S->>S: resolve pool + policy + eligible states
-    S->>S: score candidates + reserve in-flight
+
+        S->>S: score candidates + reserve in-flight
     S-->>C: ApiKeyLease(key only in memory, fingerprint, policy, sequence, wait)
     C->>C: wait for key/endpoint cooldown if needed
     C->>API: one physical GET with lease.api_key
