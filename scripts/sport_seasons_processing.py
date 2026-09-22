@@ -37,7 +37,7 @@ from infrastructure.persistence.schema_version import verify_schema_at_head
 from infrastructure.persistence.database import db_manager
 from shared.temporal import utc_now
 from sqlalchemy import or_
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import logging
 import argparse
 import time
@@ -219,7 +219,7 @@ def reconcile_existing_season_events(
     )
 
     reconciled_metadata = 0
-    results_inserted_or_updated = 0
+    results_to_upsert: List[Tuple[int, Dict]] = []
     still_pending = 0
     failed_direct_fetch_count = 0
 
@@ -255,8 +255,7 @@ def reconcile_existing_season_events(
                 continue
 
             if result_data:
-                if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
-                    results_inserted_or_updated += 1
+                results_to_upsert.append((event_id, result_data))
             else:
                 still_pending += 1
                 logger.info(
@@ -267,6 +266,15 @@ def reconcile_existing_season_events(
         except Exception as exc:
             failed_direct_fetch_count += 1
             logger.error("Error reconciling event %s: %s", event_id, exc)
+
+    results_inserted_or_updated = 0
+    if results_to_upsert:
+        results_inserted_or_updated = ResultRepository.batch_upsert_results(results_to_upsert)
+        logger.info(
+            "Batch upserted %s reconciliation results for %s events",
+            results_inserted_or_updated,
+            len(results_to_upsert),
+        )
 
     return {
         "reconciled_metadata": reconciled_metadata,
@@ -410,7 +418,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     skipped_count = 0
     markets_processed_count = 0
     markets_skipped_count = 0
-    results_processed_count = 0
+    results_to_upsert: List[Tuple[int, Dict]] = []
     canceled_event_ids_to_delete = set()
     missing_odds_event_ids = set()
     odds_fetcher = SofaScoreOddsFetcher(api_client) if fetch_odds else None
@@ -482,7 +490,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
                         except Exception as e:
                             logger.error(f"Error processing markets for event {event_id}: {e}")
 
-                # Extract and upsert results for this event (using already-fetched data)
+                # Extract and queue results for this event (using already-fetched data)
                 try:
                     raw_event = event_data.get('_raw_event')
                     if raw_event:
@@ -498,16 +506,13 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
                             continue
 
                         if result_data:
-                            if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
-                                results_processed_count += 1
-                                logger.debug(
-                                    "Results upserted for event %s: %s-%s",
-                                    event_id,
-                                    result_data.get('home_score'),
-                                    result_data.get('away_score'),
-                                )
-                            else:
-                                logger.warning(f"Failed to upsert results for event {event_id}")
+                            results_to_upsert.append((event_id, result_data))
+                            logger.debug(
+                                "Queued results for event %s: %s-%s",
+                                event_id,
+                                result_data.get('home_score'),
+                                result_data.get('away_score'),
+                            )
                         else:
                             logger.debug(f"No results data for event {event_id} (may not be finished)")
                     else:
@@ -524,6 +529,15 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
             event_payload = event_data.get('event', event_data)
             logger.error(f"Error processing event {event_payload.get('id')}: {e}")
             continue
+
+    results_processed_count = 0
+    if results_to_upsert:
+        results_processed_count = ResultRepository.batch_upsert_results(results_to_upsert)
+        logger.info(
+            "Batch upserted results for %s/%s finished events",
+            results_processed_count,
+            len(results_to_upsert),
+        )
 
     reconciliation_cutoff_time = utc_now()
     if fetch_odds:
