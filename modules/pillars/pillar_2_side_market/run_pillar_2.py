@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.market_audit import build_raw_audit, json_inputs
 from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
@@ -103,8 +103,8 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
 
 
 def calculate_pillar_2(
-    event_context: EventContext,
-    odds_trajectory_context: OddsTrajectoryContext | None = None,
+    event_context: EventIdentity | EventContext,
+    odds_trajectory_context: OddsTrajectoryContext,
     *,
     target_selection: TargetMinuteSelection,
     debug_mode: bool = False,
@@ -114,13 +114,11 @@ def calculate_pillar_2(
     The returned dict is the mining producer output. The pipeline persists it
     through ``P2MiningAdapter`` immediately after this function returns.
     """
-    odds_context = (
-        odds_trajectory_context
-        or getattr(event_context, "odds_trajectory_context", None)
-    )
+    if odds_trajectory_context is None:
+        raise ValueError("odds_trajectory_context is required for Pillar 2")
     extraction = extract_p2_market_snapshot(
         event_context.event_id,
-        odds_context,
+        odds_trajectory_context,
         target_selection,
     )
     periods = extraction.period_diagnostics()
@@ -183,7 +181,7 @@ def calculate_pillar_2(
             traces.update(optional_traces)
 
         raw = build_raw_audit(
-            odds_context=odds_context,
+            odds_context=odds_trajectory_context,
             extraction_diagnostics=extraction.extraction_diagnostics,
             periods=periods,
             inputs=inputs,
@@ -217,7 +215,7 @@ def calculate_pillar_2(
         optional_complete=optional_complete,
     )
     raw = build_raw_audit(
-        odds_context=odds_context,
+        odds_context=odds_trajectory_context,
         extraction_diagnostics=extraction.extraction_diagnostics,
         periods=periods,
         inputs=json_inputs(snapshot.input_values()),

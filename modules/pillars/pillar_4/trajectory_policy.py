@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from infrastructure.settings import Config
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.odds_trajectory_context import (
     OddsSnapshotPoint,
     OddsTrajectoryContext,
@@ -480,7 +480,7 @@ def _period_diagnostics(
 
 
 def extract_p4_trajectory_inputs(
-    event_context: EventContext,
+    event_context: EventIdentity | EventContext,
     odds_trajectory_context: OddsTrajectoryContext | None,
     *,
     target_minute: int,

@@ -243,6 +243,7 @@ def test_pipeline_registers_both_structural_signal_profile_adapters() -> None:
         "pillar_2_side_market",
         "pillar_3_totals_market_context",
         "pillar_4_temporal_market_drift",
+        "pillar_5",
     }
     assert adapters["pillar_3_totals_market_context"].pillar_id == (
         "pillar_3_totals_market_context"
@@ -250,6 +251,7 @@ def test_pipeline_registers_both_structural_signal_profile_adapters() -> None:
     assert adapters["pillar_4_temporal_market_drift"].pillar_id == (
         "pillar_4_temporal_market_drift"
     )
+    assert adapters["pillar_5"].pillar_id == "pillar_5"
 
 
 def test_p2_and_p3_use_the_same_profile_persistence_shape() -> None:

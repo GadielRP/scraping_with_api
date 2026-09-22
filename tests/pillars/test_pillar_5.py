@@ -37,7 +37,21 @@ from modules.pillars.pillar_5.periods import (
     SOFA_HOME_1X2_FULL_TIME_ODDS_PRICE,
 )
 from modules.pillars.pillar_5.run_pillar_5 import ENGINE_VERSION, calculate_pillar_5
+from modules.pillars.pillar_5 import run_pillar_5 as p5_runner
 from modules.pillars.pillar_5.snapshot_policy import extract_p5_market_snapshot
+from infrastructure.persistence.repositories.pillar_5_price_memory_repository import (
+    HistoricalPriceMatch,
+)
+
+
+class _EmptyMemoryRepository:
+    def find_exact_matches(self, **_kwargs):
+        return []
+
+
+@pytest.fixture(autouse=True)
+def _no_database_memory_lookup(monkeypatch):
+    monkeypatch.setattr(p5_runner, "_memory_repository", _EmptyMemoryRepository)
 
 
 def _make_meta(minute: int, exchange_size: Decimal | None = None) -> OddsPointMeta:
@@ -165,8 +179,9 @@ def test_p5_extraction_sofascore_1x2():
     assert result["pillar_id"] == "pillar_5"
     assert result["engine_version"] == ENGINE_VERSION
     assert result["P5_TARGET_MINUTE"] == minute
-    assert result["P5_STATUS"] in {"ACTIVE", "PARTIAL"}
-    assert result["status"] in {"ACTIVE", "PARTIAL"}
+    assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
+    assert result["status"] == "INSUFFICIENT_DATA"
+    assert result["P5_EXTRACTION_STATUS"] in {"ACTIVE", "PARTIAL"}
 
     inputs = result["raw"]["inputs"]
     assert inputs[SOFA_HOME_1X2_FULL_TIME_ODDS_PRICE] == 1.85
@@ -252,7 +267,7 @@ def test_p5_extraction_pinnacle_bet365_and_exchange():
         target_selection=target_selection,
     )
 
-    assert result["P5_STATUS"] in {"ACTIVE", "PARTIAL"}
+    assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
     inputs = result["raw"]["inputs"]
     assert inputs[PIN_HOME_1X2_FULL_TIME_ODDS_PRICE] == 2.10
     assert inputs[PIN_DRAW_1X2_FULL_TIME_ODDS_PRICE] == 3.25
@@ -307,7 +322,7 @@ def test_p5_home_away_two_way():
         target_selection=TargetMinuteSelection(target_minute=minute),
     )
 
-    assert result["P5_STATUS"] in {"ACTIVE", "PARTIAL"}
+    assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
     inputs = result["raw"]["inputs"]
     assert inputs[PIN_HOME_1X2_FULL_TIME_ODDS_PRICE] == 1.75
     assert inputs[PIN_DRAW_1X2_FULL_TIME_ODDS_PRICE] is None
@@ -347,7 +362,7 @@ def test_p5_auto_target_minute_resolution():
     result = calculate_pillar_5(event_context, context, target_selection=None)
 
     assert result["P5_TARGET_MINUTE"] == minute
-    assert result["P5_STATUS"] in {"ACTIVE", "PARTIAL"}
+    assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
     assert result["raw"]["inputs"][SOFA_HOME_1X2_FULL_TIME_ODDS_PRICE] == 1.90
 
 
@@ -367,3 +382,158 @@ def test_p5_missing_trajectory_insufficient_data():
     assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
     assert result["P5_TARGET_MINUTE"] is None
     assert result["raw"]["inputs"][SOFA_HOME_1X2_FULL_TIME_ODDS_PRICE] is None
+
+
+def test_p5_orchestrator_calculates_independent_bookmaker_memory(monkeypatch):
+    minute = 5
+    choices = {
+        "1": _make_choice("1", Decimal("1.900"), minute=minute),
+        "x": _make_choice("x", Decimal("3.700"), minute=minute),
+        "2": _make_choice("2", Decimal("3.900"), minute=minute),
+    }
+    bookie = BookieOddsTrajectory(
+        bookie_id=1,
+        bookie_name="SofaScore",
+        choices=choices,
+    )
+    market_line = MarketLineOddsTrajectory(
+        market_id=1,
+        market_name="1X2 Full Time",
+        market_group="1X2",
+        market_period="Full Time",
+        line_value="Full Time",
+        bookies={"1:sofascore:single:0": bookie},
+    )
+    context = OddsTrajectoryContext(
+        available=True,
+        event_id=999,
+        target_minutes_expected=[minute],
+        target_minutes_present=[minute],
+        missing_target_minutes=[],
+        markets={"1X2": {"Full Time": {"1X2 Full Time": {"__default__": market_line}}}},
+    )
+    event_context = _build_event_context(minutes_until_start=minute)
+    winners = ["1", "1", "1", "2"]
+    rows = [
+        HistoricalPriceMatch(
+            event_id=index + 1,
+            sport="Football",
+            competition_id=50 + index,
+            season_id=2024,
+            country="Spain",
+            bookie_id=1,
+            market_group="1X2",
+            market_period="Full Time",
+            has_draw=True,
+            starts_at=datetime(2025, 1, index + 1, tzinfo=timezone.utc),
+            odds_home=Decimal("1.900"),
+            odds_draw=Decimal("3.700"),
+            odds_away=Decimal("3.900"),
+            home_score=1,
+            away_score=0,
+            winner_side=winner,
+            last_sync_at=datetime(2025, 1, index + 1, tzinfo=timezone.utc),
+        )
+        for index, winner in enumerate(winners)
+    ]
+
+    class Repository:
+        def find_exact_matches(self, **kwargs):
+            assert kwargs["bookie_id"] == 1
+            assert kwargs["limit"] is None
+            return rows
+
+    monkeypatch.setattr(p5_runner, "_memory_repository", Repository)
+    result = calculate_pillar_5(
+        event_context,
+        context,
+        target_selection=TargetMinuteSelection(target_minute=minute),
+    )
+
+    sofa = result["P5_MEMORY_PROFILES"]["sofascore"]
+    assert result["P5_STATUS"] == "PARTIAL"
+    assert sofa["P5_VALID"] is True
+    assert sofa["P5"] == pytest.approx(0.2)
+    assert sofa["P5_DIRECTION"] == "HOME"
+    assert len(sofa["historical_matches"]) == 4
+    assert result["P5_MEMORY_PROFILES"]["pinnacle"]["P5_VALID"] is False
+    assert result["modules"][0]["module_id"] == "p5_memory_engine"
+
+
+def test_p5_bookmaker_query_error_does_not_invalidate_other_profile(monkeypatch):
+    minute = 5
+    choices = {
+        "1": _make_choice("1", Decimal("1.900"), minute=minute),
+        "x": _make_choice("x", Decimal("3.700"), minute=minute),
+        "2": _make_choice("2", Decimal("3.900"), minute=minute),
+    }
+    bookies = {
+        "302:pinnacle:single:0": BookieOddsTrajectory(
+            bookie_id=302,
+            bookie_name="Pinnacle",
+            choices=choices,
+        ),
+        "3:bet365:single:0": BookieOddsTrajectory(
+            bookie_id=3,
+            bookie_name="Bet365",
+            choices=choices,
+        ),
+    }
+    market_line = MarketLineOddsTrajectory(
+        market_id=1,
+        market_name="1X2 Full Time",
+        market_group="1X2",
+        market_period="Full Time",
+        line_value="Full Time",
+        bookies=bookies,
+    )
+    context = OddsTrajectoryContext(
+        available=True,
+        event_id=999,
+        target_minutes_expected=[minute],
+        target_minutes_present=[minute],
+        missing_target_minutes=[],
+        markets={"1X2": {"Full Time": {"1X2 Full Time": {"__default__": market_line}}}},
+    )
+    rows = [
+        HistoricalPriceMatch(
+            event_id=index + 1,
+            sport="Football",
+            competition_id=10,
+            season_id=2024,
+            country="Spain",
+            bookie_id=302,
+            market_group="1X2",
+            market_period="Full Time",
+            has_draw=True,
+            starts_at=datetime(2025, 2, index + 1, tzinfo=timezone.utc),
+            odds_home=Decimal("1.900"),
+            odds_draw=Decimal("3.700"),
+            odds_away=Decimal("3.900"),
+            home_score=1,
+            away_score=0,
+            winner_side=winner,
+            last_sync_at=datetime(2025, 2, index + 1, tzinfo=timezone.utc),
+        )
+        for index, winner in enumerate(["1", "1", "1", "2"])
+    ]
+
+    class Repository:
+        def find_exact_matches(self, **kwargs):
+            if kwargs["bookie_id"] == 3:
+                raise RuntimeError("database failure")
+            return rows
+
+    monkeypatch.setattr(p5_runner, "_memory_repository", Repository)
+    result = calculate_pillar_5(
+        _build_event_context(minutes_until_start=minute),
+        context,
+        target_selection=TargetMinuteSelection(target_minute=minute),
+    )
+
+    assert result["P5_STATUS"] == "PARTIAL"
+    assert result["P5_MEMORY_PROFILES"]["pinnacle"]["P5_VALID"] is True
+    failed = result["P5_MEMORY_PROFILES"]["bet365"]
+    assert failed["P5_STATUS"] == "ERROR"
+    assert failed["sample_size"] is None
+    assert failed["diagnostics"]["error_class"] == "RuntimeError"

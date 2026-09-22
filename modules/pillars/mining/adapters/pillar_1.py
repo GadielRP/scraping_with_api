@@ -35,7 +35,10 @@ def _event_fields(event_context: EventContext) -> tuple[int | None, int | None, 
         getattr(event_context, "minutes_until_start", None)
     )
     competition = getattr(event_context, "competition", None)
-    competition_id = _optional_int(getattr(competition, "competition_id", None))
+    competition_id = _optional_int(
+        getattr(event_context, "competition_id", None)
+        or getattr(competition, "competition_id", None)
+    )
     return evaluation_minute, competition_id, _optional_int(
         getattr(event_context, "event_id", None)
     )
@@ -49,13 +52,21 @@ def _context(
     target_field: str,
 ) -> dict[str, Any]:
     competition = getattr(event_context, "competition", None)
+    competition_id = _optional_int(
+        getattr(event_context, "competition_id", None)
+        or getattr(competition, "competition_id", None)
+    )
+    competition_name = (
+        getattr(event_context, "competition_name", None)
+        or getattr(competition, "display_name", None)
+    )
     return to_json_value(
         {
             "event_id": getattr(event_context, "event_id", None),
             "participants": getattr(event_context, "participants_label", None),
             "sport": getattr(event_context, "sport", None),
-            "competition_id": getattr(competition, "competition_id", None),
-            "competition": getattr(competition, "display_name", None),
+            "competition_id": competition_id,
+            "competition": competition_name,
             "minutes_to_start": evaluation_minute,
             target_field: target_minute,
             "event_starts_at": getattr(event_context, "starts_at", None),

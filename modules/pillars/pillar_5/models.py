@@ -34,7 +34,14 @@ class ThreeWayMarketSnapshot:
     away: QuotePoint
 
     def is_complete(self) -> bool:
-        return self.home is not None and self.away is not None
+        if self.home is None or self.away is None:
+            return False
+        market_group = self.home.trace.market_group
+        if market_group == "1X2":
+            return self.draw is not None
+        if market_group == "Home/Away":
+            return self.draw is None
+        return False
 
 
 @dataclass(frozen=True, slots=True)

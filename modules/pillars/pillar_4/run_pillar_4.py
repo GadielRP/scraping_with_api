@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
 from .debug_logging import log_p4_extraction, log_p4_signal_profile
@@ -19,21 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_pillar_4(
-    event_context: EventContext,
-    odds_trajectory_context: OddsTrajectoryContext | None = None,
+    event_context: EventIdentity | EventContext,
+    odds_trajectory_context: OddsTrajectoryContext,
     *,
     target_minute: int,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
     """Return P4's causal temporal profile for one exact operative target."""
-    odds_context = odds_trajectory_context or getattr(
-        event_context,
-        "odds_trajectory_context",
-        None,
-    )
+    if odds_trajectory_context is None:
+        raise ValueError("odds_trajectory_context is required for Pillar 4")
     extraction = extract_p4_trajectory_inputs(
         event_context,
-        odds_context,
+        odds_trajectory_context,
         target_minute=target_minute,
     )
     if debug_mode:

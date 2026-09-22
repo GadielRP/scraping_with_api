@@ -162,19 +162,25 @@ def _normalize_tolerance(tolerance_minutes: Optional[int]) -> int:
     return tolerance
 
 
+def _row_val(row: Any, key: str, default: Any = None) -> Any:
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
 def _resolve_snapshot_minutes(
-    row: Dict[str, Any],
+    row: Any,
 ) -> tuple[Optional[int], Optional[Decimal]]:
     """Separate observation checkpoints from the provider trajectory axis."""
-    observed = _coerce_int(row.get("observed_minutes_before_start"))
-    trajectory = _coerce_decimal(row.get("trajectory_minutes_before_start"))
+    observed = _coerce_int(_row_val(row, "observed_minutes_before_start"))
+    trajectory = _coerce_decimal(_row_val(row, "trajectory_minutes_before_start"))
 
     # Keep direct formatter callers using the former repository payload valid.
-    legacy_minutes = row.get("minutes_before_start")
+    legacy_minutes = _row_val(row, "minutes_before_start")
     if observed is None:
         observed = _coerce_int(legacy_minutes)
     if trajectory is None:
-        trajectory = _coerce_decimal(row.get("source_minutes_before_start"))
+        trajectory = _coerce_decimal(_row_val(row, "source_minutes_before_start"))
     if trajectory is None:
         trajectory = _coerce_decimal(legacy_minutes)
     return observed, trajectory
@@ -690,7 +696,7 @@ def build_odds_trajectory_context(
         or minute >= normalized_evaluation_minute
     ]
 
-    if not isinstance(odds_trajectory, list) or not odds_trajectory:
+    if not odds_trajectory:
         return OddsTrajectoryContext(
             available=False,
             event_id=None,
@@ -706,14 +712,14 @@ def build_odds_trajectory_context(
     available = False
 
     for row in odds_trajectory:
-        if not isinstance(row, dict):
+        if row is None:
             continue
 
-        market_group = _coerce_text(row.get("market_group"))
-        market_period = _coerce_text(row.get("market_period"))
-        market_name = _coerce_text(row.get("market_name"))
-        choice_name = _coerce_text(row.get("choice_name"))
-        odds_value = _coerce_decimal(row.get("odds_value"))
+        market_group = _coerce_text(_row_val(row, "market_group"))
+        market_period = _coerce_text(_row_val(row, "market_period"))
+        market_name = _coerce_text(_row_val(row, "market_name"))
+        choice_name = _coerce_text(_row_val(row, "choice_name"))
+        odds_value = _coerce_decimal(_row_val(row, "odds_value"))
 
         if (
             market_group is None
@@ -724,17 +730,17 @@ def build_odds_trajectory_context(
         ):
             continue
 
-        current_event_id = _coerce_int(row.get("event_id"))
+        current_event_id = _coerce_int(_row_val(row, "event_id"))
         if event_id is None and current_event_id is not None:
             event_id = current_event_id
 
-        line_value = _coerce_text(row.get("line_value"))
+        line_value = _coerce_text(_row_val(row, "line_value"))
         line_value_key = _normalize_line_value_key(line_value)
-        bookie_name = _coerce_text(row.get("bookie_name")) or "__unknown__"
-        bookie_id = _coerce_int(row.get("bookie_id"))
-        source = (_coerce_text(row.get("source")) or "unknown").lower()
-        exchange_side = (_coerce_text(row.get("exchange_side")) or "").lower() or None
-        exchange_level = _coerce_int(row.get("exchange_level")) or 0
+        bookie_name = _coerce_text(_row_val(row, "bookie_name")) or "__unknown__"
+        bookie_id = _coerce_int(_row_val(row, "bookie_id"))
+        source = (_coerce_text(_row_val(row, "source")) or "unknown").lower()
+        exchange_side = (_coerce_text(_row_val(row, "exchange_side")) or "").lower() or None
+        exchange_level = _coerce_int(_row_val(row, "exchange_level")) or 0
         bookie_identity = str(bookie_id) if bookie_id is not None else bookie_name
         bookie_key = (
             f"{bookie_identity}:{source}:"
@@ -747,7 +753,7 @@ def build_odds_trajectory_context(
             market_period=market_period,
             market_name=market_name,
             line_value_key=line_value_key,
-            market_id=_coerce_int(row.get("market_id")),
+            market_id=_coerce_int(_row_val(row, "market_id")),
         )
         bookie = _get_bookie_container(
             market_line,
@@ -761,27 +767,27 @@ def build_odds_trajectory_context(
         choice = _get_choice_container(
             bookie,
             choice_name=choice_name,
-            choice_id=_coerce_int(row.get("choice_id")),
-            quote_id=_coerce_int(row.get("quote_id")),
-            initial_odds=_coerce_decimal(row.get("initial_odds")),
-            main_line=_coerce_bool(row.get("main_line")),
+            choice_id=_coerce_int(_row_val(row, "choice_id")),
+            quote_id=_coerce_int(_row_val(row, "quote_id")),
+            initial_odds=_coerce_decimal(_row_val(row, "initial_odds")),
+            main_line=_coerce_bool(_row_val(row, "main_line")),
         )
 
-        quote_id = _coerce_int(row.get("quote_id"))
-        snapshot_id = _coerce_int(row.get("snapshot_id"))
+        quote_id = _coerce_int(_row_val(row, "quote_id"))
+        snapshot_id = _coerce_int(_row_val(row, "snapshot_id"))
         collected_at = _coerce_snapshot_instant(
-            row.get("collected_at"),
+            _row_val(row, "collected_at"),
             field_name="market_choice_snapshots.collected_at",
         )
         source_collected_at = _coerce_snapshot_instant(
-            row.get("source_collected_at"),
+            _row_val(row, "source_collected_at"),
             field_name="market_choice_snapshots.source_collected_at",
         )
         (
             observed_minutes_before_start,
             trajectory_minutes_before_start,
         ) = _resolve_snapshot_minutes(row)
-        exchange_size = _coerce_decimal(row.get("exchange_size"))
+        exchange_size = _coerce_decimal(_row_val(row, "exchange_size"))
 
         snapshot = OddsSnapshotPoint(
             snapshot_id=snapshot_id,
@@ -790,7 +796,7 @@ def build_odds_trajectory_context(
             collected_at=collected_at,
             source_collected_at=source_collected_at,
             minutes_before_start=trajectory_minutes_before_start,
-            source_limit=_coerce_decimal(row.get("source_limit")),
+            source_limit=_coerce_decimal(_row_val(row, "source_limit")),
             exchange_size=exchange_size,
         )
         choice.snapshots.append(snapshot)

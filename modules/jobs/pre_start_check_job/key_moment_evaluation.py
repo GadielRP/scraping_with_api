@@ -278,10 +278,8 @@ def _load_trajectory_payloads(
         len(trajectory_by_event_id),
         len(event_ids),
     )
-    return {
-        event_id: [point.to_dict() for point in points]
-        for event_id, points in trajectory_by_event_id.items()
-    }
+    return trajectory_by_event_id
+
 
 
 def _build_evaluation_payloads(
@@ -572,6 +570,7 @@ def evaluate_pre_start_key_moments(
                 op_data_cache=oddsportal_context.data_cache,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
+                trajectories_by_event_id=trajectory_payloads,
             )
 
 

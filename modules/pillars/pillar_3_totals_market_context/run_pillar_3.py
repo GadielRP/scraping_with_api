@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.market_audit import build_raw_audit, json_inputs
 from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
 from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
@@ -100,8 +100,8 @@ def _log_signal_profile(profile: dict[str, Any]) -> None:
 
 
 def calculate_pillar_3(
-    event_context: EventContext,
-    odds_trajectory_context: OddsTrajectoryContext | None = None,
+    event_context: EventIdentity | EventContext,
+    odds_trajectory_context: OddsTrajectoryContext,
     *,
     target_selection: TargetMinuteSelection,
     debug_mode: bool = False,
@@ -111,14 +111,11 @@ def calculate_pillar_3(
     The returned dict is the mining producer output. The pipeline persists it
     through ``P3MiningAdapter`` immediately after this function returns.
     """
-    odds_context = odds_trajectory_context or getattr(
-        event_context,
-        "odds_trajectory_context",
-        None,
-    )
+    if odds_trajectory_context is None:
+        raise ValueError("odds_trajectory_context is required for Pillar 3")
     extraction = extract_p3_market_snapshot(
         event_context.event_id,
-        odds_context,
+        odds_trajectory_context,
         target_selection,
     )
     periods = extraction.period_diagnostics()
@@ -175,7 +172,7 @@ def calculate_pillar_3(
                 size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
             ))
         raw = build_raw_audit(
-            odds_context=odds_context,
+            odds_context=odds_trajectory_context,
             periods=periods,
             inputs=inputs,
             input_trace=traces,
@@ -209,7 +206,7 @@ def calculate_pillar_3(
         optional_complete=optional_complete,
     )
     raw = build_raw_audit(
-        odds_context=odds_context,
+        odds_context=odds_trajectory_context,
         periods=periods,
         inputs=json_inputs(snapshot.input_values()),
         input_trace=snapshot.input_trace(),

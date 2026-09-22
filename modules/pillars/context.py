@@ -51,6 +51,22 @@ class CompetitionContext:
     updated_at: Optional[datetime] = None
 
 
+@dataclass(frozen=True, slots=True)
+class EventIdentity:
+    """Lightweight, immutable projection of an event for calculation pillars and mining adapters."""
+    event_id: int
+    participants_label: str
+    starts_at: datetime
+    minutes_until_start: Optional[int]
+    sport: str
+    round: Optional[str] = None
+    competition_id: Optional[int] = None
+    competition_name: Optional[str] = None
+    season_id: Optional[int] = None
+    country: Optional[str] = None
+    context_status: str = "VALID"
+
+
 @dataclass
 class EventContext:
     event_id: int
@@ -84,6 +100,29 @@ class EventContext:
     alert_sent: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    def to_identity(self) -> EventIdentity:
+        comp_id = getattr(self.competition, "competition_id", None) if self.competition else None
+        comp_name = (
+            getattr(self.competition, "display_name", None)
+            or getattr(self.competition, "canonical_name", None)
+            if self.competition
+            else None
+        )
+        return EventIdentity(
+            event_id=self.event_id,
+            participants_label=self.participants_label,
+            starts_at=self.starts_at,
+            minutes_until_start=self.minutes_until_start,
+            sport=self.sport,
+            round=self.round,
+            competition_id=comp_id,
+            competition_name=comp_name,
+            season_id=self.season_id,
+            country=self.country,
+            context_status=self.context_status,
+        )
+
 
 
 def _missing_context_message(event_obj, missing: list[str]) -> str:

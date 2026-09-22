@@ -135,13 +135,13 @@ MV_P5_PRICE_MEMORY_INDEXES_SQL = [
     # Fast 1X2 composite lookup (with draw)
     (
         "CREATE INDEX IF NOT EXISTS idx_mv_p5_lookup_1x2 "
-        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, odds_home, odds_draw, odds_away, starts_at DESC) "
+        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, has_draw, odds_home, odds_draw, odds_away, starts_at DESC) "
         "WHERE odds_draw IS NOT NULL;"
     ),
     # Fast 2-way Home/Away lookup (without draw)
     (
         "CREATE INDEX IF NOT EXISTS idx_mv_p5_lookup_2way "
-        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, odds_home, odds_away, starts_at DESC) "
+        "ON mv_p5_price_memory (sport, bookie_id, market_group, market_period, has_draw, odds_home, odds_away, starts_at DESC) "
         "WHERE odds_draw IS NULL;"
     ),
     # Chronological ordering index

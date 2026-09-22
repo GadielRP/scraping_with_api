@@ -64,14 +64,21 @@ class P4MiningAdapter:
             }
         )
         competition = getattr(event_context, "competition", None)
-        competition_id = _optional_int(getattr(competition, "competition_id", None))
+        competition_id = _optional_int(
+            getattr(event_context, "competition_id", None)
+            or getattr(competition, "competition_id", None)
+        )
+        competition_name = (
+            getattr(event_context, "competition_name", None)
+            or getattr(competition, "display_name", None)
+        )
         context = to_json_value(
             {
                 "event_id": event_context.event_id,
                 "participants": event_context.participants_label,
                 "sport": event_context.sport,
                 "competition_id": competition_id,
-                "competition": getattr(competition, "display_name", None),
+                "competition": competition_name,
                 "minutes_to_start": evaluation_minute,
                 "P4_TARGET_MINUTE": target_minute,
                 "event_starts_at": getattr(event_context, "starts_at", None),

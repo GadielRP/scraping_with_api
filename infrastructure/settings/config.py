@@ -672,6 +672,21 @@ class Config:
         'all',
         {'all', 'successful_only'},
     )
+    # P5 historical population is sport-wide by default. These opt-in filters
+    # deliberately narrow the population and therefore form part of its audit
+    # contract whenever enabled.
+    P5_PRICE_MEMORY_FILTER_BY_COMPETITION = _parse_env_bool(
+        'P5_PRICE_MEMORY_FILTER_BY_COMPETITION',
+        False,
+    )
+    P5_PRICE_MEMORY_FILTER_BY_SEASON = _parse_env_bool(
+        'P5_PRICE_MEMORY_FILTER_BY_SEASON',
+        False,
+    )
+    P5_PRICE_MEMORY_FILTER_BY_COUNTRY = _parse_env_bool(
+        'P5_PRICE_MEMORY_FILTER_BY_COUNTRY',
+        False,
+    )
     ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
         'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
         True,

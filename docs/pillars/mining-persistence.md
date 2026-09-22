@@ -17,7 +17,7 @@ duplicados. El resultado real continúa en `results` y se relaciona por
 
 ## 1.1 Estado actual de la implementación
 
-El contrato, el repositorio y la integración runtime están activos para P1, P2, P3 y P4. El pipeline llama a la minería inmediatamente después de calcular cada output y conserva también los resultados de error donde el productor los expone. P5 permanece como pilar de cálculo sin adaptador de minería registrado.
+El contrato, el repositorio y la integración runtime están activos para P1, P2, P3, P4 y P5. El pipeline llama a la minería inmediatamente después de calcular cada output y conserva también los resultados de error donde el productor los expone. P5 proyecta cada memoria de bookmaker de forma independiente y mantiene Betfair como exposición diagnóstica sin score.
 
 P1 se calcula en `pillar_pipeline.py` y ahora se persiste en dos runs
 independientes. Su orquestador devuelve dos salidas:
@@ -248,11 +248,11 @@ movimiento de mercado y no es automáticamente una predicción del partido.
 | P2 | `side_market` | summary → `p2_signal_engine` | Registrado y activo |
 | P3 | `totals_market_context` | summary → `p3_signal_engine` | Registrado y activo |
 | P4 | `temporal_market_drift` | summary → module (`p4_signal_engine`) | Registrado y activo (`P4MiningAdapter`) |
-| P5 | `exact_price_memory` | summary → exact price memory module | Pendiente de adaptador |
+| P5 | `exact_price_memory` | summary → `p5_memory_engine` → bookmaker 1/3/302/4 | Registrado y activo (`P5MiningAdapter`) |
 
-P1, P2, P3 y P4 están registrados para escritura actualmente en `_registered_mining_adapters()` (`modules/jobs/pre_start_check_job/pillar_pipeline.py`). P4 utiliza `P4MiningAdapter` (`modules/pillars/mining/adapters/pillar_4.py`) para persistir su perfil temporal en `payload_schema_version = 2` sin inventar score escalar ni dirección global; preserva el perfil estructurado completo en `payload->'P4_SIGNAL_PROFILE'` y proyecta dimensiones de mercado (mercados, períodos, vistas, bookies, fuentes, lados de exchange y series).
+P1, P2, P3, P4 y P5 están registrados para escritura actualmente en `_registered_mining_adapters()` (`modules/jobs/pre_start_check_job/pillar_pipeline.py`). P4 utiliza `P4MiningAdapter` (`modules/pillars/mining/adapters/pillar_4.py`) para persistir su perfil temporal en `payload_schema_version = 2` sin inventar score escalar ni dirección global; preserva el perfil estructurado completo en `payload->'P4_SIGNAL_PROFILE'` y proyecta dimensiones de mercado (mercados, períodos, vistas, bookies, fuentes, lados de exchange y series).
 
-P5 queda pendiente de adaptador de minería y escritura. La regla de procedencia canónica se mantiene: si una identidad o metadato no proviene del productor o del contexto, ningún adaptador debe adivinarla.
+P5 utiliza `P5MiningAdapter` (`modules/pillars/mining/adapters/pillar_5.py`) con `payload_schema_version = 3`. Conserva el payload completo, crea unidades separadas para SofaScore (`1`), Bet365 (`3`) y Pinnacle (`302`), y publica `P5`, dirección, fuerza, tamaño de muestra e intermedios sin agregarlos. La unidad Betfair (`4`) solo conserva BACK/LAY y tamaños como diagnóstico. La regla de procedencia canónica se mantiene: si una identidad o metadato no proviene del productor o del contexto, ningún adaptador debe adivinarla.
 
 Los resultados FT pueden evaluarse con `results`. Una evaluación de primer tiempo o de una línea totals necesita una fuente de outcome apropiada; no debe forzarse con `results.winner` si semánticamente no corresponde.
 

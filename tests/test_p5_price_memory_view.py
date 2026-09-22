@@ -65,8 +65,8 @@ def test_p5_price_memory_indexes():
     assert "idx_mv_p5_lookup_2way" in indexes_joined
     assert "idx_mv_p5_starts_at" in indexes_joined
     assert "idx_mv_p5_sport_competition" in indexes_joined
-    assert "sport, bookie_id, market_group, market_period, odds_home, odds_draw, odds_away, starts_at DESC" in indexes_joined
-    assert "sport, bookie_id, market_group, market_period, odds_home, odds_away, starts_at DESC" in indexes_joined
+    assert "sport, bookie_id, market_group, market_period, has_draw, odds_home, odds_draw, odds_away, starts_at DESC" in indexes_joined
+    assert "sport, bookie_id, market_group, market_period, has_draw, odds_home, odds_away, starts_at DESC" in indexes_joined
     assert "WHERE odds_draw IS NOT NULL" in indexes_joined
     assert "WHERE odds_draw IS NULL" in indexes_joined
 
@@ -122,9 +122,9 @@ def test_pillar_5_price_memory_repository_find_exact_matches_1x2():
     assert match.season_id == 2025
     assert match.country == "Spain"
     assert match.has_draw is True
-    assert match.odds_home == 1.95
-    assert match.odds_draw == 3.40
-    assert match.odds_away == 4.10
+    assert match.odds_home == Decimal("1.950")
+    assert match.odds_draw == Decimal("3.400")
+    assert match.odds_away == Decimal("4.100")
     assert match.home_score == 2
     assert match.winner_side == "1"
 
@@ -186,14 +186,17 @@ def test_pillar_5_price_memory_repository_find_exact_matches_2way():
         odds_away=2.45,
         odds_draw=None,
         has_draw=False,
+        sport="Basketball",
+        current_event_id=123456,
+        current_starts_at=now,
         limit=None,
     )
 
     assert len(matches) == 1
     match = matches[0]
     assert match.odds_draw is None
-    assert match.odds_home == 1.55
-    assert match.odds_away == 2.45
+    assert match.odds_home == Decimal("1.550")
+    assert match.odds_away == Decimal("2.450")
     assert match.has_draw is False
     assert match.season_id == 100
     assert match.country == "USA"
@@ -250,6 +253,8 @@ def test_pillar_5_price_memory_repository_find_exact_matches_with_population_fil
         competition_id=11,
         season_id=2025,
         country="Spain",
+        current_event_id=99999,
+        current_starts_at=now,
     )
 
     assert len(matches) == 1
@@ -265,6 +270,5 @@ def test_pillar_5_price_memory_repository_find_exact_matches_with_population_fil
     assert params["season_id"] == 2025
     assert params["country"] == "Spain"
     assert params["has_draw"] is True
-
 
 

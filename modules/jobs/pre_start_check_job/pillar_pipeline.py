@@ -23,6 +23,7 @@ from infrastructure.persistence.repositories.pillar_mining_repository import (
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import (
     EventContext,
+    EventIdentity,
     build_event_context,
     summarize_number_of_teams_from_streak_analysis,
 )
@@ -52,6 +53,7 @@ from modules.pillars.mining.adapters import (
     P2MiningAdapter,
     P3MiningAdapter,
     P4MiningAdapter,
+    P5MiningAdapter,
 )
 from modules.pillars.mining.service import PillarMiningService
 from modules.pillars.pillar_4.run_pillar_4 import (
@@ -599,7 +601,7 @@ class EventPillarProcessor:
     def _persist_mining_result(
         self,
         pillar_id: str,
-        event_context: EventContext,
+        event_context: EventIdentity | EventContext,
         result: dict[str, Any],
     ) -> None:
         if self.mining_service is None:
@@ -612,6 +614,8 @@ class EventPillarProcessor:
             target_minute = result.get("P3_TARGET_MINUTE")
         if target_minute is None:
             target_minute = result.get("P4_TARGET_MINUTE")
+        if target_minute is None:
+            target_minute = result.get("P5_TARGET_MINUTE")
         engine_version = result.get("engine_version") or result.get("raw", {}).get(
             "engine_version"
         )
@@ -643,7 +647,11 @@ class EventPillarProcessor:
                 engine_version,
             )
 
-    def process_event(self, event_context: EventContext) -> Optional[dict]:
+    def process_event(
+        self,
+        event_context: EventContext,
+        trajectory_points: Optional[list[Any]] = None,
+    ) -> Optional[dict]:
         """Calculate pillar modules for a single event context.
 
         Returns a dictionary with pillar results or ``None`` on failure.
@@ -687,18 +695,26 @@ class EventPillarProcessor:
 
         minutes_until_start = getattr(event_context, "minutes_until_start", None)
         evaluation_minute = minutes_until_start
-        odds_trajectory = getattr(event_context, "odds_trajectory", [])
+        odds_trajectory = (
+            trajectory_points
+            if trajectory_points is not None
+            else getattr(event_context, "odds_trajectory", [])
+        )
         odds_trajectory_context = build_odds_trajectory_context(
             odds_trajectory,
             evaluation_minute=evaluation_minute,
         )
-        event_context.odds_trajectory_context = odds_trajectory_context
         target_selection = select_target_minute(
             odds_trajectory_context,
             flow_id=CANONICAL_SIGNAL_FLOW_ID,
             expected_event_id=event_context.event_id,
             allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
             evaluation_minute=evaluation_minute,
+        )
+        event_identity = (
+            event_context.to_identity()
+            if hasattr(event_context, "to_identity")
+            else event_context
         )
 
         logger.info(
@@ -729,7 +745,7 @@ class EventPillarProcessor:
 
         if self.debug_mode:
             _save_pillar_debug_snapshots(
-                event_context=event_context,
+                event_context=event_identity,
                 odds_trajectory_context=odds_trajectory_context,
             )
 
@@ -737,7 +753,7 @@ class EventPillarProcessor:
         if self._is_pillar_enabled("pillar_2"):
             try:
                 p2_result = calculate_pillar_2(
-                    event_context=event_context,
+                    event_context=event_identity,
                     odds_trajectory_context=odds_trajectory_context,
                     target_selection=target_selection,
                     debug_mode=self.debug_mode,
@@ -750,7 +766,7 @@ class EventPillarProcessor:
                     exc,
                 )
                 p2_result = _build_p2_error_result(
-                    event_context,
+                    event_identity,
                     odds_trajectory_context,
                     exc,
                     target_selection,
@@ -762,7 +778,7 @@ class EventPillarProcessor:
             )
             self._persist_mining_result(
                 "pillar_2_side_market",
-                event_context,
+                event_identity,
                 p2_result,
             )
         else:
@@ -775,7 +791,7 @@ class EventPillarProcessor:
         if self._is_pillar_enabled("pillar_3"):
             try:
                 p3_result = calculate_pillar_3(
-                    event_context=event_context,
+                    event_context=event_identity,
                     odds_trajectory_context=odds_trajectory_context,
                     target_selection=target_selection,
                     debug_mode=self.debug_mode,
@@ -788,7 +804,7 @@ class EventPillarProcessor:
                     exc,
                 )
                 p3_result = _build_p3_error_result(
-                    event_context,
+                    event_identity,
                     odds_trajectory_context,
                     exc,
                     target_selection,
@@ -800,7 +816,7 @@ class EventPillarProcessor:
             )
             self._persist_mining_result(
                 "pillar_3_totals_market_context",
-                event_context,
+                event_identity,
                 p3_result,
             )
         else:
@@ -814,7 +830,7 @@ class EventPillarProcessor:
             try:
                 # calculate pillar 4 (p4)
                 p4_result = calculate_pillar_4(
-                    event_context=event_context,
+                    event_context=event_identity,
                     odds_trajectory_context=odds_trajectory_context,
                     target_minute=evaluation_minute,
                     debug_mode=self.debug_mode,
@@ -827,7 +843,7 @@ class EventPillarProcessor:
                     exc,
                 )
                 p4_result = _build_p4_error_result(
-                    event_context,
+                    event_identity,
                     odds_trajectory_context,
                     exc,
                     target_minute=evaluation_minute,
@@ -852,7 +868,7 @@ class EventPillarProcessor:
                 )
             self._persist_mining_result(
                 "pillar_4_temporal_market_drift",
-                event_context,
+                event_identity,
                 p4_result,
             )
         else:
@@ -878,8 +894,7 @@ class EventPillarProcessor:
                 ft_1x2_odds_trajectory = odds_trajectory_context.filter_by_market_groups(
                     allowed_groups={"1X2", "Home/Away"}
                 )
-                event_context.ft_1x2_odds_trajectory_context = ft_1x2_odds_trajectory
-                
+
                 if self.debug_mode:
                     logger.info(
                         "P5: Context after market group filtering for event %s (%s): available=%s, markets=%s",
@@ -905,7 +920,7 @@ class EventPillarProcessor:
                     )
 
                 p5_result = calculate_pillar_5(
-                    event_context=event_context,
+                    event_context=event_identity,
                     odds_trajectory_context=ft_1x2_odds_trajectory,
                     target_selection=target_selection,
                     debug_mode=self.debug_mode,
@@ -918,7 +933,7 @@ class EventPillarProcessor:
                     exc,
                 )
                 p5_result = _build_p5_error_result(
-                    event_context,
+                    event_identity,
                     ft_1x2_odds_trajectory,
                     exc,
                     target_selection=target_selection,
@@ -930,11 +945,21 @@ class EventPillarProcessor:
                 p5_result.get("P5_STATUS"),
                 p5_result.get("P5_TARGET_MINUTE"),
             )
+            self._persist_mining_result(
+                "pillar_5",
+                event_identity,
+                p5_result,
+            )
         else:
             logger.info(
                 "Pillar 5 (Exact Price Memory) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
+
+        # Release trajectory data from local variables to allow prompt GC before Pillar 1
+        odds_trajectory = None
+        odds_trajectory_context = None
+        ft_1x2_odds_trajectory = None
 
         logger.info(
             "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -1009,8 +1034,8 @@ class EventPillarProcessor:
 
         if streak_analysis and self.debug_mode:
             _save_pillar_debug_snapshots(
-                event_context=event_context,
-                odds_trajectory_context=odds_trajectory_context,
+                event_context=event_identity,
+                odds_trajectory_context=None,
                 streak_analysis=streak_analysis,
             )
 
@@ -1079,12 +1104,6 @@ class EventPillarProcessor:
                 "pillar_4": p4_result,
                 "pillar_5": p5_result,
             }
-
-        p1_result.setdefault("raw", {}).update({
-            "odds_trajectory_available": odds_trajectory_context.available,
-            "odds_trajectory_target_minutes_present": odds_trajectory_context.target_minutes_present,
-        })
-
         # Log the M1 result.
         m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
         logger.info(
@@ -1298,13 +1317,13 @@ class EventPillarProcessor:
         )
         self._persist_mining_result(
             "pillar_1_team_structure_side",
-            event_context,
+            event_identity,
             p1_result,
         )
         if p1_totals_serialized is not None:
             self._persist_mining_result(
                 "pillar_1_team_structure_totals",
-                event_context,
+                event_identity,
                 p1_totals_serialized,
             )
 
@@ -1322,7 +1341,12 @@ class EventPillarProcessor:
 
 def _registered_mining_adapters() -> dict[
     str,
-    P1SideMiningAdapter | P1TotalsMiningAdapter | P2MiningAdapter | P3MiningAdapter | P4MiningAdapter,
+    P1SideMiningAdapter
+    | P1TotalsMiningAdapter
+    | P2MiningAdapter
+    | P3MiningAdapter
+    | P4MiningAdapter
+    | P5MiningAdapter,
 ]:
     """Composition root for structural signal-profile mining writers."""
     return {
@@ -1331,6 +1355,7 @@ def _registered_mining_adapters() -> dict[
         "pillar_2_side_market": P2MiningAdapter(),
         "pillar_3_totals_market_context": P3MiningAdapter(),
         "pillar_4_temporal_market_drift": P4MiningAdapter(),
+        "pillar_5": P5MiningAdapter(),
     }
 
 
@@ -1343,6 +1368,7 @@ def evaluate_and_calculate_pillars_batch(
     op_data_cache=None,
     debug_mode: bool = False,
     enabled_pillars: Optional[dict[str, bool]] = None,
+    trajectories_by_event_id: Optional[dict[int, list[Any]]] = None,
 ):
     """Entry point to evaluate and calculate pillar modules for a batch of events."""
     if not events_for_pillars:
@@ -1393,6 +1419,35 @@ def evaluate_and_calculate_pillars_batch(
         mining_service=mining_service,
     )
 
+    def _resolve_batch_event_id(ctx: Any) -> Optional[int]:
+        raw_id = getattr(ctx, "event_id", None)
+        if raw_id is None and isinstance(ctx, dict):
+            raw_id = ctx.get("event_id") or ctx.get("id")
+        if raw_id is not None:
+            try:
+                return int(raw_id)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    def _execute_process_event(
+        proc: Any,
+        ctx: Any,
+        trajectories: Optional[list[Any]] = None,
+    ) -> Any:
+        if trajectories is not None:
+            try:
+                return proc.process_event(ctx, trajectory_points=trajectories)
+            except TypeError:
+                return proc.process_event(ctx)
+        return proc.process_event(ctx)
+
+    def _get_trajectories(ctx: Any) -> Optional[list[Any]]:
+        if trajectories_by_event_id is None:
+            return None
+        eid = _resolve_batch_event_id(ctx)
+        return trajectories_by_event_id.get(eid) if eid is not None else None
+
     max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))
     logger.info(
         "Pillar pipeline concurrency events=%s workers=%s",
@@ -1402,14 +1457,23 @@ def evaluate_and_calculate_pillars_batch(
     if max_workers == 1:
         for event_context in allowed_events:
             try:
-                processor.process_event(event_context)
+                _execute_process_event(
+                    processor,
+                    event_context,
+                    _get_trajectories(event_context),
+                )
             except Exception as exc:
                 logger.error("Critical failure in pillar processing: %s", exc)
         return
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(processor.process_event, event_context)
+            executor.submit(
+                _execute_process_event,
+                processor,
+                event_context,
+                _get_trajectories(event_context),
+            )
             for event_context in allowed_events
         ]
         for future in futures:
