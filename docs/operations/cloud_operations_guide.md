@@ -739,10 +739,23 @@ docker compose exec postgres psql -U sofascore -d sofascore_odds -c "ALTER TABLE
 docker compose exec app python /app/main.py refresh-alerts
 ```
 
+4.7) Grant application permissions to sofascore_app (required after restore)
+```powershell
+# Because pg_restore runs with --no-privileges, you must grant DML permissions to the app role:
+docker compose exec postgres psql -U sofascore -d sofascore_odds -c "
+  GRANT USAGE ON SCHEMA public TO sofascore_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sofascore_app;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sofascore_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sofascore_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO sofascore_app;
+"
+```
+
 Notes:
 - Server backups may not include the new views/columns yet. Until the server schema is migrated, you must run steps 4.5 and 4.6 locally after every restore.
 - The computed columns (var_one, var_x, var_two) are required before creating views that reference them.
 - Any `main.py` command initializes the system (creates views if missing). `refresh-alerts` is the shortest, and also refreshes the materialized view.
+- Step 4.7 is mandatory because `pg_restore --no-privileges` resets schema grants; without it, `app` will fail with `permission denied for table events`.
 
 5) Verify locally (port 5435)
 ```powershell
@@ -763,22 +776,26 @@ Notes:
 - If a local-only marker table exists from earlier tests, it may be dropped by `--clean`. Recreate it if you still want the marker.
 - To start from an empty local DB and restore on first run, you can wipe the local volume and place a `backup.dump` in `db-init/`, then `docker compose up -d` (this rebuilds local data volume).
 
-### 16.1) Copy logs and debuggig files from server
+### 16.1) Copy logs and debugging files from server
 
 To pull logs from the server `./logs/...` to your local `./logs/...`:
 ```powershell
-# use the following format: scp root@143.244.179.129:/opt/sofascore/logs/NN_Month/week_n/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\NN_Month\week_n
+# Ensure local destination directory exists first (prevents 'Broken pipe' error on Windows):
+New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3"
 
-scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_3/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3
-
+# use the following format: scp root@143.244.179.129:/opt/sofascore/logs/NN_Month/week_n/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\NN_Month\week_n\
+scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_3/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3\
 ```
 
 To pull debugging files from server `./debug/...` to local `./debug/...`:
 ```powershell
-# use the following scp command to pull all of the debugging directories and its files from oddspapi odds responses (/odds and /historical-odds)
+# Ensure destination directories exist
+New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\debug\oddspapi_odds_responses"
+New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects"
+
+# Pull debugging directories from oddspapi odds responses (/odds and /historical-odds)
 scp -r root@143.244.179.129:/opt/sofascore/debug/oddspapi_odds_responses/. C:\Users\gadie\Documents\projects\sofascore\debug\oddspapi_odds_responses
 
-# use the following scp command to pull all of the debugging directories and its files from pillar event context (/pillar_pipeline_objects)
-scp -r root@143.244.179.129:/opt/sofascore/debug/pillar_pipeline_objects/. 
-C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects
+# Pull debugging directories from pillar event context (/pillar_pipeline_objects)
+scp -r root@143.244.179.129:/opt/sofascore/debug/pillar_pipeline_objects/. C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects
 ```
