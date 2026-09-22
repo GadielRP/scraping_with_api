@@ -50,3 +50,42 @@ def test_sofascore_line_value_survives_adapter_and_canonical_normalizer(monkeypa
     assert normalized["diagnostics"]["skipped_missing_line_value"] == []
     assert normalized["markets"][0]["lineValue"] == "2.5"
     assert normalized["markets"][0]["canonicalMarketKey"] == "over_under_full_time"
+
+
+def test_sofascore_match_period_normalizes_to_ftiot(monkeypatch):
+    canonical_type = CanonicalMarketTypeResolution(
+        canonical_market_key="home_away_full_time_including_overtime",
+        canonical_market_name="Home/Away Full Time Including Overtime",
+        canonical_market_group="Home/Away",
+        canonical_market_period="Full Time Including Overtime",
+        market_family="side_2way",
+        requires_line_value=False,
+        enabled_for_ingestion=True,
+        market_type_id=8,
+    )
+    monkeypatch.setattr(
+        CanonicalMarketTypeRepository,
+        "build_index",
+        staticmethod(lambda enabled_only=True: {canonical_type.canonical_market_key: canonical_type}),
+    )
+
+    normalized = CanonicalMarketNormalizer.normalize_sofascore_response(
+        {
+            "markets": [
+                {
+                    "marketName": "Full time",
+                    "marketGroup": "Home/Away",
+                    "marketPeriod": "Match",
+                    "choices": [
+                        {"name": "1", "sourceId": 1, "decimalValue": 1.7},
+                        {"name": "2", "sourceId": 2, "decimalValue": 2.1},
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert normalized["markets"][0]["canonicalMarketKey"] == (
+        "home_away_full_time_including_overtime"
+    )
+    assert normalized["markets"][0]["marketPeriod"] == "Full Time Including Overtime"

@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-FULL_TIME_PERIODS = {"match", "full time", "full-time"}
+# SofaScore distinguishes regulation/full-time markets from definitive match
+# markets.  ``Match`` is reserved for settlement including overtime, extra
+# innings, or the sport's equivalent decisive tiebreak.
+FULL_TIME_PERIODS = {"full time", "full-time"}
+FULL_TIME_INCLUDING_OVERTIME_PERIODS = {
+    "match",
+    "full time",
+    "full-time",
+    "full time including overtime",
+    "full-time including overtime",
+}
 FIRST_HALF_PERIODS = {"1st half", "p1"}
 SECOND_HALF_PERIODS = {"2nd half", "p2"}
 FIRST_QUARTER_PERIODS = {"1st quarter", "p1"}
@@ -269,9 +279,9 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         trajectory=True,
         order=23,
         sofascore_match={
-            "market_name": {"full time (including overtime)"},
-            "market_group": {"full time (including overtime)"},
-            "market_period": FULL_TIME_PERIODS,
+            "market_name": {"full time", "full time (including overtime)"},
+            "market_group": {"home/away", "full time (including overtime)"},
+            "market_period": FULL_TIME_INCLUDING_OVERTIME_PERIODS,
         },
         oddspapi_match={
             "market_type": {"moneyline", "fulltime(includingovertime)"},
@@ -406,6 +416,18 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         requires_line_value=True,
         trajectory=True,
         order=31,
+        sofascore_match={
+            "market_name": {
+                "game total",
+                "total points",
+                "match goals",
+                "over under (incl. overtime)",
+                "total (incl. overtime)",
+                "over under (incl. extra innings)",
+            },
+            "market_group": {"over/under", "match goals"},
+            "market_period": FULL_TIME_INCLUDING_OVERTIME_PERIODS,
+        },
         oddspapi_match={
             "market_type": {"totals"},
             "market_name": {
@@ -632,6 +654,11 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         requires_line_value=True,
         trajectory=True,
         order=52,
+        sofascore_match={
+            "market_name": {"asian handicap", "point spread"},
+            "market_group": {"asian handicap", "point spread"},
+            "market_period": FULL_TIME_INCLUDING_OVERTIME_PERIODS,
+        },
         oddspapi_match={
             "market_type": {"spreads"},
             "market_name": {
@@ -648,6 +675,11 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         requires_line_value=True,
         trajectory=True,
         order=53,
+        sofascore_match={
+            "market_name": {"handicap"},
+            "market_group": {"handicap"},
+            "market_period": FULL_TIME_INCLUDING_OVERTIME_PERIODS,
+        },
         oddspapi_match={
             "market_type": {"spreads"},
             "market_name": {
@@ -760,7 +792,7 @@ CANONICAL_MARKET_TYPE_SEEDS = {
         sofascore_match={
             "market_name": {"both teams to score (incl. overtime and penalties)"},
             "market_group": {"both teams to score"},
-            "market_period": {"Full Time"},
+            "market_period": FULL_TIME_INCLUDING_OVERTIME_PERIODS,
         },
         oddspapi_match={
             "market_type": {"bothteamsscore"},
