@@ -28,7 +28,6 @@ from infrastructure.persistence.backfill.canonical_period_backfill import (
     BackfillScope,
     CanonicalPeriodBackfillService,
 )
-from infrastructure.persistence.models import Result
 from infrastructure.persistence.odds_models import Market, MarketChoice
 
 STRATEGY_NAME = "canonical_period_backfill_by_binary_choice_structure_v1"
@@ -50,8 +49,13 @@ class BinaryChoiceStructureBackfillService(CanonicalPeriodBackfillService):
         *,
         scope: BackfillScope,
         period_pairs: dict[int, int] | None = None,
-        require_binary_home_away: bool = False,
+        require_binary_home_away: bool = True,
     ) -> None:
+        if not require_binary_home_away:
+            raise ValueError(
+                "binary-choice strategy requires a Home/Away market as an anchor; "
+                "rerun the audit with this guard enabled"
+            )
         normalized_sports = (
             frozenset(
                 str(sport).strip().lower()
@@ -105,16 +109,9 @@ class BinaryChoiceStructureBackfillService(CanonicalPeriodBackfillService):
         return None
 
     def _event_guard_detail(self, session, event_id: int) -> str | None:
-        winner = (
-            session.query(Result.winner)
-            .filter(Result.event_id == int(event_id))
-            .scalar()
-        )
-        if str(winner or "").strip().upper() == "X":
-            return (
-                f"event {event_id} has persisted result winner='X'; "
-                "binary choice structure is not safe for this event"
-            )
+        draw_detail = super()._event_guard_detail(session, int(event_id))
+        if draw_detail:
+            return draw_detail
 
         markets = (
             session.query(Market)
@@ -135,23 +132,9 @@ class BinaryChoiceStructureBackfillService(CanonicalPeriodBackfillService):
         if not ids:
             return {}
 
-        guard_details: dict[int, str] = {}
-
-        # 1. Result draw guard
-        draw_ids = {
-            int(event_id)
-            for event_id, winner in session.query(Result.event_id, Result.winner)
-            .filter(Result.event_id.in_(ids))
-            .all()
-            if str(winner or "").strip().upper() == "X"
-        }
-        for event_id in draw_ids:
-            guard_details[event_id] = (
-                f"event {event_id} has persisted result winner='X'; "
-                "binary choice structure is not safe for this event"
-            )
-
-        # 2. Market choice structure guard
+        guard_details = self._persisted_draw_guard_details(session, ids)
+        # Check market choice structure only for events that passed the
+        # shared persisted-draw guard.
         remaining_ids = [eid for eid in ids if eid not in guard_details]
         if remaining_ids:
             markets = (

@@ -202,7 +202,9 @@ def manifest_v2_payload(manifest: dict[str, Any]) -> dict[str, Any]:
     """Return the metadata portion hashed by a streaming manifest."""
     payload = dict(manifest)
     payload.pop("manifest_sha256", None)
-    return payload
+    # JSON object keys are strings on disk. Normalize once before hashing so
+    # in-memory integer mappings hash identically after round-trip serialization.
+    return json.loads(_json_bytes(payload).decode("utf-8"))
 
 
 def manifest_v2_sha256(

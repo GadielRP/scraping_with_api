@@ -47,7 +47,12 @@ def _binary_choice_structure_factory(
 ) -> BinaryChoiceStructureBackfillService:
     raw_pairs = (parameters or {}).get("period_pairs") or PERIOD_VARIANT_PAIRS
     period_pairs = {int(key): int(value) for key, value in raw_pairs.items()}
-    require_binary = bool((parameters or {}).get("require_binary_home_away", False))
+    require_binary = bool((parameters or {}).get("require_binary_home_away", True))
+    if not require_binary:
+        raise ValueError(
+            "binary-choice manifests without a Home/Away anchor guard are unsafe; "
+            "rerun audit to create a guarded manifest"
+        )
     return BinaryChoiceStructureBackfillService(
         scope=scope,
         period_pairs=period_pairs,

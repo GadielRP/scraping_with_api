@@ -289,16 +289,26 @@ class BackfillRunner:
             "event_count": int(state["event_count"]),
             "upper_bound": state.get("upper_bound"),
         }
-        manifest["manifest_sha256"] = manifest_v2_sha256(
-            manifest, events_path, event_count=manifest["event_count"]
-        )
+        # Serialize metadata first so the hash is calculated from the exact
+        # JSON representation that will be validated and consumed later.
+        # This avoids mismatches when Python-only values (notably integer dict
+        # keys in period_pairs) are converted by JSON serialization.
         write_json_atomic(self.manifest_path, manifest)
+        persisted_manifest = read_json(self.manifest_path)
+        persisted_manifest["manifest_sha256"] = manifest_v2_sha256(
+            persisted_manifest,
+            events_path,
+            event_count=persisted_manifest["event_count"],
+        )
+        write_json_atomic(self.manifest_path, persisted_manifest)
         persisted_manifest = read_json(self.manifest_path)
         validate_manifest(persisted_manifest, base_path=self.manifest_path.parent)
         audit_checkpoint_path.unlink(missing_ok=True)
         logger.info("Manifest written: %s", self.manifest_path)
         logger.info("Events: %d", manifest["event_count"])
-        logger.info("Manifest SHA-256: %s", manifest["manifest_sha256"])
+        logger.info(
+            "Manifest SHA-256: %s", persisted_manifest["manifest_sha256"]
+        )
         return persisted_manifest
 
     def _recover_completed_audit(

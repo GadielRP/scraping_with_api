@@ -248,25 +248,53 @@ class CanonicalPeriodBackfillService:
             "classification": "MERGE_REQUIRED" if target is not None else "COHORT_APPROVED",
         }
 
-    def _event_guard_detail(self, session, event_id: int) -> str | None:
-        """Optional strategy-specific fail-closed guard for one event."""
+    @staticmethod
+    def _persisted_draw_guard_detail(session, event_id: int) -> str | None:
+        """Reject a persisted draw for every canonical-period strategy."""
+        winner = (
+            session.query(Result.winner)
+            .filter(Result.event_id == int(event_id))
+            .scalar()
+        )
+        if str(winner or "").strip().upper() == "X":
+            return (
+                f"event {event_id} has persisted result winner='X'; "
+                "canonical-period conversion is unsafe"
+            )
         return None
+
+    @staticmethod
+    def _persisted_draw_guard_details(
+        session, event_ids: Iterable[int]
+    ) -> dict[int, str]:
+        """Check persisted draws for an audit page with one bounded query."""
+        ids = [int(event_id) for event_id in event_ids]
+        if not ids:
+            return {}
+        draw_ids = {
+            int(event_id)
+            for event_id, winner in session.query(Result.event_id, Result.winner)
+            .filter(Result.event_id.in_(ids))
+            .all()
+            if str(winner or "").strip().upper() == "X"
+        }
+        return {
+            event_id: (
+                f"event {event_id} has persisted result winner='X'; "
+                "canonical-period conversion is unsafe"
+            )
+            for event_id in draw_ids
+        }
+
+    def _event_guard_detail(self, session, event_id: int) -> str | None:
+        """Shared draw guard rechecked under row locks immediately before apply."""
+        return self._persisted_draw_guard_detail(session, event_id)
 
     def _event_guard_details(
         self, session, event_ids: Iterable[int]
     ) -> dict[int, str]:
-        """Return guard failures for a page of events.
-
-        The default preserves compatibility with strategies that only expose
-        a per-event guard. Strategies with a database-backed guard can
-        override this hook and perform one set-based query per audit page.
-        """
-        details: dict[int, str] = {}
-        for event_id in event_ids:
-            detail = self._event_guard_detail(session, int(event_id))
-            if detail:
-                details[int(event_id)] = detail
-        return details
+        """Return shared guard failures for a page with one bounded query."""
+        return self._persisted_draw_guard_details(session, event_ids)
 
     def _audit_event(
         self,
@@ -449,6 +477,11 @@ class CanonicalPeriodBackfillService:
     def _lock_event_rows(self, session, event_id: int) -> None:
         """Lock the event's market tree for the duration of one transaction."""
         session.query(Event.id).filter(Event.id == int(event_id)).with_for_update().all()
+        # The result is part of the semantic safety check. Lock it with the
+        # event so a concurrent result correction cannot race the draw guard.
+        session.query(Result.event_id).filter(
+            Result.event_id == int(event_id)
+        ).with_for_update().all()
         market_query = session.query(Market.market_id).filter(
             Market.event_id == int(event_id),
             Market.is_live.is_(self.scope.is_live),

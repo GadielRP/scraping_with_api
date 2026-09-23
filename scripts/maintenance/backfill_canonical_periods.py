@@ -17,6 +17,7 @@ Examples::
         --page-size 250 --manifest data/backfills/canonical_periods/non-draw-sports-v1/manifest.json
     # Repeat the same audit command without --force until it writes manifest.json.
     python -m scripts.maintenance.backfill_canonical_periods apply \
+        --confirm-write --expected-db-host db.local --expected-db-name sofascore_local \
         --limit 200 --manifest data/backfills/canonical_periods/nfl-v2/manifest.json
 """
 
@@ -41,6 +42,7 @@ from infrastructure.persistence.backfill.configured_non_draw_sports_backfill imp
 from infrastructure.persistence.backfill.checkpoint import read_json, validate_manifest
 from infrastructure.persistence.backfill.registry import create_strategy
 from infrastructure.persistence.backfill.runner import BackfillRunner
+from infrastructure.persistence.database import db_manager
 
 logger = logging.getLogger("canonical_period_backfill")
 
@@ -167,6 +169,22 @@ def _build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--checkpoint", type=Path)
     apply.add_argument("--results", type=Path)
     apply.add_argument("--limit", type=int)
+    apply.add_argument(
+        "--confirm-write",
+        action="store_true",
+        required=True,
+        help="Explicitly acknowledge that apply mutates persisted odds data.",
+    )
+    apply.add_argument(
+        "--expected-db-host",
+        required=True,
+        help="Expected SQLAlchemy database host; use '(local)' for a hostless local database.",
+    )
+    apply.add_argument(
+        "--expected-db-name",
+        required=True,
+        help="Expected database name from the active DATABASE_URL.",
+    )
     return parser
 
 
@@ -186,6 +204,24 @@ def _audit(args: argparse.Namespace) -> int:
 
 
 def _apply(args: argparse.Namespace) -> int:
+    url = db_manager.engine.url
+    actual_host = url.host or "(local)"
+    actual_name = url.database or ""
+    if actual_host.casefold() != args.expected_db_host.casefold():
+        raise ValueError(
+            f"database host mismatch: expected={args.expected_db_host!r} "
+            f"actual={actual_host!r}; refusing to apply"
+        )
+    if actual_name != args.expected_db_name:
+        raise ValueError(
+            f"database name mismatch: expected={args.expected_db_name!r} "
+            f"actual={actual_name!r}; refusing to apply"
+        )
+    logger.warning(
+        "Explicit write confirmation accepted for database host=%s name=%s",
+        actual_host,
+        actual_name,
+    )
     manifest = read_json(args.manifest)
     validate_manifest(manifest, base_path=args.manifest.parent)
     scope = _scope_from_manifest(manifest)

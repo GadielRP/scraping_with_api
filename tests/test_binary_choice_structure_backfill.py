@@ -23,7 +23,7 @@ def test_binary_choice_structure_service_default_scope():
     assert service.strategy_name == STRATEGY_NAME
     assert service.scope.sport_names == DEFAULT_BINARY_CHOICE_SPORTS
     assert service.period_pairs == FULL_TIME_PERIOD_VARIANT_PAIRS
-    assert service.require_binary_home_away is False
+    assert service.require_binary_home_away is True
 
 
 def test_binary_choice_structure_service_custom_sports():
@@ -124,3 +124,35 @@ def test_event_guard_detail_result_draw():
     detail = service._event_guard_detail(mock_session, event_id=999)
     assert detail is not None
     assert "winner='X'" in detail
+
+
+def test_manifest_v2_sha256_integer_key_normalization(tmp_path):
+    from infrastructure.persistence.backfill.checkpoint import (
+        manifest_v2_sha256,
+        read_json,
+        validate_manifest,
+        write_json_atomic,
+    )
+
+    events_file = tmp_path / "events.jsonl"
+    events_file.write_text('{"event_id": 1}\n', encoding="utf-8")
+
+    manifest_in_memory = {
+        "format_version": 2,
+        "strategy": "test_strategy",
+        "parameters": {"period_pairs": {5: 8, 12: 14}},
+        "events_file": "events.jsonl",
+        "event_count": 1,
+    }
+
+    manifest_path = tmp_path / "manifest.json"
+    write_json_atomic(manifest_path, manifest_in_memory)
+
+    persisted_manifest = read_json(manifest_path)
+    persisted_manifest["manifest_sha256"] = manifest_v2_sha256(
+        persisted_manifest, events_file, event_count=1
+    )
+    write_json_atomic(manifest_path, persisted_manifest)
+
+    reloaded_manifest = read_json(manifest_path)
+    validate_manifest(reloaded_manifest, base_path=tmp_path)
