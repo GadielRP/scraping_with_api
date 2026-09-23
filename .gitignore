@@ -147,6 +147,14 @@ db-init/local.backup.dump.gz
 
 reduced_sofascore.sqlite3
 
+# =========================================================
+# Resumable backfill runtime artifacts
+# =========================================================
+
+# Manifests, JSONL event populations, checkpoints and result logs are
+# environment-specific operational state and can become very large.
+/data/backfills/
+
 
 # =========================================================
 # Local deployment / backup helpers
