@@ -398,7 +398,7 @@ class PillarMiningUnit(Base):
         SmallInteger,
         ForeignKey('canonical_market_types.market_type_id', ondelete='RESTRICT'),
     )
-    line_value = Column(Numeric(18, 6))
+    line_value = Column(Numeric)
     choice_name = Column(Text)
     bookie_id = Column(
         Integer,

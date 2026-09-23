@@ -217,7 +217,7 @@ class Market(Base):
 
     # Canonical line/handicap value. It is nullable because moneyline and
     # other non-line markets legitimately have no line.
-    line_value = Column(Numeric(18, 6))
+    line_value = Column(Numeric)
     is_live = Column(Boolean, default=False, nullable=False)
     collected_at = Column(UTCDateTime(), default=utc_now, nullable=False)
 
