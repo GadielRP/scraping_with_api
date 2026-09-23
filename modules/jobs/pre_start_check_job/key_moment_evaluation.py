@@ -28,7 +28,7 @@ from modules.pillars.competition_metadata_resolver import (
     mark_competition_metadata_refresh_attempted,
     resolve_competition_metadata,
 )
-from modules.pillars.context import build_event_context
+from modules.pillars.context import EventContext, build_event_context
 from modules.sofascore import api_client
 
 logger = logging.getLogger(__name__)
@@ -543,7 +543,7 @@ def evaluate_pre_start_key_moments(
 
         if pillar_contexts:
             validated_event_ids = {
-                int(context.event_id if hasattr(context, "event_id") else context["event_id"])
+                context.event_id if isinstance(context, EventContext) else int(context["event_id"])
                 for context in pillar_contexts
             }
             logger.info(
@@ -553,21 +553,9 @@ def evaluate_pre_start_key_moments(
             trajectory_payloads = _load_trajectory_payloads(
                 validated_event_ids,
             )
-            for context in pillar_contexts:
-                event_id = int(context.event_id if hasattr(context, "event_id") else context["event_id"])
-                trajectory = trajectory_payloads.get(event_id, [])
-                if hasattr(context, "odds_trajectory"):
-                    context.odds_trajectory = trajectory
-                elif isinstance(context, dict):
-                    context["odds_trajectory"] = trajectory
-
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,
-                key_moments=key_moments,
                 event_repo=scheduler.event_repo,
-                op_event_states=oddsportal_context.event_states,
-                op_event_ids=oddsportal_context.event_ids,
-                op_data_cache=oddsportal_context.data_cache,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
                 trajectories_by_event_id=trajectory_payloads,

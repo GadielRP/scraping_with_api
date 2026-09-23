@@ -667,12 +667,12 @@ class EventPillarProcessor:
             )
             return None
 
-        if event_context is None or not getattr(event_context, "success", True):
-            event_id = getattr(event_context, "event_id", "?")
+        if event_context is None or not event_context.success:
+            event_id = event_context.event_id if event_context is not None else "?"
             logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
             return None
 
-        event_id = getattr(event_context, "event_id", "?")
+        event_id = event_context.event_id
 
         competition_id = event_context.competition.competition_id
         if not _is_pillar_competition_in_scope(competition_id):
@@ -684,7 +684,7 @@ class EventPillarProcessor:
             return None
 
         logger.info(f"🏛️ Started pillars processing for event {event_id}")
-        round_value = getattr(event_context, "round", None)
+        round_value = event_context.round
         if round_value != "regular_season":
             logger.info(
                 "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
@@ -693,12 +693,12 @@ class EventPillarProcessor:
             )
             return None
 
-        minutes_until_start = getattr(event_context, "minutes_until_start", None)
+        minutes_until_start = event_context.minutes_until_start
         evaluation_minute = minutes_until_start
         odds_trajectory = (
             trajectory_points
             if trajectory_points is not None
-            else getattr(event_context, "odds_trajectory", [])
+            else event_context.odds_trajectory
         )
         odds_trajectory_context = build_odds_trajectory_context(
             odds_trajectory,
@@ -711,11 +711,7 @@ class EventPillarProcessor:
             allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
             evaluation_minute=evaluation_minute,
         )
-        event_identity = (
-            event_context.to_identity()
-            if hasattr(event_context, "to_identity")
-            else event_context
-        )
+        event_identity = event_context.to_identity()
 
         logger.info(
             "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
@@ -917,9 +913,12 @@ class EventPillarProcessor:
                 event_context.participants_label,
             )
 
-        # Release trajectory data from local variables to allow prompt GC before Pillar 1
+        # Release raw odds before Pillar 1; contexts must not retain a trajectory.
         odds_trajectory = None
         odds_trajectory_context = None
+        trajectory_points = None
+        if event_context.odds_trajectory:
+            event_context.odds_trajectory = []
 
         logger.info(
             "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
@@ -1321,16 +1320,18 @@ def _registered_mining_adapters() -> dict[
 
 def evaluate_and_calculate_pillars_batch(
     events_for_pillars: list[EventContext],
-    key_moments: list,
-    event_repo,
-    op_event_states=None,
-    op_event_ids=None,
-    op_data_cache=None,
+    event_repo=None,
+    key_moments: Optional[list] = None,
+    *,
     debug_mode: bool = False,
     enabled_pillars: Optional[dict[str, bool]] = None,
     trajectories_by_event_id: Optional[dict[int, list[Any]]] = None,
-):
+    **_legacy_kwargs: Any,
+) -> None:
     """Entry point to evaluate and calculate pillar modules for a batch of events."""
+    # Older callers pass (events, key_moments, event_repo).
+    if isinstance(event_repo, (list, tuple)) and key_moments is not None:
+        event_repo, key_moments = key_moments, event_repo
     if not events_for_pillars:
         return
 
@@ -1341,12 +1342,6 @@ def evaluate_and_calculate_pillars_batch(
             _resolve_pillar_competition_id(event_context)
         )
     ]
-    if Config.PILLAR_PIPELINE_EXECUTION_MOMENTS:
-        allowed_events = [
-            event_context
-            for event_context in allowed_events
-            if getattr(event_context, "minutes_until_start", None) in Config.PILLAR_PIPELINE_EXECUTION_MOMENTS
-        ]
     skipped_count = len(events_for_pillars) - len(allowed_events)
     if skipped_count:
         logger.info(
@@ -1393,20 +1388,20 @@ def evaluate_and_calculate_pillars_batch(
     def _execute_process_event(
         proc: Any,
         ctx: Any,
-        trajectories: Optional[list[Any]] = None,
     ) -> Any:
-        if trajectories is not None:
-            try:
-                return proc.process_event(ctx, trajectory_points=trajectories)
-            except TypeError:
-                return proc.process_event(ctx)
+        if trajectories_by_event_id is not None:
+            event_id = _resolve_batch_event_id(ctx)
+            if event_id is not None and event_id in trajectories_by_event_id:
+                try:
+                    # Consume the entry as the worker starts so the batch
+                    # cannot retain this event's raw odds after it completes.
+                    return proc.process_event(
+                        ctx,
+                        trajectory_points=trajectories_by_event_id.pop(event_id),
+                    )
+                except TypeError:
+                    return proc.process_event(ctx)
         return proc.process_event(ctx)
-
-    def _get_trajectories(ctx: Any) -> Optional[list[Any]]:
-        if trajectories_by_event_id is None:
-            return None
-        eid = _resolve_batch_event_id(ctx)
-        return trajectories_by_event_id.get(eid) if eid is not None else None
 
     max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))
     logger.info(
@@ -1420,7 +1415,6 @@ def evaluate_and_calculate_pillars_batch(
                 _execute_process_event(
                     processor,
                     event_context,
-                    _get_trajectories(event_context),
                 )
             except Exception as exc:
                 logger.error("Critical failure in pillar processing: %s", exc)
@@ -1432,7 +1426,6 @@ def evaluate_and_calculate_pillars_batch(
                 _execute_process_event,
                 processor,
                 event_context,
-                _get_trajectories(event_context),
             )
             for event_context in allowed_events
         ]

@@ -72,3 +72,15 @@ def test_dual_process_modules_do_not_import_old_odds_repository():
         assert "import OddsRepository" not in source
         assert " OddsRepository." not in source
         assert "EventOdds" not in source
+
+
+def test_dual_process_view_supports_canonical_overtime_period():
+    from infrastructure.settings import Config
+
+    sql = build_dual_process_event_odds_view_sql(
+        Config.MARKETS_DUAL_PROCESS,
+        Config.PERIODS_DUAL_PROCESS,
+    )
+    assert "Full Time Including Overtime" in sql
+    assert "Home/Away" in sql
+    assert "1X2" in sql

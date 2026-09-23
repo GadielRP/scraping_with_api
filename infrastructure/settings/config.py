@@ -537,7 +537,11 @@ class Config:
     # Dual Process market odds read configuration
     MARKETS_DUAL_PROCESS = _parse_env_list_alias('MARKETS_DUAL_PROCESS', 'markets_dual_process', ['1X2', 'Home/Away'])
 
-    PERIODS_DUAL_PROCESS = _parse_env_list_alias('PERIODS_DUAL_PROCESS', 'periods_dual_process', ['Full Time'])
+    PERIODS_DUAL_PROCESS = _parse_env_list_alias(
+        'PERIODS_DUAL_PROCESS',
+        'periods_dual_process',
+        ['Full Time', 'Full Time Including Overtime'],
+    )
 
     # All Phase 5 readers are permanently quote-aware.
     ODDS_READ_PRIORITY_CONFIG = os.getenv(

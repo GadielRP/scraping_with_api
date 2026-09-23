@@ -1,8 +1,29 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from modules.jobs.pre_start_check_job import key_moment_evaluation
+from modules.pillars.context import EventContext
+
+
+def _pillar_context(event_id: int, minutes_until_start: int) -> EventContext:
+    return EventContext(
+        event_id=event_id,
+        custom_id=None,
+        sport="basketball",
+        season_id=None,
+        season_name=None,
+        season_year=None,
+        starts_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        minutes_until_start=minutes_until_start,
+        discovery_source=None,
+        home=None,
+        away=None,
+        competition=None,
+        participants_label="Test event",
+        context_status="VALID",
+    )
 
 
 def _event_plan(*event_ids: int):
@@ -77,9 +98,13 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
     def run_alerts(payloads, *_args, **_kwargs):
         calls.append(("alerts", list(payloads[0]["odds_trajectory"])))
 
-    def run_pillars(events_for_pillars, *_args, **_kwargs):
+    def run_pillars(events_for_pillars, *_args, **kwargs):
         calls.append(
-            ("pillars", list(events_for_pillars[0]["odds_trajectory"]))
+            (
+                "pillars",
+                list(events_for_pillars[0]["odds_trajectory"]),
+                kwargs["trajectories_by_event_id"],
+            )
         )
 
     monkeypatch.setattr(
@@ -112,7 +137,7 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
     assert calls == [
         ("alerts", []),
         ("trajectory", {1}),
-        ("pillars", [{"event_id": 1, "target_minute": 30}]),
+        ("pillars", [], {1: [{"event_id": 1, "target_minute": 30}]}),
     ]
 
 
@@ -174,8 +199,8 @@ def test_pillar_pipeline_execution_moments_gate(monkeypatch):
         key_moment_evaluation,
         "_build_evaluation_payloads",
         lambda _scheduler, _plan, _event_ids, _missing_ids: [
-            SimpleNamespace(event_id=1, minutes_until_start=30, odds_trajectory=[]),
-            SimpleNamespace(event_id=2, minutes_until_start=0, odds_trajectory=[]),
+            _pillar_context(1, 30),
+            _pillar_context(2, 0),
         ],
     )
     monkeypatch.setattr(
@@ -202,4 +227,3 @@ def test_pillar_pipeline_execution_moments_gate(monkeypatch):
         ("trajectory", [2]),
         ("pillars", [2]),
     ]
-

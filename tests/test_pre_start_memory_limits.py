@@ -60,6 +60,33 @@ def test_pillar_pipeline_uses_direct_serial_execution(monkeypatch):
     assert processed == [1, 2]
 
 
+def test_pillar_batch_releases_trajectory_map_entry_before_processing(monkeypatch):
+    trajectory = [{"target_minute": 5}]
+    trajectories_by_event_id = {1: trajectory}
+    processed = []
+
+    class CapturingProcessor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def process_event(self, event_context, trajectory_points=None):
+            processed.append(
+                (event_context["id"], trajectory_points, dict(trajectories_by_event_id))
+            )
+
+    monkeypatch.setattr(Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", False)
+    monkeypatch.setattr(Config, "PILLAR_PIPELINE_WORKERS", 1)
+    monkeypatch.setattr(pillar_pipeline, "EventPillarProcessor", CapturingProcessor)
+
+    pillar_pipeline.evaluate_and_calculate_pillars_batch(
+        [{"id": 1, "event_data": {"competition_id": 145}}],
+        event_repo=SimpleNamespace(),
+        trajectories_by_event_id=trajectories_by_event_id,
+    )
+
+    assert processed == [(1, trajectory, {})]
+
+
 def test_pillar_pipeline_uses_configured_individual_toggles(monkeypatch):
     captured = {}
 
