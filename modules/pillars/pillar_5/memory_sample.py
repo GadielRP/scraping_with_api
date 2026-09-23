@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
@@ -17,6 +18,7 @@ from .calculation_models import MemoryQueryKey, MemorySample, PopulationFilters
 from .models import ThreeWayMarketSnapshot
 
 ODDS_QUANTUM = Decimal("0.001")
+logger = logging.getLogger(__name__)
 
 
 def canonical_price(value: object) -> Decimal:
@@ -117,9 +119,27 @@ def build_memory_sample(
     current_event_id: int,
     current_starts_at: datetime,
     population_filters: PopulationFilters,
+    debug_mode: bool = False,
 ) -> MemorySample:
     """Load, validate, and de-duplicate the full exact-match population."""
     cutoff = as_utc(current_starts_at)
+    logger.info(
+        "P5 MEMORY | query begin event_id=%s bookie_id=%s sport=%s market=%s/%s shape=%s filters=%s cutoff=%s",
+        current_event_id,
+        key.bookie_id,
+        key.sport,
+        key.market_group,
+        key.market_period,
+        key.market_shape,
+        population_filters.to_dict(),
+        cutoff.isoformat(),
+    )
+    if debug_mode:
+        logger.info(
+            "P5 DEBUG | memory query key event_id=%s value=%s",
+            current_event_id,
+            key.to_dict(),
+        )
     rows = repository.find_exact_matches(
         sport=key.sport,
         bookie_id=key.bookie_id,
@@ -141,6 +161,7 @@ def build_memory_sample(
     diagnostics: list[dict[str, Any]] = []
     seen_event_ids: set[int] = set()
     counts = {"HOME": 0, "DRAW": 0, "AWAY": 0}
+    excluded: dict[str, int] = {}
 
     for row in rows:
         reason: str | None = None
@@ -160,13 +181,14 @@ def build_memory_sample(
 
         if reason is not None:
             diagnostics.append({"event_id": row.event_id, "reason": reason})
+            excluded[reason] = excluded.get(reason, 0) + 1
             continue
 
         seen_event_ids.add(row.event_id)
         eligible.append(row)
         counts[winner] += 1
 
-    return MemorySample(
+    sample = MemorySample(
         key=key,
         historical_matches=tuple(eligible),
         sample_size=len(eligible),
@@ -175,6 +197,23 @@ def build_memory_sample(
         wins_away=counts["AWAY"],
         eligibility_diagnostics=tuple(diagnostics),
     )
+    logger.info(
+        "P5 MEMORY | query done event_id=%s bookie_id=%s fetched=%s eligible=%s excluded=%s outcomes=%s",
+        current_event_id,
+        key.bookie_id,
+        len(rows),
+        sample.sample_size,
+        sum(excluded.values()),
+        counts,
+    )
+    if debug_mode:
+        logger.info(
+            "P5 DEBUG | memory eligibility event_id=%s bookie_id=%s exclusions_by_reason=%s",
+            current_event_id,
+            key.bookie_id,
+            excluded,
+        )
+    return sample
 
 
 __all__ = [

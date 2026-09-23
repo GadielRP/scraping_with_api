@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from .calculation_models import (
@@ -15,6 +16,25 @@ MIN_SAMPLE_SIZE = 3
 SAMPLE_SATURATION = Decimal("8")
 ZERO = Decimal("0")
 ONE = Decimal("1")
+logger = logging.getLogger(__name__)
+
+
+def _fmt(value: object) -> str:
+    return "None" if value is None else str(value)
+
+
+def _log_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: object,
+    *,
+    debug_mode: bool,
+) -> None:
+    if debug_mode:
+        logger.info("P5 FORMULA | %s | formula=%s", name, formula)
+        logger.info("P5 FORMULA | %s | substitution=%s", name, substitution)
+        logger.info("P5 FORMULA | %s | result=%s", name, _fmt(result))
 
 
 def msri_signal(msri_raw: Decimal) -> Decimal:
@@ -134,6 +154,7 @@ def calculate_memory_profile(
     bookmaker: str,
     target_minute: int | None,
     sample: MemorySample,
+    debug_mode: bool = False,
 ) -> BookmakerMemoryProfile:
     """Calculate one independent bookmaker profile from one complete sample."""
     if sample.sample_size != len(sample.historical_matches):
@@ -148,6 +169,17 @@ def calculate_memory_profile(
         raise ValueError("TWO_WAY sample cannot contain draw outcomes")
     if expected_total != sample.sample_size:
         raise ValueError("sample outcome counts do not add up to sample_size")
+
+    if debug_mode:
+        logger.info(
+            "P5 FORMULA | %s | sample_size=%s outcomes(home=%s, draw=%s, away=%s) market_shape=%s",
+            bookmaker,
+            sample.sample_size,
+            sample.wins_home,
+            sample.wins_draw,
+            sample.wins_away,
+            sample.key.market_shape,
+        )
 
     history = tuple(
         historical_match_to_dict(match) for match in sample.historical_matches
@@ -172,6 +204,12 @@ def calculate_memory_profile(
     }
 
     if sample.sample_size < MIN_SAMPLE_SIZE:
+        logger.info(
+            "P5 PROFILE | bookmaker=%s status=INSUFFICIENT_DATA reason=minimum_sample_size_not_met sample_size=%s minimum=%s",
+            bookmaker,
+            sample.sample_size,
+            MIN_SAMPLE_SIZE,
+        )
         return BookmakerMemoryProfile(
             **common,
             p5_status="INSUFFICIENT_DATA",
@@ -199,7 +237,35 @@ def calculate_memory_profile(
     )
     weighted_sample = sample_weight(sample.sample_size)
 
+    _log_formula(
+        f"{bookmaker}.BASELINE",
+        "1 / number_of_outcomes",
+        f"1 / {len(counts)}",
+        baseline,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.SAMPLE_FACTOR",
+        "min(sample_size / SAMPLE_SATURATION, 1)",
+        f"min({sample.sample_size} / {SAMPLE_SATURATION}, 1)",
+        continuous_sample_factor,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.SAMPLE_WEIGHT",
+        "sample_weight(sample_size)",
+        f"sample_weight({sample.sample_size})",
+        weighted_sample,
+        debug_mode=debug_mode,
+    )
+
     if len(dominant) != 1:
+        logger.info(
+            "P5 PROFILE | bookmaker=%s status=ACTIVE memory_status=TIE dominant_results=%s wins=%s",
+            bookmaker,
+            dominant,
+            wins_dominant,
+        )
         return BookmakerMemoryProfile(
             **common,
             p5_status="ACTIVE",
@@ -224,6 +290,57 @@ def calculate_memory_profile(
     raw = hist_edge * consistency * continuous_sample_factor
     signal = msri_signal(raw)
     score = signal * weighted_sample
+
+    _log_formula(
+        f"{bookmaker}.P_HIST_DOMINANT",
+        "wins_dominant / sample_size",
+        f"{wins_dominant} / {sample.sample_size}",
+        p_hist_dominant,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.HIST_EDGE",
+        "(p_hist_dominant - baseline) / (1 - baseline)",
+        f"({p_hist_dominant} - {baseline}) / (1 - {baseline})",
+        hist_edge,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.CONSISTENCY",
+        "0.5 + 0.5 * hist_edge",
+        f"0.5 + 0.5 * {hist_edge}",
+        consistency,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.MSRI_RAW",
+        "hist_edge * consistency * sample_factor",
+        f"{hist_edge} * {consistency} * {continuous_sample_factor}",
+        raw,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.MSRI_SIGNAL",
+        "threshold_bucket(msri_raw)",
+        f"threshold_bucket({raw})",
+        signal,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{bookmaker}.P5",
+        "msri_signal * sample_weight",
+        f"{signal} * {weighted_sample}",
+        score,
+        debug_mode=debug_mode,
+    )
+    logger.info(
+        "P5 PROFILE | bookmaker=%s status=ACTIVE direction=%s score=%s strength=%s sample_size=%s",
+        bookmaker,
+        direction,
+        score,
+        profile_strength(score),
+        sample.sample_size,
+    )
 
     return BookmakerMemoryProfile(
         **common,

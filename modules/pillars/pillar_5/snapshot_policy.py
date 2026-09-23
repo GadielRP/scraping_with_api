@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,6 +36,7 @@ PINNACLE_BOOKIE_ID = 302
 BET365_BOOKIE_ID = 3
 BETFAIR_EXCHANGE_BOOKIE_ID = 4
 SOFASCORE_BOOKIE_ID = 1
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +52,25 @@ class _PeriodGate:
             invalid_inputs=self.invalid,
             ambiguous_inputs=self.ambiguous,
         )
+
+
+def _log_book_gate(
+    name: str,
+    snapshot: ThreeWayMarketSnapshot | None,
+    gate: _PeriodGate,
+) -> None:
+    complete = snapshot is not None and snapshot.is_complete()
+    logger.info(
+        "P5 EXTRACTION | bookmaker=%s complete=%s home=%s draw=%s away=%s missing=%s invalid=%s ambiguous=%s",
+        name,
+        complete,
+        snapshot is not None and snapshot.home is not None,
+        snapshot is not None and snapshot.draw is not None,
+        snapshot is not None and snapshot.away is not None,
+        sorted(gate.missing),
+        sorted(gate.invalid),
+        sorted(gate.ambiguous),
+    )
 
 
 def _book_request(
@@ -174,7 +195,20 @@ def extract_p5_market_snapshot(
     scope: PriceMemoryPeriodScope = FULL_TIME_PRICE_MEMORY_SCOPE,
 ) -> P5ExtractionResult:
     """Extract one exact canonical moneyline snapshot for Pillar 5."""
+    logger.info(
+        "P5 EXTRACTION | begin event_id=%s target_minute=%s selection_reason=%s context_available=%s scope=%s",
+        event_id,
+        target_selection.target_minute if target_selection else None,
+        target_selection.reason if target_selection else "missing_target_selection",
+        context is not None and context.available,
+        scope.key,
+    )
     if target_selection.target_minute is None or context is None:
+        logger.info(
+            "P5 EXTRACTION | aborted event_id=%s reason=%s",
+            event_id,
+            target_selection.reason if target_selection else "missing_context",
+        )
         return P5ExtractionResult(
             target_minute=None,
             full_time_snapshot=None,
@@ -192,6 +226,12 @@ def extract_p5_market_snapshot(
     )
     moneyline_target = moneyline_selection.target
     if moneyline_target is None:
+        logger.info(
+            "P5 EXTRACTION | aborted event_id=%s stage=moneyline_selection reason=%s candidates=%s",
+            event_id,
+            moneyline_selection.reason,
+            [candidate.to_dict() for candidate in moneyline_selection.candidates],
+        )
         marker = ("P5_MONEYLINE_TARGET",)
         period_diagnostics = PeriodDiagnostics.from_gate(
             complete=False,
@@ -235,6 +275,7 @@ def extract_p5_market_snapshot(
         gate=pin_gate,
     )
     pin_complete = pin_snap is not None and pin_snap.is_complete()
+    _log_book_gate("pinnacle", pin_snap, pin_gate)
     bookie_diagnostics["pinnacle"] = pin_gate.diagnostics(complete=pin_complete)
     all_missing.update(pin_gate.missing)
     all_invalid.update(pin_gate.invalid)
@@ -254,6 +295,7 @@ def extract_p5_market_snapshot(
         gate=b365_gate,
     )
     b365_complete = b365_snap is not None and b365_snap.is_complete()
+    _log_book_gate("bet365", b365_snap, b365_gate)
     bookie_diagnostics["bet365"] = b365_gate.diagnostics(complete=b365_complete)
     all_missing.update(b365_gate.missing)
     all_invalid.update(b365_gate.invalid)
@@ -273,6 +315,7 @@ def extract_p5_market_snapshot(
         gate=sofa_gate,
     )
     sofa_complete = sofa_snap is not None and sofa_snap.is_complete()
+    _log_book_gate("sofascore", sofa_snap, sofa_gate)
     bookie_diagnostics["sofascore"] = sofa_gate.diagnostics(complete=sofa_complete)
     all_missing.update(sofa_gate.missing)
     all_invalid.update(sofa_gate.invalid)
@@ -316,6 +359,15 @@ def extract_p5_market_snapshot(
             and lay_snap is not None
             and lay_snap.is_complete()
         )
+        logger.info(
+            "P5 EXTRACTION | bookmaker=betfair complete=%s back_complete=%s lay_complete=%s missing=%s invalid=%s ambiguous=%s",
+            ex_complete,
+            back_snap is not None and back_snap.is_complete(),
+            lay_snap is not None and lay_snap.is_complete(),
+            sorted(ex_gate.missing),
+            sorted(ex_gate.invalid),
+            sorted(ex_gate.ambiguous),
+        )
         bookie_diagnostics["betfair"] = ex_gate.diagnostics(complete=ex_complete)
         all_missing.update(ex_gate.missing)
         all_invalid.update(ex_gate.invalid)
@@ -341,6 +393,19 @@ def extract_p5_market_snapshot(
     )
 
     reason = None if period_diagnostics.usable else "period_completeness_gate_failed"
+    logger.info(
+        "P5 EXTRACTION | done event_id=%s target_minute=%s market=%s/%s status=%s usable=%s abort_reason=%s missing_count=%s invalid_count=%s ambiguous_count=%s",
+        event_id,
+        target_minute,
+        moneyline_target.market_group,
+        period_name,
+        period_diagnostics.status,
+        period_diagnostics.usable,
+        reason,
+        len(all_missing),
+        len(all_invalid),
+        len(all_ambiguous),
+    )
 
     return P5ExtractionResult(
         target_minute=target_minute,

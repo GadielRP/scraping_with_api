@@ -9,6 +9,7 @@ market are treated as different contracts.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -19,6 +20,8 @@ from modules.pillars.odds_trajectory_context import (
 )
 
 from .periods import P5_MONEYLINE_IDENTITIES
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize(value: object) -> str:
@@ -104,8 +107,10 @@ def select_p5_moneyline_target(
     fail closed and expose the candidates for diagnostics.
     """
     if context is None:
+        logger.info("P5 MARKET | target unavailable reason=missing_odds_trajectory_context")
         return P5MoneylineSelection(None, "missing_odds_trajectory_context")
     if not context.available:
+        logger.info("P5 MARKET | target unavailable reason=odds_trajectory_unavailable")
         return P5MoneylineSelection(None, "odds_trajectory_unavailable")
 
     supported = {_identity_key(identity): identity for identity in supported_identities}
@@ -136,13 +141,26 @@ def select_p5_moneyline_target(
         )
     )
     if not candidates:
+        logger.info(
+            "P5 MARKET | target unavailable reason=moneyline_market_unavailable supported_identities=%s",
+            [identity.market_name for identity in supported_identities],
+        )
         return P5MoneylineSelection(None, "moneyline_market_unavailable")
     if len(candidates) > 1:
+        logger.info(
+            "P5 MARKET | target ambiguous candidate_count=%s candidates=%s",
+            len(candidates),
+            [candidate.to_dict() for candidate in candidates],
+        )
         return P5MoneylineSelection(
             None,
             "ambiguous_moneyline_market",
             candidates,
         )
+    logger.info(
+        "P5 MARKET | target selected=%s",
+        candidates[0].to_dict(),
+    )
     return P5MoneylineSelection(candidates[0], candidates=candidates)
 
 

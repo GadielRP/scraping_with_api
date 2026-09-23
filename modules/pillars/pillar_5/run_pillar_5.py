@@ -116,14 +116,25 @@ def _calculate_profiles(
     extraction: P5ExtractionResult,
     population_filters: PopulationFilters,
     missing_population_filters: tuple[str, ...],
+    debug_mode: bool = False,
 ) -> dict[str, BookmakerMemoryProfile]:
     snapshot = extraction.full_time_snapshot
     profiles: dict[str, BookmakerMemoryProfile] = {}
     repository = None
 
     for bookmaker, bookie_id, snapshot_attribute in _STANDARD_BOOKMAKERS:
+        logger.info(
+            "P5 PROFILE | bookmaker=%s begin bookie_id=%s target_minute=%s",
+            bookmaker,
+            bookie_id,
+            extraction.target_minute,
+        )
         book_snapshot = getattr(snapshot, snapshot_attribute, None) if snapshot else None
         if book_snapshot is None:
+            logger.info(
+                "P5 PROFILE | bookmaker=%s skipped reason=current_price_vector_unavailable",
+                bookmaker,
+            )
             profiles[bookmaker] = not_eligible_profile(
                 bookmaker=bookmaker,
                 bookie_id=bookie_id,
@@ -139,7 +150,18 @@ def _calculate_profiles(
                 book_snapshot,
                 expected_bookie_id=bookie_id,
             )
+            if debug_mode:
+                logger.info(
+                    "P5 DEBUG | current vector bookmaker=%s query_key=%s",
+                    bookmaker,
+                    key.to_dict(),
+                )
         except ValueError as exc:
+            logger.info(
+                "P5 PROFILE | bookmaker=%s skipped stage=current_vector_validation reason=%s",
+                bookmaker,
+                exc,
+            )
             profiles[bookmaker] = not_eligible_profile(
                 bookmaker=bookmaker,
                 bookie_id=bookie_id,
@@ -150,6 +172,11 @@ def _calculate_profiles(
             continue
 
         if missing_population_filters:
+            logger.info(
+                "P5 PROFILE | bookmaker=%s skipped stage=population_filter_validation missing_filters=%s",
+                bookmaker,
+                missing_population_filters,
+            )
             profiles[bookmaker] = not_eligible_profile(
                 bookmaker=bookmaker,
                 bookie_id=bookie_id,
@@ -172,11 +199,13 @@ def _calculate_profiles(
                 current_event_id=event_context.event_id,
                 current_starts_at=event_context.starts_at,
                 population_filters=population_filters,
+                debug_mode=debug_mode,
             )
             profiles[bookmaker] = calculate_memory_profile(
                 bookmaker=bookmaker,
                 target_minute=extraction.target_minute,
                 sample=sample,
+                debug_mode=debug_mode,
             )
         except Exception as exc:
             logger.exception(
@@ -254,11 +283,19 @@ def calculate_pillar_5(
     population_filters, enabled_filters, missing_population_filters = (
         _population_filters(event_context)
     )
+    logger.info(
+        "P5 population filters event_id=%s enabled=%s values=%s missing_enabled=%s",
+        event_context.event_id,
+        enabled_filters,
+        population_filters.to_dict(),
+        missing_population_filters,
+    )
     profiles = _calculate_profiles(
         event_context=event_context,
         extraction=extraction,
         population_filters=population_filters,
         missing_population_filters=missing_population_filters,
+        debug_mode=debug_mode,
     )
     serialized_profiles = {
         bookmaker: profile.to_dict() for bookmaker, profile in profiles.items()
@@ -267,6 +304,24 @@ def calculate_pillar_5(
         profiles,
         extraction_status=extraction_status,
     )
+
+    if debug_mode:
+        for bookmaker, profile in serialized_profiles.items():
+            for field, value in profile.items():
+                if field in {"historical_matches", "diagnostics"}:
+                    logger.info(
+                        "P5 PROFILE | %s | field=%s | value=%s",
+                        bookmaker,
+                        field,
+                        value if field == "diagnostics" else f"count={len(value)}",
+                    )
+                else:
+                    logger.info(
+                        "P5 PROFILE | %s | field=%s | value=%s",
+                        bookmaker,
+                        field,
+                        value,
+                    )
 
     betfair_inputs = {
         key: value for key, value in inputs.items() if key.startswith("BF_")
@@ -327,12 +382,15 @@ def calculate_pillar_5(
         )
 
     logger.info(
-        "P5 orchestrator done event_id=%s status=%s extraction_status=%s target_minute=%s valid_profiles=%s",
+        "P5 orchestrator done event_id=%s status=%s extraction_status=%s target_minute=%s valid_profiles=%s missing_inputs=%s invalid_inputs=%s ambiguous_inputs=%s",
         event_context.event_id,
         pillar_status,
         extraction_status,
         extraction.target_minute,
         sum(profile.p5_valid for profile in profiles.values()),
+        len(extraction.missing_inputs),
+        len(extraction.invalid_inputs),
+        len(extraction.ambiguous_inputs),
     )
     return {
         "pillar_id": "pillar_5",
