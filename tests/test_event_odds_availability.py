@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sqlalchemy import create_engine, event as sqlalchemy_event, text
 from sqlalchemy.orm import sessionmaker
 
@@ -5,6 +7,8 @@ from infrastructure.persistence.models import Base, EventSourceMapping
 from infrastructure.persistence.repositories.event_source_mapping_repository import (
     EventSourceMappingRepository,
 )
+from modules.odds_ingestion.fetch_result import OddsFetchResult
+from modules.odds_ingestion.provider_odds_phase import run_provider_odds_phase
 
 
 def _session():
@@ -13,7 +17,7 @@ def _session():
     return engine, sessionmaker(bind=engine)()
 
 
-def test_has_odds_defaults_true_for_new_source_mapping():
+def test_has_odds_defaults_to_unknown_for_new_source_mapping():
     _, session = _session()
     mapping = EventSourceMapping(
         event_id=101,
@@ -23,10 +27,10 @@ def test_has_odds_defaults_true_for_new_source_mapping():
     session.add(mapping)
     session.flush()
 
-    assert mapping.has_odds is True
+    assert mapping.has_odds is None
 
 
-def test_has_odds_database_default_is_true_for_direct_insert():
+def test_has_odds_direct_insert_defaults_to_unknown():
     _, session = _session()
     session.execute(
         text(
@@ -41,7 +45,7 @@ def test_has_odds_database_default_is_true_for_direct_insert():
             "SELECT has_odds FROM event_source_mappings "
             "WHERE source = 'sofascore' AND source_event_id = '9001'"
         )
-    ).scalar_one() == 1
+    ).scalar_one() is None
 
 
 def test_bulk_load_returns_provider_specific_states_in_one_select():
@@ -61,6 +65,11 @@ def test_bulk_load_returns_provider_specific_states_in_one_select():
                 has_odds=True,
                 source_sport_id="10",
             ),
+            EventSourceMapping(
+                event_id=101,
+                source="oddsportal",
+                source_event_id="fixture-2",
+            ),
         ]
     )
     session.flush()
@@ -73,7 +82,7 @@ def test_bulk_load_returns_provider_specific_states_in_one_select():
     sqlalchemy_event.listen(engine, "before_cursor_execute", _record_select)
     states = EventSourceMappingRepository.get_odds_source_states(
         [101],
-        ["sofascore", "oddspapi"],
+        ["sofascore", "oddspapi", "oddsportal"],
         session=session,
     )
     sqlalchemy_event.remove(engine, "before_cursor_execute", _record_select)
@@ -84,6 +93,7 @@ def test_bulk_load_returns_provider_specific_states_in_one_select():
     assert states[101]["oddspapi"].source_event_id == "fixture-1"
     assert states[101]["oddspapi"].has_odds is True
     assert states[101]["oddspapi"].source_sport_id == "10"
+    assert states[101]["oddsportal"].has_odds is None
 
 
 def test_mark_odds_unavailable_updates_only_requested_provider():
@@ -118,7 +128,7 @@ def test_mark_odds_unavailable_updates_only_requested_provider():
 
     assert updated == 1
     assert states[101]["sofascore"].has_odds is False
-    assert states[101]["oddspapi"].has_odds is True
+    assert states[101]["oddspapi"].has_odds is None
     assert (
         EventSourceMappingRepository.mark_odds_unavailable(
             [101],
@@ -127,3 +137,58 @@ def test_mark_odds_unavailable_updates_only_requested_provider():
         )
         == 0
     )
+
+
+def test_mark_odds_available_updates_unknown_mapping():
+    _, session = _session()
+    session.add(
+        EventSourceMapping(
+            event_id=101,
+            source="sofascore",
+            source_event_id="9001",
+        )
+    )
+    session.flush()
+
+    updated = EventSourceMappingRepository.mark_odds_available(
+        [101],
+        "sofascore",
+        session=session,
+    )
+    session.expire_all()
+    states = EventSourceMappingRepository.get_odds_source_states(
+        [101],
+        ["sofascore"],
+        session=session,
+    )
+
+    assert updated == 1
+    assert states[101]["sofascore"].has_odds is True
+
+
+def test_provider_response_marks_available_even_when_normalization_saves_nothing(
+    monkeypatch,
+):
+    updates = []
+    monkeypatch.setattr(
+        EventSourceMappingRepository,
+        "mark_odds_available",
+        lambda event_ids, source: updates.append((set(event_ids), source)),
+    )
+
+    summary = run_provider_odds_phase(
+        [{"event_id": 101, "should_extract_odds": True}],
+        {},
+        source="sofascore",
+        fetch=lambda _candidate: OddsFetchResult.from_payload(
+            {"valid_provider_odds": True}
+        ),
+        ingest=lambda _candidate, _payload: SimpleNamespace(
+            markets_saved=0,
+            dual_process_market_available=False,
+            reason="filtered by local market configuration",
+        ),
+    )
+
+    assert summary.events_ingested == 0
+    assert updates == [({101}, "sofascore")]

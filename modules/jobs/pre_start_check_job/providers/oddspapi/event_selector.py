@@ -23,7 +23,7 @@ class OddspapiPreStartCandidate:
     event_id: int
     fixture_id: str | None
     minutes_until_start: int | float | None
-    has_odds: bool = True
+    has_odds: bool | None = None
     source_sport_id: str | None = None
     is_live: bool = False
     competition_id: int | None = None
@@ -134,7 +134,7 @@ def select_oddspapi_pre_start_candidates(
                 event_id=event_id,
                 fixture_id=source_state.source_event_id if source_state else None,
                 minutes_until_start=minutes_until_start,
-                has_odds=source_state.has_odds if source_state else True,
+                has_odds=source_state.has_odds if source_state else None,
                 source_sport_id=source_state.source_sport_id if source_state else None,
                 is_live=_is_live_moment(minutes_until_start),
                 competition_id=event_data.get("competition_id"),

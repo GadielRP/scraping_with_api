@@ -308,12 +308,25 @@ def calculate_pillar_5(
     if debug_mode:
         for bookmaker, profile in serialized_profiles.items():
             for field, value in profile.items():
-                if field in {"historical_matches", "diagnostics"}:
+                if field == "historical_matches":
+                    logger.info(
+                        "P5 PROFILE | %s | historical_match_count=%s",
+                        bookmaker,
+                        len(value),
+                    )
+                    for index, match in enumerate(value, start=1):
+                        logger.info(
+                            "P5 PROFILE | %s | historical_match[%s]=%s",
+                            bookmaker,
+                            index,
+                            match,
+                        )
+                elif field == "diagnostics":
                     logger.info(
                         "P5 PROFILE | %s | field=%s | value=%s",
                         bookmaker,
                         field,
-                        value if field == "diagnostics" else f"count={len(value)}",
+                        value,
                     )
                 else:
                     logger.info(

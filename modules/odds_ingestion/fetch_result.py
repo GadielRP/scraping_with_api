@@ -53,3 +53,17 @@ class OddsFetchResult:
     @property
     def endpoint_missing(self) -> bool:
         return self.status is OddsFetchStatus.ENDPOINT_NOT_FOUND
+
+    @property
+    def provider_has_odds(self) -> bool | None:
+        """Availability evidence from the provider response itself.
+
+        An empty response is inconclusive unless the provider adapter has a
+        stronger contract for it; a successful non-empty response confirms
+        availability, and an explicit missing endpoint confirms absence.
+        """
+        if self.status is OddsFetchStatus.SUCCESS:
+            return True
+        if self.status is OddsFetchStatus.ENDPOINT_NOT_FOUND:
+            return False
+        return None

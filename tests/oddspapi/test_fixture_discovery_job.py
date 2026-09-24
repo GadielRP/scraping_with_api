@@ -277,11 +277,10 @@ def test_successful_oddspapi_mapping_persists_and_links_participants(monkeypatch
                     "source_sport_id": "10",
                     "source_tournament_id": "14604",
                     "source_season_id": "138746",
-                    "participant_home_id": 701,
-                    "participant_away_id": 702,
+                    "source_participant_home_id": 701,
+                    "source_participant_away_id": 702,
                     "match_method": "deterministic_candidate_match",
                     "confidence": 1.0,
-                    "raw_external_providers": {"sofascoreId": None},
                 }
             ],
         }
@@ -375,13 +374,13 @@ def test_event_source_mapping_repository_stores_participant_links():
             event_id=event.id,
             source="oddspapi",
             source_event_id="participant-link-test-fixture",
-            participant_home_id=participant_home.participant_id,
-            participant_away_id=participant_away.participant_id,
+            source_participant_home_id=participant_home.participant_id,
+            source_participant_away_id=participant_away.participant_id,
             session=session,
         )
 
-        assert mapping.participant_home_id == participant_home.participant_id
-        assert mapping.participant_away_id == participant_away.participant_id
+        assert mapping.source_participant_home_id == participant_home.participant_id
+        assert mapping.source_participant_away_id == participant_away.participant_id
 
 
 def test_participant_batch_deduplicates_and_skips_unchanged_updates():

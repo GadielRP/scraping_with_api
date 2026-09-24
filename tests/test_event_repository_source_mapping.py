@@ -76,8 +76,8 @@ def test_source_mapping_fields_include_tournament_season_and_participants():
         "source_event_id": "123456",
         "source_tournament_id": "132",
         "source_season_id": "80229",
-        "participant_home_id": 21,
-        "participant_away_id": 22,
+        "source_participant_home_id": 21,
+        "source_participant_away_id": 22,
         "match_method": "direct",
         "confidence": 1.0,
     }
@@ -113,8 +113,8 @@ def test_upsert_event_persists_sofascore_mapping_metadata(tmp_path, monkeypatch)
         assert mapping.event_id == event.id
         assert mapping.source_tournament_id == "132"
         assert mapping.source_season_id == "80229"
-        assert mapping.participant_home_id == event.home_participant_id
-        assert mapping.participant_away_id == event.away_participant_id
+        assert mapping.source_participant_home_id == event.home_participant_id
+        assert mapping.source_participant_away_id == event.away_participant_id
         assert home.source == "sofascore"
         assert home.source_participant_id == 3427
         assert away.source_participant_id == 3428

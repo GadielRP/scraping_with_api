@@ -22,6 +22,7 @@ from infrastructure.persistence.database import DatabaseManager
 from infrastructure.persistence.models import (
     Bookie,
     Event,
+    EventSourceMapping,
     Market,
     MarketChoice,
     MarketChoiceQuote,
@@ -120,6 +121,34 @@ def test_single_side_quote_is_seeded_from_initial_at_t120(tmp_path):
         assert quote.current_odds is None
         assert snapshot.quote_id == quote.quote_id
         assert snapshot.quote.choice_id == quote.choice_id
+
+
+def test_persisted_quote_marks_provider_mapping_as_available(tmp_path):
+    manager = _make_manager(tmp_path, "has-odds.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    with manager.get_session() as session:
+        session.add(
+            EventSourceMapping(
+                event_id=event_id,
+                source="oddspapi",
+                source_event_id="fixture-1",
+            )
+        )
+    batches = _batch(current_odds=1.95)
+    batches[0]["bookie_id"] = bookie_id
+
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager",
+        manager,
+    ):
+        saved = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+
+    with manager.get_session() as session:
+        mapping = session.query(EventSourceMapping).one()
+        assert saved.quotes_persisted > 0
+        assert mapping.has_odds is True
 
 
 def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):

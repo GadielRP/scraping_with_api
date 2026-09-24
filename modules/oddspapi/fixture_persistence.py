@@ -163,15 +163,14 @@ def persist_resolved_fixtures(
                 "source_sport_id": fixture.sport_id,
                 "source_tournament_id": fixture.tournament_id,
                 "source_season_id": fixture.season_id,
-                "participant_home_id": (
+                "source_participant_home_id": (
                     participant_home.participant_id if participant_home is not None else None
                 ),
-                "participant_away_id": (
+                "source_participant_away_id": (
                     participant_away.participant_id if participant_away is not None else None
                 ),
                 "match_method": write.match_method,
                 "confidence": write.confidence,
-                "raw_external_providers": external_providers,
             }
         )
         sources = [ODDSPAPI_SOURCE]
@@ -188,7 +187,6 @@ def persist_resolved_fixtures(
                         "source_event_id": provider_id,
                         "match_method": "external_provider_oddspapi_cross_reference",
                         "confidence": 1.0,
-                        "raw_external_providers": external_providers,
                     }
                 )
                 sources.append(source)

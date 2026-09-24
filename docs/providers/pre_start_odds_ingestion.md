@@ -29,7 +29,7 @@ An event reaches a provider HTTP request only when all of these are true:
 3. `build_pre_start_event_candidates()` includes it in `PreStartEventPlan.candidates`.
 4. The general odds gate did not clear `should_extract_odds` for an untracked competition.
 5. The provider-specific tracked-competition gate did not drop it from that phase's local list.
-6. `should_extract_odds=True` and the provider's stored availability is not `has_odds=False` for ordinary acquisition; an explicitly forced significant-change moment still attempts `/odds` to refresh its cache.
+6. `should_extract_odds=True` and the provider's stored availability is not explicitly `has_odds=False` for ordinary acquisition. `NULL` means availability is unknown and permits a request; `true` records a non-empty odds response, while `false` records a confirmed missing endpoint/no odds. An explicitly forced significant-change moment still attempts `/odds` to refresh its cache.
 7. Provider-specific requestability holds (SofaScore external id, OddspAPI fixture mapping, API keys, mainline cache for live acquisition, etc.). A forced significant-change candidate is allowed to proceed without a pre-existing cache because its first step is `/odds` cache priming.
 
 Provider phases share one call shape:

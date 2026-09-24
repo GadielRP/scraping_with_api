@@ -30,7 +30,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     bind = op.get_bind()
     bind.execute(sa.text("DROP MATERIALIZED VIEW IF EXISTS mv_p5_price_memory CASCADE;"))
-    bind.execute(sa.text(build_p5_price_memory_view_sql()))
+    bind.execute(sa.text(build_p5_price_memory_view_sql(include_quote_fallbacks=True)))
     for index_sql in MV_P5_PRICE_MEMORY_INDEXES_SQL:
         bind.execute(sa.text(index_sql))
 

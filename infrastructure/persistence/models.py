@@ -128,39 +128,40 @@ class EventSourceMapping(Base):
     source_sport_id = Column(Text)
     source_tournament_id = Column(Text)
     source_season_id = Column(Text)
-    participant_home_id = Column(
+    # These are FKs to source-scoped Participant rows, not provider's raw IDs.
+    source_participant_home_id = Column(
         Integer,
         ForeignKey(
             'participants.participant_id',
             ondelete='SET NULL',
-            name='fk_event_source_mappings_participant_home_id',
+            name='fk_event_source_mappings_source_participant_home_id',
         ),
     )
-    participant_away_id = Column(
+    source_participant_away_id = Column(
         Integer,
         ForeignKey(
             'participants.participant_id',
             ondelete='SET NULL',
-            name='fk_event_source_mappings_participant_away_id',
+            name='fk_event_source_mappings_source_participant_away_id',
         ),
     )
-    has_odds = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # None means provider availability has not been confirmed yet.
+    has_odds = Column(Boolean, nullable=True)
     match_method = Column(Text, nullable=False, default='direct')
     confidence = Column(Numeric(5, 3))
-    raw_external_providers = Column(JSONB().with_variant(JSON(), 'sqlite'))
     created_at = Column(UTCDateTime(), default=utc_now)
     updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)
 
     event = relationship("Event", back_populates="source_mappings")
-    participant_home = relationship("Participant", foreign_keys=[participant_home_id])
-    participant_away = relationship("Participant", foreign_keys=[participant_away_id])
+    source_participant_home = relationship("Participant", foreign_keys=[source_participant_home_id])
+    source_participant_away = relationship("Participant", foreign_keys=[source_participant_away_id])
 
     __table_args__ = (
         UniqueConstraint('source', 'source_event_id', name='unique_event_source_mapping'),
         Index('idx_event_source_mappings_event_id', 'event_id'),
         Index('idx_event_source_mappings_source', 'source'),
-        Index('idx_event_source_mappings_participant_home_id', 'participant_home_id'),
-        Index('idx_event_source_mappings_participant_away_id', 'participant_away_id'),
+        Index('idx_event_source_mappings_source_participant_home_id', 'source_participant_home_id'),
+        Index('idx_event_source_mappings_source_participant_away_id', 'source_participant_away_id'),
     )
 
 

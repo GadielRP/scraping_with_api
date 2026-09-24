@@ -23,13 +23,56 @@ def _sql_string_list(values: Sequence[str]) -> str:
 def build_p5_price_memory_view_sql(
     market_groups: Sequence[str] | None = None,
     market_periods: Sequence[str] | None = None,
+    *,
+    include_quote_fallbacks: bool = False,
+    quote_values_only: bool = False,
 ) -> str:
-    """Build dynamic DDL for mv_p5_price_memory materialized view."""
+    """Build dynamic DDL for mv_p5_price_memory materialized view.
+
+    ``quote_values_only`` treats persisted quote cache values as the historical
+    observation for non-live markets, preferring ``current_odds`` and falling
+    back to ``initial_odds``. The other modes reproduce earlier revisions.
+    """
     groups = market_groups if market_groups is not None else P5_PRICE_MEMORY_MARKET_GROUPS
     periods = market_periods if market_periods is not None else P5_PRICE_MEMORY_MARKET_PERIODS
 
     market_groups_sql = _sql_string_list(groups)
     market_periods_sql = _sql_string_list(periods)
+    if quote_values_only:
+        odds_price_sql = "COALESCE(mcq.current_odds, mcq.initial_odds)::numeric(8,3)"
+        quote_timestamp_sql = """CASE
+                WHEN mcq.current_odds IS NOT NULL
+                    THEN COALESCE(mcq.current_updated_at, m.collected_at)
+                WHEN mcq.initial_odds IS NOT NULL
+                    THEN COALESCE(mcq.initial_captured_at, m.collected_at)
+                ELSE m.collected_at
+            END"""
+        latest_snapshot_join_sql = ""
+    elif include_quote_fallbacks:
+        odds_price_sql = (
+            "COALESCE(latest.odds_value, mcq.current_odds, mcq.initial_odds)"
+            "::numeric(8,3)"
+        )
+        quote_timestamp_sql = "COALESCE(\n                latest.collected_at,\n                mcq.current_updated_at,\n                mcq.initial_captured_at,\n                m.collected_at\n            )"
+        latest_snapshot_join_sql = """LEFT JOIN LATERAL (
+            SELECT mcs.odds_value, mcs.collected_at
+            FROM market_choice_snapshots mcs
+            WHERE mcs.quote_id = mcq.quote_id
+              AND (mcs.collected_at <= e.starts_at OR e.starts_at IS NULL)
+            ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
+            LIMIT 1
+        ) latest ON TRUE"""
+    else:
+        odds_price_sql = "latest.odds_value::numeric(8,3)"
+        quote_timestamp_sql = "latest.collected_at"
+        latest_snapshot_join_sql = """LEFT JOIN LATERAL (
+            SELECT mcs.odds_value, mcs.collected_at
+            FROM market_choice_snapshots mcs
+            WHERE mcs.quote_id = mcq.quote_id
+              AND (mcs.collected_at <= e.starts_at OR e.starts_at IS NULL)
+            ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
+            LIMIT 1
+        ) latest ON TRUE"""
 
     return f"""
     CREATE MATERIALIZED VIEW IF NOT EXISTS mv_p5_price_memory AS
@@ -41,13 +84,8 @@ def build_p5_price_memory_view_sql(
             cmt.canonical_market_group AS market_group,
             cmt.canonical_market_period AS market_period,
             mc.choice_name,
-            COALESCE(latest.odds_value, mcq.current_odds, mcq.initial_odds)::numeric(8,3) AS odds_price,
-            COALESCE(
-                latest.collected_at,
-                mcq.current_updated_at,
-                mcq.initial_captured_at,
-                m.collected_at
-            ) AS quote_timestamp
+            {odds_price_sql} AS odds_price,
+            {quote_timestamp_sql} AS quote_timestamp
         FROM markets m
         JOIN events e ON e.id = m.event_id
         JOIN canonical_market_types cmt ON cmt.market_type_id = m.market_type_id
@@ -61,14 +99,7 @@ def build_p5_price_memory_view_sql(
             ORDER BY quote_candidate.quote_id
             LIMIT 1
         ) mcq ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT mcs.odds_value, mcs.collected_at
-            FROM market_choice_snapshots mcs
-            WHERE mcs.quote_id = mcq.quote_id
-              AND (mcs.collected_at <= e.starts_at OR e.starts_at IS NULL)
-            ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
-            LIMIT 1
-        ) latest ON TRUE
+        {latest_snapshot_join_sql}
         WHERE m.is_live = false
           AND cmt.canonical_market_group IN ({market_groups_sql})
           AND cmt.canonical_market_period IN ({market_periods_sql})

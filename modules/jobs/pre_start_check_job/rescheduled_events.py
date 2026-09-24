@@ -48,7 +48,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             ["sofascore"],
         )
         source_state = source_states.get(event_id, {}).get("sofascore")
-        if source_state is not None and not source_state.has_odds:
+        if source_state is not None and source_state.has_odds is False:
             logger.info(
                 "Skipping rescheduled event %s odds: endpoint marked unavailable",
                 event_id,
@@ -88,6 +88,9 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             home_team=event.home_team,
             away_team=event.away_team,
         )
+        # This is source-level evidence, independent of canonical persistence.
+        if getattr(fetch_result, "provider_has_odds", None) is True:
+            EventSourceMappingRepository.mark_odds_available([event_id], "sofascore")
         if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
             logger.info("Market odds extracted for rescheduled event %s", event_id)
         else:

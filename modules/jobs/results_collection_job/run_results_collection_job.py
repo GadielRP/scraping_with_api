@@ -155,6 +155,7 @@ def run_results_collection_for_date(target_date) -> None:
         )
         odds_fetcher = SofaScoreOddsFetcher(api_client)
         missing_odds_event_ids: set[int] = set()
+        available_odds_event_ids: set[int] = set()
         odds_updated_count = 0
         for event_data in events:
             try:
@@ -162,7 +163,7 @@ def run_results_collection_for_date(target_date) -> None:
                 if source_state is None:
                     logger.warning("Missing SofaScore mapping for event %s", event_data.id)
                     continue
-                if not source_state.has_odds:
+                if source_state.has_odds is False:
                     logger.debug(
                         "Skipping final odds for event %s: endpoint marked unavailable",
                         event_data.id,
@@ -182,6 +183,9 @@ def run_results_collection_for_date(target_date) -> None:
                     logger.debug("No final odds response for event %s", event_data.id)
                     continue
 
+                if getattr(fetch_result, "provider_has_odds", None) is True:
+                    available_odds_event_ids.add(event_data.id)
+
                 ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
                     event_data.id,
                     final_odds_response,
@@ -197,6 +201,10 @@ def run_results_collection_for_date(target_date) -> None:
 
         EventSourceMappingRepository.mark_odds_unavailable(
             missing_odds_event_ids,
+            "sofascore",
+        )
+        EventSourceMappingRepository.mark_odds_available(
+            available_odds_event_ids,
             "sofascore",
         )
         logger.info("Final market odds updated for %s/%s events", odds_updated_count, len(events))

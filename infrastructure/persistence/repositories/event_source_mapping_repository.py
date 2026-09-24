@@ -19,7 +19,7 @@ class EventOddsSourceState:
     event_id: int
     source: str
     source_event_id: str
-    has_odds: bool
+    has_odds: bool | None
     source_sport_id: str | None = None
 
 
@@ -244,7 +244,7 @@ class EventSourceMappingRepository:
                     event_id=int(event_id),
                     source=normalized_source,
                     source_event_id=str(source_event_id),
-                    has_odds=bool(has_odds),
+                    has_odds=has_odds,
                     source_sport_id=cls._normalize_optional_text(source_sport_id),
                 )
             return states
@@ -274,7 +274,7 @@ class EventSourceMappingRepository:
                 .filter(
                     EventSourceMapping.event_id.in_(normalized_event_ids),
                     EventSourceMapping.source == normalized_source,
-                    EventSourceMapping.has_odds.is_(True),
+                    EventSourceMapping.has_odds.is_distinct_from(False),
                 )
                 .update(
                     {
@@ -286,6 +286,49 @@ class EventSourceMappingRepository:
             )
             logger.info(
                 "Marked odds unavailable source=%s requested_events=%s updated_mappings=%s",
+                normalized_source,
+                len(normalized_event_ids),
+                updated_count,
+            )
+            return int(updated_count or 0)
+
+        if session is not None:
+            return _update(session)
+        with db_manager.get_session() as scoped_session:
+            return _update(scoped_session)
+
+    @classmethod
+    def mark_odds_available(
+        cls,
+        event_ids: Iterable[int],
+        source: str,
+        *,
+        session: Session | None = None,
+    ) -> int:
+        """Persist provider-confirmed odds availability in one bulk update."""
+        normalized_event_ids = cls._normalize_event_ids(event_ids)
+        normalized_source = cls._normalize_source(source)
+        if not normalized_event_ids or not normalized_source:
+            return 0
+
+        def _update(scoped_session: Session) -> int:
+            updated_count = (
+                scoped_session.query(EventSourceMapping)
+                .filter(
+                    EventSourceMapping.event_id.in_(normalized_event_ids),
+                    EventSourceMapping.source == normalized_source,
+                    EventSourceMapping.has_odds.is_distinct_from(True),
+                )
+                .update(
+                    {
+                        EventSourceMapping.has_odds: True,
+                        EventSourceMapping.updated_at: utc_now(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            logger.info(
+                "Marked odds available source=%s requested_events=%s updated_mappings=%s",
                 normalized_source,
                 len(normalized_event_ids),
                 updated_count,
@@ -348,11 +391,10 @@ class EventSourceMappingRepository:
         source_sport_id: Optional[str] = None,
         source_tournament_id: Optional[str] = None,
         source_season_id: Optional[str] = None,
-        participant_home_id: Optional[int] = None,
-        participant_away_id: Optional[int] = None,
+        source_participant_home_id: Optional[int] = None,
+        source_participant_away_id: Optional[int] = None,
         match_method: Optional[str] = "direct",
         confidence: Optional[float] = None,
-        raw_external_providers: Optional[dict] = None,
     ) -> EventSourceMapping:
         key = (
             EventSourceMappingRepository._normalize_source(source),
@@ -368,11 +410,10 @@ class EventSourceMappingRepository:
                     "source_sport_id": source_sport_id,
                     "source_tournament_id": source_tournament_id,
                     "source_season_id": source_season_id,
-                    "participant_home_id": participant_home_id,
-                    "participant_away_id": participant_away_id,
+                    "source_participant_home_id": source_participant_home_id,
+                    "source_participant_away_id": source_participant_away_id,
                     "match_method": match_method,
                     "confidence": confidence,
-                    "raw_external_providers": raw_external_providers,
                 }
             ],
         )[key]
@@ -413,11 +454,10 @@ class EventSourceMappingRepository:
             "source_season_id": EventSourceMappingRepository._normalize_optional_text(
                 mapping_data.get("source_season_id")
             ),
-            "participant_home_id": mapping_data.get("participant_home_id"),
-            "participant_away_id": mapping_data.get("participant_away_id"),
+            "source_participant_home_id": mapping_data.get("source_participant_home_id"),
+            "source_participant_away_id": mapping_data.get("source_participant_away_id"),
             "match_method": mapping_data.get("match_method"),
             "confidence": confidence,
-            "raw_external_providers": mapping_data.get("raw_external_providers"),
         }
         return (source, source_event_id), normalized
 
@@ -428,11 +468,10 @@ class EventSourceMappingRepository:
             "source_sport_id",
             "source_tournament_id",
             "source_season_id",
-            "participant_home_id",
-            "participant_away_id",
+            "source_participant_home_id",
+            "source_participant_away_id",
             "match_method",
             "confidence",
-            "raw_external_providers",
         ):
             value = mapping_data.get(attr)
             if value is not None and getattr(mapping, attr) != value:
@@ -582,11 +621,10 @@ class EventSourceMappingRepository:
         source_sport_id: Optional[str] = None,
         source_tournament_id: Optional[str] = None,
         source_season_id: Optional[str] = None,
-        participant_home_id: Optional[int] = None,
-        participant_away_id: Optional[int] = None,
+        source_participant_home_id: Optional[int] = None,
+        source_participant_away_id: Optional[int] = None,
         match_method: Optional[str] = "direct",
         confidence: Optional[float] = None,
-        raw_external_providers: Optional[dict] = None,
         session: Optional[Session] = None,
     ) -> EventSourceMapping:
         """Insert or update a source mapping in an idempotent way."""
@@ -600,11 +638,10 @@ class EventSourceMappingRepository:
                     source_sport_id=source_sport_id,
                     source_tournament_id=source_tournament_id,
                     source_season_id=source_season_id,
-                    participant_home_id=participant_home_id,
-                    participant_away_id=participant_away_id,
+                    source_participant_home_id=source_participant_home_id,
+                    source_participant_away_id=source_participant_away_id,
                     match_method=match_method,
                     confidence=confidence,
-                    raw_external_providers=raw_external_providers,
                 )
 
             with db_manager.get_session() as session:
@@ -616,11 +653,10 @@ class EventSourceMappingRepository:
                     source_sport_id=source_sport_id,
                     source_tournament_id=source_tournament_id,
                     source_season_id=source_season_id,
-                    participant_home_id=participant_home_id,
-                    participant_away_id=participant_away_id,
+                    source_participant_home_id=source_participant_home_id,
+                    source_participant_away_id=source_participant_away_id,
                     match_method=match_method,
                     confidence=confidence,
-                    raw_external_providers=raw_external_providers,
                 )
         except Exception as exc:
             logger.error(

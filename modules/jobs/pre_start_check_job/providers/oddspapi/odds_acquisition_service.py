@@ -772,7 +772,7 @@ class OddspapiPreStartOddsAcquisitionService:
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
-        current_odds_available: bool,
+        current_odds_available: bool | None,
         require_active_quotes: bool = True,
         debug_mode: bool,
         result: OddspapiOddsAcquisitionResult,
@@ -789,7 +789,7 @@ class OddspapiPreStartOddsAcquisitionService:
         )
         capture_current_raw = debug_mode or save_odds_responses
 
-        if combined and current_odds_available:
+        if combined and current_odds_available is not False:
             requested_bookmakers.update(combined)
             result.http_requests_attempted += 1
             current_result = self._fetch(
@@ -986,7 +986,7 @@ class OddspapiPreStartOddsAcquisitionService:
         exchange_max_outcomes_per_event: int,
         exchange_request_budget: int | None,
         minimum_initial_span_minutes: float,
-        current_odds_available: bool,
+        current_odds_available: bool | None,
         require_active_quotes: bool = True,
         filter_post_kickoff_ticks: bool = True,
         debug_mode: bool = False,

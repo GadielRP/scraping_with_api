@@ -89,7 +89,7 @@ def is_eligible_for_source(candidate: dict, source_states: dict, source: str) ->
     if not should_extract_odds(candidate):
         return False
     source_state = source_states.get(candidate.get("event_id"), {}).get(source)
-    if source_state is not None and not source_state.has_odds:
+    if source_state is not None and source_state.has_odds is False:
         logger.info(
             "🚫 Skipping %s odds fetch for event_id=%s because recorded has_odds=False",
             source,
@@ -148,6 +148,7 @@ def run_provider_odds_phase(
     summary.events_skipped = len(candidates) - len(eligible)
 
     missing_endpoint_ids: set[int] = set()
+    odds_available_event_ids: set[int] = set()
     for candidate in eligible:
         event_id = candidate["event_id"]
         try:
@@ -168,6 +169,11 @@ def run_provider_odds_phase(
             if not payload:
                 summary.events_skipped += 1
                 continue
+
+            if getattr(fetch_result, "provider_has_odds", None) is True:
+                # Provider availability is independent of whether local
+                # normalization/persistence accepts any of the returned odds.
+                odds_available_event_ids.add(event_id)
 
             candidate["odds_response"] = payload
             ingestion_result = ingest(candidate, payload)
@@ -194,5 +200,10 @@ def run_provider_odds_phase(
                 "Error processing %s odds for event %s: %s", source, event_id, exc
             )
 
+    if odds_available_event_ids:
+        EventSourceMappingRepository.mark_odds_available(
+            odds_available_event_ids,
+            source,
+        )
     mark_missing_endpoints_unavailable(missing_endpoint_ids, source)
     return summary

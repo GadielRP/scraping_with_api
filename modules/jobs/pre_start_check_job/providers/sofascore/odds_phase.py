@@ -46,6 +46,7 @@ def run_sofascore_pre_start_odds(
     events_to_process: list[dict],
     source_states: PreStartOddsSourceStates,
     *,
+    source: str = SOFASCORE_SOURCE,
     debug_mode: bool = False,
     odds_fetcher: SofaScoreOddsFetcher | None = None,
     tracked_competition_ids: Collection[int] | None = None,
@@ -114,7 +115,7 @@ def run_sofascore_pre_start_odds(
         return MarketOddsIngestionService.save_from_sofascore_response(
             candidate["event_id"],
             payload,
-            source=SOFASCORE_SOURCE,
+            source=source,
             home_team=event_data.get("home_team"),
             away_team=event_data.get("away_team"),
             debug_mode=debug_mode,
@@ -145,7 +146,7 @@ def run_sofascore_pre_start_odds(
         s_tracked = run_provider_odds_phase(
             tracked_events,
             source_states,
-            source=SOFASCORE_SOURCE,
+            source=source,
             can_fetch=_has_resolved_sofascore_id,
             fetch=_fetch_sofascore_odds,
             ingest=_ingest_sofascore_odds,
@@ -170,7 +171,7 @@ def run_sofascore_pre_start_odds(
         s_untracked = run_provider_odds_phase(
             untracked_events,
             source_states,
-            source=SOFASCORE_SOURCE,
+            source=source,
             can_fetch=_has_resolved_sofascore_id,
             fetch=_fetch_sofascore_odds,
             ingest=_ingest_sofascore_odds,

@@ -9,6 +9,7 @@ import logging
 from typing import Callable
 
 from infrastructure.persistence.repositories import (
+    EventSourceMappingRepository,
     MarketMappingRepository,
     OddspapiMainlineCacheRepository,
 )
@@ -67,6 +68,7 @@ class OddspapiPreStartOddsEventResult:
     requested: bool = False
     skipped: bool = False
     skip_reason: str | None = None
+    provider_has_odds: bool | None = None
     markets_detected: int = 0
     choices_detected: int = 0
     snapshots_detected: int = 0
@@ -334,7 +336,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 result.skip_reason = "missing_mainline_cache"
             elif getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False):
                 result.skip_reason = "oddspapi_closing_only"
-            elif respects_stored_availability and not candidate.has_odds:
+            elif respects_stored_availability and candidate.has_odds is False:
                 result.skip_reason = "oddspapi_odds_unavailable"
             else:
                 result.skip_reason = "oddspapi_event_not_requestable"
@@ -641,7 +643,7 @@ class OddspapiPreStartOddsBatchProcessor:
             for candidate in mapped_candidates
             if (
                 (
-                    candidate.has_odds
+                    candidate.has_odds is not False
                     or self._is_live_candidate(candidate)
                     or (
                         candidate.starts_at is not None
@@ -830,7 +832,6 @@ class OddspapiPreStartOddsBatchProcessor:
                 and int(exchange_max_requests_per_run) > 0
                 else None
             )
-            odds_unavailable_event_ids: set[int] = set()
             for candidate in candidates or []:
                 event_result = self._event_result(candidate)
                 summary.results.append(event_result)
@@ -856,7 +857,7 @@ class OddspapiPreStartOddsBatchProcessor:
                     event_result.skip_reason = "missing_oddspapi_mapping"
                     summary.events_skipped += 1
                     continue
-                if not candidate.has_odds and not (is_live or force_significant_changes):
+                if candidate.has_odds is False and not (is_live or force_significant_changes):
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_unavailable"
                     summary.events_skipped += 1
@@ -1000,7 +1001,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         )
                     if acquisition_result.endpoint_missing:
                         if not is_live:
-                            odds_unavailable_event_ids.add(candidate.event_id)
+                            event_result.provider_has_odds = False
                             summary.missing_endpoints += 1
                         event_result.skipped = True
                         event_result.skip_reason = "oddspapi_odds_endpoint_not_found"
@@ -1019,13 +1020,13 @@ class OddspapiPreStartOddsBatchProcessor:
                     odds_response = acquisition_result.payload
                     if not odds_response:
                         if not is_live:
-                            odds_unavailable_event_ids.add(candidate.event_id)
+                            event_result.provider_has_odds = False
                         event_result.skipped = True
                         event_result.skip_reason = "no_oddspapi_odds"
                         summary.events_skipped += 1
                         continue
                     if not is_live and not self._has_current_odds(odds_response):
-                        odds_unavailable_event_ids.add(candidate.event_id)
+                        event_result.provider_has_odds = False
                         event_result.skipped = True
                         event_result.skip_reason = "no_oddspapi_odds"
                         summary.events_skipped += 1
@@ -1035,6 +1036,10 @@ class OddspapiPreStartOddsBatchProcessor:
                             candidate.fixture_id,
                         )
                         continue
+                    if not is_live:
+                        # The provider has current odds even if downstream
+                        # mappings/configuration prevent canonical persistence.
+                        event_result.provider_has_odds = True
                     summary.responses_received += 1
                     ingestion_result = self.ingestion_service.save_from_oddspapi_response(
                         odds_response,
@@ -1152,6 +1157,20 @@ class OddspapiPreStartOddsBatchProcessor:
                         ),
                     )
             if not dry_run:
+                odds_available_event_ids = {
+                    result.event_id
+                    for result in summary.results
+                    if result.provider_has_odds is True
+                }
+                odds_unavailable_event_ids = {
+                    result.event_id
+                    for result in summary.results
+                    if result.provider_has_odds is False
+                }
+                EventSourceMappingRepository.mark_odds_available(
+                    odds_available_event_ids,
+                    ODDSPAPI_SOURCE,
+                )
                 mark_missing_endpoints_unavailable(odds_unavailable_event_ids, ODDSPAPI_SOURCE)
             return summary
         finally:

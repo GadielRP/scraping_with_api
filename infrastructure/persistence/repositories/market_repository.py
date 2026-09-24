@@ -20,6 +20,9 @@ from infrastructure.persistence.catalogs.canonical_market_types import (
     CANONICAL_MARKET_TYPE_SEEDS,
     persisted_seed_values,
 )
+from infrastructure.persistence.repositories.event_source_mapping_repository import (
+    EventSourceMappingRepository,
+)
 from infrastructure.persistence.market_write_policy import (
     market_write_policy_for_source,
 )
@@ -41,6 +44,7 @@ class MarketSaveResult:
     markets_saved: int = 0
     choices_saved: int = 0
     snapshots_saved: int = 0
+    quotes_persisted: int = 0
 
 
 class MarketRepository:
@@ -121,6 +125,18 @@ class MarketRepository:
         if not normalized.is_finite():
             raise ValueError(f"invalid numeric line value: {value!r}")
         return normalized
+
+    @staticmethod
+    def _event_source_mapping_source(quote_source: str) -> str | None:
+        """Map quote persistence sources to their event mapping source key."""
+        normalized = str(quote_source or "").strip().lower()
+        if normalized.startswith("sofascore"):
+            return "sofascore"
+        if normalized.startswith("oddspapi"):
+            return "oddspapi"
+        if normalized.startswith("oddsportal"):
+            return "oddsportal"
+        return None
 
     @staticmethod
     def _market_line_value(market) -> Optional[Decimal]:
@@ -726,6 +742,9 @@ class MarketRepository:
                     current_odds=current_odds,
                     current_captured_at=collected_at,
                 )
+                # A returned quote row means this ingest supplied an initial
+                # or current price candidate that is represented in storage.
+                result.quotes_persisted += len(quotes_by_identity)
                 persist_current_snapshot = (
                     choice_data.get("persistCurrentSnapshot", True) is not False
                 )
@@ -949,6 +968,17 @@ class MarketRepository:
                 prepared_choices=prepared_choices,
                 source=source,
             )
+
+            if result.quotes_persisted:
+                mapping_source = MarketRepository._event_source_mapping_source(
+                    source
+                )
+                if mapping_source is not None:
+                    EventSourceMappingRepository.mark_odds_available(
+                        [int(event_id)],
+                        mapping_source,
+                        session=session,
+                    )
 
             # Persist the complete quote/snapshot graph in one flush. Snapshot
             # relationships can reference pending quotes; SQLAlchemy orders the
