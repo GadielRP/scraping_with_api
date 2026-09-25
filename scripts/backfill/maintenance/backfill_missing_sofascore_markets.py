@@ -13,7 +13,7 @@ import logging
 import sys
 from pathlib import Path
 
-from sqlalchemy import exists
+from sqlalchemy import exists, func
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -76,25 +76,41 @@ def main() -> int:
 
     has_market = exists().where(Market.event_id == Event.id)
     with db_manager.get_session() as session:
-        rows = (
-            session.query(Event, EventSourceMapping)
+        # Select and limit distinct canonical events in SQL before loading ORM
+        # objects. One event can have multiple mappings for the same source.
+        candidate_mappings = (
+            session.query(
+                Event.id.label("event_id"),
+                func.min(EventSourceMapping.mapping_id).label("mapping_id"),
+            )
             .join(EventSourceMapping, EventSourceMapping.event_id == Event.id)
             .filter(
                 EventSourceMapping.source == args.source,
                 EventSourceMapping.has_odds.is_distinct_from(False),
                 ~has_market,
             )
-            .order_by(Event.id, EventSourceMapping.mapping_id)
+            .group_by(Event.id)
+            .order_by(Event.id)
+        )
+        if args.limit is not None:
+            candidate_mappings = candidate_mappings.limit(args.limit)
+        candidate_mappings = candidate_mappings.subquery()
+
+        rows = (
+            session.query(Event, EventSourceMapping)
+            .join(candidate_mappings, candidate_mappings.c.event_id == Event.id)
+            .join(
+                EventSourceMapping,
+                EventSourceMapping.mapping_id == candidate_mappings.c.mapping_id,
+            )
+            .order_by(Event.id)
             .all()
         )
 
-    # An event can have more than one matching mapping row; use the first stable
-    # mapping and ingest each canonical event at most once.
+    # The SQL query already chose one stable mapping per canonical event.
     selected: dict[int, tuple[Event, EventSourceMapping]] = {}
     for event, mapping in rows:
         selected.setdefault(event.id, (event, mapping))
-        if args.limit is not None and len(selected) >= args.limit:
-            break
 
     logger.info(
         "Selected %s events with source=%s and no markets",
