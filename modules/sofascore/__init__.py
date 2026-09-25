@@ -4,6 +4,7 @@ from .client import SofaScoreAPI, api_client
 from .event_normalizer import normalize_event_payload
 from .event_identity import resolve_sofascore_event_id
 from .exceptions import (
+    SofaScoreChallengeCircuitOpenException,
     SofaScoreChallengeException,
     SofaScoreError,
     SofaScoreHttpError,
@@ -17,6 +18,7 @@ __all__ = [
     "api_client",
     "resolve_sofascore_event_id",
     "SofaScoreChallengeException",
+    "SofaScoreChallengeCircuitOpenException",
     "SofaScoreError",
     "SofaScoreHttpError",
     "SofaScoreNotFoundException",

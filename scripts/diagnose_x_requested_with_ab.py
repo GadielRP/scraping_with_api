@@ -227,8 +227,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def prepare_test_cases() -> list[tuple[str, str | None, str, bool]]:
-    valid_tokens = list(getattr(Config, "X_REQUESTED_WITH_HEADER_TOKENS", []) or [])
-    first_configured_token_or_none = valid_tokens[0] if valid_tokens else None
+    first_configured_token_or_none = None
 
     cases: list[tuple[str, str | None, str, bool]] = [
         ("missing_header", None, "missing", False),

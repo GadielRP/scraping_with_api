@@ -11,6 +11,7 @@ from infrastructure.persistence.repositories import (
     EventSourceMappingRepository,
     ResultRepository,
 )
+from infrastructure.settings import Config
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client

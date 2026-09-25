@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,7 @@ _COOKIE_SPLIT_PATTERN = re.compile(r",\s*(?=[!#$%&'*+\-.^_`|~0-9A-Za-z]+=)")
 _COOKIE_NAME_PATTERN = re.compile(r"^\s*([!#$%&'*+\-.^_`|~0-9A-Za-z]+)=")
 
 logger = logging.getLogger(__name__)
+_EVIDENCE_WRITE_LOCK = threading.Lock()
 
 
 def safe_json_loads(text: str) -> dict | None:
@@ -78,6 +81,40 @@ def extract_relevant_headers(headers: Any) -> dict:
             result["set-cookie-names"] = extract_cookie_names(str(value) if value is not None else None)
             continue
         result[lower_key] = value
+    return result
+
+
+def extract_response_headers_for_diagnostics(headers: Any) -> dict:
+    """Return all response headers while withholding cookie/authentication values."""
+    if not headers:
+        return {}
+
+    if hasattr(headers, "items"):
+        header_items = list(headers.items())
+    else:
+        header_items = list(dict(headers).items())
+
+    sensitive_headers = {
+        "authorization",
+        "cookie",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "set-cookie",
+        "www-authenticate",
+    }
+    result: dict[str, Any] = {}
+    for key, value in header_items:
+        header_name = str(key)
+        lower_key = header_name.lower()
+        if lower_key == "set-cookie":
+            result[header_name] = {
+                "redacted": True,
+                "cookie_names": extract_cookie_names(str(value) if value is not None else None),
+            }
+        elif lower_key in sensitive_headers:
+            result[header_name] = "<redacted>"
+        else:
+            result[header_name] = value
     return result
 
 
@@ -182,7 +219,9 @@ def build_challenge_evidence(
     params: dict | None,
     proxy_identity=None,
     request_url: str | None = None,
+    include_full_response: bool = False,
 ) -> dict:
+    response_text = str(getattr(response, "text", "") or "")
     headers = extract_relevant_headers(getattr(response, "headers", {}) or {})
     evidence = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -195,22 +234,39 @@ def build_challenge_evidence(
         "attempt": attempt,
         "max_retries": max_retries,
         "response_headers": headers,
-        "body_preview": body_preview(getattr(response, "text", "") or ""),
+        "body_preview": body_preview(response_text),
         "proxy": _sanitize_proxy_identity(proxy_identity),
         "params_keys": sorted(list((params or {}).keys())),
     }
+    if include_full_response:
+        response_body = response_text.encode("utf-8")
+        evidence.update(
+            {
+                "response_url": str(getattr(response, "url", "") or ""),
+                "response_encoding": getattr(response, "encoding", None),
+                "response_headers_all": extract_response_headers_for_diagnostics(
+                    getattr(response, "headers", {}) or {}
+                ),
+                "response_body_text": response_text,
+                "response_body_bytes": len(response_body),
+                "response_body_sha256": hashlib.sha256(response_body).hexdigest(),
+            }
+        )
     return evidence
 
 
 def write_challenge_evidence(
     evidence: dict,
     evidence_path: str = DEFAULT_EVIDENCE_PATH,
-) -> None:
+) -> bool:
     try:
         path = Path(evidence_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(payload + "\n")
+        with _EVIDENCE_WRITE_LOCK:
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(payload + "\n")
+        return True
     except Exception as exc:
         logger.warning("Unable to write SofaScore challenge evidence to %s: %s", evidence_path, exc)
+        return False

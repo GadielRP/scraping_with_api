@@ -1,1 +1,1 @@
-"""Offline diagnostic scripts for captured provider responses."""
+"""Provider diagnostic commands; each documents whether it makes live requests."""

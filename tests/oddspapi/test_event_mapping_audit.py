@@ -3,12 +3,13 @@
 import csv
 from contextlib import redirect_stdout
 from io import StringIO
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from scripts.maintenance.audit_oddspapi_event_mappings import (
-    PROBLEM_FIELDS, audit, confidence_signal, estimate_from_labels, evaluate, main,
-    write_problematic_csv,
+    audit, confidence_signal, estimate_from_labels, evaluate,
+    iter_problematic_records, main,
 )
 
 
@@ -36,6 +37,28 @@ def score(value):
 
 def test_exact_accent_normalization():
     assert score(row())["classification"] == "exact"
+
+
+def test_code_name_can_match_but_primary_name_dependency_is_flagged():
+    result = score(row(
+        odd_home_name="Alpha East", sofa_home_name="Different club",
+        odd_home_code_name="AE", sofa_home_code_name="AE",
+        confidence=0.99,
+    ))
+    assert result["classification"] == "review"
+    assert result["confidence_signal"] == "candidate_high_composite"
+    assert "code_name_only_match" in result["reason"]
+
+
+def test_code_name_only_reverse_is_review_not_confirmed_reversal():
+    result = score(row(
+        odd_home_name="Alpha Home", odd_away_name="Beta Away",
+        sofa_home_name="Gamma Side", sofa_away_name="Delta Side",
+        odd_home_code_name="HA", odd_away_code_name="AB",
+        sofa_home_code_name="AB", sofa_away_code_name="HA",
+    ))
+    assert result["classification"] == "review"
+    assert "code_name_only_reversed_match" in result["reason"]
 
 
 def test_reversed_pair_is_not_a_wrong_event_claim():
@@ -88,24 +111,22 @@ def test_confidence_provenance_is_not_accuracy():
 
 def test_problematic_csv_includes_high_composite_weak_side_and_identity_conflict():
     evaluated = score(row(sofa_home_name="Different club", confidence=0.99))
-    output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=PROBLEM_FIELDS)
-    writer.writeheader()
-    summary = write_problematic_csv(
-        [evaluated], writer, odd_conflicts={"101"}, sofa_conflicts=set(),
+    problems = list(iter_problematic_records(
+        [evaluated], odd_conflicts={"101"}, sofa_conflicts=set(),
         confidence_min=0.95, weak=0.70, include_incomplete=False,
-    )
-    saved = next(csv.DictReader(StringIO(output.getvalue())))
-    assert summary["rows"] == 1
-    assert "high_composite_weak_name_side" in saved["problem_codes"]
-    assert "oddspapi_participant_identity_conflict" in saved["problem_codes"]
+    ))
+    assert len(problems) == 1
+    assert "high_composite_weak_name_side" in problems[0]["problem_codes"]
+    assert "oddspapi_participant_identity_conflict" in problems[0]["problem_codes"]
 
 
 def test_cli_writes_focused_problematic_csv():
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         input_csv = root / "input.csv"
-        output_csv = root / "problematic.csv"
+        output_json = root / "problematic.json"
+        review_json = root / "review.json"
+        sample_json = root / "sample.json"
         rows = [
             row(mapping_id=1, confidence=0.99),
             row(mapping_id=2, confidence=0.99, sofa_home_name="Different club"),
@@ -119,8 +140,11 @@ def test_cli_writes_focused_problematic_csv():
             writer.writerows(rows)
         with redirect_stdout(StringIO()):
             assert main(["--input-csv", str(input_csv),
-                         "--problematic-csv", str(output_csv),
+                         "--problematic-json", str(output_json),
+                         "--review-json", str(review_json),
+                         "--sample-json", str(sample_json), "--sample-per-stratum", "2",
                          "--max-examples", "0"]) == 0
-        with output_csv.open(newline="", encoding="utf-8") as handle:
-            problems = list(csv.DictReader(handle))
-        assert {item["mapping_id"] for item in problems} == {"2", "3"}
+        data = json.loads(output_json.read_text(encoding="utf-8"))
+        assert {item["mapping_id"] for item in data["records"]} == {"2", "3"}
+        assert len(json.loads(review_json.read_text(encoding="utf-8"))["records"]) == 2
+        assert len(json.loads(sample_json.read_text(encoding="utf-8"))["records"]) == 3

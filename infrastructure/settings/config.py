@@ -159,50 +159,25 @@ def _parse_env_float_map(env_name, default_value=None):
     return parsed
 
 
-_X_REQUESTED_WITH_SAFE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
-
-
-def _parse_x_requested_with_tokens(
-    env_name="x_requested_with_header_tokens",
-    default_value=None,
-) -> list[str]:
-    raw_tokens = _parse_env_list(env_name, default_value or [])
-    cleaned = []
-    seen = set()
-
-    for raw in raw_tokens:
-        token = str(raw or "").strip()
-        if not token:
-            continue
-
-        # Reject values that could break headers or be abused for header injection.
-        if not _X_REQUESTED_WITH_SAFE_PATTERN.match(token):
-            logging.getLogger(__name__).warning(
-                "Ignoring invalid X-Requested-With token from env: invalid format"
-            )
-            continue
-
-        if token not in seen:
-            seen.add(token)
-            cleaned.append(token)
-
-    return cleaned
-
-
 _SOFASCORE_X_REQUESTED_WITH_SAFE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{0,128}$")
 
 
 def _parse_x_requested_with_value(
     env_name="SOFASCORE_X_REQUESTED_WITH",
-    default_value="XMLHttpRequest",
+    default_value=None,
 ):
     value = os.getenv(env_name, default_value)
 
     # None should not happen with a default, but keep the parser defensive.
     if value is None:
-        return default_value
+        return None
 
     value = str(value).strip()
+    if not value or value.lower() in {"none", "disabled", "false", "off", "null", "empty", "0"}:
+        return None
+
+    if value.lower() in {"true", "1", "yes", "on", "enable", "enabled", "xmlhttprequest"}:
+        return "XMLHttpRequest"
 
     # Allow empty strings only when explicitly configured; reject risky header values.
     if not _SOFASCORE_X_REQUESTED_WITH_SAFE_PATTERN.match(value):
@@ -232,18 +207,9 @@ class Config:
     DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
     
     # SOFASCORE API Configuration
-    SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1'
+    SOFASCORE_BASE_URL = os.getenv('SOFASCORE_BASE_URL', 'https://www.sofascore.com/api/v1')
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     SOFASCORE_X_REQUESTED_WITH = _parse_x_requested_with_value()
-
-    # Deprecated for production use.
-    # Kept only for diagnostic A/B testing and rollback experiments.
-    # Production client uses SOFASCORE_X_REQUESTED_WITH.
-    X_REQUESTED_WITH_HEADER_TOKENS = _parse_x_requested_with_tokens(
-        "x_requested_with_header_tokens",
-        ["4a6089", "17cb4a"],
-    )
-    
     # Scheduler Configuration
     POLL_INTERVAL_MINUTES = int(os.getenv('POLL_INTERVAL_MINUTES', '5'))
     PRE_START_T_MINUS_ONE_INTERVAL_MINUTES = int(
@@ -614,6 +580,18 @@ class Config:
     PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART = _parse_env_bool('PROXY_ROTATE_ON_ODDSPORTAL_BROWSER_RESTART', True)
     PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR = _parse_env_bool('PROXY_ROTATE_ON_SOFASCORE_PROXY_ERROR', True)
     PROXY_LOG_SAFE = _parse_env_bool('PROXY_LOG_SAFE', True)
+    SOFASCORE_CHALLENGE_RESPONSE_LOGGING = _parse_env_bool(
+        'SOFASCORE_CHALLENGE_RESPONSE_LOGGING',
+        False,
+    )
+    SOFASCORE_CHALLENGE_CIRCUIT_THRESHOLD = max(
+        1,
+        int(os.getenv('SOFASCORE_CHALLENGE_CIRCUIT_THRESHOLD', '2')),
+    )
+    SOFASCORE_CHALLENGE_CIRCUIT_COOLDOWN_SECONDS = max(
+        1,
+        int(os.getenv('SOFASCORE_CHALLENGE_CIRCUIT_COOLDOWN_SECONDS', '900')),
+    )
     
     PROXY_ROTATION_INTERVAL = int(os.getenv('PROXY_ROTATION_INTERVAL', '5'))
     PROXY_MAX_RETRIES = int(os.getenv('PROXY_MAX_RETRIES', '3'))

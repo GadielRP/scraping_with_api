@@ -18,6 +18,7 @@ import random
 import re
 import sys
 import tempfile
+import textwrap
 import unicodedata
 from typing import Iterable, Mapping
 
@@ -32,7 +33,9 @@ SELECT o.mapping_id, o.event_id, o.source_event_id, e.sport, e.starts_at,
        oh.source_participant_id AS odd_home_source_id,
        oa.source_participant_id AS odd_away_source_id,
        oh.name AS odd_home_name, oh.short_name AS odd_home_short_name,
+       oh.code_name AS odd_home_code_name,
        oa.name AS odd_away_name, oa.short_name AS odd_away_short_name,
+       oa.code_name AS odd_away_code_name,
        sm.mapping_id AS sofa_mapping_id,
        sm.source_participant_home_id AS sofa_mapping_home_fk,
        sm.source_participant_away_id AS sofa_mapping_away_fk,
@@ -42,8 +45,10 @@ SELECT o.mapping_id, o.event_id, o.source_event_id, e.sport, e.starts_at,
        COALESCE(sa.source_participant_id, ea.source_participant_id) AS sofa_away_source_id,
        COALESCE(sh.name, eh.name) AS sofa_home_name,
        COALESCE(sh.short_name, eh.short_name) AS sofa_home_short_name,
+       COALESCE(sh.code_name, eh.code_name) AS sofa_home_code_name,
        COALESCE(sa.name, ea.name) AS sofa_away_name,
-       COALESCE(sa.short_name, ea.short_name) AS sofa_away_short_name
+       COALESCE(sa.short_name, ea.short_name) AS sofa_away_short_name,
+       COALESCE(sa.code_name, ea.code_name) AS sofa_away_code_name
 FROM event_source_mappings AS o
 JOIN events AS e ON e.id = o.event_id
 LEFT JOIN participants AS oh ON oh.participant_id = o.source_participant_home_id
@@ -72,7 +77,13 @@ REVIEW_FIELDS = (
     "direct_home_score", "direct_away_score", "reverse_home_score",
     "reverse_away_score", "odd_home_source_id", "odd_away_source_id",
     "sofa_home_source_id", "sofa_away_source_id", "odd_home_name",
-    "odd_away_name", "sofa_home_name", "sofa_away_name",
+    "odd_home_short_name", "odd_home_code_name", "odd_away_name",
+    "odd_away_short_name", "odd_away_code_name", "sofa_home_name",
+    "sofa_home_short_name", "sofa_home_code_name", "sofa_away_name",
+    "sofa_away_short_name", "sofa_away_code_name",
+    "direct_home_primary_score", "direct_away_primary_score",
+    "reverse_home_primary_score", "reverse_away_primary_score",
+    "code_name_contributed",
 )
 PROBLEM_FIELDS = ("priority", "problem_codes", *REVIEW_FIELDS)
 
@@ -120,8 +131,14 @@ def name_score(left: object, right: object) -> float:
 
 
 def participant_score(row: Mapping, left_prefix: str, right_prefix: str) -> float:
-    left = [row.get(f"{left_prefix}_name"), row.get(f"{left_prefix}_short_name")]
-    right = [row.get(f"{right_prefix}_name"), row.get(f"{right_prefix}_short_name")]
+    left = [row.get(f"{left_prefix}_{field}") for field in ("name", "short_name", "code_name")]
+    right = [row.get(f"{right_prefix}_{field}") for field in ("name", "short_name", "code_name")]
+    return max((name_score(a, b) for a in left for b in right), default=0.0)
+
+
+def primary_participant_score(row: Mapping, left_prefix: str, right_prefix: str) -> float:
+    left = [row.get(f"{left_prefix}_{field}") for field in ("name", "short_name")]
+    right = [row.get(f"{right_prefix}_{field}") for field in ("name", "short_name")]
     return max((name_score(a, b) for a in left for b in right), default=0.0)
 
 
@@ -142,24 +159,37 @@ def evaluate(row: Mapping, *, strong: float, weak: float, reversal_margin: float
             reasons.append(f"sofascore_{side}_fk_disagrees_with_event")
 
     complete = all(
-        row.get(f"{source}_{side}_name")
+        any(_nonempty(row.get(f"{source}_{side}_{field}")) for field in ("name", "short_name", "code_name"))
         for source in ("odd", "sofa") for side in ("home", "away")
     )
     direct_home = participant_score(row, "odd_home", "sofa_home")
     direct_away = participant_score(row, "odd_away", "sofa_away")
     reverse_home = participant_score(row, "odd_home", "sofa_away")
     reverse_away = participant_score(row, "odd_away", "sofa_home")
+    direct_home_primary = primary_participant_score(row, "odd_home", "sofa_home")
+    direct_away_primary = primary_participant_score(row, "odd_away", "sofa_away")
+    reverse_home_primary = primary_participant_score(row, "odd_home", "sofa_away")
+    reverse_away_primary = primary_participant_score(row, "odd_away", "sofa_home")
     direct_min = min(direct_home, direct_away)
     reverse_min = min(reverse_home, reverse_away)
+    direct_primary_min = min(direct_home_primary, direct_away_primary)
+    reverse_primary_min = min(reverse_home_primary, reverse_away_primary)
+    code_name_only_match = direct_min >= strong and direct_primary_min < weak
 
     if reasons and any("wrong_source" in reason for reason in reasons):
         classification = "integrity_error"
     elif not complete:
         classification = "unverifiable"
-        reasons.append("missing_participant_name")
-    elif reverse_min >= strong and reverse_min - direct_min >= reversal_margin:
+        reasons.append("missing_participant_names")
+    elif reverse_min >= strong and reverse_min - direct_min >= reversal_margin and reverse_primary_min < weak:
+        classification = "review"
+        reasons.append("code_name_only_reversed_match")
+    elif reverse_min >= strong and reverse_primary_min >= weak and reverse_min - direct_min >= reversal_margin:
         classification = "reversed"
-    elif direct_home == direct_away == 1.0:
+    elif code_name_only_match:
+        classification = "review"
+        reasons.append("code_name_only_match")
+    elif direct_home_primary == direct_away_primary == 1.0:
         classification = "exact"
     elif direct_min >= strong:
         classification = "strong"
@@ -176,6 +206,16 @@ def evaluate(row: Mapping, *, strong: float, weak: float, reversal_margin: float
         direct_away_score=round(direct_away, 3),
         reverse_home_score=round(reverse_home, 3),
         reverse_away_score=round(reverse_away, 3),
+        direct_home_primary_score=round(direct_home_primary, 3),
+        direct_away_primary_score=round(direct_away_primary, 3),
+        reverse_home_primary_score=round(reverse_home_primary, 3),
+        reverse_away_primary_score=round(reverse_away_primary, 3),
+        code_name_contributed=any((
+            direct_home > direct_home_primary,
+            direct_away > direct_away_primary,
+            reverse_home > reverse_home_primary,
+            reverse_away > reverse_away_primary,
+        )),
     )
     return result
 
@@ -200,6 +240,10 @@ def problem_codes(
     reasons = set(filter(None, str(row.get("reason") or "").split(",")))
     if "missing_sofascore_mapping" in reasons:
         codes.append("missing_sofascore_mapping")
+    if "code_name_only_match" in reasons:
+        codes.append("code_name_only_match")
+    if "code_name_only_reversed_match" in reasons:
+        codes.append("code_name_only_reversed_match")
     if any(reason.endswith("_fk_disagrees_with_event") for reason in reasons):
         codes.append("sofascore_participant_fk_disagreement")
     if include_incomplete and category == "unverifiable":
@@ -225,13 +269,11 @@ def problem_codes(
     return codes
 
 
-def write_problematic_csv(
-    rows: Iterable[Mapping], writer, *, odd_conflicts: set[str],
+def iter_problematic_records(
+    rows: Iterable[Mapping], *, odd_conflicts: set[str],
     sofa_conflicts: set[str], confidence_min: float, weak: float,
     include_incomplete: bool,
-) -> dict:
-    counts = Counter()
-    total = 0
+):
     for row in rows:
         codes = problem_codes(
             row, odd_conflicts=odd_conflicts, sofa_conflicts=sofa_conflicts,
@@ -240,17 +282,55 @@ def write_problematic_csv(
         )
         if not codes:
             continue
-        total += 1
-        counts.update(codes)
         priority = "high" if any(code in {
             "mismatch", "reversed", "integrity_error",
             "oddspapi_participant_identity_conflict",
             "sofascore_participant_identity_conflict",
             "sofascore_participant_fk_disagreement",
         } for code in codes) else "medium"
-        writer.writerow({"priority": priority, "problem_codes": ",".join(codes),
-                         **{key: row.get(key) for key in REVIEW_FIELDS}})
+        yield {"priority": priority, "problem_codes": ",".join(codes),
+               **{key: row.get(key) for key in REVIEW_FIELDS}}
+
+
+def problematic_summary(rows: Iterable[Mapping], **kwargs) -> dict:
+    counts = Counter()
+    total = 0
+    for row in iter_problematic_records(rows, **kwargs):
+        total += 1
+        counts.update(row["problem_codes"].split(","))
     return {"rows": total, "by_code": dict(counts)}
+
+
+class JsonArrayWriter:
+    """Small streaming writer compatible with csv.DictWriter.writerow()."""
+
+    def __init__(self, handle):
+        self.handle = handle
+        self.first = True
+
+    def writeheader(self):
+        return None
+
+    def writerow(self, row):
+        if not self.first:
+            self.handle.write(",\n")
+        rendered = json.dumps(row, ensure_ascii=False, indent=2, default=str)
+        self.handle.write(textwrap.indent(rendered, "    "))
+        self.first = False
+
+
+def open_json_records(handle, metadata: Mapping) -> JsonArrayWriter:
+    handle.write("{\n")
+    for key, value in metadata.items():
+        rendered = json.dumps(value, ensure_ascii=False, indent=2, default=str)
+        rendered = rendered.replace("\n", "\n  ")
+        handle.write(f"  {json.dumps(key)}: {rendered},\n")
+    handle.write('  "records": [\n')
+    return JsonArrayWriter(handle)
+
+
+def close_json_records(handle, writer: JsonArrayWriter) -> None:
+    handle.write("\n  ]\n}\n")
 
 
 def audit(
@@ -368,19 +448,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reversal-margin", type=float, default=0.15)
     parser.add_argument("--max-examples", type=int, default=20)
     parser.add_argument("--output-json", type=Path)
-    parser.add_argument("--review-csv", type=Path)
-    parser.add_argument("--problematic-csv", type=Path,
-                        default=Path("exports/oddspapi_event_mapping_problematic.csv"),
-                        help="Focused risk queue; created by default")
+    parser.add_argument("--review-json", "--review-csv", dest="review_json", type=Path)
+    parser.add_argument("--problematic-json", "--problematic-csv", dest="problematic_json", type=Path,
+                        default=Path("exports/oddspapi_event_mapping_problematic.json"),
+                        help="Focused risk queue; JSON created by default")
     parser.add_argument("--problem-confidence-min", type=float, default=0.95,
                         help="Composite score floor for a weak-side review flag")
     parser.add_argument("--include-incomplete-problems", action="store_true",
-                        help="Also place rows without a full participant pair in the focused CSV")
-    parser.add_argument("--sample-csv", type=Path, help="Stratified random sample for human labels")
+                        help="Also place rows without a full participant pair in the focused JSON")
+    parser.add_argument("--sample-json", "--sample-csv", dest="sample_json", type=Path,
+                        help="Stratified random sample for human labels, written as JSON")
     parser.add_argument("--sample-per-stratum", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--estimate-from-labels", type=Path,
-                        help="Score a completed --sample-csv without database access")
+                        help="Score completed manual labels from sample JSON (or legacy CSV)")
     return parser
 
 
@@ -458,7 +539,11 @@ def main(argv=None) -> int:
         return 0
     if args.estimate_from_labels:
         with args.estimate_from_labels.open(newline="", encoding="utf-8") as handle:
-            report = estimate_from_labels(csv.DictReader(handle))
+            if args.estimate_from_labels.suffix.casefold() == ".csv":
+                labeled_rows = csv.DictReader(handle)
+            else:
+                labeled_rows = json.load(handle)["records"]
+            report = estimate_from_labels(labeled_rows)
         rendered = json.dumps(report, ensure_ascii=True, indent=2) + "\n"
         if args.output_json:
             args.output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -476,7 +561,6 @@ def main(argv=None) -> int:
         raise SystemExit("--start-from must precede --start-to")
 
     input_handle = None
-    review_handle = None
     stage_handle = tempfile.SpooledTemporaryFile(
         max_size=2_000_000, mode="w+", newline="", encoding="utf-8"
     )
@@ -486,47 +570,82 @@ def main(argv=None) -> int:
             rows = csv.DictReader(input_handle)
         else:
             rows = _database_rows(args)
-        review_writer = None
-        if args.review_csv:
-            args.review_csv.parent.mkdir(parents=True, exist_ok=True)
-            review_handle = args.review_csv.open("w", newline="", encoding="utf-8")
-            review_writer = csv.DictWriter(review_handle, fieldnames=REVIEW_FIELDS)
-            review_writer.writeheader()
         stage_writer = csv.DictWriter(stage_handle, fieldnames=REVIEW_FIELDS)
         stage_writer.writeheader()
         report = audit(rows, strong=args.strong, weak=args.weak,
                        reversal_margin=args.reversal_margin,
-                       max_examples=args.max_examples, review_writer=review_writer,
-                       sample_per_stratum=args.sample_per_stratum if args.sample_csv else 0,
+                       max_examples=args.max_examples,
+                       sample_per_stratum=args.sample_per_stratum if args.sample_json else 0,
                        seed=args.seed, all_writer=stage_writer)
         odd_conflicts = report.pop("_odd_conflict_ids")
         sofa_conflicts = report.pop("_sofa_conflict_ids")
+        sample_rows = report.pop("_manual_review_sample")
+
+        problem_kwargs = {
+            "odd_conflicts": odd_conflicts,
+            "sofa_conflicts": sofa_conflicts,
+            "confidence_min": args.problem_confidence_min,
+            "weak": args.weak,
+            "include_incomplete": args.include_incomplete_problems,
+        }
         stage_handle.seek(0)
-        args.problematic_csv.parent.mkdir(parents=True, exist_ok=True)
-        with args.problematic_csv.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=PROBLEM_FIELDS)
-            writer.writeheader()
-            report["problematic"] = write_problematic_csv(
-                csv.DictReader(stage_handle), writer,
-                odd_conflicts=odd_conflicts, sofa_conflicts=sofa_conflicts,
-                confidence_min=args.problem_confidence_min, weak=args.weak,
-                include_incomplete=args.include_incomplete_problems,
-            )
+        report["problematic"] = problematic_summary(csv.DictReader(stage_handle), **problem_kwargs)
         report["problematic"]["confidence_min"] = args.problem_confidence_min
         report["problematic"]["includes_incomplete"] = args.include_incomplete_problems
+
+        args.problematic_json.parent.mkdir(parents=True, exist_ok=True)
+        stage_handle.seek(0)
+        with args.problematic_json.open("w", encoding="utf-8") as handle:
+            writer = open_json_records(handle, {
+                "generated_at_utc": report["generated_at_utc"],
+                "thresholds": report["thresholds"],
+                "filters": {"sport": args.sport, "start_from": args.start_from,
+                            "start_to": args.start_to, "match_method": args.match_method},
+                "summary": report["problematic"],
+            })
+            for item in iter_problematic_records(csv.DictReader(stage_handle), **problem_kwargs):
+                writer.writerow(item)
+            close_json_records(handle, writer)
+
+        if args.review_json:
+            args.review_json.parent.mkdir(parents=True, exist_ok=True)
+            stage_handle.seek(0)
+            review_count = sum(
+                1 for item in csv.DictReader(stage_handle)
+                if item["classification"] not in {"exact", "strong"} or item["reason"]
+            )
+            stage_handle.seek(0)
+            with args.review_json.open("w", encoding="utf-8") as handle:
+                writer = open_json_records(handle, {
+                    "generated_at_utc": report["generated_at_utc"],
+                    "purpose": "Broad review set: non-strong classes and rows with integrity reasons",
+                    "records_count": review_count,
+                })
+                for item in csv.DictReader(stage_handle):
+                    if item["classification"] not in {"exact", "strong"} or item["reason"]:
+                        writer.writerow(item)
+                close_json_records(handle, writer)
+            report["review_rows"] = review_count
+
+        if args.sample_json:
+            args.sample_json.parent.mkdir(parents=True, exist_ok=True)
+            with args.sample_json.open("w", encoding="utf-8") as handle:
+                json.dump({
+                    "generated_at_utc": report["generated_at_utc"],
+                    "sampling": {
+                        "method": "reservoir sample stratified by classification, match_method and sport",
+                        "per_stratum": args.sample_per_stratum,
+                        "seed": args.seed,
+                        "label_values": ["correct_event", "wrong_event", "orientation_only"],
+                        "blank_label_means": "not reviewed or insufficient evidence",
+                    },
+                    "records_count": len(sample_rows),
+                    "records": sample_rows,
+                }, handle, ensure_ascii=False, indent=2, default=str)
     finally:
         if input_handle is not None and input_handle is not sys.stdin:
             input_handle.close()
-        if review_handle is not None:
-            review_handle.close()
         stage_handle.close()
-    sample_rows = report.pop("_manual_review_sample")
-    if args.sample_csv:
-        args.sample_csv.parent.mkdir(parents=True, exist_ok=True)
-        with args.sample_csv.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=(*REVIEW_FIELDS, "stratum_size", "manual_label", "reviewer_notes"))
-            writer.writeheader()
-            writer.writerows(sample_rows)
     rendered = json.dumps(report, ensure_ascii=True, indent=2, default=str) + "\n"
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)

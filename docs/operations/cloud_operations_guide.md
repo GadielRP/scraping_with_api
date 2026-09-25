@@ -733,10 +733,12 @@ docker compose exec postgres psql -U sofascore -d sofascore_odds -c "ALTER TABLE
 docker compose exec postgres psql -U sofascore -d sofascore_odds -c "ALTER TABLE event_odds ADD COLUMN IF NOT EXISTS var_two NUMERIC(6,2) GENERATED ALWAYS AS ((two_final - two_open)::numeric(6,2)) STORED;"
 ```
 
-4.6) Recreate views/materialized view locally (post-restore)
+4.6) Apply the current Alembic migrations to the restored database
 ```powershell
-# This will auto-create missing views (event_all_odds, mv_alert_events) and refresh the materialized view
-docker compose exec app python /app/main.py refresh-alerts
+# Build the migration image from this checkout, then always run the one-shot
+# migration service explicitly after restoring a backup.
+docker compose build migrate
+docker compose run --rm migrate
 ```
 
 4.7) Grant application permissions to sofascore_app (required after restore)
@@ -745,17 +747,25 @@ docker compose exec app python /app/main.py refresh-alerts
 docker compose exec postgres psql -U sofascore -d sofascore_odds -c "
   GRANT USAGE ON SCHEMA public TO sofascore_app;
   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sofascore_app;
+  REVOKE INSERT, UPDATE, DELETE ON TABLE public.alembic_version FROM sofascore_app;
   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sofascore_app;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sofascore_app;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO sofascore_app;
 "
 ```
 
+4.8) Recreate views/materialized view locally (post-restore)
+```powershell
+# This will auto-create missing views (event_all_odds, mv_alert_events) and refresh the materialized view
+docker compose exec app python /app/main.py refresh-alerts
+```
+
 Notes:
-- Server backups may not include the new views/columns yet. Until the server schema is migrated, you must run steps 4.5 and 4.6 locally after every restore.
+- Server backups may not include the latest schema yet. Run migrations, restore permissions, and refresh reporting views after every restore.
 - The computed columns (var_one, var_x, var_two) are required before creating views that reference them.
 - Any `main.py` command initializes the system (creates views if missing). `refresh-alerts` is the shortest, and also refreshes the materialized view.
-- Step 4.7 is mandatory because `pg_restore --no-privileges` resets schema grants; without it, `app` will fail with `permission denied for table events`.
+- Step 4.6 is required to bring the restored schema to the revision expected by this checkout. Step 4.7 is mandatory because `pg_restore --no-privileges` omits schema grants; without it, the app can fail with permission errors, including `permission denied for table alembic_version`.
+- The runtime role may read `alembic_version` to verify migrations, but must not modify it; migrations run as the database owner.
 
 5) Verify locally (port 5435)
 ```powershell
@@ -776,7 +786,7 @@ Notes:
 - If a local-only marker table exists from earlier tests, it may be dropped by `--clean`. Recreate it if you still want the marker.
 - To start from an empty local DB and restore on first run, you can wipe the local volume and place a `backup.dump` in `db-init/`, then `docker compose up -d` (this rebuilds local data volume).
 
-### 16.1) Copy logs and debugging files from server
+### 17) Copy logs and debugging files from server
 
 To pull logs from the server `./logs/...` to your local `./logs/...`:
 ```powershell
@@ -784,7 +794,7 @@ To pull logs from the server `./logs/...` to your local `./logs/...`:
 New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3"
 
 # use the following format: scp root@143.244.179.129:/opt/sofascore/logs/NN_Month/week_n/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\NN_Month\week_n\
-scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_3/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3\
+scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_4/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_4\
 ```
 
 To pull debugging files from server `./debug/...` to local `./debug/...`:

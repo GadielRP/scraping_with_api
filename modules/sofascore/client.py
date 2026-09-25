@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from curl_cffi import requests
+from curl_cffi.const import CurlECode
 
 from infrastructure.network import ProxyIdentityManager
 from infrastructure.settings import Config
@@ -33,7 +36,12 @@ from .challenge import (
     is_sofascore_challenge_response,
     write_challenge_evidence,
 )
-from .exceptions import SofaScoreChallengeException, SofaScoreNotFoundException, SofaScoreRateLimitException
+from .exceptions import (
+    SofaScoreChallengeCircuitOpenException,
+    SofaScoreChallengeException,
+    SofaScoreNotFoundException,
+    SofaScoreRateLimitException,
+)
 from .h2h import get_h2h_events_for_event
 from .results_parser import extract_results_from_response
 from .schedule_feeds import (
@@ -47,6 +55,16 @@ from .team_history import get_nearest_event_for_team, get_team_last_results_resp
 from .winning_odds import get_winning_odds_response
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _SofaScoreRequestState:
+    """HTTP session and proxy identity owned by one calling thread."""
+
+    session: object | None
+    proxy_manager: ProxyIdentityManager
+    proxy_identity: object | None = None
+    is_main_thread: bool = False
 
 
 def _safe_token_fingerprint(token: str | None) -> str:
@@ -72,6 +90,44 @@ def _safe_token_context(token: str | None, header_sent: bool) -> dict:
     }
 
 
+def _safe_transport_error_message(error: Exception) -> str:
+    """Redact credentials if a transport exception happens to include a proxy URL."""
+    message = str(error)
+    return re.sub(r"(?i)(https?://)[^/\s@]+@", r"\1[credentials-redacted]@", message)
+
+
+def _transport_error_diagnostics(error: Exception) -> tuple[int | None, str, str]:
+    """Return libcurl code, symbolic name, and a cautious transport-stage hint."""
+    raw_code = getattr(error, "code", None)
+    try:
+        code = int(raw_code) if raw_code is not None else None
+    except (TypeError, ValueError):
+        code = None
+
+    try:
+        code_name = CurlECode(code).name if code is not None else "unavailable"
+    except ValueError:
+        code_name = "unknown"
+
+    message = str(error).upper()
+    categories = {
+        5: "proxy_dns_resolution_failed",
+        7: "connect_failed_to_proxy_or_destination",
+        28: "connection_timed_out_proxy_or_destination",
+        35: "tls_handshake_failed",
+        55: "connection_send_failed",
+        56: "connection_receive_failed",
+        97: "proxy_handshake_or_protocol_failed",
+    }
+    category = categories.get(code, "transport_or_request_error")
+    if code == 56 and "CONNECT" in message:
+        category = "proxy_connect_tunnel_failed"
+    elif code is None and "PROXY" in type(error).__name__.upper():
+        category = "proxy_error_without_libcurl_code"
+
+    return code, code_name, category
+
+
 class SofaScoreAPI:
     def __init__(self):
         self.base_url = Config.SOFASCORE_BASE_URL
@@ -82,9 +138,63 @@ class SofaScoreAPI:
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
+        self._main_thread_id = threading.get_ident()
+        self._thread_local = threading.local()
         self.challenge_evidence_enabled = bool(getattr(Config, "global_debug_mode", False))
-        self._x_requested_with_missing_warned = False
+        self.challenge_response_logging_enabled = bool(
+            getattr(Config, "SOFASCORE_CHALLENGE_RESPONSE_LOGGING", False)
+        )
+        self._challenge_circuit_lock = threading.Lock()
+        self._challenge_circuit_threshold = max(
+            1,
+            int(getattr(Config, "SOFASCORE_CHALLENGE_CIRCUIT_THRESHOLD", 2)),
+        )
+        self._challenge_circuit_cooldown_seconds = max(
+            1,
+            int(getattr(Config, "SOFASCORE_CHALLENGE_CIRCUIT_COOLDOWN_SECONDS", 900)),
+        )
+        self._consecutive_challenge_responses = 0
+        self._challenge_circuit_open_until = 0.0
         self._setup_session(reason="initial_setup")
+
+    def _raise_if_challenge_circuit_open(self, endpoint: str) -> None:
+        with self._challenge_circuit_lock:
+            now = time.monotonic()
+            if self._challenge_circuit_open_until and now >= self._challenge_circuit_open_until:
+                self._challenge_circuit_open_until = 0.0
+                self._consecutive_challenge_responses = 0
+            remaining = self._challenge_circuit_open_until - now
+
+        if remaining > 0:
+            raise SofaScoreChallengeCircuitOpenException(
+                endpoint=endpoint,
+                retry_after_seconds=int(remaining + 0.999),
+            )
+
+    def _record_challenge_response(self, endpoint: str) -> None:
+        opened = False
+        with self._challenge_circuit_lock:
+            self._consecutive_challenge_responses += 1
+            if (
+                not self._challenge_circuit_open_until
+                and self._consecutive_challenge_responses >= self._challenge_circuit_threshold
+            ):
+                self._challenge_circuit_open_until = (
+                    time.monotonic() + self._challenge_circuit_cooldown_seconds
+                )
+                opened = True
+
+        if opened:
+            logger.error(
+                "SofaScore challenge circuit opened for %ss after %s consecutive challenge responses; "
+                "new requests will be skipped during cooldown",
+                self._challenge_circuit_cooldown_seconds,
+                self._consecutive_challenge_responses,
+            )
+
+    def _record_successful_response(self) -> None:
+        with self._challenge_circuit_lock:
+            self._consecutive_challenge_responses = 0
 
     def set_challenge_evidence_enabled(self, enabled: bool) -> None:
         self.challenge_evidence_enabled = bool(enabled)
@@ -92,73 +202,135 @@ class SofaScoreAPI:
     def _should_capture_challenge_evidence(self) -> bool:
         return bool(self.challenge_evidence_enabled)
 
+    def _should_log_full_challenge_response(self) -> bool:
+        return bool(self.challenge_response_logging_enabled)
+
     def _build_headers(self) -> Dict[str, str]:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "es-MX,es-419;q=0.9,es;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Connection": "keep-alive",
             "Origin": "https://www.sofascore.com",
             "Referer": "https://www.sofascore.com/",
-            "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+            "Sec-Ch-Ua": '"Chromium";v="154", "Google Chrome";v="154", "Not A(Brand";v="99"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"Windows"',
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
+            "Sec-Fetch-Site": "same-origin",
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
         }
 
         if self.x_requested_with is not None:
             headers["X-Requested-With"] = self.x_requested_with
-        else:
-            if not self._x_requested_with_missing_warned:
-                logger.warning(
-                    "SOFASCORE_X_REQUESTED_WITH is disabled; SofaScore requests may receive challenge responses"
-                )
-                self._x_requested_with_missing_warned = True
 
         return headers
 
     def _setup_session(self, rotate_proxy_identity: bool = False, reason: str = "runtime"):
-        self.session = requests.Session(impersonate="chrome136")
+        state = _SofaScoreRequestState(
+            session=self.session,
+            proxy_manager=self.proxy_manager,
+            proxy_identity=self.proxy_identity,
+            is_main_thread=True,
+        )
+        self._configure_request_state(
+            state,
+            rotate_proxy_identity=rotate_proxy_identity,
+            reason=reason,
+        )
 
-        if not self.proxy_manager.proxy_enabled:
+    def _configure_request_state(
+        self,
+        state: _SofaScoreRequestState,
+        *,
+        rotate_proxy_identity: bool,
+        reason: str,
+    ) -> None:
+        state.session = requests.Session(impersonate="chrome136")
+
+        if not state.proxy_manager.proxy_enabled:
             logger.info("Proxy disabled - using direct connection")
-            self.proxy_identity = None
+            state.proxy_identity = None
+            self._publish_main_thread_state(state)
             return
 
-        self.proxy_identity = self.proxy_manager.get_identity(
+        state.proxy_identity = state.proxy_manager.get_identity(
             rotate_session=rotate_proxy_identity,
             reason=reason,
         )
 
-        proxies = self.proxy_manager.build_requests_proxies(self.proxy_identity)
+        proxies = state.proxy_manager.build_requests_proxies(state.proxy_identity)
         if not proxies:
             logger.warning("Proxy is enabled but proxy identity is not valid; using direct connection")
-            self.proxy_identity = None
+            state.proxy_identity = None
+            self._publish_main_thread_state(state)
             return
 
-        self.session.proxies = proxies
+        state.session.proxies = proxies
+        self._publish_main_thread_state(state)
         logger.info(
-            "SofaScore proxy ready (gen=%s, %s)",
-            self.proxy_identity.generation,
-            self.proxy_manager.describe_identity(self.proxy_identity),
+            "SofaScore proxy ready (thread=%s, gen=%s, %s)",
+            threading.current_thread().name,
+            state.proxy_identity.generation,
+            state.proxy_manager.describe_identity(state.proxy_identity),
         )
 
-    def _rotate_proxy_identity(self, reason: str):
-        if not self.proxy_manager.proxy_enabled:
+    def _publish_main_thread_state(self, state: _SofaScoreRequestState) -> None:
+        if state.is_main_thread:
+            self.session = state.session
+            self.proxy_identity = state.proxy_identity
+
+    def _get_request_state(self) -> _SofaScoreRequestState:
+        if threading.get_ident() == self._main_thread_id:
+            return _SofaScoreRequestState(
+                session=self.session,
+                proxy_manager=self.proxy_manager,
+                proxy_identity=self.proxy_identity,
+                is_main_thread=True,
+            )
+
+        state = getattr(self._thread_local, "sofascore_request_state", None)
+        if state is None:
+            state = _SofaScoreRequestState(
+                session=None,
+                proxy_manager=ProxyIdentityManager(Config, client_name="sofascore"),
+            )
+            self._configure_request_state(
+                state,
+                rotate_proxy_identity=False,
+                reason="thread_setup",
+            )
+            self._thread_local.sofascore_request_state = state
+        return state
+
+    def _rotate_proxy_identity(
+        self,
+        reason: str,
+        state: _SofaScoreRequestState | None = None,
+    ):
+        state = state or self._get_request_state()
+        if not state.proxy_manager.proxy_enabled:
             return
-        old_gen = self.proxy_identity.generation if self.proxy_identity else 0
-        self._setup_session(rotate_proxy_identity=True, reason=reason)
-        new_gen = self.proxy_identity.generation if self.proxy_identity else 0
-        logger.info(
-            "Proxy session rotated: reason=%s, gen %s -> %s (new curl_cffi session created)",
-            reason, old_gen, new_gen,
+        old_gen = state.proxy_identity.generation if state.proxy_identity else 0
+        self._configure_request_state(
+            state,
+            rotate_proxy_identity=True,
+            reason=reason,
         )
-        self._proxy_error_streak = 0
+        new_gen = state.proxy_identity.generation if state.proxy_identity else 0
+        logger.info(
+            "Proxy session rotated: reason=%s, gen %s -> %s "
+            "(new curl_cffi session created, thread=%s)",
+            reason,
+            old_gen,
+            new_gen,
+            threading.current_thread().name,
+        )
+        if state.is_main_thread:
+            self._proxy_error_streak = 0
 
     def _rate_limit(self):
         if is_shutdown_requested():
@@ -197,18 +369,24 @@ class SofaScoreAPI:
         url = f"{self.base_url}{endpoint}"
         headers = self._build_headers()
         x_requested_with_token = headers.get("X-Requested-With")
+        request_state = self._get_request_state()
 
+        self._raise_if_challenge_circuit_open(endpoint)
         for attempt in range(Config.MAX_RETRIES):
+            request_started_at = None
+            response = None
             try:
                 if is_shutdown_requested():
                     raise KeyboardInterrupt()
 
+                self._raise_if_challenge_circuit_open(endpoint)
                 self._rate_limit()
                 if is_shutdown_requested():
                     raise KeyboardInterrupt()
 
                 logger.debug("Making request to: %s", url)
-                response = self.session.get(
+                request_started_at = time.perf_counter()
+                response = request_state.session.get(
                     url,
                     headers=headers,
                     params=params,
@@ -217,9 +395,11 @@ class SofaScoreAPI:
 
                 if response.status_code == 200:
                     self._proxy_error_streak = 0
+                    self._record_successful_response()
                     return response.json()
 
                 if is_sofascore_challenge_response(response):
+                    self._record_challenge_response(endpoint)
                     reason = get_challenge_reason(response)
                     token_context = _safe_token_context(
                         x_requested_with_token,
@@ -235,7 +415,8 @@ class SofaScoreAPI:
                         endpoint,
                     )
 
-                    if self._should_capture_challenge_evidence():
+                    capture_full_response = self._should_log_full_challenge_response()
+                    if self._should_capture_challenge_evidence() or capture_full_response:
                         challenge_evidence = build_challenge_evidence(
                             response=response,
                             endpoint=endpoint,
@@ -243,18 +424,32 @@ class SofaScoreAPI:
                             attempt=attempt + 1,
                             max_retries=Config.MAX_RETRIES,
                             params=params,
-                            proxy_identity=self.proxy_identity,
+                            proxy_identity=request_state.proxy_identity,
                             request_url=url,
+                            include_full_response=capture_full_response,
                         )
                         challenge_evidence["request_token_context"] = token_context
+                        challenge_evidence["request_thread"] = threading.current_thread().name
                         evidence = challenge_evidence
-                        write_challenge_evidence(evidence)
+                        evidence_written = write_challenge_evidence(evidence)
+                        if capture_full_response and evidence_written:
+                            logger.error(
+                                "Full SofaScore challenge response saved: endpoint=%s "
+                                "status=%s attempt=%s body_bytes=%s body_sha256=%s file=%s",
+                                endpoint,
+                                response.status_code,
+                                attempt + 1,
+                                challenge_evidence["response_body_bytes"],
+                                challenge_evidence["response_body_sha256"],
+                                "logs/sofascore_challenge_evidence.jsonl",
+                            )
                     else:
                         logger.debug(
-                            "SofaScore challenge evidence capture disabled for %s "
-                            "(debug_mode=%s)",
+                            "SofaScore challenge response capture disabled for %s "
+                            "(debug_evidence=%s full_response_logging=%s)",
                             endpoint,
                             self.challenge_evidence_enabled,
+                            self.challenge_response_logging_enabled,
                         )
 
                     logger.error(
@@ -267,11 +462,12 @@ class SofaScoreAPI:
 
                     if (
                         attempt == 0
-                        and self.proxy_manager.should_rotate_on_sofascore_error()
+                        and request_state.proxy_manager.should_rotate_on_sofascore_error()
                         and Config.MAX_RETRIES > 1
                     ):
                         self._rotate_proxy_identity(
-                            reason=f"http_403_challenge_attempt_{attempt + 1}_{endpoint}"
+                            reason=f"http_403_challenge_attempt_{attempt + 1}_{endpoint}",
+                            state=request_state,
                         )
                         continue
 
@@ -285,15 +481,21 @@ class SofaScoreAPI:
                 if response.status_code == 407:
                     wait_time = min(30 * (2**attempt), 300)
                     logger.warning(
-                        "Proxy authentication error (407) for %s, waiting %ss, attempt %s/%s",
+                        "Proxy returned HTTP 407 (authentication rejected before target response) "
+                        "for %s, provider=%s mode=%s endpoint=%s gen=%s waiting=%ss attempt=%s/%s",
                         endpoint,
+                        request_state.proxy_manager.provider,
+                        request_state.proxy_manager.mode,
+                        request_state.proxy_manager.endpoint,
+                        request_state.proxy_identity.generation if request_state.proxy_identity else 0,
                         wait_time,
                         attempt + 1,
                         Config.MAX_RETRIES,
                     )
-                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                    if request_state.proxy_manager.should_rotate_on_sofascore_error():
                         self._rotate_proxy_identity(
-                            reason=f"http_407_attempt_{attempt + 1}_{endpoint}"
+                            reason=f"http_407_attempt_{attempt + 1}_{endpoint}",
+                            state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
@@ -309,9 +511,10 @@ class SofaScoreAPI:
                         attempt + 1,
                         Config.MAX_RETRIES,
                     )
-                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                    if request_state.proxy_manager.should_rotate_on_sofascore_error():
                         self._rotate_proxy_identity(
-                            reason=f"http_429_attempt_{attempt + 1}_{endpoint}"
+                            reason=f"http_429_attempt_{attempt + 1}_{endpoint}",
+                            state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
@@ -339,9 +542,10 @@ class SofaScoreAPI:
                         Config.MAX_RETRIES,
                         body_preview(getattr(response, "text", "") or ""),
                     )
-                    if self.proxy_manager.should_rotate_on_sofascore_error():
+                    if request_state.proxy_manager.should_rotate_on_sofascore_error():
                         self._rotate_proxy_identity(
-                            reason=f"http_403_attempt_{attempt + 1}_{endpoint}"
+                            reason=f"http_403_attempt_{attempt + 1}_{endpoint}",
+                            state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
                         time.sleep(wait_time)
@@ -386,7 +590,38 @@ class SofaScoreAPI:
                 if is_shutdown_requested():
                     logger.info("Shutdown requested while requesting %s", endpoint)
                     raise KeyboardInterrupt() from exc
-                logger.error("Unexpected error for %s: %s", endpoint, exc)
+                curl_code, curl_code_name, transport_category = _transport_error_diagnostics(exc)
+                elapsed_ms = (
+                    round((time.perf_counter() - request_started_at) * 1000)
+                    if request_started_at is not None
+                    else None
+                )
+                proxy_identity = request_state.proxy_identity
+                logger.error(
+                    "SofaScore request failed before completion: endpoint=%s attempt=%s/%s "
+                    "response_received=%s http_status=%s elapsed_ms=%s exception_type=%s "
+                    "curl_code=%s curl_code_name=%s diagnosis=%s proxy_configured=%s "
+                    "proxy_active=%s proxy_provider=%s proxy_mode=%s proxy_endpoint=%s "
+                    "proxy_generation=%s sticky_session_present=%s retrying=false error=%s",
+                    endpoint,
+                    attempt + 1,
+                    Config.MAX_RETRIES,
+                    response is not None,
+                    getattr(response, "status_code", None),
+                    elapsed_ms,
+                    f"{type(exc).__module__}.{type(exc).__qualname__}",
+                    curl_code,
+                    curl_code_name,
+                    transport_category,
+                    request_state.proxy_manager.proxy_enabled,
+                    bool(proxy_identity and proxy_identity.enabled),
+                    request_state.proxy_manager.provider,
+                    request_state.proxy_manager.mode,
+                    request_state.proxy_manager.endpoint,
+                    proxy_identity.generation if proxy_identity else 0,
+                    bool(proxy_identity and proxy_identity.session_token),
+                    _safe_transport_error_message(exc),
+                )
                 break
 
         return None
@@ -399,6 +634,13 @@ class SofaScoreAPI:
         """Execute a tolerant JSON request and return None for expected failures."""
         try:
             return self.request_json(endpoint, params=params)
+        except SofaScoreChallengeCircuitOpenException as exc:
+            logger.debug(
+                "Skipping SofaScore request while challenge circuit is open: %s; retry_after=%ss",
+                endpoint,
+                exc.retry_after_seconds,
+            )
+            return None
         except SofaScoreChallengeException as exc:
             logger.error("%s", exc)
             return None

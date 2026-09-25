@@ -76,3 +76,16 @@ class SofaScoreChallengeException(SofaScoreError):
             f"SofaScore challenge ({reason}) on {endpoint} "
             f"(event_id={event_id}{suffix})"
         )
+
+
+class SofaScoreChallengeCircuitOpenException(SofaScoreChallengeException):
+    """Raised when recent challenge responses temporarily stop new requests."""
+
+    def __init__(self, endpoint: str, retry_after_seconds: int):
+        self.retry_after_seconds = max(0, int(retry_after_seconds))
+        super().__init__(
+            event_id=0,
+            endpoint=endpoint,
+            reason="circuit_open",
+            evidence={"retry_after_seconds": self.retry_after_seconds},
+        )
