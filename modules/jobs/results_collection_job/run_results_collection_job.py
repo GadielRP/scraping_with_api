@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
-from typing import Dict, List, Tuple
+from datetime import date, timedelta
+from typing import Dict, List, Optional, Tuple, Union
 
 from infrastructure.persistence.repositories import (
     EventRepository,
@@ -97,35 +97,63 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
     return stats
 
 
-def run_results_collection_previous_day() -> None:
-    logger.info("Starting Results Collection (previous day)")
-    try:
-        yesterday = now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
-        events = EventRepository.get_events_by_date(yesterday)
-        if not events:
-            logger.info("No events found from previous day")
-            return
+def run_results_collection_for_date(
+    target_date: Optional[Union[date, str]] = None,
+    job_name: Optional[str] = None,
+) -> Dict[str, int]:
+    """Collect results for events on a specific target date (defaults to previous day).
 
-        logger.info("Processing %s events from previous day", len(events))
-        stats = _collect_results_for_events(events, "Results Collection (previous day)")
+    Following SOLID design principles, this serves as the unified engine for date-based
+    results collection, shared by scheduled midnight sync and ad-hoc CLI executions.
+    """
+    if target_date is None:
+        resolved_date = now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
+        job_label = job_name or "Results Collection (previous day)"
+    elif isinstance(target_date, str):
+        resolved_date = date.fromisoformat(target_date)
+        job_label = job_name or f"Results Collection ({resolved_date})"
+    else:
+        resolved_date = target_date
+        job_label = job_name or f"Results Collection ({resolved_date})"
+
+    logger.info("Starting %s for date: %s", job_label, resolved_date)
+    try:
+        events = EventRepository.get_events_by_date(resolved_date)
+        if not events:
+            logger.info("No events found for %s (%s)", resolved_date, job_label)
+            return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
+
+        logger.info("Processing %s events from %s (%s)", len(events), resolved_date, job_label)
+        stats = _collect_results_for_events(events, job_label)
         logger.info(
-            "Results Collection (previous day) completed: %s updated, %s skipped, %s deleted, %s failed",
+            "%s completed: %s updated, %s skipped, %s deleted, %s failed",
+            job_label,
             stats["updated"],
             stats["skipped"],
             stats["deleted"],
             stats["failed"],
         )
+        return stats
     except Exception as exc:
-        logger.exception("Results Collection (previous day) failed: %s", exc)
+        logger.exception("Error in %s for %s: %s", job_label, resolved_date, exc)
+        return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
 
 
-def run_results_collection_all_finished() -> None:
+def run_results_collection_previous_day() -> Dict[str, int]:
+    """Scheduled entrypoint for collecting previous-day results."""
+    return run_results_collection_for_date(
+        target_date=None,
+        job_name="Results Collection (previous day)",
+    )
+
+
+def run_results_collection_all_finished() -> Dict[str, int]:
     logger.info("Starting Results Collection (all finished)")
     try:
         events = EventRepository.get_all_finished_events()
         if not events:
             logger.info("No finished events found")
-            return
+            return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
 
         logger.info("Processing %s finished events", len(events))
         stats = _collect_results_for_events(events, "Results Collection (all finished)")
@@ -136,27 +164,7 @@ def run_results_collection_all_finished() -> None:
             stats["deleted"],
             stats["failed"],
         )
+        return stats
     except Exception as exc:
         logger.exception("Results Collection (all finished) failed: %s", exc)
-
-
-def run_results_collection_for_date(target_date) -> None:
-    logger.info("Starting results collection for date: %s", target_date)
-    try:
-        events = EventRepository.get_events_by_date(target_date)
-        if not events:
-            logger.info("No events found for %s", target_date)
-            return
-
-        logger.info("Processing %s events from %s", len(events), target_date)
-        stats = _collect_results_for_events(events, f"Results Collection ({target_date})")
-        logger.info(
-            "Results collection for %s completed: %s updated, %s skipped, %s deleted, %s failed",
-            target_date,
-            stats["updated"],
-            stats["skipped"],
-            stats["deleted"],
-            stats["failed"],
-        )
-    except Exception as exc:
-        logger.error("Error in results collection for %s: %s", target_date, exc)
+        return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}

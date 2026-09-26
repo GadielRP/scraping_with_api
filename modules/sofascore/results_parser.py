@@ -14,6 +14,7 @@ ParsedEventResultKind = Literal[
     "not_started",
     "in_progress",
     "unparseable",
+    "finished_empty_score",
 ]
 
 FINISHED_EVENT_STATUS_CODES = frozenset({100, 110, 92, 120, 130, 140})
@@ -49,6 +50,10 @@ class ParsedEventResult:
     def is_not_started(self) -> bool:
         return self.kind == "not_started"
 
+    @property
+    def is_finished_empty_score(self) -> bool:
+        return self.kind == "finished_empty_score"
+
 
 def _normalize_status_text(value: object) -> str:
     return str(value or "").lower().strip()
@@ -57,6 +62,53 @@ def _normalize_status_text(value: object) -> str:
 def _is_walkover_status(status_description: str) -> bool:
     """Walkover means the match never started; treat as removable."""
     return status_description in WALKOVER_STATUS_DESCRIPTIONS
+
+
+def _has_meaningful_score(score_data: object) -> bool:
+    """Return True if score_data contains at least one non-None score value."""
+    if not isinstance(score_data, dict) or not score_data:
+        return False
+    score_keys = (
+        "current",
+        "display",
+        "normaltime",
+        "overtime",
+        "penalties",
+        "point",
+        "period1",
+        "innings",
+    )
+    return any(score_data.get(k) is not None for k in score_keys)
+
+
+def is_finished_event_without_score(event_data: Dict) -> bool:
+    """Return whether an event has finished status codes but lacks valid score data.
+
+    Events in amateur/minor leagues or abandoned fixtures are sometimes marked with terminal
+    status codes (e.g., 100 'Ended') by SofaScore editors without any scores recorded
+    (homeScore={}, awayScore={}). Since these events will never receive scores, they should
+    be queued for deletion rather than repeatedly failing results collection.
+    """
+    status = event_data.get("status") or {}
+    status_code = status.get("code")
+    status_type = _normalize_status_text(status.get("type"))
+    status_description = _normalize_status_text(status.get("description"))
+
+    if status_code not in FINISHED_EVENT_STATUS_CODES:
+        return False
+
+    is_terminal = (
+        status_type == "finished"
+        or status_type in NON_DELETABLE_TERMINAL_STATUS_TEXT
+        or status_description in NON_DELETABLE_TERMINAL_STATUS_TEXT
+    )
+    if not is_terminal:
+        return False
+
+    home_score_data = event_data.get("homeScore")
+    away_score_data = event_data.get("awayScore")
+
+    return not _has_meaningful_score(home_score_data) or not _has_meaningful_score(away_score_data)
 
 
 def is_event_status_deletable(event_data: Dict) -> bool:
@@ -346,6 +398,15 @@ def parse_event_result(
             )
             return ParsedEventResult(kind="in_progress", **base_kwargs)
 
+        if is_finished_event_without_score(event_data):
+            logger.info(
+                "Event marked finished with status code %s (%s) but score data is empty - event_id: %s",
+                status_code,
+                status_description_raw,
+                event_id,
+            )
+            return ParsedEventResult(kind="finished_empty_score", **base_kwargs)
+
         result_data = _extract_score_payload(
             event_data,
             sport=sport,
@@ -370,7 +431,7 @@ def extract_results_from_response(
     """Backward-compatible adapter over :func:`parse_event_result`.
 
     - finished -> result dict
-    - canceled -> ``{_canceled: True, ...}``
+    - canceled / finished_empty_score -> ``{_canceled: True, ...}``
     - otherwise -> ``None``
     """
     parsed = parse_event_result(
@@ -383,6 +444,13 @@ def extract_results_from_response(
     if parsed.kind == "canceled":
         return {
             "_canceled": True,
+            "status_code": parsed.status_code,
+            "status_description": parsed.status_description,
+        }
+    if parsed.kind == "finished_empty_score":
+        return {
+            "_canceled": True,
+            "_empty_score": True,
             "status_code": parsed.status_code,
             "status_description": parsed.status_description,
         }

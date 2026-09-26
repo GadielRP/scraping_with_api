@@ -327,6 +327,15 @@ def get_event_results(
             )
             return _empty_response()
 
+        if parsed.kind == "finished_empty_score":
+            _queue_canonical_event_for_deletion(
+                canonical_event_id,
+                event_id,
+                "finished_empty_score",
+                deferred_deletion_event_ids,
+            )
+            return _empty_response()
+
         if parsed.kind == "finished":
             return parsed.result
 

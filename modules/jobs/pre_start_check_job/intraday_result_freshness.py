@@ -140,11 +140,16 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
 
             parsed = parse_event_result(response)
 
-            if parsed.kind == "canceled":
+            if parsed.kind in ("canceled", "finished_empty_score"):
+                reason = (
+                    "finished_empty_score"
+                    if parsed.kind == "finished_empty_score"
+                    else "canceled/postponed/walkover"
+                )
                 logger.info(
-                    "Intraday result freshness: event %s queued for deletion as "
-                    "canceled/postponed/walkover. status=%s",
+                    "Intraday result freshness: event %s queued for deletion as %s. status=%s",
                     event_id,
+                    reason,
                     _describe_status(raw_event),
                 )
                 return {
