@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Event, EventSourceMapping
+from infrastructure.persistence.models import Event, EventSourceMapping, Result
 from infrastructure.persistence.odds_models import Market
 from infrastructure.persistence.repositories import EventOddsSourceState
 from modules.jobs.pre_start_check_job.odds_source_state import SOFASCORE_SOURCE
@@ -54,6 +54,16 @@ def parse_args() -> argparse.Namespace:
         default=100,
         help="Number of candidates sent through the existing ingestion phase per batch.",
     )
+    parser.add_argument(
+        "--with-results-only",
+        action="store_true",
+        help="Only process events that already have a row in the results table.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode (e.g. saves raw response payloads).",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if args.limit is not None and args.limit < 1:
@@ -75,10 +85,11 @@ def main() -> int:
     )
 
     has_market = exists().where(Market.event_id == Event.id)
+    has_result = exists().where(Result.event_id == Event.id)
     with db_manager.get_session() as session:
         # Select and limit distinct canonical events in SQL before loading ORM
         # objects. One event can have multiple mappings for the same source.
-        candidate_mappings = (
+        candidate_query = (
             session.query(
                 Event.id.label("event_id"),
                 func.min(EventSourceMapping.mapping_id).label("mapping_id"),
@@ -89,6 +100,12 @@ def main() -> int:
                 EventSourceMapping.has_odds.is_(True),
                 ~has_market,
             )
+        )
+        if args.with_results_only:
+            candidate_query = candidate_query.filter(has_result)
+
+        candidate_mappings = (
+            candidate_query
             .group_by(Event.id)
             .order_by(Event.id)
         )
@@ -187,6 +204,7 @@ def main() -> int:
             candidates,
             source_states,
             source=args.source,
+            debug_mode=args.debug,
         )
         for name in totals:
             totals[name] += getattr(summary, name)
