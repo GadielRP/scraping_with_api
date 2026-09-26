@@ -56,6 +56,19 @@ def test_build_p5_price_memory_view_sql_modular_scopes():
     assert "cmt.canonical_market_period IN ('1st Half', 'Full Time')" in sql
 
 
+def test_build_p5_price_memory_view_current_odds_only_uses_latest_current_quote():
+    sql = build_p5_price_memory_view_sql(current_odds_only=True)
+
+    assert "mcq.current_odds::numeric(8,3) AS odds_price" in sql
+    assert "COALESCE(mcq.current_odds, mcq.initial_odds)" not in sql
+    assert "initial_odds" not in sql
+    assert "mcq.initial_captured_at" not in sql
+    assert "quote_candidate.current_odds IS NOT NULL" in sql
+    assert "quote_candidate.current_updated_at DESC NULLS LAST" in sql
+    assert "quote_candidate.quote_id DESC" in sql
+    assert "mcs.collected_at <= e.starts_at" not in sql
+
+
 def test_p5_price_memory_indexes():
     assert len(MV_P5_PRICE_MEMORY_INDEXES_SQL) == 5
     indexes_joined = " ".join(MV_P5_PRICE_MEMORY_INDEXES_SQL)
@@ -270,5 +283,3 @@ def test_pillar_5_price_memory_repository_find_exact_matches_with_population_fil
     assert params["season_id"] == 2025
     assert params["country"] == "Spain"
     assert params["has_draw"] is True
-
-

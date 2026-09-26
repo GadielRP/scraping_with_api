@@ -26,19 +26,35 @@ def build_p5_price_memory_view_sql(
     *,
     include_quote_fallbacks: bool = False,
     quote_values_only: bool = False,
+    current_odds_only: bool = False,
 ) -> str:
     """Build dynamic DDL for mv_p5_price_memory materialized view.
 
     ``quote_values_only`` treats persisted quote cache values as the historical
     observation for non-live markets, preferring ``current_odds`` and falling
-    back to ``initial_odds``. The other modes reproduce earlier revisions.
+    back to ``initial_odds``. ``current_odds_only`` selects the most recently
+    updated quote with a current value and never uses ``initial_odds``. The
+    other modes reproduce earlier revisions.
     """
     groups = market_groups if market_groups is not None else P5_PRICE_MEMORY_MARKET_GROUPS
     periods = market_periods if market_periods is not None else P5_PRICE_MEMORY_MARKET_PERIODS
 
     market_groups_sql = _sql_string_list(groups)
     market_periods_sql = _sql_string_list(periods)
-    if quote_values_only:
+    if current_odds_only:
+        odds_price_sql = "mcq.current_odds::numeric(8,3)"
+        quote_timestamp_sql = "COALESCE(mcq.current_updated_at, m.collected_at)"
+        latest_snapshot_join_sql = ""
+        quote_candidate_filter_sql = "AND quote_candidate.current_odds IS NOT NULL"
+        quote_candidate_select_sql = (
+            "quote_candidate.quote_id, quote_candidate.current_odds, "
+            "quote_candidate.current_updated_at"
+        )
+        quote_candidate_order_sql = (
+            "quote_candidate.current_updated_at DESC NULLS LAST, "
+            "quote_candidate.quote_id DESC"
+        )
+    elif quote_values_only:
         odds_price_sql = "COALESCE(mcq.current_odds, mcq.initial_odds)::numeric(8,3)"
         quote_timestamp_sql = """CASE
                 WHEN mcq.current_odds IS NOT NULL
@@ -48,6 +64,9 @@ def build_p5_price_memory_view_sql(
                 ELSE m.collected_at
             END"""
         latest_snapshot_join_sql = ""
+        quote_candidate_filter_sql = ""
+        quote_candidate_select_sql = "quote_candidate.*"
+        quote_candidate_order_sql = "quote_candidate.quote_id"
     elif include_quote_fallbacks:
         odds_price_sql = (
             "COALESCE(latest.odds_value, mcq.current_odds, mcq.initial_odds)"
@@ -62,6 +81,9 @@ def build_p5_price_memory_view_sql(
             ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
             LIMIT 1
         ) latest ON TRUE"""
+        quote_candidate_filter_sql = ""
+        quote_candidate_select_sql = "quote_candidate.*"
+        quote_candidate_order_sql = "quote_candidate.quote_id"
     else:
         odds_price_sql = "latest.odds_value::numeric(8,3)"
         quote_timestamp_sql = "latest.collected_at"
@@ -73,6 +95,9 @@ def build_p5_price_memory_view_sql(
             ORDER BY mcs.collected_at DESC, mcs.snapshot_id DESC
             LIMIT 1
         ) latest ON TRUE"""
+        quote_candidate_filter_sql = ""
+        quote_candidate_select_sql = "quote_candidate.*"
+        quote_candidate_order_sql = "quote_candidate.quote_id"
 
     return f"""
     CREATE MATERIALIZED VIEW IF NOT EXISTS mv_p5_price_memory AS
@@ -91,12 +116,13 @@ def build_p5_price_memory_view_sql(
         JOIN canonical_market_types cmt ON cmt.market_type_id = m.market_type_id
         JOIN market_choices mc ON mc.market_id = m.market_id
         JOIN LATERAL (
-            SELECT quote_candidate.*
+            SELECT {quote_candidate_select_sql}
             FROM market_choice_quotes quote_candidate
             WHERE quote_candidate.choice_id = mc.choice_id
               AND quote_candidate.exchange_side IS NULL
               AND quote_candidate.exchange_level = 0
-            ORDER BY quote_candidate.quote_id
+              {quote_candidate_filter_sql}
+            ORDER BY {quote_candidate_order_sql}
             LIMIT 1
         ) mcq ON TRUE
         {latest_snapshot_join_sql}
