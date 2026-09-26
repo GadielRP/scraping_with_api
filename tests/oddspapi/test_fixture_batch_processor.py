@@ -141,6 +141,32 @@ def test_dry_run_does_not_upsert_or_queue(monkeypatch):
     assert queue_rows == []
 
 
+def test_batch_captures_incomplete_raw_fixture_before_normalizing(monkeypatch):
+    payload = _payload("missing-participant-id")
+    payload["participant1Id"] = None
+    captured = []
+    monkeypatch.setattr(
+        "modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor."
+        "OddspapiFixtureResponseDebugWriter.save_if_incomplete",
+        lambda raw: captured.append(raw),
+    )
+    monkeypatch.setattr(
+        "modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor.EventSourceMappingRepository.get_event_ids_by_source_event_ids",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(OddspapiCandidatePool, "load", classmethod(lambda cls, fixtures, session: cls([])))
+    monkeypatch.setattr(OddspapiEventResolver, "_candidate_matcher", _Matcher(_decision()))
+
+    OddspapiFixtureBatchProcessor().process_batch(
+        [payload],
+        create_mappings=False,
+        persist_queue=False,
+        session=_Session(),
+    )
+
+    assert captured == [payload]
+
+
 def test_missing_fixture_id_is_invalid_and_duplicates_are_dropped(monkeypatch):
     monkeypatch.setattr(
         "modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor.EventSourceMappingRepository.get_event_ids_by_source_event_ids",

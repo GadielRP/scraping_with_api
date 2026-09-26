@@ -86,7 +86,7 @@ def main() -> int:
             .join(EventSourceMapping, EventSourceMapping.event_id == Event.id)
             .filter(
                 EventSourceMapping.source == args.source,
-                EventSourceMapping.has_odds.is_distinct_from(False),
+                EventSourceMapping.has_odds.is_(True),
                 ~has_market,
             )
             .group_by(Event.id)

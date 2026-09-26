@@ -23,6 +23,9 @@ from infrastructure.persistence.repositories.event_source_resolution_queue_repos
 from modules.oddspapi.event_candidate_matcher import MatchDecision, OddspapiEventCandidateMatcher
 from modules.oddspapi.event_resolver import OddspapiEventResolution, OddspapiEventResolver
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
+from modules.oddspapi.fixture_response_debug_writer import (
+    OddspapiFixtureResponseDebugWriter,
+)
 from modules.oddspapi.format_utils import normalize_source_id
 from modules.oddspapi.fixture_persistence import (
     ResolvedFixtureWrite,
@@ -277,6 +280,9 @@ class OddspapiFixtureBatchProcessor:
                 result.fixtures_deduplicated += 1
                 continue
             seen_ids.add(identity.fixture_id)
+            # Capture the exact fixture object before persistence can omit its
+            # participant rows because required source data is absent or invalid.
+            OddspapiFixtureResponseDebugWriter.save_if_incomplete(payload)
             identities.append(identity)
 
         if not identities:
