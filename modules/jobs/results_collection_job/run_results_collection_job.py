@@ -12,10 +12,8 @@ from infrastructure.persistence.repositories import (
     ResultRepository,
 )
 from infrastructure.settings import Config
-from modules.odds_ingestion import MarketOddsIngestionService
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client
-from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -150,65 +148,6 @@ def run_results_collection_for_date(target_date) -> None:
             logger.info("No events found for %s", target_date)
             return
 
-        source_states = EventSourceMappingRepository.get_odds_source_states(
-            [event.id for event in events],
-            ["sofascore"],
-        )
-        odds_fetcher = SofaScoreOddsFetcher(api_client)
-        missing_odds_event_ids: set[int] = set()
-        available_odds_event_ids: set[int] = set()
-        odds_updated_count = 0
-        for event_data in events:
-            try:
-                source_state = source_states.get(event_data.id, {}).get("sofascore")
-                if source_state is None:
-                    logger.warning("Missing SofaScore mapping for event %s", event_data.id)
-                    continue
-                if source_state.has_odds is False:
-                    logger.debug(
-                        "Skipping final odds for event %s: endpoint marked unavailable",
-                        event_data.id,
-                    )
-                    continue
-
-                fetch_result = odds_fetcher.fetch_odds(
-                    int(source_state.source_event_id),
-                    event_data.slug,
-                )
-                if fetch_result.endpoint_missing:
-                    missing_odds_event_ids.add(event_data.id)
-                    continue
-
-                final_odds_response = fetch_result.payload
-                if not final_odds_response:
-                    logger.debug("No final odds response for event %s", event_data.id)
-                    continue
-
-                if getattr(fetch_result, "provider_has_odds", None) is True:
-                    available_odds_event_ids.add(event_data.id)
-
-                ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
-                    event_data.id,
-                    final_odds_response,
-                    source="sofascore",
-                )
-                if ingestion_result.markets_saved > 0 or ingestion_result.dual_process_market_available:
-                    odds_updated_count += 1
-                    logger.info("Final market odds updated for %s vs %s", event_data.home_team, event_data.away_team)
-                else:
-                    logger.warning("Failed to save final market odds for event %s: %s", event_data.id, ingestion_result.reason)
-            except Exception as exc:
-                logger.warning("Error updating odds for event %s: %s", event_data.id, exc)
-
-        EventSourceMappingRepository.mark_odds_unavailable(
-            missing_odds_event_ids,
-            "sofascore",
-        )
-        EventSourceMappingRepository.mark_odds_available(
-            available_odds_event_ids,
-            "sofascore",
-        )
-        logger.info("Final market odds updated for %s/%s events", odds_updated_count, len(events))
         logger.info("Processing %s events from %s", len(events), target_date)
         stats = _collect_results_for_events(events, f"Results Collection ({target_date})")
         logger.info(

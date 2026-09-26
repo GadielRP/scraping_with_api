@@ -19,16 +19,107 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import inspect
+
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventSourceMapping, Result
 from infrastructure.persistence.odds_models import Market
 from infrastructure.persistence.repositories import EventOddsSourceState
-from modules.jobs.pre_start_check_job.odds_source_state import SOFASCORE_SOURCE
-from modules.jobs.pre_start_check_job.providers.sofascore.odds_phase import (
-    run_sofascore_pre_start_odds,
+from modules.jobs.pre_start_check_job.odds_source_state import (
+    SOFASCORE_SOURCE,
+    PreStartOddsSourceStates,
 )
+from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer import (
+    SofaScoreDebugResponseWriter,
+)
+from modules.odds_ingestion import (
+    MarketOddsIngestionService,
+    ProviderOddsSummary,
+    run_provider_odds_phase,
+)
+from modules.sofascore import api_client
+from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 
 logger = logging.getLogger("backfill_missing_sofascore_markets")
+
+
+def run_sofascore_backfill_odds(
+    events_to_process: list[dict],
+    source_states: PreStartOddsSourceStates,
+    *,
+    source: str = SOFASCORE_SOURCE,
+    debug_mode: bool = False,
+    odds_fetcher: SofaScoreOddsFetcher | None = None,
+) -> ProviderOddsSummary:
+    """Fetch SofaScore odds for backfill without making extra /event calls for tennis."""
+    fetcher = odds_fetcher or SofaScoreOddsFetcher(api_client)
+
+    def _has_resolved_sofascore_id(candidate: dict) -> bool:
+        if candidate.get("sofascore_event_id") is None:
+            logger.warning(
+                "No sofascore_event_id available for event %s, skipping odds extraction",
+                candidate["event_id"],
+            )
+            return False
+        return True
+
+    def _fetch_sofascore_odds(candidate: dict):
+        sofascore_event_id = candidate["sofascore_event_id"]
+        fetch_odds = fetcher.fetch_odds
+        fetch_parameters = inspect.signature(fetch_odds).parameters
+        supports_raw_capture = (
+            "capture_raw_response" in fetch_parameters
+            or any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in fetch_parameters.values()
+            )
+        )
+        fetch_kwargs = (
+            {"capture_raw_response": debug_mode}
+            if supports_raw_capture
+            else {}
+        )
+        result = fetch_odds(
+            sofascore_event_id,
+            candidate["event_data"].get("slug"),
+            **fetch_kwargs,
+        )
+        raw_payload = getattr(result, "raw_payload", None)
+        if debug_mode and raw_payload is not None:
+            SofaScoreDebugResponseWriter.save(
+                event_id=candidate["event_id"],
+                source_event_id=sofascore_event_id,
+                minutes_until_start=candidate.get("minutes_until_start"),
+                payload=raw_payload,
+            )
+        if result.endpoint_missing:
+            logger.info(
+                "🚫 SofaScore odds endpoint missing for event_id=%s sofascore_event_id=%s",
+                candidate["event_id"],
+                sofascore_event_id,
+            )
+        return result
+
+    def _ingest_sofascore_odds(candidate: dict, payload: dict):
+        event_data = candidate["event_data"]
+        return MarketOddsIngestionService.save_from_sofascore_response(
+            candidate["event_id"],
+            payload,
+            source=source,
+            home_team=event_data.get("home_team"),
+            away_team=event_data.get("away_team"),
+            debug_mode=debug_mode,
+        )
+
+    return run_provider_odds_phase(
+        events_to_process,
+        source_states,
+        source=source,
+        can_fetch=_has_resolved_sofascore_id,
+        fetch=_fetch_sofascore_odds,
+        ingest=_ingest_sofascore_odds,
+        on_ingested=None,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -200,7 +291,7 @@ def main() -> int:
                 )
             }
 
-        summary = run_sofascore_pre_start_odds(
+        summary = run_sofascore_backfill_odds(
             candidates,
             source_states,
             source=args.source,
