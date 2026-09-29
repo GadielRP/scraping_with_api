@@ -41,6 +41,7 @@ class SportFixtureDiscoverySummary:
     fixtures_valid: int = 0
     fixtures_deduplicated: int = 0
     invalid_payloads: int = 0
+    fixtures_skipped_untracked_competition: int = 0
     resolved_existing_oddspapi: int = 0
     resolved_external_sofascore: int = 0
     resolved_candidate_match: int = 0
@@ -89,6 +90,10 @@ class OddspapiFixtureDiscoverySummary:
     def total_unresolved_no_candidates(self) -> int:
         return sum(item.unresolved_no_candidates for item in self.sports)
 
+    @property
+    def total_fixtures_skipped_untracked_competition(self) -> int:
+        return sum(item.fixtures_skipped_untracked_competition for item in self.sports)
+
     def to_dict(self) -> dict:
         result = asdict(self)
         result.update(
@@ -99,6 +104,9 @@ class OddspapiFixtureDiscoverySummary:
             resolved_candidate_match=self.total_resolved_candidate_match,
             needs_review=self.total_needs_review,
             unresolved_no_candidates=self.total_unresolved_no_candidates,
+            fixtures_skipped_untracked_competition=(
+                self.total_fixtures_skipped_untracked_competition
+            ),
         )
         return result
 
@@ -259,6 +267,9 @@ class OddspapiFixtureDiscoveryJob:
                         sport_summary.fixtures_valid += batch_result.fixtures_valid
                         sport_summary.fixtures_deduplicated += batch_result.fixtures_deduplicated
                         sport_summary.invalid_payloads += batch_result.invalid_payloads
+                        sport_summary.fixtures_skipped_untracked_competition += (
+                            batch_result.fixtures_skipped_untracked_competition
+                        )
                         sport_summary.resolved_existing_oddspapi += batch_result.resolved_existing_oddspapi
                         sport_summary.resolved_external_sofascore += batch_result.resolved_external_sofascore
                         sport_summary.resolved_candidate_match += batch_result.resolved_candidate_match
@@ -275,11 +286,13 @@ class OddspapiFixtureDiscoveryJob:
                     sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
                     logger.info(
                         "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
-                        "resolved_candidate=%s unresolved=%s mappings_created=%s queue_rows=%s duration_s=%s %s",
+                        "resolved_candidate=%s skipped_untracked=%s unresolved=%s "
+                        "mappings_created=%s queue_rows=%s duration_s=%s %s",
                         sport_slug,
                         sport_summary.resolved_existing_oddspapi,
                         sport_summary.resolved_external_sofascore,
                         sport_summary.resolved_candidate_match,
+                        sport_summary.fixtures_skipped_untracked_competition,
                         sport_summary.unresolved_no_candidates + sport_summary.needs_review,
                         sport_summary.mappings_created,
                         sport_summary.queue_rows_written,

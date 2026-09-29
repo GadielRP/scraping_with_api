@@ -25,7 +25,7 @@ Under the versioned default `ODDSPAPI_PRE_START_ALLOWED_MOMENTS=[5]`, OddspAPI p
 An event reaches a provider HTTP request only when all of these are true:
 
 1. It survives upcoming-event load (`TRACKED_COMPETITIONS_ONLY` optional SQL filter).
-2. It survives recently-started maintenance filtering (rescheduled events dropped).
+2. It remains eligible after the job's pre-ingestion event filtering.
 3. `build_pre_start_event_candidates()` includes it in `PreStartEventPlan.candidates`.
 4. The general odds gate did not clear `should_extract_odds` for an untracked competition.
 5. The provider-specific tracked-competition gate did not drop it from that phase's local list.
@@ -54,11 +54,11 @@ OddspAPI now has a second, independent persistence path for **API-account usage 
 
 | File | Current responsibility |
 |---|---|
-| `modules/jobs/pre_start_check_job/run_pre_start_check_job.py` | Top-level orchestration. Loads events, launches OddsPortal, maintenance, builds the candidate plan, runs provider phases, then key-moment evaluation. |
-| `modules/jobs/pre_start_check_job/run_t_minus_one_odds_job.py` | Closing-minute lane. Reuses `run_pre_start_odds_moments` with `key_moments=(PRE_START_CLOSING_ODDS_MINUTE,)`, timestamp correction off, no alert/pillar evaluation. |
+| `modules/jobs/pre_start_check_job/run_pre_start_check_job.py` | Entry point that builds the shared candidate plan and runs provider odds phases. |
+| `modules/jobs/pre_start_check_job/run_t_minus_one_odds_job.py` | Closing-minute ingestion lane. Reuses `run_pre_start_odds_moments` with `key_moments=(PRE_START_CLOSING_ODDS_MINUTE,)`. |
 | `modules/jobs/pre_start_check_job/odds_source_state.py` | Bulk load of SofaScore + OddspAPI mapping/availability (`has_odds`, external IDs). |
 | `modules/jobs/pre_start_check_job/event_candidate_builder.py` | Shared `PreStartEventPlan`. Sets `should_extract_odds`. Applies the **general** tracked-competition odds gate. |
-| `modules/jobs/pre_start_check_job/timing.py` | Key-moment timing + optional timestamp correction used by the candidate builder. |
+| `modules/jobs/pre_start_check_job/timing.py` | Key-moment timing used by the candidate builder. |
 | `modules/odds_ingestion/provider_odds_phase.py` | Shared contract: eligibility, `restrict_candidates_to_tracked_competitions`, `ProviderOddsSummary`, `run_provider_odds_phase`, 404 marking. |
 | `modules/odds_ingestion/market_odds_ingestion_service.py` | Canonical persist (`save_from_sofascore_response`, `save_from_oddspapi_response`, `save_from_oddsportal_data`). |
 | `modules/odds_ingestion/adapters/sofascore_market_adapter.py` | SofaScore payload → markets/choices (`mainLine=True`, `sourceMarketId` from catalog `marketId`). |
@@ -90,7 +90,7 @@ OddspAPI now has a second, independent persistence path for **API-account usage 
 | `modules/oddspapi/exceptions.py` | Transport exceptions, including `OddsPapiQuotaExhaustedError` when no eligible key remains. |
 | `infrastructure/persistence/models.py` (`OddspapiApiKeyUsage`) | Durable non-secret account/quota state in `oddspapi_api_key_usage`. |
 | `infrastructure/persistence/repositories/oddspapi_api_key_usage_repository.py` | SQLAlchemy adapter for usage snapshots/statuses and atomic PostgreSQL request increments. |
-| `infrastructure/scheduler/job_scheduler.py` | Registers periodic account refresh and invokes the same due-check before pre-start, T-1, and fixture discovery. |
+| `infrastructure/scheduler/job_scheduler.py` | Registers periodic account refresh and invokes its due-check before pre-start odds ingestion. |
 | `infrastructure/persistence/market_write_policy.py` | Per-source write ownership (OddsPortal opening-only). |
 | `infrastructure/persistence/repositories/market_repository.py` | Provider-neutral canonical persistence. It obeys `persistCurrentSnapshot`; it does not interpret OddspAPI timestamps, forced moments, or historical strategies. |
 | `infrastructure/persistence/repositories/market/market_choice_quote_writer.py` | Upserts `market_choice_quotes` by `(choice_id, source, exchange_side, exchange_level)`. |
@@ -109,9 +109,7 @@ modules/jobs/pre_start_check_job/
   oddsportal_worker.py      # this job's OddsPortal opening scrape
 ```
 
-`modules/jobs/oddspapi/fixture_discovery/` remains a separate event-discovery job and is not part of market-price persistence. It is nevertheless a consumer of the same scheduler: one reusable dynamic client replaces the former `sport_index -> key` assignment.
-
-## 3. Exact orchestration from `run_pre_start_check_job.py`
+## 3. Odds-ingestion path from `run_pre_start_check_job.py`
 
 ```mermaid
 sequenceDiagram
@@ -133,8 +131,6 @@ sequenceDiagram
     par Background OddsPortal
         OP-->>DB: scrape + save_from_oddsportal_data (opening-only policy)
     and Main provider path
-        PS->>PS: timestamp/result maintenance
-        PS->>PS: NBA in-game checks
         PS->>DB: load_pre_start_odds_source_states()
         PS->>PS: build_pre_start_event_candidates (general odds gate)
         PS->>PS: attach/persist tennis snapshot observations
@@ -148,28 +144,23 @@ sequenceDiagram
         OA->>KS: complete(lease, RequestOutcome)
         KS->>DB: metered estimate/status update
         OA->>DB: mainline cache + canonical quotes/snapshots
-        PS->>PS: evaluate_pre_start_key_moments()
     end
 ```
 
-Real order on the main thread in `run_pre_start_check_job`:
+Ingestion-relevant steps on the main thread in `run_pre_start_check_job`:
 
 1. Optional SQL load filter via `TRACKED_COMPETITIONS_ONLY` → `_tracked_competition_ids()`.
 2. Load upcoming events (`PRE_START_WINDOW_MINUTES`) and compute timings once.
 3. Launch OddsPortal selection/worker immediately (parallel, non-blocking). Routed by `ODDSPORTAL_COMPETITION_ROUTES` at `ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default 120).
-4. Recently-started timestamp correction + intraday result freshness (each has its own tracked-competition gate).
-5. In-game checks (NBA 4th quarter).
-6. If no events remain after maintenance, return.
-7. Count events at regular key moments (`regular_pre_start_moments()`, closing minute excluded — that lane is `run_t_minus_one_odds_job`).
-8. `run_pre_start_odds_moments(...)`:
+4. Keep the eligible events after the job's pre-ingestion filtering.
+5. Count events at regular key moments (`regular_pre_start_moments()`, closing minute excluded — that lane is `run_t_minus_one_odds_job`).
+6. `run_pre_start_odds_moments(...)`:
    1. Load provider source states once.
-   2. Optionally split events for timestamp-correction-by-tracked-competition.
-   3. Build the shared candidate plan (timing + **general** odds gate).
-   4. Attach stored tennis observations, then persist snapshot observations.
-   5. `_ingest_provider_odds` → SofaScore then OddspAPI.
-   6. `evaluate_pre_start_key_moments` (alert/pillar pipelines; `FILTER_PIPELINES_BY_TRACKED_COMPETITIONS` is independent).
+   2. Build the shared candidate plan (timing + **general** odds gate).
+   3. Attach stored tennis observations, then persist snapshot observations.
+   4. `_ingest_provider_odds` → SofaScore then OddspAPI.
 
-Closing minute (`PRE_START_CLOSING_ODDS_MINUTE`, default 1) is ingested by `run_t_minus_one_odds_job`, which calls the same `run_pre_start_odds_moments` with timestamp correction off and `evaluate_key_moments=False`.
+Closing minute (`PRE_START_CLOSING_ODDS_MINUTE`, default 1) is ingested by `run_t_minus_one_odds_job` through the same provider odds phases.
 
 ## 4. Shared candidate plan, gates, and source state
 
@@ -194,9 +185,9 @@ This result is shared by the candidate builder and every provider phase.
 - `sofascore_event_id` (when mapped)
 - `metadata_snapshot`
 
-If `ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY` is on, the builder receives the in-memory tracked ID set and sets `should_extract_odds=False` for untracked competitions. Timestamp checks and key-moment evaluation still see the candidate.
+If `ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY` is on, the builder receives the in-memory tracked ID set and sets `should_extract_odds=False` for untracked competitions.
 
-Downstream phases may attach:
+Provider odds phases may attach:
 
 - `odds_response`
 - `ingestion_result`
@@ -585,11 +576,11 @@ A temporary generic 429 blocks only `(fingerprint, endpoint)` until `Retry-After
 | Any `historical-odds` response/network failure | No quota increment | Release lease, apply cooldown/status feedback as applicable. |
 | `account` | No quota increment | Explicit-key call used to refresh authoritative state. |
 
-Every transient physical attempt gets a fresh lease. `ODDSPAPI_MAX_RETRIES` limits transport/temporary HTTP retries; quota/auth failover is tracked separately so discovering one exhausted key does not consume the ordinary retry allowance. If no eligible key remains, `acquire` raises `OddsPapiQuotaExhaustedError`. The pre-start batch converts that into an event skip with `skip_reason=oddspapi_quota_exhausted`, rather than reporting a generic HTTP failure.
+Every transient physical attempt gets a fresh lease. `ODDSPAPI_MAX_RETRIES` limits transport/temporary HTTP retries; quota/auth failover is tracked separately so finding one exhausted key does not consume the ordinary retry allowance. If no eligible key remains, `acquire` raises `OddsPapiQuotaExhaustedError`. The pre-start batch converts that into an event skip with `skip_reason=oddspapi_quota_exhausted`, rather than reporting a generic HTTP failure.
 
 `OddsPapiClient._execute_http_attempt()` always calls `complete()` in `finally`. The lease is released before the odds payload is returned to the reader/adapter. The API key is removed from logged params, response error text is redacted, and logs use only `key_id=<first 10 fingerprint characters>`.
 
-Cooldown is enforced per `(full fingerprint, normalized endpoint)` by class-wide locks and completion timestamps. Current product values are `account=1.0`, `odds=0.5`, `historical-odds=5.0`, and `fixtures=2.0` seconds. Different keys may proceed concurrently; two sessions cannot bypass the cooldown for the same key/endpoint.
+Cooldown is enforced per `(full fingerprint, normalized endpoint)` by class-wide locks and completion timestamps. The endpoints used here have cooldowns of `account=1.0`, `odds=0.5`, and `historical-odds=5.0` seconds. Different keys may proceed concurrently; two sessions cannot bypass the cooldown for the same key/endpoint.
 
 The control plane intentionally uses two kinds of clock. Durable timestamps and TTL comparisons (`subscription_valid_*`, `account_refreshed_at`, `last_error_at`, and `updated_at`) use aware UTC instants from `shared.temporal` and PostgreSQL stores them as `timestamptz`. Cooldown and `Retry-After` waits continue to use `time.monotonic()` because they measure elapsed duration, not civil time; changing the OS clock or timezone therefore cannot make a cooldown negative or unexpectedly longer.
 
@@ -597,7 +588,7 @@ The control plane intentionally uses two kinds of clock. Durable timestamps and 
 
 ```mermaid
 flowchart TD
-    A[Periodic job or ingestion/discovery preflight] --> B[refresh_if_due]
+    A[Periodic job or odds-ingestion preflight] --> B[refresh_if_due]
     B --> C{single-flight lock acquired?}
     C -- no --> X[another refresh owns the work; return]
     C -- yes --> D[iterate configured credentials]
@@ -622,7 +613,6 @@ Refresh triggers all call the same due-check:
 - Preflight before the normal pre-start job.
 - Preflight before the isolated T-1 job.
 - Preflight inside the OddspAPI phase, which also protects direct/manual phase invocation.
-- Preflight before scheduled and direct fixture discovery.
 
 These overlapping entrypoints do not imply duplicate account HTTP calls inside one process. Persisted `account_refreshed_at` enforces the TTL across restarts, and `_refresh_lock` is non-blocking single-flight inside the process. There is no PostgreSQL advisory lock around account refresh itself, so two separate processes that simultaneously load the same stale snapshot may each perform the free `/account` reconciliation.
 
@@ -660,7 +650,6 @@ min(4, configured_max_workers, work_items, eligible_keys_for_endpoint)
 - Exchange historical planning remains per event. For eight selected outcomes and four healthy keys, the executor creates four session-owning workers, stripes the outcomes into four chunks, and each physical historical request leases a key. Expected distribution after cooldown/load balancing is approximately two requests per key.
 - At most four large HTTP responses are in flight concurrently. A successful response is JSON-decoded once; the scheduler receives only status/error metadata, never a copy of the odds payload.
 - Threads share process memory; they are not processes and do not clone the full application. Four workers add four request stacks/sessions and up to four concurrent response bodies, not four copies of the database or Python runtime.
-- Fixture discovery remains sequential across sports/chunks with one reusable HTTP session, but each `/fixtures` call can receive a different scheduler-selected key. The former `sport_index` bias is gone.
 
 #### 6.0.10 Observability and secret handling
 
@@ -699,127 +688,7 @@ With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_J
 2. $T-1$ is skipped in real time.
 3. At $T-0$, requests only occur if `0` is explicitly added to `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` via environment override. In that case, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. Under the versioned default `[5]`, $T-0$ is skipped. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
 
-HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply for compatibility. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
-
-### 6.1.1 What `_acquire_pre_start` does when a positive-minute request is allowed
-
-
-Used for ordinary non-live candidates whenever the closing-only and provider-moment gates allow the request. Forced significant-change candidates use §6.1.2.1 instead.
-
-1. Call `/odds` for regular + exchange bookmakers (`ODDSPAPI_PRE_START_BOOKMAKERS` + `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS`; local env uses `pinnacle,bet365` and `betfair-ex`).
-2. Select one complete active line per bookmaker/canonical market/period using `modules/odds_ingestion/oddspapi_line_selection.py`, then cache its outcomes in `oddspapi_mainline_outcome_cache`. Non-line markets retain their provider flags. Live `/historical-odds` has no `mainLine` flag and uses this cached selection without ranking lines again.
-3. Opening merge from `/historical-odds` for **regular** bookmakers only runs when the current minute is contained in `opening_historical_moments`, the current payload exists, and regular bookmakers are configured. The historical reader applies the configured opening-span validation; there is no hardcoded `>=120` condition. Max 3 regular slugs (API limit).
-4. Optional exchange historical fan-out runs when the current minute is contained in `opening_historical_moments`, the current payload exists, and exchange historical is enabled. It is skipped for tracked competitions at a classic opening moment, but not for a forced significant-change moment. Caps: 8 outcomes/event, 40 exchange historical requests/run. Exchange historical requires `betfair-ex` alone plus one `outcome_id` per request.
-
-### 6.1.2 What `_acquire_live` does at `minutes <= 0`
-
-#### 6.0.7 `/account` refresh lifecycle
-
-```mermaid
-flowchart TD
-    A[Periodic job or ingestion/discovery preflight] --> B[refresh_if_due]
-    B --> C{single-flight lock acquired?}
-    C -- no --> X[another refresh owns the work; return]
-    C -- yes --> D[iterate configured credentials]
-    D --> E{snapshot stale or force=true?}
-    E -- no --> D
-    E -- yes --> F[mark this key refreshing]
-    F --> G[wait for this key's in-flight leases]
-    G --> H[explicit-key GET /v4/account]
-    H --> I{valid account snapshot?}
-    I -- yes --> J[replace reported + estimated count and status]
-    J --> K[persist snapshot and refreshed_at]
-    I -- no --> L[keep stale count/status]
-    L --> M[persist ACCOUNT_REFRESH error + retry backoff]
-    K --> N[clear refreshing; notify waiters]
-    M --> N
-    N --> D
-```
-
-Refresh triggers all call the same due-check:
-
-- A periodic `JobScheduler` task every `ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS` (default/local value `24`).
-- Preflight before the normal pre-start job.
-- Preflight before the isolated T-1 job.
-- Preflight inside the OddspAPI phase, which also protects direct/manual phase invocation.
-- Preflight before scheduled and direct fixture discovery.
-
-These overlapping entrypoints do not imply duplicate account HTTP calls inside one process. Persisted `account_refreshed_at` enforces the TTL across restarts, and `_refresh_lock` is non-blocking single-flight inside the process. There is no PostgreSQL advisory lock around account refresh itself, so two separate processes that simultaneously load the same stale snapshot may each perform the free `/account` reconciliation.
-
-Keys refresh one at a time. The selected key is temporarily removed from allocation, its existing in-flight leases drain, and `/account` is fetched with `OddsPapiClient(api_key=...)`. Other keys remain eligible, so refreshing one account does not stop the whole pool. If `/odds` has one dedicated paid key and it is refreshing, `acquire` waits on the condition instead of incorrectly declaring global quota exhaustion.
-
-`OddspapiAccountUsageService` validates that any echoed `api_key` matches the requested secret, selects `current_subscription_id` or the sole `is_active=true` subscription, validates non-negative counters/a positive limit, and emits only a fingerprint plus subscription/quota metadata. It never returns or persists the raw key, email, or full account payload.
-
-On success, authoritative `request_count` replaces both `reported_request_count` and `estimated_request_count`. On failure, stale status/count remain usable, the error is stored as `ACCOUNT_REFRESH_<ExceptionType>`, and another refresh is suppressed for `ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES` (default/local value `60`). Ingestion is therefore fail-open for observability failures, but fail-closed for known exhausted/invalid accounts.
-
-#### 6.0.8 PostgreSQL usage state
-
-With `ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH=true`, the scheduler persists only durable facts:
-
-- Every metered attempt that may have been processed.
-- Every successful `/account` snapshot.
-- Exhausted/invalid/no-subscription and refresh-failure state changes.
-
-It does **not** persist historical assignments, in-flight reservations, cooldown monotonic timestamps, least-recently-assigned sequence, assignment counters, or diagnostic counters.
-
-`OddspapiApiKeyUsageRepository.increment_estimated_usage()` uses PostgreSQL `INSERT ... ON CONFLICT DO UPDATE` with `estimated_request_count = COALESCE(estimated_request_count, 0) + 1`. This is one atomic database statement, so concurrent application instances cannot overwrite each other's increments. The non-PostgreSQL path uses atomic `UPDATE` plus a process lock only for the rare first insert, which keeps SQLite tests deterministic.
-
-The table normally has one row per configured key and uses only the fingerprint primary key; no secondary index is necessary. Full column semantics are documented in §6.5.
-
-#### 6.0.9 Workers, sessions, and memory
-
-`ODDSPAPI_PRE_START_WORKERS=4` is a maximum, not a command to always create four threads. `parallel_worker_count()` applies:
-
-```text
-min(4, configured_max_workers, work_items, eligible_keys_for_endpoint)
-```
-
-- Serial pre-start reuses one client/session (`slot 0`) across events; it no longer creates one client per event to rotate keys.
-- Parallel event ingestion creates one client/session per worker. Every event request still obtains a dynamic lease.
-- If a dedicated paid key is the only `/odds` credential, positive-minute `/odds` remains serial even when four workers are configured.
-- Exchange historical planning remains per event. For eight selected outcomes and four healthy keys, the executor creates four session-owning workers, stripes the outcomes into four chunks, and each physical historical request leases a key. Expected distribution after cooldown/load balancing is approximately two requests per key.
-- At most four large HTTP responses are in flight concurrently. A successful response is JSON-decoded once; the scheduler receives only status/error metadata, never a copy of the odds payload.
-- Threads share process memory; they are not processes and do not clone the full application. Four workers add four request stacks/sessions and up to four concurrent response bodies, not four copies of the database or Python runtime.
-- Fixture discovery remains sequential across sports/chunks with one reusable HTTP session, but each `/fixtures` call can receive a different scheduler-selected key. The former `sport_index` bias is gone.
-
-#### 6.0.10 Observability and secret handling
-
-The scheduler maintains in-memory counters keyed by the short fingerprint id:
-
-- `assignment_counts`: lease assignments.
-- `diagnostic_counts`: `<key_id>:quota_exhausted`, `<key_id>:invalid`, and `<key_id>:rate_limited`.
-
-`run_oddspapi_pre_start_odds` records counter snapshots before/after its batch and logs only the delta as `api_key_assignments` and `api_key_diagnostics`. Account refresh logs `reported`, `estimated`, `limit`, `remaining`, and status per short key id.
-
-These counters are process-local operational diagnostics, not a billing ledger. If another OddspAPI workflow overlaps the phase in the same process, its leases may also appear in the before/after delta. Durable quota/account fields in PostgreSQL and authoritative `/account` counts remain the source for quota state.
-
-Security invariants:
-
-- The raw key exists only in configured secrets and process memory (`ApiKeyCredential` / `ApiKeyLease`).
-- PostgreSQL stores the full SHA-256 fingerprint, never the key.
-- Logs/exceptions use a 10-character fingerprint id and redact the request key from response text.
-- `/account` email and full JSON payload are never persisted.
-- Scheduler persistence failures are logged and ingestion continues from memory; account refresh failures preserve stale estimates.
-
-### 6.1 Which moments actually fetch (this is the gate)
-
-Configured key moments are `PRE_START_ODDS_MOMENTS` (versioned default in `Config`: `[120, 30, 5, 1, 0, -5]`). The main pre-start job runs `regular_pre_start_moments()` after removing the dedicated closing minute (`1`). `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` is an additional OddspAPI-only gate applied before candidate selection. Its versioned default is `[5]`, restricting candidate selection strictly to T−5. (If overridden by an environment variable such as `[5, 0]`, T−0 becomes requestable as well, but `[5]` remains the codebase default).
-
-- **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` and can be reconstructed by the live historical as-of engine only when T−0 is admitted. Under the default T−5-only allowlist, neither a real-time nor reconstructed T−1 snapshot is requested.
-- **Positive moments ($T-120, T-30, T-5$)**: `ODDSPAPI_PRE_START_CLOSING_ONLY` (default `false`) controls positive-minute `/odds` acquisition after the provider-only moment gate.
-
-| Flag | T-120 / T-30 / T-5 (main job) | T-1 (critical job) | T-0 / live (`minutes <= 0`) |
-|---|---|---|---|
-| `false` (Config default) | `/odds` via `_acquire_pre_start` at each positive moment | Skipped when `ENABLE_PRE_START_T_MINUS_ONE_JOB=false` | `/historical-odds` via `_acquire_live` + reconstructs $T-1$ and reconciles $T-120/30/5$ |
-| `true` | **no request** (`oddspapi_closing_only`) | `/odds` via `_acquire_pre_start` (if T-1 job enabled) | `/historical-odds` via `_acquire_live` |
-| forced non-live minute | hybrid `/odds` → mainline cache → `/historical-odds` with detector | n/a | n/a |
-
-With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`:
-1. OddspAPI fetches `/odds` at each allowed positive moment (T−5 by default under `[5]`), populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots. Because minute `5` is listed in `significant_change_forced_moments`, it executes the hybrid sequence `/odds` → cache → `/historical-odds` instead of the ordinary-only route.
-2. $T-1$ is skipped in real time.
-3. At $T-0$, requests only occur if `0` is explicitly added to `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` via environment override. In that case, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. Under the versioned default `[5]`, $T-0$ is skipped. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
-
-HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply for compatibility. `ODDSPAPI_DEFAULT_MARKET_KEYS` is a discovery default, not this persist allowlist.
+HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply.
 
 ### 6.1.1 What `_acquire_pre_start` does when a positive-minute request is allowed
 
@@ -848,7 +717,7 @@ When a candidate arrives at a non-live moment configured in `significant_change_
 3. **Combined Extraction**: The payload is parsed once by `OddspapiHistoricalOddsReader`, which simultaneously calculates canonical target quotes and adaptive significant changes (see §6.1.3).
 4. **Exchange Historical Handling**: If exchange historical capture is enabled, outcomes are evaluated for Betfair fan-out requests.
 
-### 6.1.3 Combined Extraction and Persistence Contract (Canonical Checkpoints + Adaptive Drift)
+### 6.1.3 Combined Snapshot Extraction and Persistence
 
 `OddspapiHistoricalOddsReader.read()` enforces a unified, single-pass extraction model when processing `/historical-odds` payloads with `ENABLE_ODDSPAPI_ODDS_SIGNIFICANT_CHANGES=true`:
 
@@ -871,12 +740,9 @@ When a candidate arrives at a non-live moment configured in `significant_change_
                     └── Yield merged momentQuotes list
 ```
 
-#### Key Architecture Principles:
-1. **Single-Pass In-Memory Processing (SRP & Efficiency)**: The raw payload is fetched and parsed once. Both the canonical timeline and the adaptive shock detector operate over the same sanitized tick series.
-2. **Unified Persistence**: Rather than choosing between *either* fixed moments *or* significant changes (the legacy fallback paradigm), the adapter persists the combined set of `momentQuotes` as temporal snapshots.
-3. **Dual Downstream Consumption (Pillar 4)**:
-   - `CHECKPOINT_VIEW`: Accurately locates required canonical timestamps ($T_{120}, T_{30}, T_5$) for fixed-interval decay and velocity analysis.
-   - `ADAPTIVE_VIEW`: Captures event-driven line shifts, sharp money moves, and irregular liquidity events without missing canonical anchor points.
+#### Ingestion principles
+1. **Single-pass processing**: The historical payload is fetched and parsed once. Fixed-moment reconstruction and significant-change detection reuse the same sanitized tick series.
+2. **Unified persistence**: The adapter combines both kinds of observations in `momentQuotes`; the canonical repository persists them as temporal snapshots.
 
 ### 6.2 Snapshot boundaries and deduplication
 
@@ -1174,7 +1040,6 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `significant_change_min_history_hours` | `20.0` | Minimum sanitized history span from first valid tick to kickoff. Must be finite and non-negative. Shorter series use the configured fixed-moment fallback. |
 | `significant_change_flash_reversal_minutes` | `3.0` | Reversal confirmation window for candidates before the closing window (relative to effective observation cutoff). Must be finite and non-negative. |
 | `significant_change_min_price` | `1.01` | Strict price floor for detector sanitation (`price > value`). Must be finite and at least `1.01`. |
-| `PILLAR_PIPELINE_EXECUTION_MOMENTS` | `[5]` | Only executes pillar calculations for events at the specified key moments (default: `[5]`). Empty = all configured moments. |
 | `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | `0` = no cap. |
 | `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY` | `true` | Skip untracked competitions at the OddspAPI entrypoint. |
 
@@ -1219,8 +1084,6 @@ Write ownership (`market_write_policy_for_source`):
 | `ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY` | Clears `should_extract_odds` for untracked competitions. |
 | `ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY` | SofaScore-only allowlist skip. |
 | `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY` | OddspAPI-only allowlist skip. |
-| `TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY` | Timestamp correction only for tracked competitions. |
-| `FILTER_PIPELINES_BY_TRACKED_COMPETITIONS` | Alert/pillar evaluation only for tracked competitions. |
 | `ENABLE_ODDSPAPI_PRE_START_ODDS` | Soft-disable for the OddspAPI phase only. |
 | `ODDSPAPI_FREE_KEYS` / `ODDSPAPI_PAID_KEY` | Secret inventory. Paid key owns `/odds` when present; free keys own other endpoints with paid fallback when no free key exists. |
 | `ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH` | Enables durable usage state and authoritative `/account` reconciliation. |
@@ -1240,7 +1103,6 @@ Write ownership (`market_write_policy_for_source`):
 | `significant_change_min_history_hours` | Minimum finite non-negative span from the first sanitized tick to kickoff. Current versioned value is `20.0`; shorter series use fixed-moment fallback. |
 | `significant_change_flash_reversal_minutes` | Finite non-negative reversal window (default `3.0`). |
 | `significant_change_min_price` | Finite price floor, inclusive configuration with strict runtime comparison `price > value` (default `1.01`). |
-| `PILLAR_PIPELINE_EXECUTION_MOMENTS` | Key moments at which the pillar pipeline is allowed to execute (default `[5]`). |
 | `ODDSPAPI_PRE_START_*` | Bookmakers, exchange budgets, workers, market filters, persist-main-line-only. |
 | `ODDSPORTAL_SCRAPING_ENABLED` | OddsPortal worker on/off. |
 
@@ -1261,7 +1123,7 @@ Write ownership (`market_write_policy_for_source`):
 |---|---|
 | `scripts/development/pre_start_odds_simulation.py` | Runs the production SofaScore + OddspAPI phases against one forced candidate plan. |
 | `scripts/development/simulate_oddspapi_pre_start_odds.py` | Focused OddspAPI-only harness for one canonical `events.id`. |
-| `scripts/development/simulate_pre_start_check.py` | Broader single-event pre-start simulation including OddsPortal selection, competition gates, and key-moment evaluation. |
+| `scripts/development/simulate_pre_start_check.py` | Single-event pre-start simulation that supplies a virtual OddspAPI observation boundary to the production ingestion phase. |
 
 Only `scripts/development/simulate_pre_start_check.py` currently establishes a virtual OddspAPI observation boundary. It derives `available_through_utc` as kickoff minus the simulated minutes and passes it through the production phase. A T−5 simulation executed days after kickoff therefore cannot see later ticks or persist future T−1/T−0 fallback moments. For matching regular bookmakers, the bounded historical payload supplies the simulated current value; bookmakers not requested historically, notably exchanges, remain in the retained `/odds` base. Do not assume `simulate_oddspapi_pre_start_odds.py` has this behavior.
 
@@ -1273,16 +1135,7 @@ Only `scripts/development/simulate_pre_start_check.py` currently establishes a v
 | `tests/oddspapi/test_api_key_usage_repository.py` | Durable snapshot/load/increment behavior and absence of a raw-key column/value. |
 | `tests/test_oddspapi_api_keys.py` | Paid/free pool ownership, legacy fallback, hard worker cap, one session per serial worker, dynamic lease rotation, and paid-only `/odds`. |
 | `tests/oddspapi/test_client.py` | Proxy-free request behavior, cooldowns, retry statuses, explicit-key compatibility, and secret-safe logging. |
-| `tests/oddspapi/test_fixture_discovery_job.py` | Discovery behavior using the dynamic reusable client. |
 | `tests/test_t_minus_one_odds_job.py` / `tests/test_odds_endpoint_404_handling.py` | Closing-lane and endpoint-not-found regressions. |
 | `tests/test_pre_start_memory_limits.py` | Existing pre-start memory boundaries. |
 
-The focused detector, acquisition, batch-wiring, memory, endpoint, scheduler, client, repository, discovery, and T-1 suites should be run together when validating a release. Test results are environment-dependent and are intentionally not recorded as a fixed count here.
-
-## 11. What this flow intentionally does not do
-
-- It does not treat OddsPortal as a current-odds source (opening-only write policy; parallel worker).
-- It does not discover OddspAPI fixtures (`modules/jobs/oddspapi/fixture_discovery/`); that separate job only shares the API-key scheduler/client control plane.
-- It does not own domain HTTP clients (`modules/sofascore`, `modules/oddspapi`).
-- It does not evaluate alerts/pillars; that happens after `_ingest_provider_odds` returns.
-- It does not document historical quote backfill tooling (separate Fase 4b/4c docs).
+The focused detector, acquisition, batch-wiring, memory, endpoint, scheduler, client, repository, and T-1 suites should be run together when validating an ingestion release. Test results are environment-dependent and are intentionally not recorded as a fixed count here.

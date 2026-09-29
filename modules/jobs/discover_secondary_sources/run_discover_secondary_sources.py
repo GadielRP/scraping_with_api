@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from modules.jobs.discover_secondary_sources.run_high_value_streaks import run_high_value_streaks
-from modules.jobs.discover_secondary_sources.run_optimization import (
-    run_optimization,
-    run_winning_odds_optimization,
+from modules.jobs.parallelism import (
+    process_events_only,
+    process_odds_first,
+    process_with_parallel_db_ops,
 )
+from modules.jobs.discover_secondary_sources.run_high_value_streaks import run_high_value_streaks
 from modules.jobs.discover_secondary_sources.run_team_streaks import run_team_streaks
 from modules.jobs.discover_secondary_sources.run_top_h2h import run_top_h2h
 from modules.jobs.discover_secondary_sources.run_winning_odds import run_winning_odds
@@ -23,58 +24,55 @@ def run_discover_secondary_sources() -> None:
     try:
         # HIGH VALUE STREAKS
         high_value_streaks_events, high_value_streaks_events_h2h = run_high_value_streaks()
-        if not high_value_streaks_events:
-            return
-        if not high_value_streaks_events_h2h:
-            return
 
-        # TEAM STREAKS 
+        # TEAM STREAKS
         team_streaks_events = run_team_streaks()
         if not team_streaks_events:
             logger.warning("No events found after processing team streaks")
         else:
-            processed_count, skipped_count = run_optimization(team_streaks_events, discovery_source="team_streaks")
+            processed_count, skipped_count = process_odds_first(
+                team_streaks_events,
+                discovery_source="team_streaks",
+                max_workers=10,
+            )
             logger.info(
-                f"team streaks events completed: processed {processed_count}/{len(team_streaks_events)} events, skipped {skipped_count} events"
+                "team streaks events completed: processed %s/%s events, skipped %s events",
+                processed_count,
+                len(team_streaks_events),
+                skipped_count,
             )
 
         # TOP H2H
         matchup_events = run_top_h2h()
-        if not matchup_events:
-            return
 
         # WINNING ODDS
         winning_odds_events, winning_odds_events_odds_map = run_winning_odds()
-        if not winning_odds_events:
-            return
 
-        # PROCESSING HIGH VALUE STREAK EVENTS
-        processed_count, skipped_count = run_optimization(
-            high_value_streaks_events,
-            discovery_source="high_value_streaks",
-        )
-        logger.info(
-            f"high value streaks events completed: processed {processed_count}/{len(high_value_streaks_events)} events, skipped {skipped_count} events"
-        )
+        for source, events in (
+            ("high_value_streaks", high_value_streaks_events),
+            ("high_value_streaks_h2h", high_value_streaks_events_h2h),
+            ("h2h", matchup_events),
+        ):
+            processed_count, skipped_count = process_events_only(events, discovery_source=source)
+            logger.info(
+                "%s events completed: processed %s/%s events, skipped %s events",
+                source,
+                processed_count,
+                len(events),
+                skipped_count,
+            )
 
-        # PROCESSING 2H EVENTS
-        processed_count, skipped_count = run_optimization(
-            high_value_streaks_events_h2h,
-            discovery_source="high_value_streaks_h2h",
-        )
-        logger.info(
-            f"high value streaks events h2h completed: processed {processed_count}/{len(high_value_streaks_events_h2h)} events, skipped {skipped_count} events"
-        )
-
-        processed_count, skipped_count = run_optimization(matchup_events, discovery_source="h2h")
-        logger.info(f"h2h events completed: processed {processed_count}/{len(matchup_events)} events, skipped {skipped_count} events")
-
-        processed_count, skipped_count = run_winning_odds_optimization(
+        processed_count, skipped_count = process_with_parallel_db_ops(
             winning_odds_events,
             winning_odds_events_odds_map,
+            discovery_source="winning_odds",
+            max_workers=10,
         )
         logger.info(
-            f"winning odds events completed: processed {processed_count}/{len(winning_odds_events)} events, skipped {skipped_count} events"
+            "winning odds events completed: processed %s/%s events, skipped %s events",
+            processed_count,
+            len(winning_odds_events),
+            skipped_count,
         )
     except Exception as exc:
-        logger.error(f"Error in Job B: {exc}")
+        logger.error("Error in Job B: %s", exc)

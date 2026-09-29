@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from modules.sofascore import api_client
-from modules.jobs.parallelism import filter_upcoming_events
+from modules.jobs.discovery_filters import filter_upcoming_events
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +17,6 @@ def run_high_value_streaks():
         return [], []
 
     extracted_events, extracted_events_h2h = api_client.extract_events_from_high_value_streaks(response)
-    if not extracted_events:
-        logger.warning("No events found in high value streaks events")
-        return [], []
 
     normalized_response = {"events": extracted_events}
     normalized_response_h2h = {"events": extracted_events_h2h}
@@ -34,4 +31,8 @@ def run_high_value_streaks():
         discovery_source="high_value_streaks_h2h",
     )
 
-    return filter_upcoming_events(events), filter_upcoming_events(events_h2h)
+    events = filter_upcoming_events(events)
+    events_h2h = filter_upcoming_events(events_h2h)
+    if not events and not events_h2h:
+        logger.warning("No events found in high value streaks events")
+    return events, events_h2h

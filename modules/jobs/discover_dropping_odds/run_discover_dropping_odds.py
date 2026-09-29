@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-from datetime import datetime
 
 from modules.sofascore import api_client
-from modules.jobs.parallelism import (
-    filter_upcoming_events,
-    is_supported_sport_name,
-    process_with_parallel_db_ops,
-)
+from modules.jobs.parallelism import process_with_parallel_db_ops
+from modules.jobs.discovery_filters import filter_upcoming_events, is_supported_sport_name
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +45,6 @@ def run_discover_dropping_odds() -> None:
         logger.info("Step 1: Fetching odds/1/dropping/all endpoint")
         response_all = api_client.get_dropping_odds_with_odds_and_events_response()
         if response_all:
-            # to save dropping/all events in json format
-            # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            # json_filename = os.path.join("debug", f"debug_discovery_all_{timestamp}.json")
-            # try:
-            #     os.makedirs("debug", exist_ok=True)
-            #     with open(json_filename, "w", encoding="utf-8") as handle:
-            #         json.dump(response_all, handle, indent=2, ensure_ascii=False)
-            # except Exception as exc:
-            #     logger.warning(f"Failed to save JSON debug file: {exc}")
-
             events_all, odds_map_all = api_client.extract_events_and_odds_from_dropping_response(
                 response_all,
                 odds_extraction=True,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Collection, Dict, List
+from typing import Collection, Dict, Iterable, List
 
 from infrastructure.settings import Config
 from shared.temporal import now_in_timezone
@@ -70,6 +70,11 @@ def is_supported_sport(
     return is_supported_sport_name(sport, supported_sports=supported_sports)
 
 
+def filter_supported_sports(events: Iterable[Dict] | None) -> List[Dict]:
+    """Keep only events whose sport is enabled by ``SUPPORTED_SPORTS``."""
+    return [event for event in events or () if is_supported_sport(event)]
+
+
 def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
     """Keep only events that start at least ``min_minutes_away`` minutes from now."""
     if not events:
@@ -127,4 +132,4 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
         return upcoming_events
     except Exception as exc:
         logger.error("Error filtering upcoming events: %s", exc)
-        return events
+        return []

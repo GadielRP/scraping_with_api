@@ -1,4 +1,3 @@
-from .event_filters import filter_upcoming_events, is_supported_sport, is_supported_sport_name
 from .discovery_optimization import (
     batch_process_odds,
     batch_upsert_events,

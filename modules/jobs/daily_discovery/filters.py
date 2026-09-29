@@ -77,4 +77,4 @@ def filter_events_starting_after_threshold(events: List[Dict], min_minutes_away:
         return upcoming_events
     except Exception as exc:
         logger.error("Error filtering upcoming events: %s", exc)
-        return events
+        return []

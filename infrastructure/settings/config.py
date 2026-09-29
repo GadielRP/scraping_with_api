@@ -292,6 +292,12 @@ class Config:
     ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS = int(
         os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS', '2')
     )
+    # Restrict new fixture-discovery matches to canonical events in the
+    # tracked competition allowlist. Disable temporarily to restore broad matching.
+    ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY = _parse_env_bool(
+        'ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY',
+        False,
+    )
 
     # Soft memory guardrails for ~1 GB app containers. Defaults are applied
     # here so production does not need these keys in .env. Override only when

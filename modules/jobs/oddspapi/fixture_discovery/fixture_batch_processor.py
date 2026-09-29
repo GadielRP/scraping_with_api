@@ -20,6 +20,10 @@ from infrastructure.persistence.repositories.event_source_mapping_repository imp
 from infrastructure.persistence.repositories.event_source_resolution_queue_repository import (
     EventSourceResolutionQueueRepository,
 )
+from infrastructure.settings import Config
+from modules.competition.tracked_competitions import (
+    tracked_competition_ids as get_tracked_competition_ids,
+)
 from modules.oddspapi.event_candidate_matcher import MatchDecision, OddspapiEventCandidateMatcher
 from modules.oddspapi.event_resolver import OddspapiEventResolution, OddspapiEventResolver
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
@@ -143,7 +147,13 @@ class OddspapiCandidatePool:
             self._sorted_times_by_sport[sport] = [event.starts_at for event in timed]
 
     @classmethod
-    def load(cls, fixtures: list[OddspapiFixtureIdentity], session: Session) -> "OddspapiCandidatePool":
+    def load(
+        cls,
+        fixtures: list[OddspapiFixtureIdentity],
+        session: Session,
+        *,
+        competition_ids: tuple[int, ...] | None = None,
+    ) -> "OddspapiCandidatePool":
         if not fixtures:
             return cls([])
 
@@ -173,6 +183,8 @@ class OddspapiCandidatePool:
                 Event.starts_at >= min(times) - cls.TOLERANCE,
                 Event.starts_at <= max(times) + cls.TOLERANCE,
             )
+        if competition_ids is not None:
+            query = query.filter(Event.competition_id.in_(competition_ids))
         events = query.all()
         logger.info("Loaded Oddspapi candidate pool events=%s fixtures=%s", len(events), len(fixtures))
         return cls(events)
@@ -200,6 +212,7 @@ class OddspapiFixtureBatchResult:
     fixtures_valid: int = 0
     fixtures_deduplicated: int = 0
     invalid_payloads: int = 0
+    fixtures_skipped_untracked_competition: int = 0
     resolved_existing_oddspapi: int = 0
     resolved_external_sofascore: int = 0
     resolved_candidate_match: int = 0
@@ -220,6 +233,9 @@ class OddspapiFixtureBatchResult:
         self.fixtures_valid += int(getattr(other, "fixtures_valid", 0) or 0)
         self.fixtures_deduplicated += int(getattr(other, "fixtures_deduplicated", 0) or 0)
         self.invalid_payloads += int(getattr(other, "invalid_payloads", 0) or 0)
+        self.fixtures_skipped_untracked_competition += int(
+            getattr(other, "fixtures_skipped_untracked_competition", 0) or 0
+        )
         self.resolved_existing_oddspapi += int(getattr(other, "resolved_existing_oddspapi", 0) or 0)
         self.resolved_external_sofascore += int(getattr(other, "resolved_external_sofascore", 0) or 0)
         self.resolved_candidate_match += int(getattr(other, "resolved_candidate_match", 0) or 0)
@@ -247,6 +263,7 @@ class OddspapiFixtureBatchProcessor:
         persistence_writer: Callable | None = None,
         chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
         keep_resolutions: bool = False,
+        tracked_competitions_only: bool | None = None,
     ) -> None:
         self.resolver = resolver
         self.candidate_pool_loader = candidate_pool_loader or OddspapiCandidatePool.load
@@ -255,6 +272,13 @@ class OddspapiFixtureBatchProcessor:
         if self.chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         self.keep_resolutions = keep_resolutions
+        if tracked_competitions_only is None:
+            tracked_competitions_only = (
+                Config.ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY
+            )
+        self.tracked_competition_ids = (
+            get_tracked_competition_ids() if tracked_competitions_only else None
+        )
         if matcher is not None:
             self.resolver._candidate_matcher = matcher
 
@@ -317,39 +341,101 @@ class OddspapiFixtureBatchProcessor:
     ) -> OddspapiFixtureBatchResult:
         result = OddspapiFixtureBatchResult(resolutions=[] if self.keep_resolutions else None)
         fixture_ids = [fixture.fixture_id for fixture in identities]
-        existing_oddspapi = EventSourceMappingRepository.get_event_ids_by_source_event_ids(
-            source="oddspapi",
-            source_event_ids=fixture_ids,
-            session=session,
+        oddspapi_mapping_details = (
+            EventSourceMappingRepository.get_event_mapping_details_by_source_event_ids(
+                source="oddspapi",
+                source_event_ids=fixture_ids,
+                session=session,
+            )
         )
         sofascore_ids = [
             value
             for fixture in identities
             if (value := normalize_source_id(fixture.external_providers.get("sofascoreId")))
         ]
-        existing_sofascore = EventSourceMappingRepository.get_event_ids_by_source_event_ids(
-            source="sofascore",
-            source_event_ids=sofascore_ids,
-            session=session,
+        sofascore_mapping_details = (
+            EventSourceMappingRepository.get_event_mapping_details_by_source_event_ids(
+                source="sofascore",
+                source_event_ids=sofascore_ids,
+                session=session,
+            )
         )
+        tracked_competition_id_set = (
+            set(self.tracked_competition_ids)
+            if self.tracked_competition_ids is not None
+            else None
+        )
+        existing_oddspapi: dict[str, int] = {}
+        untracked_oddspapi_ids: set[str] = set()
+        for source_event_id, (event_id, competition_id) in oddspapi_mapping_details.items():
+            if (
+                tracked_competition_id_set is not None
+                and competition_id not in tracked_competition_id_set
+            ):
+                untracked_oddspapi_ids.add(source_event_id)
+                continue
+            existing_oddspapi[source_event_id] = event_id
 
-        unresolved = [fixture for fixture in identities if fixture.fixture_id not in existing_oddspapi]
+        existing_sofascore: dict[str, int] = {}
+        untracked_sofascore_ids: set[str] = set()
+        for source_event_id, (event_id, competition_id) in sofascore_mapping_details.items():
+            if (
+                tracked_competition_id_set is not None
+                and competition_id not in tracked_competition_id_set
+            ):
+                untracked_sofascore_ids.add(source_event_id)
+                continue
+            existing_sofascore[source_event_id] = event_id
+
+        unresolved = [
+            fixture
+            for fixture in identities
+            if fixture.fixture_id not in existing_oddspapi
+            and fixture.fixture_id not in untracked_oddspapi_ids
+        ]
         unresolved = [
             fixture
             for fixture in unresolved
             if not (
-                (sofascore_id := normalize_source_id(
-                    fixture.external_providers.get("sofascoreId"),
-                ))
-                and sofascore_id in existing_sofascore
+                (sofascore_id := normalize_source_id(fixture.external_providers.get("sofascoreId")))
+                and (
+                    sofascore_id in existing_sofascore
+                    or sofascore_id in untracked_sofascore_ids
+                )
             )
         ]
         unresolved_ids = {fixture.fixture_id for fixture in unresolved}
-        candidate_pool = self.candidate_pool_loader(unresolved, session)
+        candidate_pool = self.candidate_pool_loader(
+            unresolved,
+            session,
+            competition_ids=self.tracked_competition_ids,
+        )
         pending_writes: list[ResolvedFixtureWrite] = []
         persisted_resolutions: list[tuple[OddspapiFixtureIdentity, OddspapiEventResolution]] = []
+        untracked_fixture_ids = {
+            fixture.fixture_id
+            for fixture in identities
+            if (
+                fixture.fixture_id in untracked_oddspapi_ids
+                or (
+                    fixture.fixture_id not in existing_oddspapi
+                    and normalize_source_id(
+                        fixture.external_providers.get("sofascoreId")
+                    )
+                    in untracked_sofascore_ids
+                )
+            )
+        }
 
         for fixture in identities:
+            if fixture.fixture_id in untracked_fixture_ids:
+                result.fixtures_skipped_untracked_competition += 1
+                logger.info(
+                    "Skipping OddsPapi fixture %s: SofaScore reference resolves to an "
+                    "untracked competition",
+                    fixture.fixture_id,
+                )
+                continue
             pool_candidates = (
                 candidate_pool.get_candidates_for(fixture)
                 if fixture.fixture_id in unresolved_ids

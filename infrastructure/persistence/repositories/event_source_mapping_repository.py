@@ -139,6 +139,55 @@ class EventSourceMappingRepository:
             raise
 
     @staticmethod
+    def get_event_mapping_details_by_source_event_ids(
+        source: str,
+        source_event_ids: list[str],
+        session: Optional[Session] = None,
+    ) -> dict[str, tuple[int, int | None]]:
+        """Return canonical event and competition IDs for provider mappings."""
+        normalized_source = EventSourceMappingRepository._normalize_source(source)
+        normalized_ids = {
+            EventSourceMappingRepository._normalize_source_event_id(value)
+            for value in (source_event_ids or [])
+            if str(value or "").strip()
+        }
+        if not normalized_source or not normalized_ids:
+            return {}
+
+        def _lookup(scoped_session: Session) -> dict[str, tuple[int, int | None]]:
+            rows = (
+                scoped_session.query(
+                    EventSourceMapping.source_event_id,
+                    EventSourceMapping.event_id,
+                    Event.competition_id,
+                )
+                .join(Event, Event.id == EventSourceMapping.event_id)
+                .filter(
+                    EventSourceMapping.source == normalized_source,
+                    EventSourceMapping.source_event_id.in_(normalized_ids),
+                )
+                .all()
+            )
+            return {
+                str(source_event_id): (int(event_id), competition_id)
+                for source_event_id, event_id, competition_id in rows
+            }
+
+        try:
+            if session is not None:
+                return _lookup(session)
+            with db_manager.get_session() as scoped_session:
+                return _lookup(scoped_session)
+        except Exception as exc:
+            logger.error(
+                "Error resolving mapping details for source=%s count=%s: %s",
+                normalized_source,
+                len(normalized_ids),
+                exc,
+            )
+            raise
+
+    @staticmethod
     def get_event_ids_by_sofascore_ids(
         sofascore_ids: list[str],
         session: Optional[Session] = None,

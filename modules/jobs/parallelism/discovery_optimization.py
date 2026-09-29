@@ -13,8 +13,7 @@ from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-
-from .event_filters import is_supported_sport
+from modules.jobs.discovery_filters import filter_supported_sports, is_supported_sport
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,6 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
                     team_id,
                 )
                 return None
-
             logger.debug("Fetched event %s for team %s", _event_payload(event_data).get("id"), team_id)
             return event_data
         except Exception as exc:
@@ -137,7 +135,7 @@ def _mark_missing_sofascore_odds(
 def batch_upsert_events(events: List[Dict]) -> int:
     """Upsert multiple events efficiently."""
     upserted_count = 0
-    for event_data in events:
+    for event_data in filter_supported_sports(events):
         try:
             event = EventRepository.upsert_event(event_data)
             if event:
@@ -152,7 +150,9 @@ def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) ->
     processed_count = 0
     skipped_count = 0
 
-    for event_data in events:
+    supported_events = filter_supported_sports(events)
+    skipped_count += len(events) - len(supported_events)
+    for event_data in supported_events:
         sofascore_event_id = str(_event_id(event_data))
         odds_response = events_with_odds.get(sofascore_event_id) or events_with_odds.get(int(sofascore_event_id))
         if not odds_response:
@@ -193,8 +193,11 @@ def process_odds_first(
     This avoids the insert-then-delete pattern and eliminates the need for
     orphaned season cleanup queries entirely.
     """
+    original_count = len(events)
+    events = filter_supported_sports(events)
+    unsupported_count = original_count - len(events)
     if not events:
-        return 0, 0
+        return 0, original_count
 
     fetch_summary = fetch_event_odds_in_parallel(events, max_workers=max_workers)
     _mark_missing_sofascore_odds(fetch_summary.endpoint_missing_source_event_ids)
@@ -223,21 +226,13 @@ def process_odds_first(
 
     if not valid_events:
         logger.info("No %s events had valid odds, nothing to persist", discovery_source)
-        return 0, len(events)
-
-    upserted = batch_upsert_events(valid_events)
-    logger.info(
-        "Upserted %s/%s %s events (pre-filtered by odds availability)",
-        upserted,
-        len(events),
-        discovery_source,
-    )
+        return 0, original_count
 
     processed_count, skipped_count = batch_process_odds(
         fetch_summary.odds_by_source_event_id,
         valid_events,
     )
-    skipped_count += skipped_before_persistence
+    skipped_count += skipped_before_persistence + unsupported_count
 
     return processed_count, skipped_count
 
@@ -274,8 +269,12 @@ def process_with_parallel_db_ops(
         except Exception as exc:
             return False, f"Error processing event {_event_payload(event_data).get('id')}: {exc}"
 
+    original_count = len(events)
+    events = filter_supported_sports(events)
     processed_count = 0
-    skipped_count = 0
+    skipped_count = original_count - len(events)
+    if not events:
+        return processed_count, skipped_count
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_event = {executor.submit(process_single_event, event_data): event_data for event_data in events}
@@ -301,10 +300,8 @@ def process_events_only(
     max_workers: int = 10,
 ) -> Tuple[int, int]:
     """Process events without fetching odds."""
-    if not events:
-        return 0, 0
-
+    original_count = len(events)
     upserted_count = batch_upsert_events(events)
-    logger.info("%s events processed: %s/%s events upserted", discovery_source, upserted_count, len(events))
-    return upserted_count, len(events) - upserted_count
+    logger.info("%s events processed: %s/%s events upserted", discovery_source, upserted_count, original_count)
+    return upserted_count, original_count - upserted_count
 

@@ -125,6 +125,7 @@ class _BatchResult:
     fixtures_valid = 1
     fixtures_deduplicated = 0
     invalid_payloads = 0
+    fixtures_skipped_untracked_competition = 0
     resolved_existing_oddspapi = 1
     resolved_external_sofascore = 0
     resolved_candidate_match = 0

@@ -55,7 +55,7 @@ def _queue_canonical_event_for_deletion(
 
     deferred_deletion_event_ids.add(canonical_event_id)
     logger.info(
-        "Queued canonical event %s for batch deletion "
+        "🗑️ Queued canonical event %s for batch deletion "
         "(SofaScore event %s, reason=%s)",
         canonical_event_id,
         sofascore_event_id,

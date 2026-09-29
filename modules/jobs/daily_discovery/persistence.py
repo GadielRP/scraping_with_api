@@ -6,6 +6,7 @@ import logging
 from typing import Dict
 
 from infrastructure.persistence.repositories import EventRepository
+from modules.jobs.discovery_filters import is_supported_sport
 from modules.odds_ingestion import MarketOddsIngestionService
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | N
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information for source=%s source_event_id=%s", source, source_event_id)
+            return False
+        if not is_supported_sport(event_data):
+            logger.info("Skipping unsupported sport event source=%s source_event_id=%s", source, source_event_id)
             return False
 
         db_event = EventRepository.upsert_event(event_data)
