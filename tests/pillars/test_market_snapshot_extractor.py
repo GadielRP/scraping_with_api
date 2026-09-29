@@ -9,9 +9,12 @@ from modules.pillars.market_snapshot_extractor import (
     MarketIdentity,
     MarketSnapshotRequest,
     extract_market_snapshot,
-    select_target_minute,
 )
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.trajectory_selection import (
+    HARDCODED_TARGET_MINUTE_BY_FLOW,
+    select_target_minute,
+)
 
 
 def _row(
@@ -139,7 +142,7 @@ def test_target_override_is_per_flow_and_strict(monkeypatch) -> None:
         target_minutes_expected=[5, 0],
     )
     monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
+        HARDCODED_TARGET_MINUTE_BY_FLOW,
         "future_pillar",
         5,
     )

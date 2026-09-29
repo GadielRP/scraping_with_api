@@ -6,6 +6,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Dict, List, Optional
 
 from infrastructure.settings import Config
+from modules.pillars.trajectory_selection import (
+    build_snapshot_target_windows,
+    effective_snapshot_timestamp,
+    snapshot_target_rank,
+)
 from shared.temporal import as_utc
 
 
@@ -103,16 +108,14 @@ def _datetime_sort_value(value: Optional[datetime]) -> float:
         return float("-inf")
 
 
-def _candidate_rank(meta: "OddsPointMeta") -> tuple[float, float, float, float]:
-    distance_rank = float("inf") if meta.distance_from_target is None else float(meta.distance_from_target)
-    source_collected_at_rank = -_datetime_sort_value(meta.changed_at)
-    collected_at_rank = -_datetime_sort_value(meta.collected_at)
-    snapshot_rank = float("inf") if meta.snapshot_id is None else float(-meta.snapshot_id)
-    return (
-        distance_rank,
-        source_collected_at_rank,
-        collected_at_rank,
-        snapshot_rank,
+def _candidate_rank(meta: "OddsPointMeta") -> tuple[float, float, float, int]:
+    if meta.distance_from_target is None or meta.collected_at is None:
+        return (float("inf"), float("inf"), float("inf"), 0)
+    return snapshot_target_rank(
+        distance_seconds=float(meta.distance_from_target * Decimal(60)),
+        available_at=meta.collected_at,
+        source_collected_at=meta.changed_at,
+        snapshot_id=meta.snapshot_id,
     )
 
 
@@ -187,7 +190,14 @@ def _resolve_snapshot_minutes(
 
 
 def _snapshot_sort_key(snapshot: "OddsSnapshotPoint") -> tuple[float, float, float]:
-    effective_at = snapshot.source_collected_at or snapshot.collected_at
+    effective_at = (
+        effective_snapshot_timestamp(
+            collected_at=snapshot.collected_at,
+            source_collected_at=snapshot.source_collected_at,
+        )
+        if snapshot.collected_at is not None
+        else None
+    )
     snapshot_id = (
         float("inf")
         if snapshot.snapshot_id is None
@@ -234,7 +244,7 @@ class OddsPointMeta:
     collected_at: Optional[datetime]
     minutes_before_start: Optional[int]
     target_minute: int
-    distance_from_target: Optional[int]
+    distance_from_target: Optional[Decimal]
     quote_id: Optional[int] = None
     changed_at: Optional[datetime] = None
     exchange_size: Optional[Decimal] = None
@@ -294,6 +304,7 @@ class OddsTrajectoryContext:
     target_minutes_present: List[int]
     missing_target_minutes: List[int]
     markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = field(default_factory=dict)
+    evaluation_as_of: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a compact exchange-aware representation of this context."""
@@ -303,6 +314,7 @@ class OddsTrajectoryContext:
             "target_minutes_expected": list(self.target_minutes_expected),
             "target_minutes_present": list(self.target_minutes_present),
             "missing_target_minutes": list(self.missing_target_minutes),
+            "evaluation_as_of": self.evaluation_as_of,
             "markets": {
                 market_group: {
                     market_period: {
@@ -492,6 +504,7 @@ def _build_filtered_context(
         target_minutes_expected=list(source.target_minutes_expected),
         target_minutes_present=target_minutes_present,
         missing_target_minutes=missing_target_minutes,
+        evaluation_as_of=source.evaluation_as_of,
         markets=filtered_markets,
     )
 
@@ -676,14 +689,32 @@ def _get_choice_container(
 
 
 def build_odds_trajectory_context(
-    odds_trajectory: Optional[List[Dict[str, Any]]],
+    odds_trajectory: Optional[List[Any]],
     target_minutes_expected: Optional[List[int]] = None,
     tolerance_minutes: Optional[int] = None,
     evaluation_minute: Optional[int] = None,
+    *,
+    event_starts_at: Optional[datetime] = None,
+    evaluation_as_of: Optional[datetime] = None,
 ) -> OddsTrajectoryContext:
-    """Build complete per-choice histories plus configured-minute projections."""
+    """Build one full history and causally eligible configured-minute projections.
+
+    Raw snapshots remain available for trajectory calculations. Target
+    projections are selected here with the same target-window and ranking
+    policy used by P4, so each pillar interprets timestamps consistently.
+    """
     expected_minutes = _normalize_expected_minutes(target_minutes_expected)
     tolerance = _normalize_tolerance(tolerance_minutes)
+    normalized_start = (
+        as_utc(event_starts_at, field_name="event start")
+        if event_starts_at is not None
+        else None
+    )
+    normalized_as_of = (
+        as_utc(evaluation_as_of, field_name="evaluation time")
+        if evaluation_as_of is not None
+        else None
+    )
     normalized_evaluation_minute = (
         None if evaluation_minute is None else _coerce_int(evaluation_minute)
     )
@@ -695,6 +726,16 @@ def build_odds_trajectory_context(
         if normalized_evaluation_minute is None
         or minute >= normalized_evaluation_minute
     ]
+    target_windows = (
+        build_snapshot_target_windows(
+            event_starts_at=normalized_start,
+            target_minutes=projectable_minutes,
+            evaluation_as_of=normalized_as_of,
+            tolerance_minutes=tolerance,
+        )
+        if normalized_start is not None
+        else {}
+    )
 
     if not odds_trajectory:
         return OddsTrajectoryContext(
@@ -703,6 +744,7 @@ def build_odds_trajectory_context(
             target_minutes_expected=expected_minutes,
             target_minutes_present=[],
             missing_target_minutes=list(expected_minutes),
+            evaluation_as_of=normalized_as_of,
             markets={},
         )
 
@@ -787,6 +829,14 @@ def build_odds_trajectory_context(
             observed_minutes_before_start,
             trajectory_minutes_before_start,
         ) = _resolve_snapshot_minutes(row)
+        if normalized_start is not None and collected_at is not None:
+            effective_at = effective_snapshot_timestamp(
+                collected_at=collected_at,
+                source_collected_at=source_collected_at,
+            )
+            trajectory_minutes_before_start = Decimal(
+                str((normalized_start - effective_at).total_seconds())
+            ) / Decimal(60)
         exchange_size = _coerce_decimal(_row_val(row, "exchange_size"))
 
         snapshot = OddsSnapshotPoint(
@@ -802,14 +852,22 @@ def build_odds_trajectory_context(
         choice.snapshots.append(snapshot)
         available = True
 
-        if observed_minutes_before_start is None:
+        if observed_minutes_before_start is None and not target_windows:
             continue
         for target_minute in projectable_minutes:
-            distance_from_target = abs(
-                observed_minutes_before_start - target_minute
-            )
-            if distance_from_target > tolerance:
-                continue
+            if target_windows:
+                window = target_windows[target_minute]
+                if not window.contains(collected_at):
+                    continue
+                assert collected_at is not None
+                distance_from_target = Decimal(
+                    str(abs((collected_at - window.nominal_at).total_seconds()))
+                ) / Decimal(60)
+            else:
+                distance_minutes = abs(observed_minutes_before_start - target_minute)
+                if distance_minutes > tolerance:
+                    continue
+                distance_from_target = Decimal(distance_minutes)
             meta = OddsPointMeta(
                 quote_id=quote_id,
                 snapshot_id=snapshot_id,
@@ -825,7 +883,10 @@ def build_odds_trajectory_context(
                 ),
             )
             existing_meta = choice.meta_by_minute.get(target_minute)
-            if existing_meta is None or _is_better_candidate(meta, existing_meta):
+            if (
+                existing_meta is None
+                or _is_better_candidate(meta, existing_meta)
+            ):
                 choice.odds_values[target_minute] = odds_value
                 choice.meta_by_minute[target_minute] = meta
                 present_minutes.add(target_minute)
@@ -844,6 +905,7 @@ def build_odds_trajectory_context(
         target_minutes_expected=expected_minutes,
         target_minutes_present=target_minutes_present,
         missing_target_minutes=missing_target_minutes,
+        evaluation_as_of=normalized_as_of,
         markets=markets,
     )
 

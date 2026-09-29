@@ -1,14 +1,14 @@
 """Reusable, declarative extraction of single-minute market snapshots.
 
-This module owns the mechanics shared by every pillar: target-minute
-selection, canonical market matching, bookmaker/container selection, choice
-lookup, scalar validation and quote lineage. Pillars remain responsible for
-assembling their domain snapshot and applying their own completeness policy.
+This module owns declarative, single-minute market extraction mechanics:
+canonical market matching, bookmaker/container selection, choice lookup,
+scalar validation and quote lineage. Target selection is owned by the shared
+trajectory-selection policy.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
@@ -19,13 +19,6 @@ from modules.pillars.odds_trajectory_context import (
     MarketLineOddsTrajectory,
     OddsTrajectoryContext,
 )
-
-
-# Hardcoded development/simulation overrides. ``None`` preserves the flow's
-# normal selection policy. A configured minute is strict and never falls back.
-HARDCODED_TARGET_MINUTE_BY_FLOW: dict[str, int | None] = {
-    "pre_start_signal_profile": None,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,13 +120,6 @@ class MarketSnapshotExtraction:
     container_ambiguities: tuple[dict[str, Any], ...] = ()
 
 
-@dataclass(frozen=True)
-class TargetMinuteSelection:
-    target_minute: int | None
-    reason: str | None = None
-    diagnostics: dict[str, Any] = field(default_factory=dict)
-
-
 def _normalize(value: object) -> str:
     return " ".join(str(value or "").replace("-", " ").casefold().split())
 
@@ -146,73 +132,6 @@ def _decimal(value: object) -> Decimal | None:
     except (InvalidOperation, TypeError, ValueError):
         return None
     return result if result.is_finite() else None
-
-
-def select_target_minute(
-    context: OddsTrajectoryContext | None,
-    *,
-    flow_id: str,
-    expected_event_id: int | None = None,
-    allowed_target_minutes: Iterable[int] | None = None,
-    evaluation_minute: int | None = None,
-) -> TargetMinuteSelection:
-    """Select one strict minute for all requests made by a flow."""
-    if context is None:
-        return TargetMinuteSelection(None, "missing_odds_trajectory_context")
-    if not context.available:
-        return TargetMinuteSelection(None, "odds_trajectory_unavailable")
-    if (
-        expected_event_id is not None
-        and context.event_id is not None
-        and int(context.event_id) != int(expected_event_id)
-    ):
-        return TargetMinuteSelection(
-            None,
-            "event_id_mismatch",
-            {"trajectory_event_id": context.event_id},
-        )
-
-    override = HARDCODED_TARGET_MINUTE_BY_FLOW.get(flow_id)
-    if override is not None:
-        return TargetMinuteSelection(
-            int(override),
-            diagnostics={"selection": "hardcoded_override", "flow_id": flow_id},
-        )
-
-    allowed = (
-        None
-        if allowed_target_minutes is None
-        else {int(minute) for minute in allowed_target_minutes}
-    )
-    normalized_evaluation_minute = (
-        None if evaluation_minute is None else int(evaluation_minute)
-    )
-    candidates = [
-        int(minute)
-        for minute in context.target_minutes_present
-        if allowed is None or int(minute) in allowed
-        if normalized_evaluation_minute is None
-        or int(minute) >= normalized_evaluation_minute
-    ]
-    if not candidates:
-        return TargetMinuteSelection(
-            None,
-            "no_target_minutes_present",
-            {
-                "flow_id": flow_id,
-                "target_minutes_present": list(context.target_minutes_present),
-                "allowed_target_minutes": sorted(allowed) if allowed is not None else None,
-                "evaluation_minute": normalized_evaluation_minute,
-            },
-        )
-    return TargetMinuteSelection(
-        min(candidates),
-        diagnostics={
-            "selection": "latest_causal_available",
-            "flow_id": flow_id,
-            "evaluation_minute": normalized_evaluation_minute,
-        },
-    )
 
 
 def _identity_key(identity: MarketIdentity | MarketLineOddsTrajectory) -> tuple[str, str, str]:
@@ -410,7 +329,6 @@ def extract_market_snapshot(
 
 
 __all__ = [
-    "HARDCODED_TARGET_MINUTE_BY_FLOW",
     "ChoiceRequest",
     "MarketCandidate",
     "MarketIdentity",
@@ -418,7 +336,5 @@ __all__ = [
     "MarketSnapshotRequest",
     "QuotePoint",
     "QuoteTrace",
-    "TargetMinuteSelection",
     "extract_market_snapshot",
-    "select_target_minute",
 ]

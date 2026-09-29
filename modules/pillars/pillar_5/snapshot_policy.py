@@ -13,10 +13,10 @@ from modules.pillars.market_snapshot_extractor import (
     MarketCandidate,
     MarketSnapshotExtraction,
     MarketSnapshotRequest,
-    TargetMinuteSelection,
     extract_market_snapshot,
 )
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
+from modules.pillars.trajectory_selection import TargetMinuteSelection
 
 from .models import (
     ExchangeSnapshot,

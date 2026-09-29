@@ -31,13 +31,19 @@ def build_raw_audit(extraction: P4ExtractionResult) -> dict[str, Any]:
             if extraction.evaluation_as_of is not None
             else None
         ),
-        "operative_as_of": extraction.operative_as_of.isoformat(),
+        "operative_as_of": (
+            extraction.operative_as_of.isoformat()
+            if extraction.operative_as_of is not None
+            else None
+        ),
         "inputs": inputs,
         "input_trace": input_trace,
         "periods": extraction.periods,
         "extraction_diagnostics": {
             "source_series_seen": extraction.source_series_seen,
             "endpoint_series_present": extraction.endpoint_series_present,
+            "observed_bookie_ids": list(extraction.observed_bookie_ids),
+            "issue_bookie_ids": list(extraction.issue_bookie_ids),
             "excluded_future_points": extraction.excluded_future_points,
             "missing_inputs": list(extraction.missing_inputs),
             "missing_endpoint_details": list(extraction.missing_endpoint_details),

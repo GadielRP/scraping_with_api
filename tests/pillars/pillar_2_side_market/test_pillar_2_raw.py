@@ -6,9 +6,12 @@ from decimal import Decimal
 
 import pytest
 
-from modules.pillars import market_snapshot_extractor
 from modules.pillars.context import CompetitionContext, EventContext, ParticipantContext
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.trajectory_selection import (
+    HARDCODED_TARGET_MINUTE_BY_FLOW,
+    select_target_minute,
+)
 from modules.pillars.pillar_2_side_market.metrics import side_edge
 from modules.pillars.pillar_2_side_market.periods import (
     EXCHANGE_ODDS_INPUT_NAMES,
@@ -25,11 +28,7 @@ TARGET_MINUTES = [120, 30, 5, 1, 0, -5]
 
 @pytest.fixture(autouse=True)
 def _default_target_selection(monkeypatch) -> None:
-    monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
-        "pre_start_signal_profile",
-        None,
-    )
+    monkeypatch.setitem(HARDCODED_TARGET_MINUTE_BY_FLOW, "pre_start_signal_profile", None)
 
 
 def _event_context() -> EventContext:
@@ -245,7 +244,7 @@ def _complete_rows(
 
 def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
     context = build_odds_trajectory_context(rows, target_minutes_expected=TARGET_MINUTES)
-    target_selection = market_snapshot_extractor.select_target_minute(
+    target_selection = select_target_minute(
         context,
         flow_id="pre_start_signal_profile",
         expected_event_id=2002,

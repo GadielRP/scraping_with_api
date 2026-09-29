@@ -8,7 +8,7 @@ from typing import Any
 from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.market_audit import build_raw_audit, json_inputs
 from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
-from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
+from modules.pillars.trajectory_selection import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 
 from .periods import (

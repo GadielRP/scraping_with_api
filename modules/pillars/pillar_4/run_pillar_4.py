@@ -8,6 +8,7 @@ from typing import Any
 
 from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
+from modules.pillars.trajectory_selection import TargetMinuteSelection
 
 from .debug_logging import log_p4_extraction, log_p4_signal_profile
 from .periods import P4_MODULE_ID, P4_MODULE_NAME, P4_PILLAR_ID
@@ -22,9 +23,8 @@ logger = logging.getLogger(__name__)
 def calculate_pillar_4(
     event_context: EventIdentity | EventContext,
     odds_trajectory_context: OddsTrajectoryContext,
+    target_selection: TargetMinuteSelection,
     *,
-    target_minute: int,
-    evaluation_as_of: datetime | None = None,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
     """Return P4's causal temporal profile for one exact operative target."""
@@ -33,8 +33,7 @@ def calculate_pillar_4(
     extraction = extract_p4_trajectory_inputs(
         event_context,
         odds_trajectory_context,
-        target_minute=target_minute,
-        evaluation_as_of=evaluation_as_of,
+        target_selection,
     )
     if debug_mode:
         log_p4_extraction(logger, extraction)

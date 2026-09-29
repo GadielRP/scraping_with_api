@@ -9,18 +9,92 @@ from .models import P4ExtractionResult
 from .semantic_metrics import build_checkpoint_semantic_series
 from .signal_models import P4SeriesResult, P4SignalProfile, P4ViewProfile
 from .trajectory_engine import build_trajectory_features
+from .periods import (
+    OPTIONAL_BOOKIE_IDS,
+    REQUIRED_BOOKIE_IDS,
+    SUPPORTED_BOOKIE_IDS,
+    bookmaker_name,
+    bookmaker_role,
+)
 
 
-ENGINE_VERSION = "p4-signal-profile-v1"
+ENGINE_VERSION = "p4-signal-profile-v2"
 
 
-def _view_status(series: Iterable[P4SeriesResult]) -> str:
+def _primary_price_series(
+    series: Iterable[P4SeriesResult],
+) -> tuple[P4SeriesResult, ...]:
+    return tuple(
+        item
+        for item in series
+        if item.market.get("VALUE_TYPE") == "ODDS_PRICE"
+    )
+
+
+def _view_status(
+    series: Iterable[P4SeriesResult],
+    *,
+    missing_required_sources: set[int],
+    required_issue_sources: set[int],
+) -> str:
     primary = [
-        item for item in series if item.market.get("VALUE_TYPE") == "ODDS_PRICE"
+        item
+        for item in _primary_price_series(series)
+        if item.market.get("BOOKIE_ID") in REQUIRED_BOOKIE_IDS
     ]
     if not primary:
         return "INSUFFICIENT_DATA"
-    return "PARTIAL" if any(item.status != "ACTIVE" for item in primary) else "ACTIVE"
+    if (
+        missing_required_sources
+        or required_issue_sources
+        or any(item.status != "ACTIVE" for item in primary)
+    ):
+        return "PARTIAL"
+    return "ACTIVE"
+
+
+def _source_status(
+    series: Iterable[P4SeriesResult],
+    *,
+    observed_bookie_ids: set[int],
+    issue_bookie_ids: set[int],
+) -> dict[str, dict[str, Any]]:
+    primary = _primary_price_series(series)
+    result: dict[str, dict[str, Any]] = {}
+    for bookie_id in sorted(SUPPORTED_BOOKIE_IDS):
+        source_series = [
+            item
+            for item in primary
+            if item.market.get("BOOKIE_ID") == bookie_id
+        ]
+        present = bookie_id in observed_bookie_ids
+        if not present:
+            status = "MISSING" if bookie_id in REQUIRED_BOOKIE_IDS else "NOT_PRESENT"
+        elif (
+            bookie_id in issue_bookie_ids
+            or not source_series
+            or any(item.status != "ACTIVE" for item in source_series)
+        ):
+            status = "PARTIAL"
+        else:
+            status = "ACTIVE"
+        result[str(bookie_id)] = {
+            "ROLE": bookmaker_role(bookie_id),
+            "BOOKIE_NAME": bookmaker_name(
+                bookie_id,
+                (
+                    source_series[0].market.get("BOOKIE_NAME")
+                    if source_series
+                    else None
+                ),
+            ),
+            "STATUS": status,
+            "PRICE_SERIES_COUNT": len(source_series),
+            "PARTIAL_PRICE_SERIES_COUNT": sum(
+                item.status != "ACTIVE" for item in source_series
+            ),
+        }
+    return result
 
 
 def _summary_state(field: str, value: Any) -> str:
@@ -115,7 +189,15 @@ def build_p4_signal_profile(
         if not adaptive_series
         else P4ViewProfile(
             source_mode="PERSISTED_SNAPSHOTS",
-            status=_view_status(adaptive_series),
+            status=_view_status(
+                adaptive_series,
+                missing_required_sources=(
+                    set(REQUIRED_BOOKIE_IDS) - set(extraction.observed_bookie_ids)
+                ),
+                required_issue_sources=(
+                    set(REQUIRED_BOOKIE_IDS) & set(extraction.issue_bookie_ids)
+                ),
+            ),
             series=adaptive_series,
         )
     )
@@ -124,22 +206,44 @@ def build_p4_signal_profile(
         if not checkpoint_series
         else P4ViewProfile(
             source_mode="FIXED_CHECKPOINTS",
-            status=_view_status(checkpoint_series),
+            status=_view_status(
+                checkpoint_series,
+                missing_required_sources=(
+                    set(REQUIRED_BOOKIE_IDS) - set(extraction.observed_bookie_ids)
+                ),
+                required_issue_sources=(
+                    set(REQUIRED_BOOKIE_IDS) & set(extraction.issue_bookie_ids)
+                ),
+            ),
             series=checkpoint_series,
         )
     )
     combined = (*adaptive_series, *checkpoint_series)
-    primary = [
-        item for item in combined if item.market.get("VALUE_TYPE") == "ODDS_PRICE"
-    ]
-    profile_status = (
-        "PARTIAL"
-        if extraction.missing_inputs
-        or extraction.invalid_inputs
-        or extraction.ambiguous_inputs
-        or any(item.status != "ACTIVE" for item in primary)
-        else "ACTIVE"
+    primary = _primary_price_series(combined)
+    required_primary = tuple(
+        item
+        for item in primary
+        if item.market.get("BOOKIE_ID") in REQUIRED_BOOKIE_IDS
     )
+    observed_bookie_ids = set(extraction.observed_bookie_ids)
+    issue_bookie_ids = set(extraction.issue_bookie_ids)
+    missing_required_sources = set(REQUIRED_BOOKIE_IDS) - observed_bookie_ids
+    required_issue_sources = set(REQUIRED_BOOKIE_IDS) & issue_bookie_ids
+    source_status = _source_status(
+        combined,
+        observed_bookie_ids=observed_bookie_ids,
+        issue_bookie_ids=issue_bookie_ids,
+    )
+    if not required_primary:
+        profile_status = "INSUFFICIENT_DATA"
+    elif (
+        missing_required_sources
+        or required_issue_sources
+        or any(item.status != "ACTIVE" for item in required_primary)
+    ):
+        profile_status = "PARTIAL"
+    else:
+        profile_status = "ACTIVE"
     return P4SignalProfile(
         meta={
             "TARGET_MINUTE": extraction.target_minute,
@@ -153,9 +257,15 @@ def build_p4_signal_profile(
                 if extraction.evaluation_as_of is not None
                 else None
             ),
-            "OPERATIVE_AS_OF": extraction.operative_as_of.isoformat(),
+            "OPERATIVE_AS_OF": (
+                extraction.operative_as_of.isoformat()
+                if extraction.operative_as_of is not None
+                else None
+            ),
             "SOURCE_SERIES_SEEN": extraction.source_series_seen,
             "ENDPOINT_SERIES_PRESENT": extraction.endpoint_series_present,
+            "REQUIRED_BOOKIE_IDS": sorted(REQUIRED_BOOKIE_IDS),
+            "OPTIONAL_BOOKIE_IDS": sorted(OPTIONAL_BOOKIE_IDS),
             "TRAJECTORY_PARTIAL": profile_status == "PARTIAL",
         },
         adaptive_view=adaptive_view,
@@ -166,6 +276,12 @@ def build_p4_signal_profile(
             "ADAPTIVE_SERIES_COUNT": len(adaptive_series),
             "CHECKPOINT_SERIES_COUNT": len(checkpoint_series),
             "PRIMARY_ODDS_SERIES_COUNT": len(primary),
+            "REQUIRED_ODDS_SERIES_COUNT": len(required_primary),
+            "OPTIONAL_ODDS_SERIES_COUNT": sum(
+                item.market.get("BOOKIE_ID") in OPTIONAL_BOOKIE_IDS
+                for item in primary
+            ),
+            "SOURCE_STATUS": source_status,
             "EXCLUDED_FUTURE_POINT_COUNT": extraction.excluded_future_points,
         },
         traceability={
@@ -178,6 +294,7 @@ def build_p4_signal_profile(
             "AVAILABILITY_FIELD_POLICY": "COLLECTED_AT_ELSE_SOURCE_COLLECTED_AT",
             "PERSISTENCE_PROVENANCE": "LEGACY_MIXED_COLLECTED_AT",
             "LINE_SELECTION_POLICY": "UNIQUE_CONTRACT_PER_CHECKPOINT_OR_AMBIGUOUS",
+            "SOURCE_STATUS_POLICY": "REQUIRED_SOURCES_GATE_PROFILE;OPTIONAL_SOURCES_RETAINED",
             "DEBUG_MODE": bool(debug_mode),
         },
     )

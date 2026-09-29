@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
+from modules.pillars.trajectory_selection import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import (
     MarketLineOddsTrajectory,
     OddsTrajectoryContext,

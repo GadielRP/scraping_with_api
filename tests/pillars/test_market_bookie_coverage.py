@@ -2,7 +2,7 @@
 
 import pytest
 
-from modules.pillars import market_snapshot_extractor
+from modules.pillars.trajectory_selection import HARDCODED_TARGET_MINUTE_BY_FLOW
 from modules.pillars.market_coverage import PeriodDiagnostics
 from modules.pillars.mining.adapters.pillar_2 import P2MiningAdapter
 from modules.pillars.mining.adapters.pillar_3 import P3MiningAdapter
@@ -15,11 +15,7 @@ from tests.pillars.pillar_3_totals_market_context import (
 
 @pytest.fixture(autouse=True)
 def selected_minute(monkeypatch):
-    monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
-        "pre_start_signal_profile",
-        None,
-    )
+    monkeypatch.setitem(HARDCODED_TARGET_MINUTE_BY_FLOW, "pre_start_signal_profile", None)
 
 
 @pytest.mark.parametrize(

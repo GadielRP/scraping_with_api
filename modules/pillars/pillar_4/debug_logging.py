@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .models import P4ExtractionResult
-from .periods import period_key, resolve_domain
+from .periods import REQUIRED_BOOKIE_IDS, bookmaker_name, period_key, resolve_domain
 
 
 def _time(value: str | None) -> str:
@@ -90,7 +90,11 @@ def log_p4_extraction(
             if extraction.evaluation_as_of is not None
             else None
         ),
-        _time(extraction.operative_as_of.isoformat()),
+        _time(
+            extraction.operative_as_of.isoformat()
+            if extraction.operative_as_of is not None
+            else None
+        ),
         "yes" if extraction.usable else "no",
     )
     logger.info(
@@ -110,12 +114,17 @@ def log_p4_extraction(
     missing_by_period = _missing_by_period(extraction)
     for period, diagnostics in sorted(extraction.periods.items()):
         logger.info(
-            "P4 market | %s / %s | built adaptive series=%s, checkpoint series=%s, "
-            "incomplete built series=%s | selections omitted for missing T-%s quote=%s",
+            "P4 market | %s / %s | status=%s | "
+            "built adaptive series=%s, checkpoint series=%s | "
+            "incomplete required series=%s, optional series=%s (all=%s) | "
+            "selections omitted for missing T-%s quote=%s",
             "sides" if diagnostics["DOMAIN"] == "SIDE" else "totals",
             diagnostics["MARKET_PERIOD"].replace("_", " ").lower(),
+            diagnostics["status"],
             diagnostics["ADAPTIVE_SERIES_COUNT"],
             diagnostics["CHECKPOINT_SERIES_COUNT"],
+            diagnostics["PARTIAL_REQUIRED_SERIES_COUNT"],
+            diagnostics["PARTIAL_OPTIONAL_SERIES_COUNT"],
             diagnostics["PARTIAL_SERIES_COUNT"],
             target,
             missing_by_period[period],
@@ -168,16 +177,42 @@ def log_p4_signal_profile(
         for series in (profile.get(view_name) or {}).get("SERIES", ())
         if (series.get("MARKET") or {}).get("VALUE_TYPE") == "ODDS_PRICE"
     ]
-    partial_primary = sum(series.get("STATUS") != "ACTIVE" for series in primary)
+    incomplete_required = sum(
+        series.get("STATUS") != "ACTIVE"
+        and (series.get("MARKET") or {}).get("BOOKIE_ID") in REQUIRED_BOOKIE_IDS
+        for series in primary
+    )
+    incomplete_optional = sum(
+        series.get("STATUS") != "ACTIVE"
+        and (series.get("MARKET") or {}).get("BOOKIE_ID") not in REQUIRED_BOOKIE_IDS
+        for series in primary
+    )
+    missing_required_sources = [
+        f"{bookmaker_name(bookie_id)} (id={bookie_id})"
+        for bookie_id in sorted(
+            REQUIRED_BOOKIE_IDS - set(extraction.observed_bookie_ids)
+        )
+    ]
+    required_sources_with_issues = [
+        f"{bookmaker_name(bookie_id)} (id={bookie_id})"
+        for bookie_id in sorted(
+            REQUIRED_BOOKIE_IDS & set(extraction.issue_bookie_ids)
+        )
+    ]
     logger.info(
         "P4 result | status=%s | missing T-%s selections=%s | "
-        "invalid observations=%s | ambiguous lines=%s | incomplete price series=%s",
+        "invalid observations=%s | ambiguous lines=%s | "
+        "missing required sources=%s | required sources with issues=%s | "
+        "incomplete required price series=%s | incomplete optional price series=%s",
         summary["STATUS"],
         extraction.target_minute,
         len(extraction.missing_inputs),
         len(extraction.invalid_inputs),
         len(extraction.ambiguous_inputs),
-        partial_primary,
+        missing_required_sources,
+        required_sources_with_issues,
+        incomplete_required,
+        incomplete_optional,
     )
     for view_name, label in (
         ("ADAPTIVE_VIEW", "all available snapshots"),

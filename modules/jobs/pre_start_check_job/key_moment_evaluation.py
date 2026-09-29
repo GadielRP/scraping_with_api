@@ -555,8 +555,9 @@ def evaluate_pre_start_key_moments(
             trajectory_payloads = _load_trajectory_payloads(
                 validated_event_ids,
             )
-            # The T-minus minute is a scheduling label. The snapshots returned
-            # by this query are available to the pillar evaluation now.
+            # The loaded rows are the exact snapshot set evaluated by the pillars.
+            # Capture the boundary after loading so writes completed during the
+            # query are not accidentally cut off at the nominal key moment.
             evaluation_as_of = utc_now()
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,

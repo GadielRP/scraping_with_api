@@ -43,7 +43,7 @@ def _result():
     periods = {"TOTALS_FULL_TIME": {"status": "COMPLETE"}}
     return {
         "pillar_id": "pillar_4_temporal_market_drift",
-        "engine_version": "p4-signal-profile-v1",
+        "engine_version": "p4-signal-profile-v2",
         "P4_TARGET_MINUTE": 5,
         "P4_STATUS": "ACTIVE",
         "status": "ACTIVE",

@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import modules.jobs.pre_start_check_job.pillar_pipeline as pillar_pipeline
-from modules.pillars import market_snapshot_extractor
 from modules.pillars.context import CompetitionContext, EventContext, ParticipantContext
-from modules.pillars.market_snapshot_extractor import TargetMinuteSelection
+from modules.pillars.trajectory_selection import (
+    HARDCODED_TARGET_MINUTE_BY_FLOW,
+    TargetMinuteSelection,
+)
 
 
 def _event_context() -> EventContext:
@@ -65,7 +67,7 @@ def _event_context() -> EventContext:
     return event
 
 
-def _trajectory_context():
+def _trajectory_context(*, evaluation_as_of=None):
     return SimpleNamespace(
         available=True,
         event_id=4004,
@@ -73,6 +75,7 @@ def _trajectory_context():
         target_minutes_present=[30, 5],
         target_minutes_expected=[120, 30, 5, 1, 0, -5],
         missing_target_minutes=[120, 1, 0, -5],
+        evaluation_as_of=evaluation_as_of,
     )
 
 
@@ -157,7 +160,7 @@ def test_shared_hardcoded_override_is_consumed_by_both_pillars(
     monkeypatch,
 ) -> None:
     monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
+        HARDCODED_TARGET_MINUTE_BY_FLOW,
         pillar_pipeline.CANONICAL_SIGNAL_FLOW_ID,
         0,
     )
@@ -207,6 +210,7 @@ def test_pipeline_persists_both_structural_profiles(monkeypatch) -> None:
 def test_pipeline_passes_actual_evaluation_time_to_p4(monkeypatch) -> None:
     evaluation_time = datetime(2026, 8, 31, 17, 55, 16, tzinfo=timezone.utc)
     captured = {}
+    builder_args = {}
     monkeypatch.setattr(
         pillar_pipeline,
         "_is_pillar_competition_in_scope",
@@ -215,14 +219,17 @@ def test_pipeline_passes_actual_evaluation_time_to_p4(monkeypatch) -> None:
     monkeypatch.setattr(
         pillar_pipeline,
         "build_odds_trajectory_context",
-        lambda _rows, **_kwargs: _trajectory_context(),
+        lambda _rows, **kwargs: (
+            builder_args.update(kwargs)
+            or _trajectory_context(evaluation_as_of=kwargs.get("evaluation_as_of"))
+        ),
     )
 
     def fake_p4(**kwargs):
         captured.update(kwargs)
         return {
             "P4_STATUS": "PARTIAL",
-            "P4_TARGET_MINUTE": kwargs["target_minute"],
+            "P4_TARGET_MINUTE": kwargs["target_selection"].target_minute,
             "P4_SIGNAL_PROFILE": {"SUMMARY": {}},
             "status": "PARTIAL",
         }
@@ -242,5 +249,6 @@ def test_pipeline_passes_actual_evaluation_time_to_p4(monkeypatch) -> None:
 
     processor.process_event(_event_context())
 
-    assert captured["target_minute"] == 5
-    assert captured["evaluation_as_of"] is evaluation_time
+    assert builder_args["evaluation_as_of"] is evaluation_time
+    assert captured["target_selection"].target_minute == 5
+    assert captured["odds_trajectory_context"].evaluation_as_of is evaluation_time

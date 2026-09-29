@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from infrastructure.settings import Config
 from modules.pillars.context import EventContext, EventIdentity
@@ -15,10 +15,25 @@ from modules.pillars.odds_trajectory_context import (
     OddsSnapshotPoint,
     OddsTrajectoryContext,
 )
+from modules.pillars.trajectory_selection import (
+    SnapshotTargetWindow,
+    TargetMinuteSelection,
+    build_snapshot_target_window,
+    build_snapshot_target_windows,
+    effective_snapshot_timestamp,
+    snapshot_target_rank,
+    snapshot_time_error,
+)
 from shared.temporal import as_utc
 
 from .models import P4ExtractionResult, P4Point, P4SeriesInput
-from .periods import SUPPORTED_BOOKIE_IDS, period_key, resolve_domain
+from .periods import (
+    REQUIRED_BOOKIE_IDS,
+    SUPPORTED_BOOKIE_IDS,
+    bookmaker_role,
+    period_key,
+    resolve_domain,
+)
 
 
 def _datetime_value(value: datetime) -> float:
@@ -84,26 +99,22 @@ def _normalize_snapshot(
     snapshot: OddsSnapshotPoint,
     *,
     event_start: datetime,
-    operative_as_of: datetime,
+    target_window: SnapshotTargetWindow,
     invalid: list[str],
     series_label: str,
 ) -> tuple[P4Point | None, bool]:
     collected_at = snapshot.collected_at
     source_at = snapshot.source_collected_at
-    availability_at = collected_at or source_at
-    if availability_at is None:
-        invalid.append(f"{series_label}:snapshot:{snapshot.snapshot_id}:missing_timestamp")
-        return None, False
-    if (
-        collected_at is not None
-        and source_at is not None
-        and _datetime_value(source_at) > _datetime_value(collected_at)
-    ):
+    availability_at = collected_at
+    time_error = snapshot_time_error(
+        collected_at=collected_at,
+    )
+    if time_error is not None:
         invalid.append(
-            f"{series_label}:snapshot:{snapshot.snapshot_id}:source_after_collection"
+            f"{series_label}:snapshot:{snapshot.snapshot_id}:{time_error}"
         )
         return None, False
-    if _datetime_value(availability_at) > _datetime_value(operative_as_of):
+    if target_window.is_after_cutoff(availability_at):
         return None, True
     try:
         odds = Decimal(snapshot.odds_value)
@@ -113,7 +124,10 @@ def _normalize_snapshot(
     if odds <= 0:
         invalid.append(f"{series_label}:snapshot:{snapshot.snapshot_id}:non_positive_odds")
         return None, False
-    effective_at = source_at or availability_at
+    effective_at = effective_snapshot_timestamp(
+        collected_at=availability_at,
+        source_collected_at=source_at,
+    )
     point_id = (
         f"SNAPSHOT_{snapshot.snapshot_id}"
         if snapshot.snapshot_id is not None
@@ -166,31 +180,31 @@ def _project_checkpoints(
     *,
     event_start: datetime,
     target_minutes: Iterable[int],
-    tolerance_minutes: int,
+    target_windows: Mapping[int, SnapshotTargetWindow],
 ) -> dict[int, P4Point]:
     projected: dict[int, P4Point] = {}
-    tolerance_seconds = max(0, int(tolerance_minutes)) * 60
     candidates = list(points)
     for target in target_minutes:
-        nominal = event_start - timedelta(minutes=target)
-        eligible: list[tuple[float, float, int, P4Point]] = []
+        window = target_windows[target]
+        eligible: list[tuple[tuple[float, float, float, int], P4Point]] = []
         for point in candidates:
-            distance = abs(_datetime_value(point.availability_at) - _datetime_value(nominal))
-            if distance > tolerance_seconds:
+            if not window.contains(point.availability_at):
                 continue
-            eligible.append(
-                (
-                    distance,
-                    -_datetime_value(point.source_collected_at or point.availability_at),
-                    -(point.snapshot_id if point.snapshot_id is not None else -1),
-                    point,
-                )
+            distance = abs(
+                _datetime_value(point.availability_at)
+                - _datetime_value(window.nominal_at)
             )
+            rank = snapshot_target_rank(
+                distance_seconds=distance,
+                available_at=point.availability_at,
+                source_collected_at=point.source_collected_at,
+                snapshot_id=point.snapshot_id,
+            )
+            eligible.append((rank, point))
         if not eligible:
             continue
-        selected_distance, _, _, selected = min(
-            eligible, key=lambda item: item[:3]
-        )
+        selected_rank, selected = min(eligible, key=lambda item: item[0])
+        selected_distance = selected_rank[0]
         projected[target] = replace(
             selected,
             point_id=f"{selected.point_id}_TARGET_{target}",
@@ -331,6 +345,7 @@ def _line_series(
     target_minute: int,
     expected_targets: tuple[int, ...],
     ambiguous: list[str],
+    issue_bookie_ids: set[int],
 ) -> list[P4SeriesInput]:
     groups: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     for observation in line_observations:
@@ -369,6 +384,8 @@ def _line_series(
                         f"LINE_SELECTION:{label}:TARGET:{target}:"
                         f"{','.join(str(line) for line in sorted(line_candidates))}"
                     )
+                    if key[5] is not None:
+                        issue_bookie_ids.add(int(key[5]))
                 continue
             line, source_points = next(iter(line_candidates.items()))
             availability = max(
@@ -456,6 +473,9 @@ def _line_series(
 def _period_diagnostics(
     adaptive: Iterable[P4SeriesInput],
     checkpoint: Iterable[P4SeriesInput],
+    *,
+    missing_required_sources: set[int],
+    required_issue_sources: set[int],
 ) -> dict[str, Any]:
     buckets: dict[tuple[str, str], dict[str, Any]] = {}
     for series in (*tuple(adaptive), *tuple(checkpoint)):
@@ -467,16 +487,44 @@ def _period_diagnostics(
                 "MARKET_PERIOD": period_key(series.market_period),
                 "ADAPTIVE_SERIES_COUNT": 0,
                 "CHECKPOINT_SERIES_COUNT": 0,
+                "REQUIRED_SERIES_COUNT": 0,
+                "OPTIONAL_SERIES_COUNT": 0,
                 "PARTIAL_SERIES_COUNT": 0,
+                "PARTIAL_REQUIRED_SERIES_COUNT": 0,
+                "PARTIAL_OPTIONAL_SERIES_COUNT": 0,
             },
         )
         bucket[f"{series.view.replace('_VIEW', '')}_SERIES_COUNT"] += 1
-        if len(series.points) < 2 or series.missing_target_minutes:
+        role = bookmaker_role(series.bookie_id)
+        if role == "REQUIRED":
+            bucket["REQUIRED_SERIES_COUNT"] += 1
+        elif role == "OPTIONAL":
+            bucket["OPTIONAL_SERIES_COUNT"] += 1
+        is_partial = (
+            len(series.points) < 2
+            or bool(series.missing_target_minutes)
+            or not series.operative_endpoint_present
+        )
+        if is_partial:
             bucket["PARTIAL_SERIES_COUNT"] += 1
+            if role == "REQUIRED":
+                bucket["PARTIAL_REQUIRED_SERIES_COUNT"] += 1
+            elif role == "OPTIONAL":
+                bucket["PARTIAL_OPTIONAL_SERIES_COUNT"] += 1
     result: dict[str, Any] = {}
     for (domain, period), details in sorted(buckets.items()):
         count = details["ADAPTIVE_SERIES_COUNT"] + details["CHECKPOINT_SERIES_COUNT"]
+        required_count = details["REQUIRED_SERIES_COUNT"]
         details["status"] = (
+            "INCOMPLETE"
+            if required_count == 0
+            else "PARTIAL"
+            if missing_required_sources
+            or required_issue_sources
+            or details["PARTIAL_REQUIRED_SERIES_COUNT"]
+            else "COMPLETE"
+        )
+        details["all_sources_status"] = (
             "INCOMPLETE"
             if count == 0
             else "PARTIAL"
@@ -490,29 +538,39 @@ def _period_diagnostics(
 def extract_p4_trajectory_inputs(
     event_context: EventIdentity | EventContext,
     odds_trajectory_context: OddsTrajectoryContext | None,
-    *,
-    target_minute: int,
-    evaluation_as_of: datetime | None = None,
+    target_selection: TargetMinuteSelection,
 ) -> P4ExtractionResult:
-    """Extract trajectories available by evaluation, bounded to the target window."""
-    if isinstance(target_minute, bool) or not isinstance(target_minute, int):
-        raise TypeError("target_minute must be an integer")
-    target = target_minute
-    start = as_utc(event_context.starts_at, field_name="event start")
-    nominal_target_as_of = start - timedelta(minutes=target)
+    """Extract trajectories for the event-wide selected checkpoint."""
+    context = odds_trajectory_context
     observed_as_of = (
-        as_utc(evaluation_as_of, field_name="P4 evaluation time")
-        if evaluation_as_of is not None
+        context.evaluation_as_of
+        if context is not None
         else None
     )
-    tolerance = max(0, int(Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES))
-    operative_as_of = nominal_target_as_of
+    target = target_selection.target_minute
+    if target is None:
+        return P4ExtractionResult(
+            event_id=int(event_context.event_id),
+            target_minute=None,
+            operative_as_of=None,
+            evaluation_as_of=observed_as_of,
+            missing_inputs=("OPERATIVE_TARGET:UNSELECTED",),
+            reason=target_selection.reason or "target_minute_not_selected",
+        )
+    if isinstance(target, bool) or not isinstance(target, int):
+        raise TypeError("selected target_minute must be an integer")
+    start = as_utc(event_context.starts_at, field_name="event start")
     if observed_as_of is not None:
-        latest_allowed = nominal_target_as_of + timedelta(minutes=tolerance)
-        if target >= 0:
-            latest_allowed = min(latest_allowed, start)
-        operative_as_of = min(observed_as_of, latest_allowed)
-    context = odds_trajectory_context
+        observed_as_of = as_utc(observed_as_of, field_name="evaluation time")
+    tolerance = max(0, int(Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES))
+    target_window = build_snapshot_target_window(
+        event_starts_at=start,
+        target_minute=target,
+        evaluation_as_of=observed_as_of,
+        tolerance_minutes=tolerance,
+    )
+    nominal_target_as_of = target_window.nominal_at
+    operative_as_of = target_window.latest_at
     if context is None or not context.available or not context.markets:
         return P4ExtractionResult(
             event_id=int(event_context.event_id),
@@ -531,6 +589,12 @@ def extract_p4_trajectory_inputs(
             reverse=True,
         )
     )
+    checkpoint_windows = build_snapshot_target_windows(
+        event_starts_at=start,
+        target_minutes=expected_targets,
+        evaluation_as_of=observed_as_of,
+        tolerance_minutes=tolerance,
+    )
     adaptive: list[P4SeriesInput] = []
     checkpoints: list[P4SeriesInput] = []
     missing: list[str] = []
@@ -540,6 +604,8 @@ def extract_p4_trajectory_inputs(
     excluded_future = 0
     source_series_seen = 0
     endpoint_series_present = 0
+    observed_bookie_ids: set[int] = set()
+    issue_bookie_ids: set[int] = set()
     line_observations: list[dict[str, Any]] = []
 
     for market_group, periods in sorted(context.markets.items()):
@@ -559,6 +625,7 @@ def extract_p4_trajectory_inputs(
                             if choice.main_line is False:
                                 continue
                             source_series_seen += 1
+                            observed_bookie_ids.add(int(bookie.bookie_id))
                             base = _base_series_id(
                                 domain=domain,
                                 market_group=market_group,
@@ -576,19 +643,19 @@ def extract_p4_trajectory_inputs(
                             normalized: list[P4Point] = []
                             future_availability: list[datetime] = []
                             for snapshot in choice.snapshots:
+                                invalid_count = len(invalid)
                                 point, future = _normalize_snapshot(
                                     snapshot,
                                     event_start=start,
-                                    operative_as_of=operative_as_of,
+                                    target_window=target_window,
                                     invalid=invalid,
                                     series_label=base,
                                 )
+                                if len(invalid) > invalid_count:
+                                    issue_bookie_ids.add(int(bookie.bookie_id))
                                 excluded_future += int(future)
                                 if future:
-                                    available_at = (
-                                        snapshot.collected_at
-                                        or snapshot.source_collected_at
-                                    )
+                                    available_at = snapshot.collected_at
                                     if available_at is not None:
                                         future_availability.append(available_at)
                                 if point is not None:
@@ -598,7 +665,7 @@ def extract_p4_trajectory_inputs(
                                 safe_points,
                                 event_start=start,
                                 target_minutes=expected_targets,
-                                tolerance_minutes=tolerance,
+                                target_windows=checkpoint_windows,
                             )
                             if line_value is not None and projected:
                                 line_observations.append(
@@ -638,6 +705,7 @@ def extract_p4_trajectory_inputs(
                             }
                             if endpoint is None:
                                 missing.append(f"{base}:OPERATIVE_TARGET:{target}")
+                                issue_bookie_ids.add(int(bookie.bookie_id))
                                 missing_endpoint_details.append(
                                     {
                                         "market_group": market_group,
@@ -714,9 +782,17 @@ def extract_p4_trajectory_inputs(
             target_minute=target,
             expected_targets=expected_targets,
             ambiguous=ambiguous,
+            issue_bookie_ids=issue_bookie_ids,
         )
     )
-    periods = _period_diagnostics(adaptive, checkpoints)
+    missing_required_sources = set(REQUIRED_BOOKIE_IDS) - observed_bookie_ids
+    required_issue_sources = set(REQUIRED_BOOKIE_IDS) & issue_bookie_ids
+    periods = _period_diagnostics(
+        adaptive,
+        checkpoints,
+        missing_required_sources=missing_required_sources,
+        required_issue_sources=required_issue_sources,
+    )
     reason = None if endpoint_series_present else "operative_target_unavailable"
     return P4ExtractionResult(
         event_id=int(event_context.event_id),
@@ -734,6 +810,8 @@ def extract_p4_trajectory_inputs(
         excluded_future_points=excluded_future,
         source_series_seen=source_series_seen,
         endpoint_series_present=endpoint_series_present,
+        observed_bookie_ids=tuple(sorted(observed_bookie_ids)),
+        issue_bookie_ids=tuple(sorted(issue_bookie_ids)),
         reason=reason,
     )
 

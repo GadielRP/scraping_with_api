@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -12,6 +13,10 @@ from modules.pillars.odds_trajectory_context import build_odds_trajectory_contex
 from modules.pillars.pillar_4.metrics import build_temporal_features
 from modules.pillars.pillar_4.models import P4Point
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
+from modules.pillars.trajectory_selection import (
+    TargetMinuteSelection,
+    select_target_minute,
+)
 from shared.temporal import NaiveDateTimeError
 
 
@@ -80,6 +85,31 @@ def _row(
     }
 
 
+def _complete_required_book_rows() -> list[dict]:
+    rows = []
+    for bookie_id, bookie_name, id_offset in (
+        (302, "Pinnacle Sports", 0),
+        (3, "bet365", 100),
+    ):
+        for choice, choice_id, quote_id, odds_by_minute in (
+            ("Over", 11, 101, {120: "2.05", 30: "1.95", 5: "1.85"}),
+            ("Under", 12, 102, {120: "1.80", 30: "1.90", 5: "2.00"}),
+        ):
+            rows.extend(
+                _row(
+                    minute=minute,
+                    odds=odds,
+                    choice=choice,
+                    choice_id=choice_id + id_offset,
+                    quote_id=quote_id + id_offset,
+                    bookie_id=bookie_id,
+                    bookie_name=bookie_name,
+                )
+                for minute, odds in odds_by_minute.items()
+            )
+    return rows
+
+
 def _context(rows: list[dict], target: int = 5):
     return build_odds_trajectory_context(
         rows,
@@ -92,6 +122,24 @@ def _context(rows: list[dict], target: int = 5):
 @pytest.fixture(autouse=True)
 def _zero_tolerance(monkeypatch):
     monkeypatch.setattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 0)
+
+
+def _run_p4(
+    event,
+    context,
+    *,
+    target_minute,
+    evaluation_as_of=None,
+    debug_mode=False,
+):
+    if evaluation_as_of is not None:
+        context = replace(context, evaluation_as_of=evaluation_as_of)
+    return calculate_pillar_4(
+        event,
+        context,
+        TargetMinuteSelection(target_minute=target_minute),
+        debug_mode=debug_mode,
+    )
 
 
 def test_profile_uses_snapshots_and_excludes_every_point_after_dynamic_target() -> None:
@@ -111,15 +159,16 @@ def test_profile_uses_snapshots_and_excludes_every_point_after_dynamic_target() 
             for minute, odds in values.items()
         )
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
     )
 
-    assert result["P4_STATUS"] == "ACTIVE"
+    assert result["P4_STATUS"] == "PARTIAL"
     assert result["P4_TARGET_MINUTE"] == 5
     assert result["pillar_id"] == "pillar_4_temporal_market_drift"
+    assert result["P4_SIGNAL_PROFILE"]["SUMMARY"]["SOURCE_STATUS"]["3"]["STATUS"] == "MISSING"
     assert result["raw"]["extraction_diagnostics"]["excluded_future_points"] == 6
     profile = result["P4_SIGNAL_PROFILE"]
     assert profile["META"]["OPERATIVE_AS_OF"] == (KICKOFF - timedelta(minutes=5)).isoformat()
@@ -165,7 +214,7 @@ def test_debug_logging_explains_cutoff_and_price_path_concisely(caplog) -> None:
         _row(minute=5, odds="1.85"),
     ]
 
-    calculate_pillar_4(
+    _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -177,7 +226,8 @@ def test_debug_logging_explains_cutoff_and_price_path_concisely(caplog) -> None:
     assert "P4 trajectory | odds | Over/Under Full Time (line 2.5)" in caplog.text
     assert "values=T-120:2.05 -> T-30:1.95 -> T-5:1.85" in caplog.text
     assert "net=-0.2 | pattern=one direction" in caplog.text
-    assert "P4 result | status=ACTIVE" in caplog.text
+    assert "P4 result | status=PARTIAL" in caplog.text
+    assert "missing required sources=['bet365 (id=3)']" in caplog.text
     assert "P4 FORMULA |" not in caplog.text
     assert "series_id=" not in caplog.text
     assert len([record for record in caplog.records if "P4 " in record.message]) < 15
@@ -186,7 +236,7 @@ def test_debug_logging_explains_cutoff_and_price_path_concisely(caplog) -> None:
 def test_detailed_debug_logging_is_silent_when_debug_mode_is_false(caplog) -> None:
     caplog.set_level(logging.INFO)
 
-    calculate_pillar_4(
+    _run_p4(
         _event(5),
         _context([_row(minute=5, odds="1.85")], 5),
         target_minute=5,
@@ -217,7 +267,7 @@ def test_late_exchange_quote_is_explained_without_opaque_series_ids(caplog) -> N
         )
     )
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5), _context(rows, 5), target_minute=5, debug_mode=True
     )
 
@@ -230,6 +280,90 @@ def test_late_exchange_quote_is_explained_without_opaque_series_ids(caplog) -> N
     assert "source=Betfair Exchange back" in caplog.text
     assert "first later observation=" in caplog.text
     assert "P4 result | status=PARTIAL | missing T-5 selections=1" in caplog.text
+
+
+def test_optional_betfair_series_do_not_gate_global_profile_status() -> None:
+    rows = _complete_required_book_rows()
+    rows.extend(
+        (
+            _row(
+                minute=30,
+                odds="1.92",
+                choice="Over",
+                choice_id=411,
+                quote_id=401,
+                bookie_id=4,
+                bookie_name="Betfair Exchange",
+                exchange_side="back",
+            ),
+            _row(
+                minute=5,
+                odds="1.94",
+                choice="Over",
+                choice_id=411,
+                quote_id=402,
+                bookie_id=4,
+                bookie_name="Betfair Exchange",
+                exchange_side="lay",
+            ),
+        )
+    )
+
+    result = _run_p4(_event(5), _context(rows, 5), target_minute=5)
+
+    assert result["P4_STATUS"] == "ACTIVE"
+    profile = result["P4_SIGNAL_PROFILE"]
+    assert profile["ADAPTIVE_VIEW"]["STATUS"] == "ACTIVE"
+    assert profile["CHECKPOINT_VIEW"]["STATUS"] == "ACTIVE"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["302"]["STATUS"] == "ACTIVE"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["3"]["STATUS"] == "ACTIVE"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["4"]["ROLE"] == "OPTIONAL"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["4"]["STATUS"] == "PARTIAL"
+    assert result["raw"]["extraction_diagnostics"]["issue_bookie_ids"] == [4]
+    period = result["PERIODS"]["TOTALS_FULL_TIME"]
+    assert period["status"] == "COMPLETE"
+    assert period["all_sources_status"] == "PARTIAL"
+    assert period["PARTIAL_REQUIRED_SERIES_COUNT"] == 0
+    assert period["PARTIAL_OPTIONAL_SERIES_COUNT"] > 0
+    betfair_series = [
+        series
+        for series in profile["ADAPTIVE_VIEW"]["SERIES"]
+        if series["MARKET"]["BOOKIE_ID"] == 4
+        and series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+    ]
+    assert len(betfair_series) == 2
+    assert all(series["STATUS"] == "PARTIAL" for series in betfair_series)
+    assert all(series["MARKET"]["SOURCE_ROLE"] == "OPTIONAL" for series in betfair_series)
+
+
+def test_optional_only_data_is_preserved_but_core_status_is_insufficient() -> None:
+    rows = [
+        _row(
+            minute=5,
+            odds="1.92",
+            choice="Over",
+            choice_id=411,
+            quote_id=401,
+            bookie_id=4,
+            bookie_name="Betfair Exchange",
+            exchange_side="back",
+        )
+    ]
+
+    result = _run_p4(_event(5), _context(rows, 5), target_minute=5)
+
+    assert result["P4_STATUS"] == "INSUFFICIENT_DATA"
+    profile = result["P4_SIGNAL_PROFILE"]
+    assert profile is not None
+    assert profile["ADAPTIVE_VIEW"]["STATUS"] == "INSUFFICIENT_DATA"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["302"]["STATUS"] == "MISSING"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["3"]["STATUS"] == "MISSING"
+    assert profile["SUMMARY"]["SOURCE_STATUS"]["4"]["STATUS"] == "PARTIAL"
+    assert any(
+        series["MARKET"]["BOOKIE_ID"] == 4
+        and series["STATUS"] == "PARTIAL"
+        for series in profile["ADAPTIVE_VIEW"]["SERIES"]
+    )
 
 
 def test_evaluation_time_admits_late_exchange_without_looking_ahead(
@@ -260,8 +394,8 @@ def test_evaluation_time_admits_late_exchange_without_looking_ahead(
         )
     context = _context(rows, 5)
 
-    strict = calculate_pillar_4(_event(5), context, target_minute=5)
-    observed = calculate_pillar_4(
+    strict = _run_p4(_event(5), context, target_minute=5)
+    observed = _run_p4(
         _event(5),
         context,
         target_minute=5,
@@ -308,7 +442,7 @@ def test_evaluation_cutoff_stays_inside_target_window_and_before_kickoff(
              snapshot_id=102002),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -321,10 +455,79 @@ def test_evaluation_cutoff_stays_inside_target_window_and_before_kickoff(
     assert result["raw"]["extraction_diagnostics"]["excluded_future_points"] == 1
 
 
+def test_p4_uses_the_same_causally_selected_snapshot_as_other_pillars(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 3)
+    nominal = KICKOFF - timedelta(minutes=5)
+    evaluation_as_of = nominal + timedelta(seconds=60)
+    rows = [
+        _row(
+            minute=5,
+            odds=odds,
+            quote_id=902,
+            snapshot_id=snapshot_id,
+            bookie_id=4,
+            bookie_name="Betfair Exchange",
+            exchange_side="back",
+            collected_at=nominal + timedelta(seconds=seconds),
+            source_collected_at=nominal + timedelta(
+                seconds=20 if seconds == 15 else seconds - 5
+            ),
+        )
+        for snapshot_id, odds, seconds in (
+            (90201, "1.91", 15),
+            (90202, "1.92", 45),
+            (90203, "1.93", 90),
+        )
+    ]
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[120, 30, 5],
+        tolerance_minutes=3,
+        evaluation_minute=5,
+        event_starts_at=KICKOFF,
+        evaluation_as_of=evaluation_as_of,
+    )
+    selection = select_target_minute(
+        context,
+        flow_id="pre_start_signal_profile",
+        allowed_target_minutes=[5],
+        evaluation_minute=5,
+    )
+
+    result = calculate_pillar_4(_event(5), context, selection)
+    exchange_series = next(
+        series
+        for series in result["P4_SIGNAL_PROFILE"]["CHECKPOINT_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["MARKET"]["BOOKIE_ID"] == 4
+    )
+    context_choice = (
+        context.markets["Over/Under"]["Full Time"]["Over/Under Full Time"]
+        ["2.5"].bookies["4:oddspapi:back:0"].choices["Over"]
+    )
+
+    assert selection.target_minute == result["P4_TARGET_MINUTE"] == 5
+    assert context_choice.meta_by_minute[5].snapshot_id == 90201
+    assert context_choice.snapshots[0].minutes_before_start == Decimal("4.75")
+    assert [point["SNAPSHOT_ID"] for point in exchange_series["POINTS"]] == [90201]
+    assert exchange_series["POINTS"][0]["EFFECTIVE_AT"] == (
+        nominal + timedelta(seconds=15)
+    ).isoformat()
+    assert exchange_series["POINTS"][0]["SOURCE_COLLECTED_AT"] == (
+        nominal + timedelta(seconds=20)
+    ).isoformat()
+    assert result["P4_SIGNAL_PROFILE"]["META"]["EVALUATION_AS_OF"] == (
+        evaluation_as_of.isoformat()
+    )
+    assert result["raw"]["extraction_diagnostics"]["excluded_future_points"] == 1
+
+
 def test_exact_operational_target_is_required_without_fallback() -> None:
     rows = [_row(minute=30, odds="1.90")]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -344,7 +547,7 @@ def test_target_minute_is_modular_and_not_hardcoded_to_five() -> None:
         _row(minute=5, odds="1.80"),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(30),
         _context(rows, 30),
         target_minute=30,
@@ -373,7 +576,7 @@ def test_future_snapshot_with_old_provider_timestamp_is_still_excluded() -> None
         ),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -389,7 +592,7 @@ def test_future_snapshot_with_old_provider_timestamp_is_still_excluded() -> None
 
 
 def test_endpoint_only_series_is_partial_and_not_no_movement() -> None:
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context([_row(minute=5, odds="1.90")], 5),
         target_minute=5,
@@ -413,7 +616,7 @@ def test_line_series_can_cross_contracts_without_crossing_price_series() -> None
         _row(minute=5, odds="1.85", line="3.0", quote_id=202),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -449,7 +652,7 @@ def test_ambiguous_line_at_same_checkpoint_is_diagnosed_without_selection() -> N
         _row(minute=5, odds="1.95", line="3.0", quote_id=202),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -489,7 +692,7 @@ def test_checkpoint_gap_preserves_net_but_does_not_invent_path() -> None:
         _row(minute=5, odds="1.90"),
     ]
 
-    result = calculate_pillar_4(
+    result = _run_p4(
         _event(5),
         _context(rows, 5),
         target_minute=5,
@@ -567,7 +770,7 @@ def test_checkpoint_builds_p2_p3_compatible_semantic_series_and_relations() -> N
                     )
                 )
 
-    result = calculate_pillar_4(_event(5), _context(rows, 5), target_minute=5)
+    result = _run_p4(_event(5), _context(rows, 5), target_minute=5)
 
     checkpoint = result["P4_SIGNAL_PROFILE"]["CHECKPOINT_VIEW"]["SERIES"]
     value_types = {series["MARKET"]["VALUE_TYPE"] for series in checkpoint}
@@ -636,7 +839,7 @@ def test_missing_early_anchor_preserves_contiguous_later_path() -> None:
         evaluation_minute=5,
     )
 
-    result = calculate_pillar_4(_event(5), context, target_minute=5)
+    result = _run_p4(_event(5), context, target_minute=5)
 
     series = next(
         item
@@ -680,7 +883,7 @@ def test_non_main_line_contract_is_not_admitted_to_p4_scope() -> None:
         _row(minute=5, odds="2.10", line="3.0", quote_id=402, main_line=False),
     ]
 
-    result = calculate_pillar_4(_event(5), _context(rows, 5), target_minute=5)
+    result = _run_p4(_event(5), _context(rows, 5), target_minute=5)
 
     prices = [
         series
@@ -692,4 +895,4 @@ def test_non_main_line_contract_is_not_admitted_to_p4_scope() -> None:
 
 def test_target_minute_rejects_coercion_that_could_move_the_causal_boundary() -> None:
     with pytest.raises(TypeError):
-        calculate_pillar_4(_event(5), _context([], 5), target_minute=5.5)  # type: ignore[arg-type]
+        _run_p4(_event(5), _context([], 5), target_minute=5.5)  # type: ignore[arg-type]

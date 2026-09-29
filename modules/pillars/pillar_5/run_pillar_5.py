@@ -8,10 +8,7 @@ from typing import Any
 from infrastructure.settings import Config
 from modules.pillars.context import EventContext, EventIdentity
 from modules.pillars.extraction_logging import log_extraction_diagnostics
-from modules.pillars.market_snapshot_extractor import (
-    TargetMinuteSelection,
-    select_target_minute,
-)
+from modules.pillars.trajectory_selection import TargetMinuteSelection
 from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
 from shared.temporal import as_utc
 
@@ -232,23 +229,12 @@ def calculate_pillar_5(
     event_context: EventIdentity | EventContext,
     odds_trajectory_context: OddsTrajectoryContext,
     *,
-    target_selection: TargetMinuteSelection | None = None,
+    target_selection: TargetMinuteSelection,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
     """Extract current prices, evaluate exact memories, and serialize P5 v3.0."""
     if odds_trajectory_context is None:
         raise ValueError("odds_trajectory_context is required for Pillar 5")
-    odds_context = odds_trajectory_context
-
-    if target_selection is None:
-        target_selection = select_target_minute(
-            odds_context,
-            flow_id="pillar_5_price_memory",
-            expected_event_id=event_context.event_id,
-            allowed_target_minutes=getattr(Config, "PRE_START_ODDS_MOMENTS", None),
-            evaluation_minute=getattr(event_context, "minutes_until_start", None),
-        )
-
     logger.info(
         "P5 orchestrator start event_id=%s participants=%s debug_mode=%s target_minute=%s",
         event_context.event_id,
@@ -258,7 +244,7 @@ def calculate_pillar_5(
     )
     extraction = extract_p5_market_snapshot(
         event_context.event_id,
-        odds_context,
+        odds_trajectory_context,
         target_selection,
     )
     periods = extraction.period_diagnostics()

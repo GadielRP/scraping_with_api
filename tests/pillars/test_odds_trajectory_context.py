@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.trajectory_selection import select_target_minute
 
 
 def _make_rows() -> list[dict[str, object]]:
@@ -349,6 +351,57 @@ def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> Non
     assert len(serialized["snapshots"]) == 2
     assert serialized["snapshots"][1]["snapshot_id"] == 2102
     assert "source_minutes_before_start" not in serialized["snapshots"][0]
+
+
+def test_target_projection_uses_only_snapshots_available_inside_shared_window() -> None:
+    kickoff = datetime(2026, 1, 1, 10, 5, tzinfo=timezone.utc)
+    nominal = kickoff - timedelta(minutes=5)
+    evaluation_as_of = nominal + timedelta(seconds=60)
+    base = _make_rows()[0]
+    rows = [
+        {
+            **base,
+            "snapshot_id": snapshot_id,
+            "odds_value": odds,
+            "collected_at": nominal + timedelta(seconds=seconds),
+            "source_collected_at": nominal + timedelta(seconds=seconds - 5),
+            "observed_minutes_before_start": 5,
+            "trajectory_minutes_before_start": str(5 - seconds / 60),
+        }
+        for snapshot_id, odds, seconds in (
+            (8101, "1.901", 15),   # inside tolerance and available by evaluation
+            (8102, "1.902", 45),   # also eligible, but farther from the target
+            (8103, "1.903", 90),   # inside tolerance, but after evaluation_as_of
+            (8104, "1.904", 181),  # outside the configured tolerance
+        )
+    ]
+
+    context = build_odds_trajectory_context(
+        rows,
+        target_minutes_expected=[5],
+        tolerance_minutes=3,
+        evaluation_minute=5,
+        event_starts_at=kickoff,
+        evaluation_as_of=evaluation_as_of,
+    )
+    choice = (
+        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
+        .bookies["1:sofascore:single:0"]
+        .choices["1"]
+    )
+    selection = select_target_minute(
+        context,
+        flow_id="pre_start_signal_profile",
+        allowed_target_minutes=[5],
+        evaluation_minute=5,
+    )
+
+    assert len(choice.snapshots) == 4  # Keep full history for P4 trajectories.
+    assert context.evaluation_as_of == evaluation_as_of
+    assert choice.odds_values == {5: Decimal("1.901")}
+    assert choice.meta_by_minute[5].snapshot_id == 8101
+    assert context.target_minutes_present == [5]
+    assert selection.target_minute == 5
 
 
 def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> None:

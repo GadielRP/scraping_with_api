@@ -7,8 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.pillars import market_snapshot_extractor
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
+from modules.pillars.trajectory_selection import (
+    HARDCODED_TARGET_MINUTE_BY_FLOW,
+    select_target_minute,
+)
 from modules.pillars.pillar_3_totals_market_context.metrics import ou_edge
 from modules.pillars.pillar_3_totals_market_context.periods import (
     FIRST_HALF_TOTALS_SCOPE,
@@ -32,11 +35,7 @@ FLOW_ID = "pre_start_signal_profile"
 
 @pytest.fixture(autouse=True)
 def _reset_target_override(monkeypatch) -> None:
-    monkeypatch.setitem(
-        market_snapshot_extractor.HARDCODED_TARGET_MINUTE_BY_FLOW,
-        FLOW_ID,
-        None,
-    )
+    monkeypatch.setitem(HARDCODED_TARGET_MINUTE_BY_FLOW, FLOW_ID, None)
 
 
 def _event_context(event_id: int = EVENT_ID):
@@ -225,7 +224,7 @@ def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
         rows,
         target_minutes_expected=TARGET_MINUTES,
     )
-    selection = market_snapshot_extractor.select_target_minute(
+    selection = select_target_minute(
         context,
         flow_id=FLOW_ID,
         expected_event_id=EVENT_ID,

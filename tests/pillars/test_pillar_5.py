@@ -9,7 +9,10 @@ from modules.pillars.context import CompetitionContext, EventContext, Participan
 from modules.pillars.market_snapshot_extractor import (
     QuotePoint,
     QuoteTrace,
+)
+from modules.pillars.trajectory_selection import (
     TargetMinuteSelection,
+    select_target_minute,
 )
 from modules.pillars.odds_trajectory_context import (
     BookieOddsTrajectory,
@@ -329,8 +332,8 @@ def test_p5_home_away_two_way():
     assert inputs[PIN_AWAY_1X2_FULL_TIME_ODDS_PRICE] == 2.15
 
 
-def test_p5_auto_target_minute_resolution():
-    """Verify that calculate_pillar_5 automatically resolves target_minute when target_selection is None."""
+def test_p5_uses_the_shared_target_minute_selection():
+    """Target selection is resolved once by the caller and shared with P5."""
     minute = 30
     choices = {
         "1": _make_choice("1", Decimal("1.900"), minute=minute),
@@ -359,7 +362,14 @@ def test_p5_auto_target_minute_resolution():
     )
 
     event_context = _build_event_context(minutes_until_start=minute)
-    result = calculate_pillar_5(event_context, context, target_selection=None)
+    selection = select_target_minute(
+        context,
+        flow_id="pre_start_signal_profile",
+        expected_event_id=event_context.event_id,
+        allowed_target_minutes=[minute],
+        evaluation_minute=minute,
+    )
+    result = calculate_pillar_5(event_context, context, target_selection=selection)
 
     assert result["P5_TARGET_MINUTE"] == minute
     assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
@@ -378,7 +388,14 @@ def test_p5_missing_trajectory_insufficient_data():
         markets={},
     )
 
-    result = calculate_pillar_5(event_context, context, target_selection=None)
+    selection = select_target_minute(
+        context,
+        flow_id="pre_start_signal_profile",
+        expected_event_id=event_context.event_id,
+        allowed_target_minutes=[0],
+        evaluation_minute=0,
+    )
+    result = calculate_pillar_5(event_context, context, target_selection=selection)
     assert result["P5_STATUS"] == "INSUFFICIENT_DATA"
     assert result["P5_TARGET_MINUTE"] is None
     assert result["raw"]["inputs"][SOFA_HOME_1X2_FULL_TIME_ODDS_PRICE] is None

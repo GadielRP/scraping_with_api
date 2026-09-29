@@ -28,7 +28,10 @@ from modules.pillars.context import (
     summarize_number_of_teams_from_streak_analysis,
 )
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
-from modules.pillars.market_snapshot_extractor import select_target_minute
+from modules.pillars.trajectory_selection import (
+    TargetMinuteSelection,
+    select_target_minute,
+)
 from modules.pillars.competition_metadata_resolver import (
     apply_competition_metadata_resolution,
     resolve_competition_metadata,
@@ -111,7 +114,7 @@ def _build_p4_error_result(
     odds_trajectory_context,
     exc: Exception,
     *,
-    target_minute: int,
+    target_selection: TargetMinuteSelection,
 ) -> dict:
     return {
         "pillar_id": "pillar_4_temporal_market_drift",
@@ -119,7 +122,7 @@ def _build_p4_error_result(
         "engine_version": P4_ENGINE_VERSION,
         "event_id": getattr(event_context, "event_id", None),
         "participants": getattr(event_context, "participants_label", None),
-        "P4_TARGET_MINUTE": target_minute,
+        "P4_TARGET_MINUTE": target_selection.target_minute,
         "PERIODS": {},
         "MISSING_INPUTS": [],
         "INVALID_INPUTS": [],
@@ -695,8 +698,7 @@ class EventPillarProcessor:
             )
             return None
 
-        minutes_until_start = event_context.minutes_until_start
-        evaluation_minute = minutes_until_start
+        evaluation_minute = event_context.minutes_until_start
         odds_trajectory = (
             trajectory_points
             if trajectory_points is not None
@@ -705,6 +707,8 @@ class EventPillarProcessor:
         odds_trajectory_context = build_odds_trajectory_context(
             odds_trajectory,
             evaluation_minute=evaluation_minute,
+            event_starts_at=event_context.starts_at,
+            evaluation_as_of=self.evaluation_as_of,
         )
         target_selection = select_target_minute(
             odds_trajectory_context,
@@ -830,8 +834,7 @@ class EventPillarProcessor:
                 p4_result = calculate_pillar_4(
                     event_context=event_identity,
                     odds_trajectory_context=odds_trajectory_context,
-                    target_minute=evaluation_minute,
-                    evaluation_as_of=self.evaluation_as_of,
+                    target_selection=target_selection,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -845,7 +848,7 @@ class EventPillarProcessor:
                     event_identity,
                     odds_trajectory_context,
                     exc,
-                    target_minute=evaluation_minute,
+                    target_selection=target_selection,
                 )
 
             profile_summary = (

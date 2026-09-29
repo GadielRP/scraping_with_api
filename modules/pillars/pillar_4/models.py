@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from .periods import bookmaker_role
+
 
 def _number(value: Decimal | None) -> float | None:
     return None if value is None else float(value)
@@ -97,6 +99,7 @@ class P4SeriesInput:
             "MAIN_LINE": self.main_line,
             "BOOKIE_ID": self.bookie_id,
             "BOOKIE_NAME": self.bookie_name,
+            "SOURCE_ROLE": bookmaker_role(self.bookie_id),
             "SOURCE": self.source,
             "EXCHANGE_SIDE": self.exchange_side,
             "EXCHANGE_LEVEL": self.exchange_level,
@@ -109,8 +112,8 @@ class P4SeriesInput:
 @dataclass(frozen=True, slots=True)
 class P4ExtractionResult:
     event_id: int
-    target_minute: int
-    operative_as_of: datetime
+    target_minute: int | None
+    operative_as_of: datetime | None
     nominal_target_as_of: datetime | None = None
     evaluation_as_of: datetime | None = None
     adaptive_series: tuple[P4SeriesInput, ...] = ()
@@ -123,6 +126,8 @@ class P4ExtractionResult:
     excluded_future_points: int = 0
     source_series_seen: int = 0
     endpoint_series_present: int = 0
+    observed_bookie_ids: tuple[int, ...] = ()
+    issue_bookie_ids: tuple[int, ...] = ()
     reason: str | None = None
 
     @property

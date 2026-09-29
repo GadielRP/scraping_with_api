@@ -16,7 +16,7 @@ from modules.pillars.pillar_2_side_market.metrics import (
 from modules.pillars.pillar_3_totals_market_context.metrics import ou_edge
 
 from .models import P4Point, P4SeriesInput
-from .periods import normalize_token
+from .periods import EXCHANGE_BOOKIE_ID, REQUIRED_BOOKIE_IDS, normalize_token
 
 
 def _timestamp(value) -> float:
@@ -237,12 +237,13 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
         books = {
             series.bookie_id: series
             for series in related
-            if series.bookie_id in {302, 3} and series.exchange_side is None
+            if series.bookie_id in REQUIRED_BOOKIE_IDS
+            and series.exchange_side is None
         }
         exchange = {
             normalize_token(series.exchange_side): series
             for series in related
-            if series.bookie_id == 4 and series.exchange_side
+            if series.bookie_id == EXCHANGE_BOOKIE_ID and series.exchange_side
         }
         book_rep = None
         exchange_rep = None
@@ -316,7 +317,7 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInp
     groups: dict[tuple[Any, ...], dict[str, list[P4SeriesInput]]] = {}
     for series in price_series:
         side = normalize_token(series.exchange_side)
-        if series.bookie_id != 4 or side not in {"back", "lay"}:
+        if series.bookie_id != EXCHANGE_BOOKIE_ID or side not in {"back", "lay"}:
             continue
         key = (
             series.domain,
