@@ -9,6 +9,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import (
     CompetitionRepository,
     OddsTrajectoryLoadError,
+    OddsTrajectoryPoint,
     OddsTrajectoryRepository,
 )
 from infrastructure.settings import Config
@@ -30,6 +31,7 @@ from modules.pillars.competition_metadata_resolver import (
 )
 from modules.pillars.context import EventContext, build_event_context
 from modules.sofascore import api_client
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +261,7 @@ def _hydrate_missing_tennis_metadata(
 
 def _load_trajectory_payloads(
     event_ids: set[int],
-) -> dict[int, list[dict]]:
+) -> dict[int, list[OddsTrajectoryPoint]]:
     """Load complete pillar histories while keeping persistence failures explicit."""
     try:
         trajectory_by_event_id = OddsTrajectoryRepository.get_pre_start_trajectory_map(
@@ -553,12 +555,16 @@ def evaluate_pre_start_key_moments(
             trajectory_payloads = _load_trajectory_payloads(
                 validated_event_ids,
             )
+            # The T-minus minute is a scheduling label. The snapshots returned
+            # by this query are available to the pillar evaluation now.
+            evaluation_as_of = utc_now()
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,
                 event_repo=scheduler.event_repo,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
                 trajectories_by_event_id=trajectory_payloads,
+                evaluation_as_of=evaluation_as_of,
             )
 
 

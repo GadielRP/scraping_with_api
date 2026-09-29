@@ -111,10 +111,13 @@ class P4ExtractionResult:
     event_id: int
     target_minute: int
     operative_as_of: datetime
+    nominal_target_as_of: datetime | None = None
+    evaluation_as_of: datetime | None = None
     adaptive_series: tuple[P4SeriesInput, ...] = ()
     checkpoint_series: tuple[P4SeriesInput, ...] = ()
     periods: dict[str, Any] = field(default_factory=dict)
     missing_inputs: tuple[str, ...] = ()
+    missing_endpoint_details: tuple[dict[str, Any], ...] = ()
     invalid_inputs: tuple[str, ...] = ()
     ambiguous_inputs: tuple[str, ...] = ()
     excluded_future_points: int = 0

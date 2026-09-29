@@ -85,6 +85,7 @@ def _configure_pipeline(monkeypatch, *, alerts: bool, pillars: bool) -> None:
 def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
     _configure_pipeline(monkeypatch, alerts=True, pillars=True)
     calls = []
+    evaluation_time = datetime(2026, 9, 28, 3, 5, 16, tzinfo=timezone.utc)
 
     def build_payloads(_scheduler, _plan, _event_ids, _missing_ids):
         # Event 2 represents a candidate rejected during normalized context
@@ -104,6 +105,7 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
                 "pillars",
                 list(events_for_pillars[0]["odds_trajectory"]),
                 kwargs["trajectories_by_event_id"],
+                kwargs["evaluation_as_of"],
             )
         )
 
@@ -127,6 +129,7 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
         "evaluate_and_calculate_pillars_batch",
         run_pillars,
     )
+    monkeypatch.setattr(key_moment_evaluation, "utc_now", lambda: evaluation_time)
 
     key_moment_evaluation.evaluate_pre_start_key_moments(
         SimpleNamespace(event_repo=SimpleNamespace()),
@@ -137,7 +140,7 @@ def test_trajectory_uses_validated_pillar_payloads_after_alerts(monkeypatch):
     assert calls == [
         ("alerts", []),
         ("trajectory", {1}),
-        ("pillars", [], {1: [{"event_id": 1, "target_minute": 30}]}),
+        ("pillars", [], {1: [{"event_id": 1, "target_minute": 30}]}, evaluation_time),
     ]
 
 

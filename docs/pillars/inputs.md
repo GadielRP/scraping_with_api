@@ -6,17 +6,20 @@ through the pillar pipeline. The main orchestration lives in
 the alert flow reuses the same event context through
 [`alert_pipeline.py`](../../modules/jobs/pre_start_check_job/alert_pipeline.py).
 
-The pipeline has three layers of input data:
+The pipeline uses these input contracts:
 
-1. `EventContext`: canonical event, participants, competition, and lifecycle
-   metadata.
-2. `OddsTrajectoryContext`: one shared, structured read model of the raw odds
-   trajectory.
-3. Consumer-specific projections: a strict target-minute snapshot for P2/P3,
-   a filtered 1X2 trajectory for P5, and typed causal series for P4.
+1. `EventContext`: the full, mutable event context accepted by the processor
+   and used directly by P1.
+2. `OddsTrajectoryPoint`: typed rows loaded once from the trajectory repository
+   and passed separately from `EventContext`.
+3. `EventIdentity`: a small, immutable event DTO projected from `EventContext`
+   for P2, P3, P4, P5, and mining persistence.
+4. `OddsTrajectoryContext`: one shared, structured read model built locally from
+   the loaded rows. P2, P3, and P5 also receive one `TargetMinuteSelection`; P4
+   receives an integer target minute and an actual UTC evaluation time.
 
-The context is assembled once per event. Pillars must consume these objects and
-must not query the database to reconstruct a second source of truth.
+The trajectory context is assembled once per event. The pillars share that read
+model rather than each loading and rebuilding the event's odds history.
 
 ---
 
@@ -24,32 +27,39 @@ must not query the database to reconstruct a second source of truth.
 
 The pre-start pillar flow performs these steps:
 
-1. Build `EventContext` from the normalized event and its related metadata.
-2. Load provider observations into `EventContext.odds_trajectory` as serialized
-   `OddsTrajectoryPoint` dictionaries.
-3. Build `OddsTrajectoryContext` with the event's current
-   `minutes_until_start` as `evaluation_minute`.
-4. Select one strict structural target with
-   `select_target_minute(...)`. P2 and P3 receive the resulting
-   `TargetMinuteSelection`; they do not independently choose a minute.
-5. Run P2, P3, and P4 against the shared context. P5 receives a derived
-   context filtered to the `1X2`/`Home/Away` groups, `Full Time`, and bookie
-   ID `1`.
+1. Build and enrich `EventContext` from the normalized event. Its
+   `odds_trajectory` field is initialized empty in this production path.
+2. After validating the pillar events, bulk-load one
+   `dict[event_id, list[OddsTrajectoryPoint]]` from PostgreSQL. Capture one UTC
+   `evaluation_as_of` after that read and pass both values to the batch runner.
+3. Each event worker takes its list out of the batch map and builds one local
+   `OddsTrajectoryContext`, using `EventContext.minutes_until_start` as
+   `evaluation_minute`. If no separate list was passed, the processor can use
+   `EventContext.odds_trajectory` as a compatibility fallback.
+4. Create `EventIdentity` with `EventContext.to_identity()` and select one
+   `TargetMinuteSelection` from the shared trajectory context. P2, P3, and P5
+   receive that same selection; P4 receives `minutes_until_start` directly as
+   `target_minute`, plus `evaluation_as_of`.
+5. Run P2–P5 with `EventIdentity` and the local trajectory context. Release
+   references to the raw rows and that context before P1, which continues to
+   receive the full `EventContext` and its `streak_analysis`.
 
-The selected target is causal: among allowed minutes that are present and not
-later than the current evaluation boundary, the latest available causal target
-is selected. A missing context, unavailable trajectory, event-id mismatch, or
-absence of an eligible target produces an explicit selection reason instead of
-silently falling back to another minute.
+The shared selection is causal: among allowed minutes present and not later than
+the current evaluation minute, it chooses the latest eligible target. A missing
+context, unavailable trajectory, event-id mismatch, or absence of an eligible
+target produces an explicit selection reason. P4's integer target is a separate
+input, so it need not equal the selected P2/P3/P5 target when a checkpoint is
+missing; in the T−5 run discussed here, both happen to be `5`.
 
 ---
 
 ## 2. `EventContext`
 
 Defined in [`modules/pillars/context.py`](../../modules/pillars/context.py).
-The runtime annotations for the two trajectory fields are intentionally
-permissive for compatibility, but their populated values are
-`OddsTrajectoryContext` instances.
+The processor requires this type at its public per-event boundary. Its optional
+trajectory fields remain for compatibility, but the current production path
+passes raw points separately and keeps `OddsTrajectoryContext` local to the
+worker; it does not populate those fields on `EventContext`.
 
 ```python
 @dataclass
@@ -80,8 +90,8 @@ class EventContext:
     odds_response: dict | None = None
     odds_trajectory: list[dict] = field(default_factory=list)
 
-    odds_trajectory_context: OddsTrajectoryContext | None = None
-    ft_1x2_odds_trajectory_context: OddsTrajectoryContext | None = None
+    odds_trajectory_context: Any | None = None
+    ft_1x2_odds_trajectory_context: Any | None = None
     streak_analysis: Any | None = None
 
     should_send_streak_alert: bool = False
@@ -105,8 +115,38 @@ class EventContext:
 * `context_status` is `normalized`, `mixed`, or `legacy_compat` and records
   whether normalized relations or the temporary legacy fallback populated the
   event metadata.
-* `odds_trajectory` is the raw/audit channel. Analytical consumers use
-  `odds_trajectory_context` instead.
+* `odds_trajectory` is a compatibility fallback. In the production batch,
+  loaded `OddsTrajectoryPoint` objects travel in a separate event-keyed map.
+* The processor uses a local `OddsTrajectoryContext` for P2–P5 and clears raw
+  odds references before P1; it does not install that context on `EventContext`.
+
+### `EventIdentity`: DTO passed to P2–P5
+
+`EventContext.to_identity()` copies only event identity and timing fields into
+this immutable, slotted DTO. It does not carry participants as full objects,
+competition metadata as a nested object, raw odds, or streak analysis:
+
+```python
+@dataclass(frozen=True, slots=True)
+class EventIdentity:
+    event_id: int
+    participants_label: str
+    starts_at: datetime
+    minutes_until_start: int | None
+    sport: str
+    round: str | None = None
+    competition_id: int | None = None
+    competition_name: str | None = None
+    season_id: int | None = None
+    country: str | None = None
+    context_status: str = "VALID"
+```
+
+P2–P5 accept either `EventIdentity` or `EventContext` at their standalone
+entrypoints, but `EventPillarProcessor` passes `EventIdentity` in the current
+production path. P1 still needs the full `EventContext` for team and competition
+features. This division avoids retaining or passing the large odds payload in
+every pillar call.
 
 ### `ParticipantContext`
 
@@ -165,8 +205,10 @@ class CompetitionContext:
 
 Defined in
 [`odds_trajectory_repository.py`](../../infrastructure/persistence/repositories/odds_trajectory_repository.py).
-The repository returns `OddsTrajectoryPoint` objects; `EventContext` stores
-their serialized dictionaries in `odds_trajectory`.
+The repository returns `OddsTrajectoryPoint` DTOs grouped by event ID. The
+key-moment job passes that map to the batch processor without first serializing
+the objects into `EventContext.odds_trajectory`. The shared context builder
+reads their attributes directly; it also accepts dictionaries for older callers.
 
 ```python
 @dataclass
@@ -304,8 +346,8 @@ Each choice exposes two deliberately different views:
 1. `odds_values` and `meta_by_minute` are the configured target-minute
    projection. Their keys are only minutes that were projected or observed for
    the configured schedule (for example `120, 30, 5, 1, 0, -5`).
-2. `snapshots` is the complete chronological provider observation list. P4
-   uses this list to preserve the continuous trajectory.
+2. `snapshots` is the chronological list of observations loaded for this
+   choice. P4 uses it to preserve the available trajectory.
 
 ### `OddsPointMeta`
 
@@ -358,6 +400,15 @@ The context also provides non-mutating filters used to derive consumer views:
 
 ## 5. Consumer boundaries
 
+### Arguments passed to each pillar
+
+| Pillar | Event argument from the processor | Other inputs |
+|---|---|---|
+| P1 | Full `EventContext` | `debug_mode`; reads `event_context.streak_analysis`. Raw odds references have already been released. |
+| P2 and P3 | `EventIdentity` | Shared `OddsTrajectoryContext`, the same `TargetMinuteSelection`, `debug_mode`. |
+| P4 | `EventIdentity` | Shared `OddsTrajectoryContext`, `target_minute=EventContext.minutes_until_start`, `evaluation_as_of` in UTC, `debug_mode`. |
+| P5 | `EventIdentity` | Shared `OddsTrajectoryContext`, the same `TargetMinuteSelection` used by P2/P3, `debug_mode`. |
+
 ### P2 and P3: structural target-minute snapshots
 
 P2 (side market) and P3 (totals market) receive the same
@@ -379,25 +430,43 @@ P4 receives the shared context and an exact integer `target_minute` through
 [`run_pillar_4.py`](../../modules/pillars/pillar_4/run_pillar_4.py). Its adapter
 [`trajectory_policy.py`](../../modules/pillars/pillar_4/trajectory_policy.py):
 
-* computes `operative_as_of = starts_at - target_minute`;
-* excludes snapshots newer than that causal boundary;
+* computes the nominal instant as `starts_at - target_minute`;
+* uses the actual UTC evaluation time passed by the key-moment job to set a
+  causal cutoff, capped at the nominal instant plus
+  `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` and, for pre-start targets, kickoff;
+* excludes snapshots newer than that cutoff;
 * keeps only supported/main-line series;
 * normalizes snapshots into `P4Point` values;
-* projects checkpoints within the configured tolerance; and
-* returns separate adaptive and checkpoint series.
+* selects the eligible snapshot nearest each nominal checkpoint and records its
+  actual distance from that checkpoint; and
+* returns separate adaptive and checkpoint series, ending each adaptive series
+  at its selected operative endpoint.
 
-P4 must not query the repository to fill gaps. If the operative endpoint is
-missing, the extraction remains auditable and the resulting profile can be
-`INSUFFICIENT_DATA`.
+The target minute is a scheduling label, not the wall-clock instant when
+acquisition, persistence, and evaluation finish. For example, if kickoff is
+03:10:00 UTC, nominal T−5 is 03:05:00 UTC. A Betfair quote collected at
+03:05:15 UTC may serve as the T−5 endpoint when evaluation occurs at 03:05:16
+UTC, but a quote collected at 03:05:45 cannot be used in that evaluation. The
+result records `nominal_target_as_of`, `evaluation_as_of`, and
+`operative_as_of` separately. Callers that omit evaluation time retain the
+strict nominal cutoff for historical replay.
 
-### P5: filtered full-time 1X2 trajectory
+`availability_at` currently comes from persisted `collected_at`, falling back
+to `source_collected_at`. Historical fixed-moment snapshots may store their
+theoretical checkpoint in `collected_at`, so this field does not always prove
+when the ingestion process first wrote them. A full retrospective availability
+audit requires a separate persisted ingestion timestamp.
 
-P5 receives `ft_1x2_odds_trajectory_context`, derived from the shared context
-by filtering market groups to `{"1X2", "Home/Away"}`, period to `{"Full Time"}`,
-and bookie IDs to `{1}`. If the filtered context is not passed explicitly,
-`calculate_pillar_5` derives it from `event_context.odds_trajectory_context`.
-P5 evaluates quote distribution and exact-price stability across the resulting
-choices; it does not rebuild the full trajectory.
+P4 must not query the repository to fill gaps. If no operative endpoint is
+available, the result is `INSUFFICIENT_DATA`; if some series have endpoints and
+others lack required observations, the profile remains `PARTIAL`.
+
+### P5: exact-price memory input
+
+P5 receives the same full `OddsTrajectoryContext` as P2–P4 plus the shared
+`TargetMinuteSelection`. Its own `extract_p5_market_snapshot` policy chooses
+the relevant Full Time 1X2/Home-Away prices and supported bookmakers. The
+processor does not create or pass a separate filtered context for P5.
 
 ---
 
@@ -428,9 +497,12 @@ class P4Point:
     distance_from_target_minutes: Decimal | None = None
 ```
 
-`effective_at` describes the provider timeline; `availability_at` describes
-when the observation was available to the system. Keeping both prevents a
-late-arriving snapshot from being treated as historically causal.
+`effective_at` describes the provider timeline for a raw observation;
+projected checkpoints use the selected snapshot's availability instant.
+`availability_at` is derived from the persisted collection timestamp and is
+the field used for P4's cutoff. For current snapshots this prevents a late
+quote from entering an earlier evaluation; the historical fixed-moment caveat
+above still applies.
 
 ### `P4SeriesInput`
 
@@ -477,10 +549,13 @@ class P4ExtractionResult:
     event_id: int
     target_minute: int
     operative_as_of: datetime
+    nominal_target_as_of: datetime | None = None
+    evaluation_as_of: datetime | None = None
     adaptive_series: tuple[P4SeriesInput, ...] = ()
     checkpoint_series: tuple[P4SeriesInput, ...] = ()
     periods: dict[str, Any] = field(default_factory=dict)
     missing_inputs: tuple[str, ...] = ()
+    missing_endpoint_details: tuple[dict[str, Any], ...] = ()
     invalid_inputs: tuple[str, ...] = ()
     ambiguous_inputs: tuple[str, ...] = ()
     excluded_future_points: int = 0
@@ -514,21 +589,19 @@ original classification and the selected target minute.
 The canonical flow is therefore:
 
 ```text
-raw repository points
-        |
-        v
-EventContext.odds_trajectory
-        |
-        v
-OddsTrajectoryContext  -- shared market tree, target projections, snapshots
-        |
-        +--> TargetMinuteSelection --> P2 / P3 snapshot extraction
-        |
-        +--> exact target_minute ------> P4 causal trajectory extraction
-        |
-        +--> filtered 1X2/full-time --> P5 price-memory extraction
+EventContext -----------------------------> P1 (after odds references are released)
+      |
+      +--> to_identity() --> EventIdentity --+--> P2 / P3 / P4 / P5
+
+repository --> dict[event_id, list[OddsTrajectoryPoint]]
+      |
+      +--> one event's rows --> OddsTrajectoryContext (local to its worker)
+                                    |
+                                    +--> TargetMinuteSelection --> P2 / P3 / P5
+                                    +--> target_minute + evaluation_as_of --> P4
 ```
 
-Any audit payload may retain raw observations and lineage, but no pillar should
-create a second analytical trajectory from the database or from a competing
-serialized payload.
+Any audit payload may retain raw observations and lineage. Pillars do not reload
+this event's odds to create a competing trajectory. P5 may query its separate
+cross-event exact-price memory; that query does not rebuild the current event's
+`OddsTrajectoryContext`.

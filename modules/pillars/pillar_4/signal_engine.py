@@ -143,6 +143,16 @@ def build_p4_signal_profile(
     return P4SignalProfile(
         meta={
             "TARGET_MINUTE": extraction.target_minute,
+            "NOMINAL_TARGET_AS_OF": (
+                extraction.nominal_target_as_of.isoformat()
+                if extraction.nominal_target_as_of is not None
+                else None
+            ),
+            "EVALUATION_AS_OF": (
+                extraction.evaluation_as_of.isoformat()
+                if extraction.evaluation_as_of is not None
+                else None
+            ),
             "OPERATIVE_AS_OF": extraction.operative_as_of.isoformat(),
             "SOURCE_SERIES_SEEN": extraction.source_series_seen,
             "ENDPOINT_SERIES_PRESENT": extraction.endpoint_series_present,
@@ -160,7 +170,11 @@ def build_p4_signal_profile(
         },
         traceability={
             "ENGINE_VERSION": ENGINE_VERSION,
-            "CAUSAL_CUTOFF_POLICY": "AVAILABILITY_AT_LTE_NOMINAL_OPERATIVE_AS_OF",
+            "CAUSAL_CUTOFF_POLICY": (
+                "AVAILABILITY_AT_LTE_MIN_EVALUATION_TARGET_TOLERANCE_KICKOFF"
+                if extraction.evaluation_as_of is not None
+                else "AVAILABILITY_AT_LTE_NOMINAL_OPERATIVE_AS_OF"
+            ),
             "AVAILABILITY_FIELD_POLICY": "COLLECTED_AT_ELSE_SOURCE_COLLECTED_AT",
             "PERSISTENCE_PROVENANCE": "LEGACY_MIXED_COLLECTED_AT",
             "LINE_SELECTION_POLICY": "UNIQUE_CONTRACT_PER_CHECKPOINT_OR_AMBIGUOUS",

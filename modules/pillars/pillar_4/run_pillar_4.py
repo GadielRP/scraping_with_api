@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from modules.pillars.context import EventContext, EventIdentity
@@ -23,6 +24,7 @@ def calculate_pillar_4(
     odds_trajectory_context: OddsTrajectoryContext,
     *,
     target_minute: int,
+    evaluation_as_of: datetime | None = None,
     debug_mode: bool = False,
 ) -> dict[str, Any]:
     """Return P4's causal temporal profile for one exact operative target."""
@@ -32,6 +34,7 @@ def calculate_pillar_4(
         event_context,
         odds_trajectory_context,
         target_minute=target_minute,
+        evaluation_as_of=evaluation_as_of,
     )
     if debug_mode:
         log_p4_extraction(logger, extraction)
@@ -45,15 +48,18 @@ def calculate_pillar_4(
         "P4_TARGET_MINUTE": extraction.target_minute,
         "PERIODS": extraction.periods,
         "MISSING_INPUTS": list(extraction.missing_inputs),
+        "MISSING_INPUT_DETAILS": list(extraction.missing_endpoint_details),
         "INVALID_INPUTS": list(extraction.invalid_inputs),
         "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
     }
     if not extraction.usable:
         logger.info(
-            "P4 signal profile unavailable event_id=%s target_minute=%s reason=%s",
+            "P4 result | event=%s | target=T-%s | status=INSUFFICIENT_DATA | "
+            "reason=%s | missing target selections=%s",
             event_context.event_id,
             extraction.target_minute,
             extraction.reason,
+            len(extraction.missing_inputs),
         )
         return {
             **base,
@@ -81,13 +87,17 @@ def calculate_pillar_4(
         "raw": raw,
     }
     if debug_mode:
-        log_p4_signal_profile(logger, profile)
+        log_p4_signal_profile(logger, profile, extraction)
     logger.info(
-        "P4 signal profile calculated event_id=%s target_minute=%s status=%s "
-        "adaptive_series=%s checkpoint_series=%s",
+        "P4 result | event=%s | target=T-%s | status=%s | "
+        "missing target selections=%s | invalid observations=%s | "
+        "ambiguous lines=%s | adaptive series=%s | checkpoint series=%s",
         event_context.event_id,
         extraction.target_minute,
         status,
+        len(extraction.missing_inputs),
+        len(extraction.invalid_inputs),
+        len(extraction.ambiguous_inputs),
         profile["SUMMARY"]["ADAPTIVE_SERIES_COUNT"],
         profile["SUMMARY"]["CHECKPOINT_SERIES_COUNT"],
     )

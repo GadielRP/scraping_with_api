@@ -202,3 +202,45 @@ def test_pipeline_persists_both_structural_profiles(monkeypatch) -> None:
         ("pillar_3_totals_market_context", 4004),
     ]
     assert all(profile == {} for _, _, profile in persisted)
+
+
+def test_pipeline_passes_actual_evaluation_time_to_p4(monkeypatch) -> None:
+    evaluation_time = datetime(2026, 8, 31, 17, 55, 16, tzinfo=timezone.utc)
+    captured = {}
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "_is_pillar_competition_in_scope",
+        lambda _competition_id: True,
+    )
+    monkeypatch.setattr(
+        pillar_pipeline,
+        "build_odds_trajectory_context",
+        lambda _rows, **_kwargs: _trajectory_context(),
+    )
+
+    def fake_p4(**kwargs):
+        captured.update(kwargs)
+        return {
+            "P4_STATUS": "PARTIAL",
+            "P4_TARGET_MINUTE": kwargs["target_minute"],
+            "P4_SIGNAL_PROFILE": {"SUMMARY": {}},
+            "status": "PARTIAL",
+        }
+
+    monkeypatch.setattr(pillar_pipeline, "calculate_pillar_4", fake_p4)
+    processor = pillar_pipeline.EventPillarProcessor(
+        event_repo=None,
+        enabled_pillars={
+            "pillar_1": False,
+            "pillar_2": False,
+            "pillar_3": False,
+            "pillar_4": True,
+            "pillar_5": False,
+        },
+        evaluation_as_of=evaluation_time,
+    )
+
+    processor.process_event(_event_context())
+
+    assert captured["target_minute"] == 5
+    assert captured["evaluation_as_of"] is evaluation_time

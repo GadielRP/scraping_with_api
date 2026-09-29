@@ -587,11 +587,13 @@ class EventPillarProcessor:
         debug_mode: bool = False,
         enabled_pillars: Optional[dict[str, bool]] = None,
         mining_service: PillarMiningService | None = None,
+        evaluation_as_of: datetime | None = None,
     ):
         self.event_repo = event_repo
         self.debug_mode = debug_mode
         self.enabled_pillars = enabled_pillars or {}
         self.mining_service = mining_service
+        self.evaluation_as_of = evaluation_as_of
 
     def _is_pillar_enabled(self, pillar_key: str) -> bool:
         if not self.enabled_pillars:
@@ -829,6 +831,7 @@ class EventPillarProcessor:
                     event_context=event_identity,
                     odds_trajectory_context=odds_trajectory_context,
                     target_minute=evaluation_minute,
+                    evaluation_as_of=self.evaluation_as_of,
                     debug_mode=self.debug_mode,
                 )
             except Exception as exc:
@@ -1326,6 +1329,7 @@ def evaluate_and_calculate_pillars_batch(
     debug_mode: bool = False,
     enabled_pillars: Optional[dict[str, bool]] = None,
     trajectories_by_event_id: Optional[dict[int, list[Any]]] = None,
+    evaluation_as_of: datetime | None = None,
     **_legacy_kwargs: Any,
 ) -> None:
     """Entry point to evaluate and calculate pillar modules for a batch of events."""
@@ -1372,6 +1376,7 @@ def evaluate_and_calculate_pillars_batch(
             else enabled_pillars
         ),
         mining_service=mining_service,
+        evaluation_as_of=evaluation_as_of,
     )
 
     def _resolve_batch_event_id(ctx: Any) -> Optional[int]:

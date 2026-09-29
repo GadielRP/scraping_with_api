@@ -188,7 +188,9 @@ def _project_checkpoints(
             )
         if not eligible:
             continue
-        selected = min(eligible, key=lambda item: item[:3])[3]
+        selected_distance, _, _, selected = min(
+            eligible, key=lambda item: item[:3]
+        )
         projected[target] = replace(
             selected,
             point_id=f"{selected.point_id}_TARGET_{target}",
@@ -201,7 +203,7 @@ def _project_checkpoints(
                 "OPERATIVE_ENDPOINT" if target == min(target_minutes) else "CHECKPOINT"
             ),
             target_minute=target,
-            distance_from_target_minutes=Decimal(str(distance / 60)),
+            distance_from_target_minutes=Decimal(str(selected_distance / 60)),
         )
     return projected
 
@@ -213,15 +215,21 @@ def _adaptive_with_endpoint(
     target_minute: int,
     event_start: datetime,
 ) -> tuple[P4Point, ...]:
-    result = list(points)
+    # The checkpoint nearest the nominal target is the operative endpoint.
+    # A later snapshot may already be available at evaluation time, but it
+    # belongs to a later market state and must not extend this trajectory.
+    result = [
+        point
+        for point in points
+        if _datetime_value(point.availability_at)
+        <= _datetime_value(endpoint.availability_at)
+    ]
     exact_index = next(
         (
             index
             for index, point in enumerate(result)
             if point.snapshot_id is not None
             and point.snapshot_id == endpoint.snapshot_id
-            and _datetime_value(point.effective_at)
-            == _datetime_value(endpoint.availability_at)
         ),
         None,
     )
@@ -484,19 +492,34 @@ def extract_p4_trajectory_inputs(
     odds_trajectory_context: OddsTrajectoryContext | None,
     *,
     target_minute: int,
+    evaluation_as_of: datetime | None = None,
 ) -> P4ExtractionResult:
-    """Extract causal, endpoint-complete trajectories from the shared context."""
+    """Extract trajectories available by evaluation, bounded to the target window."""
     if isinstance(target_minute, bool) or not isinstance(target_minute, int):
         raise TypeError("target_minute must be an integer")
     target = target_minute
-    start = event_context.starts_at
-    operative_as_of = start - timedelta(minutes=target)
+    start = as_utc(event_context.starts_at, field_name="event start")
+    nominal_target_as_of = start - timedelta(minutes=target)
+    observed_as_of = (
+        as_utc(evaluation_as_of, field_name="P4 evaluation time")
+        if evaluation_as_of is not None
+        else None
+    )
+    tolerance = max(0, int(Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES))
+    operative_as_of = nominal_target_as_of
+    if observed_as_of is not None:
+        latest_allowed = nominal_target_as_of + timedelta(minutes=tolerance)
+        if target >= 0:
+            latest_allowed = min(latest_allowed, start)
+        operative_as_of = min(observed_as_of, latest_allowed)
     context = odds_trajectory_context
     if context is None or not context.available or not context.markets:
         return P4ExtractionResult(
             event_id=int(event_context.event_id),
             target_minute=target,
             operative_as_of=operative_as_of,
+            nominal_target_as_of=nominal_target_as_of,
+            evaluation_as_of=observed_as_of,
             missing_inputs=(f"OPERATIVE_TARGET:{target}",),
             reason="odds_trajectory_unavailable",
         )
@@ -508,10 +531,10 @@ def extract_p4_trajectory_inputs(
             reverse=True,
         )
     )
-    tolerance = int(Config.PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES)
     adaptive: list[P4SeriesInput] = []
     checkpoints: list[P4SeriesInput] = []
     missing: list[str] = []
+    missing_endpoint_details: list[dict[str, Any]] = []
     invalid: list[str] = []
     ambiguous: list[str] = []
     excluded_future = 0
@@ -551,6 +574,7 @@ def extract_p4_trajectory_inputs(
                                 quote_id=choice.quote_id,
                             )
                             normalized: list[P4Point] = []
+                            future_availability: list[datetime] = []
                             for snapshot in choice.snapshots:
                                 point, future = _normalize_snapshot(
                                     snapshot,
@@ -560,6 +584,13 @@ def extract_p4_trajectory_inputs(
                                     series_label=base,
                                 )
                                 excluded_future += int(future)
+                                if future:
+                                    available_at = (
+                                        snapshot.collected_at
+                                        or snapshot.source_collected_at
+                                    )
+                                    if available_at is not None:
+                                        future_availability.append(available_at)
                                 if point is not None:
                                     normalized.append(point)
                             safe_points = _deduplicate_points(normalized)
@@ -607,6 +638,33 @@ def extract_p4_trajectory_inputs(
                             }
                             if endpoint is None:
                                 missing.append(f"{base}:OPERATIVE_TARGET:{target}")
+                                missing_endpoint_details.append(
+                                    {
+                                        "market_group": market_group,
+                                        "market_period": market_period,
+                                        "market_name": market_name,
+                                        "line_value": line_value,
+                                        "choice_name": choice.choice_name,
+                                        "bookie_name": bookie.bookie_name,
+                                        "exchange_side": bookie.exchange_side,
+                                        "last_available_at": (
+                                            max(
+                                                (point.availability_at for point in safe_points),
+                                                key=_datetime_value,
+                                            ).isoformat()
+                                            if safe_points
+                                            else None
+                                        ),
+                                        "first_after_cutoff_at": (
+                                            min(
+                                                future_availability,
+                                                key=_datetime_value,
+                                            ).isoformat()
+                                            if future_availability
+                                            else None
+                                        ),
+                                    }
+                                )
                                 adaptive_points = tuple(safe_points)
                                 adaptive_diagnostics = (
                                     "LEGACY_MIXED_TIMESTAMP_PROVENANCE",
@@ -664,10 +722,13 @@ def extract_p4_trajectory_inputs(
         event_id=int(event_context.event_id),
         target_minute=target,
         operative_as_of=operative_as_of,
+        nominal_target_as_of=nominal_target_as_of,
+        evaluation_as_of=observed_as_of,
         adaptive_series=tuple(adaptive),
         checkpoint_series=tuple(checkpoints),
         periods=periods,
         missing_inputs=tuple(sorted(set(missing))),
+        missing_endpoint_details=tuple(missing_endpoint_details),
         invalid_inputs=tuple(sorted(set(invalid))),
         ambiguous_inputs=tuple(sorted(set(ambiguous))),
         excluded_future_points=excluded_future,

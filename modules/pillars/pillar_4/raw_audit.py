@@ -21,6 +21,17 @@ def build_raw_audit(extraction: P4ExtractionResult) -> dict[str, Any]:
         }
     return {
         "reason": extraction.reason,
+        "nominal_target_as_of": (
+            extraction.nominal_target_as_of.isoformat()
+            if extraction.nominal_target_as_of is not None
+            else None
+        ),
+        "evaluation_as_of": (
+            extraction.evaluation_as_of.isoformat()
+            if extraction.evaluation_as_of is not None
+            else None
+        ),
+        "operative_as_of": extraction.operative_as_of.isoformat(),
         "inputs": inputs,
         "input_trace": input_trace,
         "periods": extraction.periods,
@@ -29,6 +40,7 @@ def build_raw_audit(extraction: P4ExtractionResult) -> dict[str, Any]:
             "endpoint_series_present": extraction.endpoint_series_present,
             "excluded_future_points": extraction.excluded_future_points,
             "missing_inputs": list(extraction.missing_inputs),
+            "missing_endpoint_details": list(extraction.missing_endpoint_details),
             "invalid_inputs": list(extraction.invalid_inputs),
             "ambiguous_inputs": list(extraction.ambiguous_inputs),
             "persistence_provenance": "LEGACY_MIXED_COLLECTED_AT",

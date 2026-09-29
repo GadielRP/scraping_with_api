@@ -157,7 +157,7 @@ def test_p4_context_rejects_naive_snapshot_timestamps() -> None:
         _context(rows, 5)
 
 
-def test_debug_logging_reports_inputs_formulas_signals_and_lineage(caplog) -> None:
+def test_debug_logging_explains_cutoff_and_price_path_concisely(caplog) -> None:
     caplog.set_level(logging.INFO)
     rows = [
         _row(minute=120, odds="2.05"),
@@ -172,19 +172,15 @@ def test_debug_logging_reports_inputs_formulas_signals_and_lineage(caplog) -> No
         debug_mode=True,
     )
 
-    assert "P4 DEBUG | extraction | event_id=4404 | target_minute=5" in caplog.text
-    assert "P4 DEBUG | extraction counts | source_series_seen=1" in caplog.text
-    assert "P4 EXTRACTION | event_id=4404 | target_minute=5" in caplog.text
-    assert "P4 DEBUG | input assignment | view=ADAPTIVE_VIEW" in caplog.text
-    assert "P4 DEBUG | input lineage | series_id=" in caplog.text
-    assert "P4 FORMULA |" in caplog.text
-    assert ".DELTA_RAW | formula=end.VALUE - start.VALUE" in caplog.text
-    assert ".NET_MOVE_RAW | formula=final.VALUE - initial.VALUE" in caplog.text
-    assert "P4 SIGNAL | ADAPTIVE_VIEW | source_mode=PERSISTED_SNAPSHOTS" in caplog.text
-    assert "P4 SIGNAL | CHECKPOINT_VIEW | source_mode=FIXED_CHECKPOINTS" in caplog.text
-    assert "field=PATH_PATTERN_RAW" in caplog.text
-    assert "P4 SIGNAL | STRUCTURAL_DOMAIN_SUMMARY.TOTALS" in caplog.text
-    assert "P4 SIGNAL | SUMMARY | value=" in caplog.text
+    assert "P4 input | event=4404 | target=T-5" in caplog.text
+    assert "selections examined=1 | with T-5 quote=1" in caplog.text
+    assert "P4 trajectory | odds | Over/Under Full Time (line 2.5)" in caplog.text
+    assert "values=T-120:2.05 -> T-30:1.95 -> T-5:1.85" in caplog.text
+    assert "net=-0.2 | pattern=one direction" in caplog.text
+    assert "P4 result | status=ACTIVE" in caplog.text
+    assert "P4 FORMULA |" not in caplog.text
+    assert "series_id=" not in caplog.text
+    assert len([record for record in caplog.records if "P4 " in record.message]) < 15
 
 
 def test_detailed_debug_logging_is_silent_when_debug_mode_is_false(caplog) -> None:
@@ -197,9 +193,132 @@ def test_detailed_debug_logging_is_silent_when_debug_mode_is_false(caplog) -> No
         debug_mode=False,
     )
 
-    assert "P4 DEBUG |" not in caplog.text
-    assert "P4 FORMULA |" not in caplog.text
-    assert "P4 SIGNAL |" not in caplog.text
+    assert "P4 input |" not in caplog.text
+    assert "P4 trajectory |" not in caplog.text
+    assert "P4 result | event=4404" in caplog.text
+
+
+def test_late_exchange_quote_is_explained_without_opaque_series_ids(caplog) -> None:
+    caplog.set_level(logging.INFO)
+    cutoff = KICKOFF - timedelta(minutes=5)
+    rows = [
+        _row(minute=minute, odds=odds)
+        for minute, odds in ((120, "2.05"), (30, "1.95"), (5, "1.85"))
+    ]
+    rows.append(
+        _row(
+            minute=5,
+            odds="1.90",
+            quote_id=202,
+            bookie_id=4,
+            bookie_name="Betfair Exchange",
+            exchange_side="back",
+            collected_at=cutoff + timedelta(seconds=15),
+        )
+    )
+
+    result = calculate_pillar_4(
+        _event(5), _context(rows, 5), target_minute=5, debug_mode=True
+    )
+
+    assert result["P4_STATUS"] == "PARTIAL"
+    assert len(result["MISSING_INPUT_DETAILS"]) == 1
+    assert result["MISSING_INPUT_DETAILS"][0]["first_after_cutoff_at"] == (
+        cutoff + timedelta(seconds=15)
+    ).isoformat()
+    assert "P4 missing T-5 quote" in caplog.text
+    assert "source=Betfair Exchange back" in caplog.text
+    assert "first later observation=" in caplog.text
+    assert "P4 result | status=PARTIAL | missing T-5 selections=1" in caplog.text
+
+
+def test_evaluation_time_admits_late_exchange_without_looking_ahead(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 3)
+    nominal = KICKOFF - timedelta(minutes=5)
+    rows = [
+        _row(minute=minute, odds=odds)
+        for minute, odds in ((120, "2.05"), (30, "1.95"), (5, "1.85"))
+    ]
+    for seconds, odds, snapshot_id in (
+        (15, "1.90", 202501),
+        (45, "1.80", 202502),
+        (90, "1.70", 202503),
+    ):
+        rows.append(
+            _row(
+                minute=5,
+                odds=odds,
+                quote_id=202,
+                snapshot_id=snapshot_id,
+                bookie_id=4,
+                bookie_name="Betfair Exchange",
+                exchange_side="back",
+                collected_at=nominal + timedelta(seconds=seconds),
+            )
+        )
+    context = _context(rows, 5)
+
+    strict = calculate_pillar_4(_event(5), context, target_minute=5)
+    observed = calculate_pillar_4(
+        _event(5),
+        context,
+        target_minute=5,
+        evaluation_as_of=nominal + timedelta(seconds=50),
+    )
+
+    assert len(strict["MISSING_INPUT_DETAILS"]) == 1
+    assert observed["MISSING_INPUT_DETAILS"] == []
+    profile = observed["P4_SIGNAL_PROFILE"]
+    assert profile["META"]["NOMINAL_TARGET_AS_OF"] == nominal.isoformat()
+    assert profile["META"]["EVALUATION_AS_OF"] == (
+        nominal + timedelta(seconds=50)
+    ).isoformat()
+    assert profile["META"]["OPERATIVE_AS_OF"] == (
+        nominal + timedelta(seconds=50)
+    ).isoformat()
+    assert profile["SUMMARY"]["EXCLUDED_FUTURE_POINT_COUNT"] == 1
+    exchange = next(
+        series
+        for series in profile["CHECKPOINT_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["MARKET"]["BOOKIE_ID"] == 4
+    )
+    assert [point["VALUE"] for point in exchange["POINTS"]] == [1.9]
+    assert exchange["POINTS"][0]["DISTANCE_FROM_TARGET_MINUTES"] == 0.25
+    adaptive_exchange = next(
+        series
+        for series in profile["ADAPTIVE_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["MARKET"]["BOOKIE_ID"] == 4
+    )
+    assert [point["VALUE"] for point in adaptive_exchange["POINTS"]] == [1.9]
+    assert adaptive_exchange["POINTS"][-1]["OBSERVATION_KIND"] == "OPERATIVE_ENDPOINT"
+
+
+def test_evaluation_cutoff_stays_inside_target_window_and_before_kickoff(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 3)
+    nominal = KICKOFF - timedelta(minutes=5)
+    rows = [
+        _row(minute=5, odds="1.90", collected_at=nominal + timedelta(minutes=2)),
+        _row(minute=5, odds="1.80", collected_at=nominal + timedelta(minutes=4),
+             snapshot_id=102002),
+    ]
+
+    result = calculate_pillar_4(
+        _event(5),
+        _context(rows, 5),
+        target_minute=5,
+        evaluation_as_of=KICKOFF + timedelta(minutes=1),
+    )
+
+    assert result["P4_SIGNAL_PROFILE"]["META"]["OPERATIVE_AS_OF"] == (
+        nominal + timedelta(minutes=3)
+    ).isoformat()
+    assert result["raw"]["extraction_diagnostics"]["excluded_future_points"] == 1
 
 
 def test_exact_operational_target_is_required_without_fallback() -> None:
