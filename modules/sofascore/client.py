@@ -660,7 +660,7 @@ class SofaScoreAPI:
     def normalize_event_payload(self, event: Dict, discovery_source: str = "dropping_odds") -> Dict:
         return normalize_event_payload(event, discovery_source)
 
-    def get_dropping_odds_with_odds_and_events_response(self, sport: str = None) -> Optional[Dict]:
+    def get_dropping_odds_with_odds_and_events_response(self, sport: str) -> Optional[Dict]:
         return get_dropping_odds_with_odds_and_events_response(self, sport=sport)
 
     def get_high_value_streaks_events(self):
@@ -725,8 +725,16 @@ class SofaScoreAPI:
     ) -> Tuple[Optional[Dict], Optional[Dict]]:
         return process_standings_response(standings, home_team_id, away_team_id)
 
-    def extract_events_from_high_value_streaks(self, response: Dict) -> Tuple[List[Dict], List[Dict]]:
-        return extract_events_from_high_value_streaks(response)
+    def extract_events_from_high_value_streaks(
+        self,
+        response: Dict,
+        *,
+        tracked_competitions=None,
+    ) -> Tuple[List[Dict], List[Dict]]:
+        return extract_events_from_high_value_streaks(
+            response,
+            tracked_competitions=tracked_competitions,
+        )
 
     def get_h2h_events_for_event(self, custom_id: str) -> Optional[Dict]:
         return get_h2h_events_for_event(self, custom_id)
@@ -799,11 +807,14 @@ class SofaScoreAPI:
         response: Dict,
         odds_extraction: bool = True,
         discovery_source: str = "dropping_odds",
+        *,
+        tracked_competitions=None,
     ) -> Tuple[List[Dict], Dict]:
         return extract_events_and_odds_from_dropping_response(
             response,
             odds_extraction=odds_extraction,
             discovery_source=discovery_source,
+            tracked_competitions=tracked_competitions,
         )
 
     def check_and_update_starting_time(

@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import Dict, List
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
+from modules.jobs.discovery_filters import filter_upcoming_events
 from modules.sofascore import api_client as default_api_client
-from modules.jobs.discovery_filters import is_supported_sport, is_supported_sport_name
+from modules.competition.discovery_scope import (
+    load_source_competitions,
+    load_tracked_source_competitions,
+    source_competition_filter_reason,
+    source_competition_ids,
+)
+from modules.sports.catalog import is_supported_sofascore_event, sofascore_sport_slugs
 from shared.shutdown import is_shutdown_requested
 
-from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
-from .filters import filter_events_present_in_odds_feed, filter_events_starting_after_threshold
 from .odds_parser import parse_today_market_odds_response
 from .persistence import persist_event_and_optional_odds
 
@@ -30,9 +36,36 @@ class DailyDiscoveryExtractor:
         sports: List[str] | None = None,
         run_slot: str | None = None,
     ) -> Dict[str, int]:
-        if sports is None:
-            sports = DEFAULT_DAILY_DISCOVERY_SPORTS
-        sports = [sport for sport in sports if is_supported_sport_name(sport)]
+        sports = sofascore_sport_slugs(sports)
+        if not sports:
+            return {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+        tracked_competitions = load_tracked_source_competitions("sofascore")
+        tracked_competition_scope = (
+            tracked_competitions
+            if tracked_competitions is not None
+            else load_source_competitions("sofascore")
+        )
+        tracked_filter_enabled = tracked_competitions is not None
+        logger.info(
+            "Daily discovery scope date=%s sports=%s tracked_competition_filter=%s "
+            "provider_competition_pairs=%s",
+            date,
+            sports,
+            "enabled" if tracked_filter_enabled else "disabled_observation_only",
+            len(tracked_competition_scope),
+        )
+        if tracked_competitions is not None and not tracked_competitions:
+            logger.warning(
+                "Daily discovery stopped reason=tracked_competition_scope_empty; "
+                "no SofaScore provider IDs are mapped for tracked competitions"
+            )
+            return {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+        if not tracked_filter_enabled:
+            logger.warning(
+                "Daily discovery tracked competition filter is disabled; "
+                "all events remain eligible and logs will show shadow rejections "
+                "reason=DISCOVERY_TRACKED_COMPETITIONS_ONLY_false"
+            )
 
         normalized_run_slot = (run_slot or "AM").strip().upper()
         if normalized_run_slot not in {"AM", "PM"}:
@@ -59,23 +92,10 @@ class DailyDiscoveryExtractor:
 
                 try:
                     logger.info("Processing %s...", sport)
-                    logger.info("Fetching today's %s odds...", sport)
-                    odds_map = {}
-                    try:
-                        odds_response = self.api_client.get_today_sport_events_odds_response(date, sport)
-                        if odds_response:
-                            odds_map = parse_today_market_odds_response(odds_response) or {}
-                        else:
-                            logger.warning("No odds response for %s, proceeding to fetch events without odds", sport)
-                    except Exception as exc:
-                        logger.warning("Failed to fetch odds for %s: %s. Will proceed without odds.", sport, exc)
-
-                    odds_event_ids = set(odds_map.keys())
-                    logger.info("Found %s %s events with odds in the feed", len(odds_event_ids), sport)
-
                     logger.info("Fetching today's %s scheduled tournaments...", sport)
 
                     unique_tournament_ids = []
+                    tournament_filter_counts = Counter()
                     page = 1
                     failed = False
 
@@ -92,20 +112,56 @@ class DailyDiscoveryExtractor:
                             break
 
                         for item in scheduled:
+                            tournament_filter_counts["response_entries"] += 1
                             tz_count = item.get("timezoneEventCount", {})
-                            total_events_in_tz = sum(tz_count.values()) if tz_count else 0
-                            if tz_count and total_events_in_tz == 0:
-                                continue
+                            if tz_count:
+                                if sum(tz_count.values()) == 0:
+                                    tournament_filter_counts["rejected_zero_timezone_event_count"] += 1
+                                    continue
 
-                            ut = item.get("tournament", {}).get("uniqueTournament", {})
-                            ut_id = ut.get("id")
-                            if ut_id and ut_id not in unique_tournament_ids:
+                            ids = source_competition_ids(item)
+                            tracked_reason = source_competition_filter_reason(item, tracked_competition_scope)
+                            if tracked_reason:
+                                prefix = "rejected" if tracked_filter_enabled else "would_reject"
+                                tournament_filter_counts[f"{prefix}_{tracked_reason}"] += 1
+                                if tracked_filter_enabled:
+                                    continue
+
+                            ut_id = ids.source_unique_tournament_id
+                            if ut_id is None:
+                                tournament_filter_counts["rejected_missing_unique_tournament_id"] += 1
+                                continue
+                            if ut_id in unique_tournament_ids:
+                                tournament_filter_counts["duplicate_unique_tournament_id"] += 1
+                            else:
                                 unique_tournament_ids.append(ut_id)
 
                         if not page_response.get("hasNextPage", False):
                             break
 
                         page += 1
+
+                    logger.info(
+                        "Daily tournament filter sport=%s mode=%s provider_pairs=%s "
+                        "received=%s rejected_untracked=%s rejected_missing_ids=%s "
+                        "would_reject_untracked=%s would_reject_missing_ids=%s "
+                        "rejected_zero_timezone_events=%s missing_unique_id=%s "
+                        "duplicates=%s selected_for_event_fetch=%s",
+                        sport,
+                        "enforced" if tracked_filter_enabled else "observe_only",
+                        len(tracked_competition_scope),
+                        tournament_filter_counts["response_entries"],
+                        tournament_filter_counts["rejected_untracked_competition"],
+                        tournament_filter_counts["rejected_missing_source_competition_ids"],
+                        tournament_filter_counts["would_reject_untracked_competition"],
+                        tournament_filter_counts[
+                            "would_reject_missing_source_competition_ids"
+                        ],
+                        tournament_filter_counts["rejected_zero_timezone_event_count"],
+                        tournament_filter_counts["rejected_missing_unique_tournament_id"],
+                        tournament_filter_counts["duplicate_unique_tournament_id"],
+                        len(unique_tournament_ids),
+                    )
 
                     if failed:
                         logger.warning("No tournaments response for %s, skipping", sport)
@@ -115,25 +171,87 @@ class DailyDiscoveryExtractor:
                     logger.info("Found %d unique tournaments for %s. Fetching events...", len(unique_tournament_ids), sport)
 
                     all_events = []
+                    event_filter_counts = Counter()
                     for ut_id in unique_tournament_ids:
                         try:
                             ut_events_response = self.api_client.get_unique_tournament_scheduled_events(ut_id, date)
-                            if ut_events_response and "events" in ut_events_response:
-                                all_events.extend(
-                                    event
-                                    for event in ut_events_response["events"]
-                                    if is_supported_sport(event)
+                            if not ut_events_response or "events" not in ut_events_response:
+                                event_filter_counts["tournaments_without_events_payload"] += 1
+                                logger.warning(
+                                    "Daily discovery received no tournament events "
+                                    "unique_tournament_id=%s reason=missing_events_payload",
+                                    ut_id,
                                 )
+                                continue
+                            tournament_events = ut_events_response.get("events") or []
+                            for event in tournament_events:
+                                event_filter_counts["response_events"] += 1
+                                if not is_supported_sofascore_event(event):
+                                    event_filter_counts["rejected_unsupported_sport"] += 1
+                                    continue
+                                tracked_reason = source_competition_filter_reason(event, tracked_competition_scope)
+                                if tracked_reason:
+                                    prefix = "rejected" if tracked_filter_enabled else "would_reject"
+                                    event_filter_counts[f"{prefix}_{tracked_reason}"] += 1
+                                    if tracked_filter_enabled:
+                                        continue
+                                all_events.append(event)
                         except Exception as exc:
-                            logger.warning("Failed to fetch events for tournament %s: %s", ut_id, exc)
+                            event_filter_counts["tournament_fetch_errors"] += 1
+                            logger.warning(
+                                "Failed to fetch events for tournament %s "
+                                "reason=tournament_event_fetch_error error=%s",
+                                ut_id,
+                                exc,
+                            )
+
+                    logger.info(
+                        "Daily event filter sport=%s mode=%s response_events=%s "
+                        "rejected_unsupported_sport=%s rejected_untracked=%s "
+                        "rejected_missing_ids=%s would_reject_untracked=%s "
+                        "would_reject_missing_ids=%s eligible_events=%s "
+                        "tournaments_without_events=%s fetch_errors=%s",
+                        sport,
+                        "enforced" if tracked_filter_enabled else "observe_only",
+                        event_filter_counts["response_events"],
+                        event_filter_counts["rejected_unsupported_sport"],
+                        event_filter_counts["rejected_untracked_competition"],
+                        event_filter_counts["rejected_missing_source_competition_ids"],
+                        event_filter_counts["would_reject_untracked_competition"],
+                        event_filter_counts[
+                            "would_reject_missing_source_competition_ids"
+                        ],
+                        len(all_events),
+                        event_filter_counts["tournaments_without_events_payload"],
+                        event_filter_counts["tournament_fetch_errors"],
+                    )
 
                     if not all_events:
-                        logger.info("No %s events found", sport)
+                        logger.info(
+                            "No daily discovery events remain sport=%s "
+                            "reason=no_events_after_sport_and_tracked_competition_filters",
+                            sport,
+                        )
                         DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
                         continue
 
+                    logger.info("Fetching today's %s odds for tracked events...", sport)
+                    odds_map = {}
+                    try:
+                        odds_response = self.api_client.get_today_sport_events_odds_response(date, sport)
+                        if odds_response:
+                            odds_map = parse_today_market_odds_response(
+                                odds_response,
+                                event_ids={int(event["id"]) for event in all_events if event.get("id")},
+                            )
+                        else:
+                            logger.warning("No odds response for %s, proceeding without odds", sport)
+                    except Exception as exc:
+                        logger.warning("Failed to fetch odds for %s: %s. Will proceed without odds.", sport, exc)
+                    odds_event_ids = set(odds_map)
+
                     # Determine which events have not started yet (using our standard min_minutes_away=10 threshold)
-                    upcoming_events = filter_events_starting_after_threshold(all_events, min_minutes_away=10)
+                    upcoming_events = filter_upcoming_events(all_events, min_minutes_away=10)
                     upcoming_event_ids = {e["id"] for e in upcoming_events if e.get("id")}
 
                     logger.info("Processing %s %s events...", len(all_events), sport)
@@ -146,13 +264,21 @@ class DailyDiscoveryExtractor:
 
                         event_id = event.get("id")
                         if not event_id:
+                            logger.debug(
+                                "Daily discovery skipped event reason=missing_source_event_id"
+                            )
                             continue
 
                         # Only persist odds if the event has not started yet and is present in the odds feed
                         has_odds_data = event_id in odds_event_ids and event_id in upcoming_event_ids
                         event_odds = odds_map.get(event_id) if has_odds_data else None
 
-                        success = persist_event_and_optional_odds(self.api_client, event, event_odds)
+                        success = persist_event_and_optional_odds(
+                            self.api_client,
+                            event,
+                            event_odds,
+                            tracked_competitions=tracked_competitions,
+                        )
                         if success:
                             sport_events_inserted += 1
                             if event_odds:

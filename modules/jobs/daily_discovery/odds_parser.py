@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict
+from typing import Collection, Dict
 
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 
 logger = logging.getLogger(__name__)
 
 
-def parse_today_market_odds_response(odds_response: Dict) -> Dict[int, Dict]:
+def parse_today_market_odds_response(
+    odds_response: Dict,
+    *,
+    event_ids: Collection[int] | None = None,
+) -> Dict[int, Dict]:
     try:
         if not odds_response or "odds" not in odds_response:
             logger.warning("No odds data found in response")
@@ -27,9 +31,12 @@ def parse_today_market_odds_response(odds_response: Dict) -> Dict[int, Dict]:
             return {}
 
         odds_map: Dict[int, Dict] = {}
+        allowed_event_ids = set(event_ids) if event_ids is not None else None
         for event_id_str, event_odds in odds_data.items():
             try:
                 event_id = int(event_id_str)
+                if allowed_event_ids is not None and event_id not in allowed_event_ids:
+                    continue
                 normalized = SofaScoreMarketAdapter.from_daily_odds_entry(event_odds)
                 if normalized.get("markets"):
                     odds_map[event_id] = normalized

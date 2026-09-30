@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional
+from typing import Collection, Dict, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +12,34 @@ logger = logging.getLogger(__name__)
 
 class CompetitionRepository:
     """Repository for normalized event competitions."""
+
+    @staticmethod
+    def get_source_competition_id_pairs(
+        session: Session,
+        *,
+        source: str,
+        competition_ids: Collection[int],
+    ) -> set[tuple[int, int | None]]:
+        """Get provider tournament ID pairs for canonical competitions."""
+        ids = tuple(int(value) for value in competition_ids)
+        if not ids:
+            return set()
+        values = (
+            session.query(
+                Competition.source_tournament_id,
+                Competition.source_unique_tournament_id,
+            )
+            .filter(
+                Competition.source == source,
+                Competition.competition_id.in_(ids),
+            )
+            .all()
+        )
+        return {
+            (int(tournament_id), int(unique_tournament_id) if unique_tournament_id is not None else None)
+            for tournament_id, unique_tournament_id in values
+            if tournament_id is not None
+        }
 
     @staticmethod
     def upsert_competition(session: Session, competition_data: Dict) -> Optional[Competition]:

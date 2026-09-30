@@ -292,13 +292,6 @@ class Config:
     ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS = int(
         os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS', '2')
     )
-    # Restrict new fixture-discovery matches to canonical events in the
-    # tracked competition allowlist. Disable temporarily to restore broad matching.
-    ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY = _parse_env_bool(
-        'ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY',
-        False,
-    )
-
     # Soft memory guardrails for ~1 GB app containers. Defaults are applied
     # here so production does not need these keys in .env. Override only when
     # measuring RSS on a larger host (or temporarily lowering under pressure).
@@ -624,20 +617,25 @@ class Config:
         True
     )
 
-    # Sports supported by discovery and alert evaluation.
+    # Canonical sport IDs; provider endpoint slugs are resolved by each adapter.
     SUPPORTED_SPORTS = _parse_env_list(
         'SUPPORTED_SPORTS',
         [
-            'Football',
-            'American football',
-            'Basketball',
-            'Volleyball',
-            'Tennis',
-            'Tennis doubles',
-            'Ice hockey',
-            'Handball',
-            'Baseball',
+            'football',
+            'american_football',
+            'basketball',
+            'volleyball',
+            'tennis',
+            'tennis_doubles',
+            'ice_hockey',
+            'handball',
+            'baseball',
         ],
+    )
+    # Applies only to discovery jobs; supported-sport filtering stays enabled.
+    DISCOVERY_TRACKED_COMPETITIONS_ONLY = _parse_env_bool(
+        'DISCOVERY_TRACKED_COMPETITIONS_ONLY',
+        False,
     )
 
     # Pipeline toggles

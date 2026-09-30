@@ -14,6 +14,7 @@ from infrastructure.persistence.repositories import (
 )
 from infrastructure.scheduler.job_scheduler import JobScheduler
 from infrastructure.settings import Config
+from modules.sports.catalog import oddspapi_sport_ids
 
 scheduler_module = import_module("infrastructure.scheduler.job_scheduler")
 
@@ -113,7 +114,7 @@ def test_fixture_discovery_records_success(monkeypatch):
     assert calls[0][2]["trigger"] == "catch_up"
     assert calls[0][2]["sport_scope"] == (
         OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-            scheduler_module.DISCOVERY_SPORT_IDS
+            oddspapi_sport_ids()
         )
     )
     assert calls[1][0] == "success"

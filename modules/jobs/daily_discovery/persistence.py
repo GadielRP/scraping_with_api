@@ -6,13 +6,23 @@ import logging
 from typing import Dict
 
 from infrastructure.persistence.repositories import EventRepository
-from modules.jobs.discovery_filters import is_supported_sport
+from modules.competition.discovery_scope import (
+    is_tracked_source_event,
+    load_tracked_source_competitions,
+)
+from modules.jobs.discovery_filters import is_supported_sofascore_event
 from modules.odds_ingestion import MarketOddsIngestionService
 
 logger = logging.getLogger(__name__)
 
 
-def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | None = None) -> bool:
+def persist_event_and_optional_odds(
+    api_client,
+    event: Dict,
+    odds_data: Dict | None = None,
+    *,
+    tracked_competitions=None,
+) -> bool:
     try:
         source = "sofascore"
         source_event_id = event.get("id")
@@ -20,12 +30,21 @@ def persist_event_and_optional_odds(api_client, event: Dict, odds_data: Dict | N
             logger.warning("Event has no ID, skipping")
             return False
 
+        if not is_supported_sofascore_event(event):
+            logger.info("Skipping unsupported sport event source=%s source_event_id=%s", source, source_event_id)
+            return False
+        if tracked_competitions is None:
+            tracked_competitions = load_tracked_source_competitions(source)
+        if not is_tracked_source_event(event, tracked_competitions):
+            logger.info("Skipping untracked competition event source=%s source_event_id=%s", source, source_event_id)
+            return False
+
         event_data = api_client.normalize_event_payload(event, discovery_source="daily_discovery")
         event_payload = event_data.get("event", event_data) if event_data else {}
         if not event_payload or not event_payload.get("id"):
             logger.warning("Could not extract event information for source=%s source_event_id=%s", source, source_event_id)
             return False
-        if not is_supported_sport(event_data):
+        if not is_supported_sofascore_event(event_data):
             logger.info("Skipping unsupported sport event source=%s source_event_id=%s", source, source_event_id)
             return False
 

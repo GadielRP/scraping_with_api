@@ -1,135 +1,123 @@
-"""Shared helpers for filtering discovery events."""
+"""Shared discovery event and start-time filters."""
 
 from __future__ import annotations
 
 import logging
-from typing import Collection, Dict, Iterable, List
+from typing import Dict, Iterable, List
 
 from infrastructure.settings import Config
+from modules.sports.catalog import (
+    is_supported_sofascore_event,
+    is_supported_sport_name,
+)
 from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_SPORTS_CONFIG: tuple[str, ...] | None = None
-_SUPPORTED_SPORT_KEYS: frozenset[str] = frozenset()
 
-
-def _event_payload(event: Dict) -> Dict:
-    return event.get("event", event)
-
-
-def _sport_key(value: object) -> str:
-    """Normalize sport labels and slugs to one comparison key."""
-    if isinstance(value, dict):
-        value = value.get("name") or value.get("slug")
-    normalized = " ".join(str(value or "").replace("-", " ").replace("_", " ").split()).casefold()
-    return {"soccer": "football", "hockey": "ice hockey"}.get(normalized, normalized)
-
-
-def _supported_sport_keys(supported_sports: Collection[str] | None = None) -> frozenset[str]:
-    global _SUPPORTED_SPORTS_CONFIG, _SUPPORTED_SPORT_KEYS
-
-    if supported_sports is None:
-        configured = tuple(Config.SUPPORTED_SPORTS or ())
-        if configured != _SUPPORTED_SPORTS_CONFIG:
-            _SUPPORTED_SPORTS_CONFIG = configured
-            _SUPPORTED_SPORT_KEYS = frozenset(
-                key for sport in configured if (key := _sport_key(sport))
-            )
-        return _SUPPORTED_SPORT_KEYS
-
-    return frozenset(
-        key for sport in supported_sports or () if (key := _sport_key(sport))
-    )
-
-
-def is_supported_sport_name(
-    sport: object,
-    *,
-    supported_sports: Collection[str] | None = None,
-) -> bool:
-    """Return whether a sport name/slug is supported by runtime configuration."""
-    return _sport_key(sport) in _supported_sport_keys(supported_sports)
-
-
-def is_supported_sport(
-    event: Dict | None,
-    *,
-    supported_sports: Collection[str] | None = None,
-) -> bool:
-    """Recognize supported sport fields across raw and normalized payloads."""
-    if not isinstance(event, dict):
-        return False
-
-    payload = _event_payload(event)
-    sport = payload.get("sport") or payload.get("sportName") or payload.get("sport_name")
-    if sport is None:
-        tournament = payload.get("tournament") or {}
-        category = tournament.get("category") or {}
-        sport = category.get("sport")
-    return is_supported_sport_name(sport, supported_sports=supported_sports)
-
-
-def filter_supported_sports(events: Iterable[Dict] | None) -> List[Dict]:
-    """Keep only events whose sport is enabled by ``SUPPORTED_SPORTS``."""
-    return [event for event in events or () if is_supported_sport(event)]
+def filter_supported_sofascore_events(events: Iterable[Dict] | None) -> List[Dict]:
+    return [event for event in events or () if is_supported_sofascore_event(event)]
 
 
 def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> List[Dict]:
-    """Keep only events that start at least ``min_minutes_away`` minutes from now."""
+    """Keep supported events starting at least ``min_minutes_away`` from now."""
     if not events:
         return []
 
     try:
-        current_time = now_in_timezone(Config.TIMEZONE)
-        current_timestamp = int(current_time.timestamp())
-        min_start_timestamp = current_timestamp + (min_minutes_away * 60)
-
-        upcoming_events = []
-        filtered_count = 0
-        unsupported_count = 0
+        current_timestamp = int(now_in_timezone(Config.TIMEZONE).timestamp())
+        minimum_start = current_timestamp + min_minutes_away * 60
+        upcoming = []
+        rejected_unsupported_sport = 0
+        rejected_missing_start_timestamp = 0
+        rejected_invalid_start_timestamp = 0
+        rejected_start_too_soon_or_started = 0
+        rejected_invalid_event_payload = 0
 
         for event in events:
-            event_payload = _event_payload(event)
-            event_id = event_payload.get("id", "unknown")
-            if not is_supported_sport(event):
-                unsupported_count += 1
-                continue
-            start_timestamp = event_payload.get("startTimestamp")
-            if not start_timestamp:
-                logger.debug("Event %s has no startTimestamp, skipping", event_id)
-                filtered_count += 1
-                continue
-
-            if start_timestamp >= min_start_timestamp:
-                upcoming_events.append(event)
-                continue
-
-            time_diff_minutes = (start_timestamp - current_timestamp) / 60
-            if time_diff_minutes < 0:
+            if not isinstance(event, dict):
+                rejected_invalid_event_payload += 1
                 logger.debug(
-                    "Filtered out event %s: already started (%.1f minutes ago)",
-                    event_id,
-                    abs(time_diff_minutes),
+                    "Upcoming filter rejected event source_event_id=unknown "
+                    "reason=invalid_event_payload"
                 )
+                continue
+            payload = event.get("event", event)
+            if not isinstance(payload, dict):
+                rejected_invalid_event_payload += 1
+                logger.debug(
+                    "Upcoming filter rejected event source_event_id=unknown "
+                    "reason=invalid_event_payload"
+                )
+                continue
+            if not is_supported_sofascore_event(event):
+                rejected_unsupported_sport += 1
+                logger.debug(
+                    "Upcoming filter rejected event source_event_id=%s sport=%s "
+                    "reason=unsupported_sport",
+                    payload.get("id"),
+                    payload.get("sport"),
+                )
+                continue
+            raw_start_timestamp = payload.get("startTimestamp")
+            if raw_start_timestamp is None:
+                rejected_missing_start_timestamp += 1
+                logger.debug(
+                    "Upcoming filter rejected event source_event_id=%s "
+                    "reason=missing_start_timestamp",
+                    payload.get("id"),
+                )
+                continue
+            try:
+                start_timestamp = int(raw_start_timestamp)
+            except (TypeError, ValueError, OverflowError):
+                rejected_invalid_start_timestamp += 1
+                logger.debug(
+                    "Upcoming filter rejected event source_event_id=%s start_timestamp=%r "
+                    "reason=invalid_start_timestamp",
+                    payload.get("id"),
+                    raw_start_timestamp,
+                )
+                continue
+            if start_timestamp >= minimum_start:
+                upcoming.append(event)
             else:
+                rejected_start_too_soon_or_started += 1
                 logger.debug(
-                    "Filtered out event %s: starts in %.1f minutes (< %s min threshold)",
-                    event_id,
-                    time_diff_minutes,
-                    min_minutes_away,
+                    "Upcoming filter rejected event source_event_id=%s start_timestamp=%s "
+                    "minimum_start_timestamp=%s reason=start_too_soon_or_started",
+                    payload.get("id"),
+                    start_timestamp,
+                    minimum_start,
                 )
-            filtered_count += 1
 
-        if unsupported_count or filtered_count > 0:
-            logger.info(
-                "Filtered %s upcoming events (unsupported_sport=%s, too_soon_or_started=%s)",
-                len(upcoming_events),
-                unsupported_count,
-                filtered_count,
-            )
-
-        return upcoming_events
+        logger.info(
+            "Evaluated upcoming events input=%s kept=%s "
+            "rejected_unsupported_sport=%s rejected_missing_start_timestamp=%s "
+            "rejected_invalid_start_timestamp=%s rejected_start_too_soon_or_started=%s "
+            "rejected_invalid_event_payload=%s minimum_minutes_away=%s",
+            len(events),
+            len(upcoming),
+            rejected_unsupported_sport,
+            rejected_missing_start_timestamp,
+            rejected_invalid_start_timestamp,
+            rejected_start_too_soon_or_started,
+            rejected_invalid_event_payload,
+            min_minutes_away,
+        )
+        return upcoming
     except Exception as exc:
-        logger.error("Error filtering upcoming events: %s", exc)
+        logger.exception(
+            "Upcoming event evaluation failed; rejecting all candidates "
+            "reason=upcoming_filter_error error=%s",
+            exc,
+        )
         return []
+
+
+__all__ = [
+    "filter_supported_sofascore_events",
+    "filter_upcoming_events",
+    "is_supported_sofascore_event",
+    "is_supported_sport_name",
+]

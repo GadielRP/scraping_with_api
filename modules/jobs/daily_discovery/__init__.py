@@ -1,4 +1,3 @@
-from .constants import DEFAULT_DAILY_DISCOVERY_SPORTS
 from .extractor import DailyDiscoveryExtractor
 from .run_daily_discovery import (
     resolve_daily_discovery_slot,
@@ -8,7 +7,6 @@ from .run_daily_discovery import (
 )
 
 __all__ = [
-    "DEFAULT_DAILY_DISCOVERY_SPORTS",
     "DailyDiscoveryExtractor",
     "resolve_daily_discovery_slot",
     "run_daily_discovery",

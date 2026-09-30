@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from infrastructure.persistence.models import Event
+from infrastructure.settings import Config
 from modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor import (
     OddspapiCandidatePool,
     OddspapiFixtureBatchProcessor,
@@ -120,7 +121,6 @@ def test_batch_uses_bulk_lookups_and_only_unresolved_layer3(monkeypatch):
     monkeypatch.setattr(OddspapiEventResolver, "_candidate_matcher", matcher)
 
     processor = OddspapiFixtureBatchProcessor(
-        tracked_competitions_only=True,
         persistence_writer=lambda _session, writes: persisted.extend(writes) or {
             write.fixture.fixture_id: ["oddspapi"] for write in writes
         },
@@ -157,9 +157,7 @@ def test_untracked_sofascore_reference_does_not_fall_through_to_fuzzy_matching(m
     monkeypatch.setattr(OddspapiEventResolver, "_candidate_matcher", matcher)
     monkeypatch.setattr(OddspapiCandidatePool, "load", classmethod(_empty_candidate_pool))
 
-    result = OddspapiFixtureBatchProcessor(
-        tracked_competitions_only=True,
-    ).process_batch(
+    result = OddspapiFixtureBatchProcessor().process_batch(
         [_payload("untracked", "sofa-untracked")],
         create_mappings=True,
         persist_queue=False,
@@ -182,9 +180,7 @@ def test_existing_oddspapi_mapping_to_untracked_competition_is_not_reused(monkey
     monkeypatch.setattr(OddspapiEventResolver, "_candidate_matcher", matcher)
     monkeypatch.setattr(OddspapiCandidatePool, "load", classmethod(_empty_candidate_pool))
 
-    result = OddspapiFixtureBatchProcessor(
-        tracked_competitions_only=True,
-    ).process_batch(
+    result = OddspapiFixtureBatchProcessor().process_batch(
         [_payload("oddspapi-untracked")],
         create_mappings=True,
         persist_queue=False,
@@ -194,6 +190,40 @@ def test_existing_oddspapi_mapping_to_untracked_competition_is_not_reused(monkey
     assert result.fixtures_skipped_untracked_competition == 1
     assert matcher.calls == []
     assert result.resolved_existing_oddspapi == 0
+
+
+def test_disabling_competition_filter_expands_oddspapi_candidate_scope(monkeypatch):
+    monkeypatch.setattr(Config, "DISCOVERY_TRACKED_COMPETITIONS_ONLY", False)
+    matcher = _Matcher(_decision(456))
+    candidate_pool_scopes = []
+    persisted = []
+
+    monkeypatch.setattr(
+        "modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor.EventSourceMappingRepository.get_event_mapping_details_by_source_event_ids",
+        lambda source, **kwargs: {},
+    )
+
+    def load_candidate_pool(fixtures, session, *, competition_ids=None):
+        candidate_pool_scopes.append(competition_ids)
+        return OddspapiCandidatePool([])
+
+    processor = OddspapiFixtureBatchProcessor(
+        matcher=matcher,
+        candidate_pool_loader=load_candidate_pool,
+        persistence_writer=lambda _session, writes: persisted.extend(writes) or {
+            write.fixture.fixture_id: ["oddspapi"] for write in writes
+        },
+    )
+    result = processor.process_batch(
+        [_payload("scope-off")],
+        create_mappings=True,
+        persist_queue=False,
+        session=_Session(),
+    )
+
+    assert candidate_pool_scopes == [None]
+    assert result.fixtures_skipped_untracked_competition == 0
+    assert [write.fixture.fixture_id for write in persisted] == ["scope-off"]
 
 
 def test_dry_run_does_not_upsert_or_queue(monkeypatch):

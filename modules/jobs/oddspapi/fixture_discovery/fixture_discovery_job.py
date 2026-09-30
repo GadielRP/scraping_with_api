@@ -10,7 +10,12 @@ from time import monotonic
 from infrastructure.persistence.database import db_manager
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
-from modules.jobs.discovery_filters import is_supported_sport, is_supported_sport_name
+from modules.sports.catalog import (
+    ODDSPAPI_DISCOVERY_SPORT_IDS,
+    configured_sport_ids,
+    oddspapi_sport_ids,
+    oddspapi_sport_id_for_fixture,
+)
 
 from .constants import (
     DEFAULT_HAS_ODDS,
@@ -19,7 +24,6 @@ from .constants import (
     DEFAULT_PERSISTENCE_CHUNK_SIZE,
     DEFAULT_PERSIST_QUEUE,
     DEFAULT_STATUS_ID,
-    DISCOVERY_SPORT_IDS,
 )
 from .fixture_batch_processor import (
     OddspapiFixtureBatchProcessor,
@@ -124,10 +128,15 @@ class OddspapiFixtureDiscoveryJob:
         batch_processor: OddspapiFixtureBatchProcessor | None = None,
     ) -> None:
         self.client = client
+        self.supported_sport_ids = configured_sport_ids()
+        allowed_sports = oddspapi_sport_ids()
+        requested_sports = allowed_sports if sports is None else sports
         self.sports = {
             sport_slug: sport_id
-            for sport_slug, sport_id in (sports or DISCOVERY_SPORT_IDS).items()
-            if is_supported_sport_name(sport_slug)
+            for sport_slug, sport_id in requested_sports.items()
+            if sport_slug in allowed_sports
+            and sport_slug in ODDSPAPI_DISCOVERY_SPORT_IDS
+            and sport_id == ODDSPAPI_DISCOVERY_SPORT_IDS[sport_slug]
         }
         self.create_mappings = create_mappings
         self.persist_queue = persist_queue
@@ -227,7 +236,7 @@ class OddspapiFixtureDiscoveryJob:
                         fixtures = extract_fixture_list(payload)
                         write_index = 0
                         for fixture in fixtures:
-                            if not is_supported_sport(fixture):
+                            if oddspapi_sport_id_for_fixture(fixture) not in self.supported_sport_ids:
                                 continue
                             fixtures[write_index] = fixture
                             write_index += 1

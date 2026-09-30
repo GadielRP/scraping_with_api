@@ -5,12 +5,17 @@ from __future__ import annotations
 import logging
 
 from modules.sofascore import api_client
+from modules.competition.discovery_scope import load_tracked_source_competitions
 from modules.jobs.discovery_filters import filter_upcoming_events
 
 logger = logging.getLogger(__name__)
 
 
-def run_top_h2h():
+def run_top_h2h(tracked_competitions=None):
+    if tracked_competitions is None:
+        tracked_competitions = load_tracked_source_competitions("sofascore")
+    if tracked_competitions is not None and not tracked_competitions:
+        return []
     response = api_client.get_h2h_events()
     if not response:
         logger.error("Failed to get h2h events")
@@ -20,6 +25,7 @@ def run_top_h2h():
         response,
         odds_extraction=False,
         discovery_source="top_h2h",
+        tracked_competitions=tracked_competitions,
     )
     events = filter_upcoming_events(events)
     if not events:

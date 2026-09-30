@@ -108,7 +108,9 @@ def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
     daily_job.run_daily_discovery_job()
 
     assert calls["cleanup"] == [getattr(Config, "DAILY_DISCOVERY_DAYS_TO_KEEP", 1)]
-    assert calls["init"][0][0] == ("2026-06-01", "AM", daily_job.DEFAULT_DAILY_DISCOVERY_SPORTS)
+    from modules.sports.catalog import sofascore_sport_slugs
+
+    assert calls["init"][0][0] == ("2026-06-01", "AM", sofascore_sport_slugs())
     assert calls["pending"][0][0] == ("2026-06-01", "AM")
     assert calls["run"][0][1] == {
         "sports": ["basketball", "tennis"],
@@ -126,6 +128,10 @@ def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
 )
 def test_extractor_marks_slot_status_for_missing_or_empty_odds(monkeypatch, odds_response, expected_status):
     status_calls = []
+    monkeypatch.setattr(
+        "modules.jobs.daily_discovery.extractor.load_tracked_source_competitions",
+        lambda _source: frozenset({777}),
+    )
 
     class FakeApiClient:
         def get_today_sport_events_odds_response(self, date, sport):

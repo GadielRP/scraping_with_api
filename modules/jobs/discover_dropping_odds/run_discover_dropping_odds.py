@@ -1,138 +1,169 @@
-"""Dropping odds discovery job."""
+"""Discover tracked SofaScore events with dropping odds."""
 
 from __future__ import annotations
 
 import logging
 
-from modules.sofascore import api_client
+from infrastructure.settings import Config
+from modules.competition.discovery_scope import load_tracked_source_competitions
+from modules.jobs.discovery_filters import filter_upcoming_events
 from modules.jobs.parallelism import process_with_parallel_db_ops
-from modules.jobs.discovery_filters import filter_upcoming_events, is_supported_sport_name
+from modules.sofascore import api_client
+from modules.sports.catalog import configured_sport_ids, sofascore_sport_routes
 
 logger = logging.getLogger(__name__)
 
 
-def _event_payload(event_data):
-    return event_data.get("event", event_data)
+def _event_payload(event):
+    return event.get("event", event)
 
 
-def _event_id(event_data):
-    return _event_payload(event_data)["id"]
+def _event_id(event):
+    return _event_payload(event).get("id")
 
 
 def run_discover_dropping_odds() -> None:
-    """Discover events from dropping odds and persist them."""
-    logger.info("Starting Job A: Event Discovery with Odds Processing")
-
-    dropping_sports = [
-        sport
-        for sport in (
-            "football",
-            "basketball",
-            "volleyball",
-            "american-football",
-            "ice-hockey",
-            "baseball",
-            "rugby",
+    """Fetch each configured SofaScore sport feed once and persist tracked events."""
+    routes = sofascore_sport_routes()
+    sports = list(dict.fromkeys(slug for _, slug in routes))
+    logger.info(
+        "Resolved dropping odds sport scope "
+        "configured=%s canonical=%s sofascore_routes=%s endpoints=%s",
+        Config.SUPPORTED_SPORTS,
+        sorted(configured_sport_ids()),
+        routes,
+        [f"/odds/1/dropping/{sport}" for sport in sports],
+    )
+    if not sports:
+        logger.info(
+            "Skipping dropping odds calls reason=no_supported_sports_configured"
         )
-        if is_supported_sport_name(sport)
-    ]
-
+        return
+    tracked_competitions = load_tracked_source_competitions("sofascore")
+    if tracked_competitions is not None and not tracked_competitions:
+        logger.warning(
+            "Skipping dropping odds calls tracked_competitions=0 "
+            "reason=tracked_competition_scope_empty"
+        )
+        return
+    logger.info(
+        "Starting dropping odds discovery sports=%s tracked_competitions=%s",
+        sports,
+        "disabled" if tracked_competitions is None else len(tracked_competitions),
+    )
+    totals = {"processed": 0, "skipped": 0}
     processed_event_ids = set()
-    total_processed = 0
-    total_skipped = 0
 
-    try:
-        logger.info("Step 1: Fetching odds/1/dropping/all endpoint")
-        response_all = api_client.get_dropping_odds_with_odds_and_events_response()
-        if response_all:
-            events_all, odds_map_all = api_client.extract_events_and_odds_from_dropping_response(
-                response_all,
+    for sport in sports:
+        try:
+            response = api_client.get_dropping_odds_with_odds_and_events_response(sport=sport)
+            if not response:
+                logger.warning(
+                    "No dropping odds response sport=%s endpoint=/odds/1/dropping/%s "
+                    "reason=empty_response_or_http_error",
+                    sport,
+                    sport,
+                )
+                continue
+
+            events, odds_map = api_client.extract_events_and_odds_from_dropping_response(
+                response,
                 odds_extraction=True,
                 discovery_source="dropping_odds",
+                tracked_competitions=tracked_competitions,
             )
-
-            if events_all:
-                logger.info(f"Found {len(events_all)} events in odds/1/dropping/all endpoint")
-                events_all = filter_upcoming_events(events_all)
-                if events_all:
-                    processed_count, skipped_count = process_with_parallel_db_ops(
-                        events_all,
-                        odds_map_all,
-                        discovery_source="dropping_odds",
-                        max_workers=10,
+            response_eligible_count = len(events)
+            upcoming_events = filter_upcoming_events(events)
+            seen_event_ids = set(processed_event_ids)
+            events = []
+            duplicate_event_count = 0
+            for event in upcoming_events:
+                source_event_id = _event_id(event)
+                if source_event_id in seen_event_ids:
+                    duplicate_event_count += 1
+                    logger.debug(
+                        "Dropping feed rejected event source_event_id=%s "
+                        "reason=duplicate_event_in_run",
+                        source_event_id,
                     )
-                    total_processed += processed_count
-                    total_skipped += skipped_count
-                    for event in events_all:
-                        processed_event_ids.add(_event_id(event))
-                    logger.info(
-                        f"/dropping/all completed: processed {processed_count}/{len(events_all)} events, skipped {skipped_count} events"
-                    )
+                    continue
+                seen_event_ids.add(source_event_id)
+                events.append(event)
+            upcoming_unique_count = len(events)
+            event_id_keys = {str(_event_id(event)) for event in events}
+            event_ids = {_event_id(event) for event in events}
+            response_eligible_odds_count = len(odds_map)
+            eligible_odds_map = {}
+            for event_id, odds in odds_map.items():
+                if str(event_id) in event_id_keys:
+                    eligible_odds_map[str(event_id)] = odds
                 else:
-                    logger.warning("No upcoming events found for sport after filtering")
-            else:
-                logger.warning("No events found in odds/1/dropping/all endpoint")
-        else:
-            logger.error("Failed to get dropping odds with odds data from odds/1/dropping/all")
-
-        logger.info(f"Step 2: Fetching and processing {len(dropping_sports)} individual sports")
-        for sport in dropping_sports:
-            try:
-                logger.info(f"🔍 Fetching dropping odds for sport: {sport}")
-                response_sport = api_client.get_dropping_odds_with_odds_and_events_response(sport=sport)
-                if not response_sport:
-                    logger.warning(f"No response for sport {sport}, skipping")
-                    continue
-
-                events_sport, odds_map_sport = api_client.extract_events_and_odds_from_dropping_response(
-                    response_sport,
-                    odds_extraction=True,
-                    discovery_source="dropping_odds",
-                )
-                if not events_sport:
-                    logger.info(f"No events found for sport {sport}")
-                    continue
-
-                events_sport = filter_upcoming_events(events_sport)
-                if not events_sport:
-                    logger.info(f"No upcoming events for sport {sport} after filtering")
-                    continue
-
-                new_events = [event for event in events_sport if _event_id(event) not in processed_event_ids]
-                skipped_duplicates = len(events_sport) - len(new_events)
-                if skipped_duplicates > 0:
-                    logger.info(
-                        f"Sport {sport}: Skipping {skipped_duplicates} duplicate events already processed from odds/1/dropping/all"
+                    logger.debug(
+                        "Dropping feed excluded odds source_event_id=%s "
+                        "reason=no_upcoming_new_event",
+                        event_id,
                     )
-
-                if not new_events:
-                    logger.info(f"Sport {sport}: All events already processed, skipping")
-                    continue
-
-                new_odds_map = {
-                    str(event_id): odds_data
-                    for event_id, odds_data in odds_map_sport.items()
-                    if int(event_id) in [_event_id(event) for event in new_events]
-                }
-
-                logger.info(f"Sport {sport}: Processing {len(new_events)} new events (skipped {skipped_duplicates} duplicates)")
-                processed_count, skipped_count = process_with_parallel_db_ops(
-                    new_events,
-                    new_odds_map,
-                    discovery_source="dropping_odds",
-                    max_workers=10,
+            odds_map = eligible_odds_map
+            event_ids_with_odds = set(odds_map)
+            events_without_odds = [
+                _event_id(event)
+                for event in events
+                if str(_event_id(event)) not in event_ids_with_odds
+            ]
+            for source_event_id in events_without_odds:
+                logger.debug(
+                    "Dropping feed event has no odds entry source_event_id=%s "
+                    "reason=missing_odds_map_entry",
+                    source_event_id,
                 )
+            logger.info(
+                "Dropping feed selection "
+                "sport=%s eligible_events=%s rejected_by_time_filter=%s "
+                "upcoming_candidates=%s rejected_duplicate_events=%s upcoming_new_events=%s "
+                "eligible_odds=%s odds_without_upcoming_new_event=%s "
+                "odds_for_upcoming=%s events_without_odds=%s",
+                sport,
+                response_eligible_count,
+                response_eligible_count - len(upcoming_events),
+                len(upcoming_events),
+                duplicate_event_count,
+                upcoming_unique_count,
+                response_eligible_odds_count,
+                response_eligible_odds_count - len(odds_map),
+                len(odds_map),
+                len(events_without_odds),
+            )
+            if not events:
+                logger.info(
+                    "No dropping odds events to persist sport=%s "
+                    "reason=no_events_remained_after_eligibility_time_and_deduplication_filters",
+                    sport,
+                )
+                continue
 
-                total_processed += processed_count
-                total_skipped += skipped_count
-                for event in new_events:
-                    processed_event_ids.add(_event_id(event))
+            processed, skipped = process_with_parallel_db_ops(
+                events,
+                odds_map,
+                discovery_source="dropping_odds",
+                max_workers=10,
+                tracked_competitions=tracked_competitions,
+            )
+            totals["processed"] += processed
+            totals["skipped"] += skipped
+            processed_event_ids.update(event_ids)
+            logger.info(
+                "Dropping odds sport=%s processed=%s/%s skipped=%s",
+                sport,
+                processed,
+                len(events),
+                skipped,
+            )
+        except Exception:
+            logger.exception("Error processing dropping odds sport=%s", sport)
 
-                logger.info(f"Sport {sport} completed: processed {processed_count}/{len(new_events)} events, skipped {skipped_count} events")
-            except Exception as exc:
-                logger.error(f"Error processing sport {sport}: {exc}")
-
-        logger.info(f"Job A completed: Total processed {total_processed} events, total skipped {total_skipped} events")
-        logger.info(f"Total unique events processed: {len(processed_event_ids)}")
-    except Exception as exc:
-        logger.error(f"Error in Job A: {exc}")
+    logger.info(
+        "Dropping odds discovery complete processed=%s skipped=%s unique_events=%s",
+        totals["processed"],
+        totals["skipped"],
+        len(processed_event_ids),
+    )

@@ -118,33 +118,35 @@ All ingestion flows in the system run on this unified pipeline. Below are the ke
 * **Orchestration**: [extractor.py](../modules/jobs/daily_discovery/extractor.py) → `DailyDiscoveryExtractor.discover_events_for_date()`
 * **Persistence Helper**: [persistence.py](../modules/jobs/daily_discovery/persistence.py) → `persist_event_and_optional_odds(api_client, event, odds_data)`
 * **Odds Parsing**: [odds_parser.py](../modules/jobs/daily_discovery/odds_parser.py) → `parse_today_market_odds_response()`
-* **Filtering**: [filters.py](../modules/jobs/daily_discovery/filters.py) → `filter_events_starting_after_threshold(events, min_minutes_away=10)`
+* **Filtering**: [discovery_filters.py](../modules/jobs/discovery_filters.py) → `filter_upcoming_events(events, min_minutes_away=10)`
 
 **Flow Details:**
 1. Determines the current discovery slot (`AM` or `PM`) via `resolve_daily_discovery_slot()`.
-2. For each sport in `DEFAULT_DAILY_DISCOVERY_SPORTS`:
-   a. **Fetches odds feed** — `api_client.get_today_sport_events_odds_response(date, sport)` → SofaScore API `/sport/{sport}/odds/1/{date}`. The response is parsed by `parse_today_market_odds_response()` into a dict keyed by event ID, where each value is already adapter-normalized via `SofaScoreMarketAdapter.from_daily_odds_entry()`.
-   b. **Fetches scheduled tournaments** — paginates through `api_client.get_today_sport_events_response(date, sport, page)` → SofaScore API `/sport/{sport}/scheduled-tournaments/{date}/page/{page}`. Collects unique tournament IDs from the response.
-   c. **Fetches events per tournament** — for each unique tournament ID, calls `api_client.get_unique_tournament_scheduled_events(ut_id, date)` → SofaScore API `/unique-tournament/{id}/scheduled-events/{date}`. Aggregates all events.
-   d. **Filters upcoming events** — uses `filter_events_starting_after_threshold(all_events, min_minutes_away=10)` to identify events that have not started yet.
-   e. **Persists each event** — for each event, calls `persist_event_and_optional_odds(api_client, event, event_odds)`:
+2. Resolves configured canonical sports to SofaScore slugs through `modules/sports/catalog.py`.
+3. When `DISCOVERY_TRACKED_COMPETITIONS_ONLY=true` (default), loads each tracked canonical competition's SofaScore `source_tournament_id` and `source_unique_tournament_id` from its `competitions` row. When false, all competitions pass this scope check; sport filtering remains active.
+4. For each provider slug, paginates `/sport/{sport}/scheduled-tournaments/{date}/page/{page}` and compares each result's `tournament.id` and `tournament.uniqueTournament.id` with the corresponding source IDs from those rows.
+5. Calls `/unique-tournament/{id}/scheduled-events/{date}` only for tracked rows with a `source_unique_tournament_id`, because that endpoint requires the provider unique-tournament ID. It filters supported sports and tracked competitions before normalization.
+6. Requests `/sport/{sport}/odds/1/{date}` only when eligible events were found and parses odds for those event IDs only.
+7. Filters upcoming events with `filter_upcoming_events(all_events, min_minutes_away=10)`.
+8. Before persistence, `persist_event_and_optional_odds()` rechecks sport and the two provider IDs against tracked competition rows, then:
       1. Normalizes the raw event via `api_client.normalize_event_payload(event, discovery_source="daily_discovery")` → **Phase 1**.
       2. Upserts via `EventRepository.upsert_event(event_data)` → **Phase 2**.
       3. If odds data is available (event present in both the odds feed and the upcoming set), saves via `MarketOddsIngestionService.save_from_event_odds_response(db_event.id, odds_data, source="daily_discovery")` → **Phase 3**.
-   f. **Tracks progress** — updates `DailyDiscoveryRepository` status per sport.
+9. **Tracks progress** — updates `DailyDiscoveryRepository` status per provider sport slug.
 
 ### 2. Dropping Odds Discovery Job
 * **Runner**: [run_discover_dropping_odds.py](../modules/jobs/discover_dropping_odds/run_discover_dropping_odds.py) → `run_discover_dropping_odds()`
 * **Parallelism**: [discovery_optimization.py](../modules/jobs/parallelism/discovery_optimization.py) → `process_with_parallel_db_ops()`
 
 **Flow Details:**
-1. **Step 1 — Global Fetch**: calls `api_client.get_dropping_odds_with_odds_and_events_response()` → SofaScore API `/odds/1/dropping/all`.
-   * Extracts events and odds via `api_client.extract_events_and_odds_from_dropping_response(response, odds_extraction=True, discovery_source="dropping_odds")` ([discovery_feeds.py](../modules/sofascore/discovery_feeds.py)). This internally calls `normalize_event_payload()` on each event → **Phase 1**. Returns `(events_list, odds_map)`.
-   * Filters to upcoming-only via `filter_upcoming_events()` from [event_filters.py](../modules/jobs/parallelism/event_filters.py).
-   * Processes in parallel via `process_with_parallel_db_ops(events, odds_map, discovery_source="dropping_odds", max_workers=10)`. For each event in a `ThreadPoolExecutor`:
+1. Resolves `SUPPORTED_SPORTS` to unique SofaScore slugs and requests each `/odds/1/dropping/{sport}` feed. It no longer fetches `/odds/1/dropping/all` and then repeats the same work per sport.
+2. The feed extractor rejects unsupported sports and, when the toggle is enabled, untracked competition identities before event normalization. When both provider IDs are present, they must match the same tracked row; odds are retained only for accepted event IDs.
+3. Filters to upcoming-only via `filter_upcoming_events()`.
+4. Processes in parallel via `process_with_parallel_db_ops(events, odds_map, discovery_source="dropping_odds", max_workers=10)`. For each eligible event in a `ThreadPoolExecutor`:
      1. `EventRepository.upsert_event(event_data)` → **Phase 2**.
      2. `MarketOddsIngestionService.save_from_dropping_odds_map_entry(event.id, odds_map_entry, source="dropping_odds")` → **Phase 3**.
-2. **Step 2 — Per-Sport Fetch**: iterates individual sports (`football`, `basketball`, `volleyball`, etc.) via `/odds/1/dropping/{sport}`. Deduplicates against already-processed event IDs from Step 1. Processes new events via the same parallel pipeline.
+
+The runner logs the configured sport values, their canonical IDs, the canonical-to-SofaScore route pairs, and the endpoint paths it will request. The request log uses ✈️ and includes the resolved endpoint. INFO summaries report counts rejected for unsupported sports, missing or untracked competition IDs, malformed events, missing required fields, normalization errors, ineligible start times, duplicates, and odds without an eligible event. DEBUG logs include the source event ID and its specific rejection reason; persistence skips log their returned failure reason at INFO.
 
 ### 3. Secondary/Discovery Sources Job
 * **Runner**: [run_discover_secondary_sources.py](../modules/jobs/discover_secondary_sources/run_discover_secondary_sources.py) → `run_discover_secondary_sources()`
@@ -156,7 +158,8 @@ All ingestion flows in the system run on this unified pipeline. Below are the ke
 * **Optimized Processor**: [discovery_optimization.py](../modules/jobs/parallelism/discovery_optimization.py) → `process_odds_first()`, `process_events_only()`, `batch_upsert_events()`
 
 **Flow Details:**
-  * Each sub-runner fetches its respective SofaScore API endpoint and extracts raw events.
+  * Each sub-runner fetches its respective SofaScore API endpoint and extracts raw events. Provider routes are resolved from canonical `SUPPORTED_SPORTS` through `modules/sports/catalog.py` where the endpoint supports sport scoping.
+  * Extractors and shared persistence functions always apply the supported-sport scope and apply the tracked-competition scope when `DISCOVERY_TRACKED_COMPETITIONS_ONLY=true`. For aggregate feeds that cannot be scoped at request time, unsupported or untracked events are discarded as soon as the response is parsed.
   * For feeds that include embedded odds (dropping odds, winning odds), events and odds maps are extracted together.
   * For feeds that only contain event references (high value streaks, team streaks, H2H), `extract_events_from_high_value_streaks()` or similar extraction functions extract the raw event objects.
   * Team streaks events require an extra step: `parallel_team_event_fetching(team_ids)` fetches the nearest upcoming event for each team via `/team/{id}/near-events`, then normalizes each via `normalize_event_payload(event, discovery_source="team_streaks")`.

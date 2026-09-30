@@ -17,15 +17,17 @@ Unlike reactive discovery channels (such as dropping odds, high-value streaks, o
 
 ## Supported Sports
 
-Discovery accepts only sports listed in `Config.SUPPORTED_SPORTS` from [`config.py`](file:///c:/Users/gadie/Documents/projects/sofascore/infrastructure/settings/config.py). The daily job requests the following configured scopes:
+`SUPPORTED_SPORTS` is a set of canonical IDs such as `football`, `american_football`, and `ice_hockey`. Existing display labels in local environment files remain accepted during migration. Provider adapters translate these IDs into the exact request values: for example, SofaScore uses `american-football`, while Oddspapi uses its own slug and numeric sport ID. A provider route is never constructed by passing the canonical ID through unchanged.
 
-* `basketball`
-* `tennis`
-* `baseball`
-* `ice-hockey`
-* `american-football`
-* `football` (soccer)
-* `handball`
+The daily job derives its SofaScore sport routes from the configured IDs, removes duplicate routes (Tennis singles/doubles share `tennis`), and skips sports with no route for that provider.
+
+## Tracked competitions
+
+`DISCOVERY_TRACKED_COMPETITIONS_ONLY` defaults to `true`. When enabled, canonical IDs in [`tracked_competitions.py`](../../modules/competition/tracked_competitions.py) select rows in `competitions`; the job reads both `source_tournament_id` and `source_unique_tournament_id` from each SofaScore row and compares them with `tournament.id` and `tournament.uniqueTournament.id` in the provider payload. Daily discovery requests details only for rows with a matching `uniqueTournament.id`, then checks returned events again before normalization and persistence. When disabled, the checks are observed but not enforced, and all competitions remain eligible for configured sports. `SUPPORTED_SPORTS` remains enforced in either mode. Odds payloads are reduced to eligible event IDs.
+
+Daily discovery logs the tracked filter mode and provider ID pair count, then reports tournament and event counts by filter outcome. When the toggle is disabled, it loads the tracked provider IDs for an observation-only comparison: `would_reject_*` counts show what the filter would exclude while all otherwise eligible tournaments and events continue through discovery.
+
+Aggregate SofaScore feeds cannot be requested for one competition, so they are filtered immediately after the response and before event normalization. Oddspapi's fixtures endpoint accepts sport and time scope, not competition scope; fixture mappings and candidate matching are therefore restricted to tracked canonical competitions, and untracked resolutions are rejected before persistence. There is no second tracked-competition environment toggle: the allowlist is the policy source.
 
 ---
 
@@ -70,11 +72,12 @@ flowchart TD
     C --> D[Paginate Scheduled Tournaments]
     D --> E[Collect Unique Tournament IDs]
     E --> F[Fetch Scheduled Events per Tournament]
-    F --> G[Filter Upcoming Matches Threshold >= 10m]
-    G --> H[Iterate Events & Match with Odds]
-    H --> I[Upsert Canonical Event discovery_source='daily_discovery']
-    I --> J[Snapshot & Upsert Market Odds]
-    J --> K[Mark Sport Completed in DailyDiscoveryRepository]
+    F --> G[Filter Supported Sports and Tracked Competitions]
+    G --> H[Filter Upcoming Matches Threshold >= 10m]
+    H --> I[Iterate Events & Match with Odds]
+    I --> J[Upsert Canonical Event discovery_source='daily_discovery']
+    J --> K[Snapshot & Upsert Market Odds]
+    K --> L[Mark Sport Completed in DailyDiscoveryRepository]
 ```
 
 ### Detailed Pipeline Steps
@@ -86,15 +89,16 @@ flowchart TD
 2. **Tournament Pagination**:
    * Calls `api_client.get_today_sport_events_response(date, sport, page)` starting at page 1.
    * Traverses scheduled items and inspects `timezoneEventCount` to ensure active event volume.
-   * Extracts `uniqueTournament.id` until `hasNextPage` is false.
+   * Compares each scheduled tournament's provider IDs with both source IDs from the tracked competition rows. It retains the matching `uniqueTournament.id`, which the detail endpoint requires.
    * If page 1 fails to respond, the sport is recorded as `failed` in `DailyDiscoveryRepository` and execution moves to the next sport.
 3. **Tournament Event Gathering**:
-   * Iterates unique tournament IDs and calls `api_client.get_unique_tournament_scheduled_events(ut_id, date)`.
-   * Aggregates all discovered match payloads.
+   * Iterates the retained provider unique-tournament IDs and calls `api_client.get_unique_tournament_scheduled_events(ut_id, date)`.
+   * Requests event details only for tracked tournaments, then rejects unsupported sports and untracked competitions before normalization. Aggregates only eligible match payloads.
 4. **Temporal Threshold Filtering**:
-   * Runs `filter_events_starting_after_threshold(all_events, min_minutes_away=10)`.
+   * Runs `filter_upcoming_events(all_events, min_minutes_away=10)` from the shared discovery filters.
    * Converts each event's `startTimestamp` into a UTC-aware instant and ensures `event_start >= utc_now() + timedelta(minutes=10)`. Events that have already started or are within 10 minutes of kickoff are excluded from odds snapshotting.
 5. **Persistence (`persist_event_and_optional_odds`)**:
+   * Rechecks the supported-sport and tracked-competition scope before normalization, so direct callers cannot bypass the discovery filters.
    * Extracts canonical metadata via `api_client.get_event_information(event, discovery_source='daily_discovery')`.
    * Persists the canonical event record via `EventRepository.upsert_event(event_data)`.
    * If the event is upcoming and present in the odds feed, creates an odds snapshot and upserts market odds via `OddsRepository.create_odds_snapshot` and `OddsRepository.upsert_event_odds`.

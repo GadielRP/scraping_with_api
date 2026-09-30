@@ -14,13 +14,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from infrastructure.persistence.models import Event
+from infrastructure.settings import Config
 from infrastructure.persistence.repositories.event_source_mapping_repository import (
     EventSourceMappingRepository,
 )
 from infrastructure.persistence.repositories.event_source_resolution_queue_repository import (
     EventSourceResolutionQueueRepository,
 )
-from infrastructure.settings import Config
 from modules.competition.tracked_competitions import (
     tracked_competition_ids as get_tracked_competition_ids,
 )
@@ -263,7 +263,6 @@ class OddspapiFixtureBatchProcessor:
         persistence_writer: Callable | None = None,
         chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
         keep_resolutions: bool = False,
-        tracked_competitions_only: bool | None = None,
     ) -> None:
         self.resolver = resolver
         self.candidate_pool_loader = candidate_pool_loader or OddspapiCandidatePool.load
@@ -272,12 +271,10 @@ class OddspapiFixtureBatchProcessor:
         if self.chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         self.keep_resolutions = keep_resolutions
-        if tracked_competitions_only is None:
-            tracked_competitions_only = (
-                Config.ODDSPAPI_FIXTURE_DISCOVERY_TRACKED_COMPETITIONS_ONLY
-            )
         self.tracked_competition_ids = (
-            get_tracked_competition_ids() if tracked_competitions_only else None
+            get_tracked_competition_ids()
+            if Config.DISCOVERY_TRACKED_COMPETITIONS_ONLY
+            else None
         )
         if matcher is not None:
             self.resolver._candidate_matcher = matcher

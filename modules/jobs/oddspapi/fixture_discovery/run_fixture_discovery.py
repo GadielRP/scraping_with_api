@@ -13,14 +13,16 @@ from modules.oddspapi.runtime import (
     oddspapi_account_usage_refresh_enabled,
     refresh_oddspapi_account_usage_if_due,
 )
-from modules.jobs.discovery_filters import is_supported_sport_name
+from modules.sports.catalog import (
+    canonical_sport_id,
+    oddspapi_sport_ids,
+)
 
 from .constants import (
     DEFAULT_LOOKAHEAD_DAYS,
     DEFAULT_PERSISTENCE_CHUNK_SIZE,
     DEFAULT_PERSIST_QUEUE,
     DEFAULT_STATUS_ID,
-    DISCOVERY_SPORT_IDS,
 )
 from .fixture_discovery_job import OddspapiFixtureDiscoveryJob
 from .response_utils import as_utc_datetime
@@ -39,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--to-date", type=_parse_datetime_argument)
     parser.add_argument("--date", type=str, help="UTC calendar day, YYYY-MM-DD")
     parser.add_argument("--lookahead-days", type=int, default=DEFAULT_LOOKAHEAD_DAYS)
-    parser.add_argument("--sports", type=str, help="Comma-separated sport slugs")
+    parser.add_argument("--sports", type=str, help="Comma-separated canonical sport IDs or provider aliases")
     parser.add_argument("--status-id", type=int, default=DEFAULT_STATUS_ID)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Do not write mappings or queue rows")
@@ -78,26 +80,18 @@ def _resolve_window(args: argparse.Namespace) -> tuple[datetime, datetime]:
 
 
 def _resolve_sports(value: str | None) -> dict[str, int]:
-    if not value:
-        return {
-            slug: sport_id
-            for slug, sport_id in DISCOVERY_SPORT_IDS.items()
-            if is_supported_sport_name(slug)
-        }
-    requested = [slug.strip().casefold() for slug in value.split(",") if slug.strip()]
-    unknown = [slug for slug in requested if slug not in DISCOVERY_SPORT_IDS]
+    if value is None:
+        return oddspapi_sport_ids()
+    requested = [sport.strip().casefold() for sport in value.split(",") if sport.strip()]
+    requested_ids = [canonical_sport_id(sport) for sport in requested]
+    unknown = [sport for sport, sport_id in zip(requested, requested_ids) if sport_id is None]
     if unknown:
         raise ValueError(
-            f"unknown sport slug(s): {', '.join(unknown)}; "
-            f"supported: {', '.join(DISCOVERY_SPORT_IDS)}"
+            f"unknown sport(s): {', '.join(unknown)}; use canonical sport IDs or provider aliases"
         )
     if not requested:
-        raise ValueError("--sports must contain at least one sport slug")
-    return {
-        slug: DISCOVERY_SPORT_IDS[slug]
-        for slug in requested
-        if is_supported_sport_name(slug)
-    }
+        raise ValueError("--sports must contain at least one sport")
+    return oddspapi_sport_ids(requested_ids)
 
 
 def current_utc_day_window(
@@ -161,7 +155,7 @@ def run_fixture_discovery_job(
     try:
         return OddspapiFixtureDiscoveryJob(
             client=runtime_client,
-            sports=sports or dict(DISCOVERY_SPORT_IDS),
+            sports=(oddspapi_sport_ids() if sports is None else sports),
             create_mappings=create_mappings,
             persist_queue=persist_queue,
             status_id=status_id,

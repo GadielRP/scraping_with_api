@@ -27,7 +27,7 @@ from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_disc
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
 from modules.jobs.midnight_sync_job import run_midnight_sync_job
-from modules.jobs.oddspapi.fixture_discovery.constants import DISCOVERY_SPORT_IDS
+from modules.sports.catalog import oddspapi_sport_ids
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.jobs.pre_start_check_job.run_pre_start_check_job import run_pre_start_check_job
 from modules.jobs.pre_start_check_job.run_t_minus_one_odds_job import (
@@ -407,7 +407,7 @@ class JobScheduler:
         scheduled_local_date = scheduled_local_date or local_now.strftime("%Y-%m-%d")
         scheduled_time = scheduled_time or local_now.strftime("%H:%M")
         sport_scope = OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-            kwargs.get("sports") or DISCOVERY_SPORT_IDS
+            kwargs.get("sports") if kwargs.get("sports") is not None else oddspapi_sport_ids()
         )
 
         # If target_date is not explicitly passed (or is forwarded as None by
@@ -650,7 +650,7 @@ class JobScheduler:
                 if OddspapiFixtureDiscoveryRunRepository.has_success(
                     target_date,
                     sport_scope=OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-                        DISCOVERY_SPORT_IDS
+                        oddspapi_sport_ids()
                     ),
                 ):
                     continue

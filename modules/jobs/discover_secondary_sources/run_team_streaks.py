@@ -5,12 +5,17 @@ from __future__ import annotations
 import logging
 
 from modules.sofascore import api_client
+from modules.competition.discovery_scope import load_tracked_source_competitions
 from modules.jobs.parallelism import parallel_team_event_fetching
 
 logger = logging.getLogger(__name__)
 
 
-def run_team_streaks():
+def run_team_streaks(tracked_competitions=None):
+    if tracked_competitions is None:
+        tracked_competitions = load_tracked_source_competitions("sofascore")
+    if tracked_competitions is not None and not tracked_competitions:
+        return []
     response = api_client.get_team_streaks_events()
     if not response:
         logger.error("Failed to get team streaks events")
@@ -22,7 +27,11 @@ def run_team_streaks():
         return []
 
     logger.info(f"Found {len(team_ids)} teams in team streaks response")
-    return parallel_team_event_fetching(team_ids, max_workers=10)
+    return parallel_team_event_fetching(
+        team_ids,
+        max_workers=10,
+        tracked_competitions=tracked_competitions,
+    )
 
 def get_team_ids_from_team_streaks(response: Dict) -> List[int]:
     team_ids: List[int] = []

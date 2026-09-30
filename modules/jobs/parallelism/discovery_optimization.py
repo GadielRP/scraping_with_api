@@ -9,11 +9,19 @@ from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.persistence.repositories import EventSourceMappingRepository
+from modules.competition.discovery_scope import (
+    filter_tracked_source_events,
+    is_tracked_source_event,
+    load_tracked_source_competitions,
+)
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from modules.jobs.discovery_filters import filter_supported_sports, is_supported_sport
+from modules.jobs.discovery_filters import (
+    filter_supported_sofascore_events,
+    is_supported_sofascore_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +34,27 @@ def _event_id(event_data: Dict) -> int:
     return _event_payload(event_data)["id"]
 
 
-def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> List[Dict]:
+def _eligible_discovery_events(events, tracked_competitions=None):
+    supported = filter_supported_sofascore_events(events)
+    if not supported:
+        return []
+    if tracked_competitions is None:
+        tracked_competitions = load_tracked_source_competitions("sofascore")
+    return filter_tracked_source_events(supported, tracked_competitions)
+
+
+def parallel_team_event_fetching(
+    team_ids: List[int],
+    max_workers: int = 5,
+    *,
+    tracked_competitions=None,
+) -> List[Dict]:
     """Fetch nearest events for multiple teams in parallel."""
+    tracked_competitions = (
+        tracked_competitions
+        if tracked_competitions is not None
+        else load_tracked_source_competitions("sofascore")
+    )
 
     def fetch_team_event(team_id: int) -> Optional[Dict]:
         try:
@@ -36,16 +63,20 @@ def parallel_team_event_fetching(team_ids: List[int], max_workers: int = 5) -> L
                 logger.debug("No nearest event found for team %s", team_id)
                 return None
 
+            if not is_supported_sofascore_event(event_response):
+                logger.debug(
+                    "Skipping unsupported sport event %s for team %s",
+                    _event_payload(event_response).get("id"),
+                    team_id,
+                )
+                return None
+            if not is_tracked_source_event(event_response, tracked_competitions):
+                logger.debug("Skipping untracked SofaScore event for team %s", team_id)
+                return None
+
             event_data = api_client.normalize_event_payload(event_response, discovery_source="team_streaks")
             if not event_data:
                 logger.debug("Failed to structure event data for team %s", team_id)
-                return None
-            if not is_supported_sport(event_data):
-                logger.debug(
-                    "Skipping unsupported sport event %s for team %s",
-                    _event_payload(event_data).get("id"),
-                    team_id,
-                )
                 return None
             logger.debug("Fetched event %s for team %s", _event_payload(event_data).get("id"), team_id)
             return event_data
@@ -132,10 +163,10 @@ def _mark_missing_sofascore_odds(
     )
 
 
-def batch_upsert_events(events: List[Dict]) -> int:
+def batch_upsert_events(events: List[Dict], *, tracked_competitions=None) -> int:
     """Upsert multiple events efficiently."""
     upserted_count = 0
-    for event_data in filter_supported_sports(events):
+    for event_data in _eligible_discovery_events(events, tracked_competitions):
         try:
             event = EventRepository.upsert_event(event_data)
             if event:
@@ -145,14 +176,23 @@ def batch_upsert_events(events: List[Dict]) -> int:
     return upserted_count
 
 
-def batch_process_odds(events_with_odds: Dict[str, Dict], events: List[Dict]) -> Tuple[int, int]:
+def batch_process_odds(
+    events_with_odds: Dict[str, Dict],
+    events: List[Dict],
+    *,
+    tracked_competitions=None,
+) -> Tuple[int, int]:
     """Process odds data for multiple events efficiently."""
+    if not events:
+        return 0, 0
     processed_count = 0
     skipped_count = 0
 
-    supported_events = filter_supported_sports(events)
-    skipped_count += len(events) - len(supported_events)
-    for event_data in supported_events:
+    eligible_events = _eligible_discovery_events(events, tracked_competitions)
+    if not eligible_events:
+        return 0, len(events)
+    skipped_count += len(events) - len(eligible_events)
+    for event_data in eligible_events:
         sofascore_event_id = str(_event_id(event_data))
         odds_response = events_with_odds.get(sofascore_event_id) or events_with_odds.get(int(sofascore_event_id))
         if not odds_response:
@@ -187,6 +227,8 @@ def process_odds_first(
     events: List[Dict],
     discovery_source: str = None,
     max_workers: int = 5,
+    *,
+    tracked_competitions=None,
 ) -> Tuple[int, int]:
     """Check odds BEFORE upserting. Only persist events that have valid odds.
 
@@ -194,7 +236,7 @@ def process_odds_first(
     orphaned season cleanup queries entirely.
     """
     original_count = len(events)
-    events = filter_supported_sports(events)
+    events = _eligible_discovery_events(events, tracked_competitions)
     unsupported_count = original_count - len(events)
     if not events:
         return 0, original_count
@@ -231,6 +273,7 @@ def process_odds_first(
     processed_count, skipped_count = batch_process_odds(
         fetch_summary.odds_by_source_event_id,
         valid_events,
+        tracked_competitions=tracked_competitions,
     )
     skipped_count += skipped_before_persistence + unsupported_count
 
@@ -242,6 +285,8 @@ def process_with_parallel_db_ops(
     odds_map: Dict,
     discovery_source: str = None,
     max_workers: int = 5,
+    *,
+    tracked_competitions=None,
 ) -> Tuple[int, int]:
     """Process events with pre-fetched odds using parallel database operations."""
 
@@ -270,7 +315,7 @@ def process_with_parallel_db_ops(
             return False, f"Error processing event {_event_payload(event_data).get('id')}: {exc}"
 
     original_count = len(events)
-    events = filter_supported_sports(events)
+    events = _eligible_discovery_events(events, tracked_competitions)
     processed_count = 0
     skipped_count = original_count - len(events)
     if not events:
@@ -284,7 +329,7 @@ def process_with_parallel_db_ops(
                 if success:
                     processed_count += 1
                 else:
-                    logger.debug(reason)
+                    logger.info("Event skipped during discovery persistence: %s", reason)
                     skipped_count += 1
             except Exception as exc:
                 event_data = future_to_event[future]
@@ -297,11 +342,12 @@ def process_with_parallel_db_ops(
 def process_events_only(
     events: List[Dict],
     discovery_source: str = None,
-    max_workers: int = 10,
+    *,
+    tracked_competitions=None,
 ) -> Tuple[int, int]:
     """Process events without fetching odds."""
     original_count = len(events)
-    upserted_count = batch_upsert_events(events)
+    upserted_count = batch_upsert_events(events, tracked_competitions=tracked_competitions)
     logger.info("%s events processed: %s/%s events upserted", discovery_source, upserted_count, original_count)
     return upserted_count, original_count - upserted_count
 

@@ -8,21 +8,10 @@ import logging
 from typing import Any
 
 from infrastructure.settings import Config
+from modules.sports.catalog import sport_display_name
 from shared.temporal import as_utc, in_timezone
 
 logger = logging.getLogger(__name__)
-
-
-ODDSPAPI_SPORT_NAME_TO_INTERNAL = {
-    "soccer": "Football",
-    "football": "Football",
-    "basketball": "Basketball",
-    "baseball": "Baseball",
-    "ice hockey": "Ice hockey",
-    "hockey": "Ice hockey",
-    "tennis": "Tennis",
-    "volleyball": "Volleyball",
-}
 
 
 def _normalize_optional_text(value: Any) -> str | None:
@@ -54,7 +43,7 @@ def _normalize_sport_name(value: Any) -> str | None:
     sport_name = _normalize_optional_text(value)
     if sport_name is None:
         return None
-    return ODDSPAPI_SPORT_NAME_TO_INTERNAL.get(sport_name.casefold(), sport_name)
+    return sport_display_name(sport_name) or sport_name
 
 
 @dataclass
