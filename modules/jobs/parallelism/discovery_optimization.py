@@ -18,10 +18,8 @@ from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from modules.jobs.discovery_filters import (
-    filter_supported_sofascore_events,
-    is_supported_sofascore_event,
-)
+from modules.jobs.discovery_filters import filter_supported_sofascore_events
+from modules.sports.catalog import is_supported_sofascore_event
 
 logger = logging.getLogger(__name__)
 

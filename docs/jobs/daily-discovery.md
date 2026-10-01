@@ -17,7 +17,7 @@ Unlike reactive discovery channels (such as dropping odds, high-value streaks, o
 
 ## Supported Sports
 
-`SUPPORTED_SPORTS` is a set of canonical IDs such as `football`, `american_football`, and `ice_hockey`. Existing display labels in local environment files remain accepted during migration. Provider adapters translate these IDs into the exact request values: for example, SofaScore uses `american-football`, while Oddspapi uses its own slug and numeric sport ID. A provider route is never constructed by passing the canonical ID through unchanged.
+`SUPPORTED_SPORTS` is a set of canonical IDs such as `football`, `american_football`, and `ice_hockey`. The catalog also normalizes display names and provider aliases at input boundaries. Provider adapters translate canonical IDs into exact request values: for example, SofaScore uses `american-football`, while Oddspapi uses its own slug and numeric sport ID. A provider route is never constructed by passing the canonical ID through unchanged.
 
 The daily job derives its SofaScore sport routes from the configured IDs, removes duplicate routes (Tennis singles/doubles share `tennis`), and skips sports with no route for that provider.
 

@@ -10,8 +10,8 @@ from modules.competition.discovery_scope import (
     is_tracked_source_event,
     load_tracked_source_competitions,
 )
-from modules.jobs.discovery_filters import is_supported_sofascore_event
 from modules.odds_ingestion import MarketOddsIngestionService
+from modules.sports.catalog import is_supported_sofascore_event
 
 logger = logging.getLogger(__name__)
 

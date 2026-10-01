@@ -56,7 +56,7 @@ def canonical_sport_id(value: object) -> str | None:
 
 
 def configured_sport_ids(supported_sports: Collection[str] | None = None) -> frozenset[str]:
-    """Read SUPPORTED_SPORTS as canonical IDs while accepting legacy labels."""
+    """Resolve configured IDs, display names, and provider aliases to canonical IDs."""
     if supported_sports is None:
         from infrastructure.settings import Config
 
@@ -187,11 +187,6 @@ def sport_display_name(value: object) -> str | None:
     return _SPORTS_BY_ID[sport_id].display_name if sport_id else None
 
 
-ODDSPAPI_DISCOVERY_SPORT_IDS = {
-    sport.oddspapi_slug: sport.oddspapi_id
-    for sport in _SPORTS
-    if sport.oddspapi_slug and sport.oddspapi_id is not None
-}
 _ODDSPAPI_IDS_TO_SPORT_IDS: dict[int, str] = {}
 for _sport in _SPORTS:
     if _sport.oddspapi_id is not None:

@@ -6,10 +6,7 @@ import logging
 from typing import Dict, Iterable, List
 
 from infrastructure.settings import Config
-from modules.sports.catalog import (
-    is_supported_sofascore_event,
-    is_supported_sport_name,
-)
+from modules.sports.catalog import is_supported_sofascore_event
 from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -118,6 +115,4 @@ def filter_upcoming_events(events: List[Dict], min_minutes_away: int = 10) -> Li
 __all__ = [
     "filter_supported_sofascore_events",
     "filter_upcoming_events",
-    "is_supported_sofascore_event",
-    "is_supported_sport_name",
 ]

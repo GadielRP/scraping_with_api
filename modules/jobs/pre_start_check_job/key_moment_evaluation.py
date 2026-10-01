@@ -14,7 +14,6 @@ from infrastructure.persistence.repositories import (
 )
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.jobs.discovery_filters import is_supported_sport_name
 from modules.jobs.pre_start_check_job.alert_pipeline import (
     evaluate_and_dispatch_alerts_batch,
 )
@@ -31,6 +30,7 @@ from modules.pillars.competition_metadata_resolver import (
 )
 from modules.pillars.context import EventContext, build_event_context
 from modules.sofascore import api_client
+from modules.sports.catalog import is_supported_sport_name
 from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)

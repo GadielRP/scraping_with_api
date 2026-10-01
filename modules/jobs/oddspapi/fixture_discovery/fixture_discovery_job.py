@@ -11,7 +11,6 @@ from infrastructure.persistence.database import db_manager
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.exceptions import OddsPapiError, OddsPapiHttpError
 from modules.sports.catalog import (
-    ODDSPAPI_DISCOVERY_SPORT_IDS,
     configured_sport_ids,
     oddspapi_sport_ids,
     oddspapi_sport_id_for_fixture,
@@ -134,9 +133,7 @@ class OddspapiFixtureDiscoveryJob:
         self.sports = {
             sport_slug: sport_id
             for sport_slug, sport_id in requested_sports.items()
-            if sport_slug in allowed_sports
-            and sport_slug in ODDSPAPI_DISCOVERY_SPORT_IDS
-            and sport_id == ODDSPAPI_DISCOVERY_SPORT_IDS[sport_slug]
+            if allowed_sports.get(sport_slug) == sport_id
         }
         self.create_mappings = create_mappings
         self.persist_queue = persist_queue

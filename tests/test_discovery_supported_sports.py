@@ -20,7 +20,7 @@ from modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job import (
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import _resolve_sports
 from modules.jobs.discovery_filters import filter_upcoming_events
 from modules.sports.catalog import (
-    ODDSPAPI_DISCOVERY_SPORT_IDS,
+    oddspapi_sport_ids,
     sofascore_sport_slugs,
     sofascore_sport_routes,
 )
@@ -385,7 +385,7 @@ def test_canonical_sports_resolve_to_each_providers_exact_scope(monkeypatch):
         ("handball", "handball"),
     ]
     assert {
-        slug: ODDSPAPI_DISCOVERY_SPORT_IDS[slug]
+        slug: oddspapi_sport_ids()[slug]
         for slug in ("american-football", "tennis", "handball")
     } == {
         "american-football": 14,
@@ -394,7 +394,7 @@ def test_canonical_sports_resolve_to_each_providers_exact_scope(monkeypatch):
     }
 
 
-def test_legacy_sport_labels_normalize_and_dropping_adapter_uses_provider_slug(monkeypatch, caplog):
+def test_display_sport_labels_normalize_and_dropping_adapter_uses_provider_slug(monkeypatch, caplog):
     monkeypatch.setattr(
         Config,
         "SUPPORTED_SPORTS",

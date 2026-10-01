@@ -32,7 +32,6 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
-from modules.jobs.discovery_filters import is_supported_sport_name
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
     build_pre_start_event_candidates,
 )
@@ -46,6 +45,7 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
     start_oddsportal_scrape_for_events,
 )
+from modules.sports.catalog import is_supported_sport_name
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.sofascore import api_client
