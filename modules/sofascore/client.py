@@ -774,6 +774,7 @@ class SofaScoreAPI:
         deferred_deletion_event_ids: set[int] | None = None,
         on_not_started: str = "ignore",
         also_parse_result: bool = False,
+        log_result_diagnostics: bool = False,
     ) -> Optional[Dict]:
         return get_event_results(
             self,
@@ -788,6 +789,7 @@ class SofaScoreAPI:
             deferred_deletion_event_ids=deferred_deletion_event_ids,
             on_not_started=on_not_started,
             also_parse_result=also_parse_result,
+            log_result_diagnostics=log_result_diagnostics,
         )
 
     def extract_results_from_response(

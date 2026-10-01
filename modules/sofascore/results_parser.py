@@ -223,12 +223,31 @@ def _extract_score_payload(
                 home_penalties = home_score_data.get("penalties")
                 away_penalties = away_score_data.get("penalties")
         else:
-            home_score = home_score_data.get("normaltime")
-            away_score = away_score_data.get("normaltime")
-            # Fallback for amateur leagues that only provide 'display'/'current'
-            if home_score is None and away_score is None:
-                home_score = home_score_data.get("display", home_score_data.get("current"))
-                away_score = away_score_data.get("display", away_score_data.get("current"))
+            home_normaltime = home_score_data.get("normaltime")
+            away_normaltime = away_score_data.get("normaltime")
+            if home_normaltime is not None and away_normaltime is not None:
+                home_score = home_normaltime
+                away_score = away_normaltime
+            else:
+                # Use a complete display/current pair if normaltime is missing
+                # on either side. Mixing a single normaltime value with a
+                # display value can combine scores from different phases.
+                home_fallback = (
+                    home_score_data.get("display")
+                    if home_score_data.get("display") is not None
+                    else home_score_data.get("current")
+                )
+                away_fallback = (
+                    away_score_data.get("display")
+                    if away_score_data.get("display") is not None
+                    else away_score_data.get("current")
+                )
+                if home_fallback is not None and away_fallback is not None:
+                    home_score = home_fallback
+                    away_score = away_fallback
+                else:
+                    home_score = home_normaltime
+                    away_score = away_normaltime
     else:
         home_score = (
             home_score_data.get("display")
@@ -390,13 +409,33 @@ def parse_event_result(
             )
             return ParsedEventResult(kind="not_started", **base_kwargs)
 
-        if status_code not in FINISHED_EVENT_STATUS_CODES or status_type != "finished":
+        if status_type != "finished":
             logger.info(
                 "Event not finished yet - status: %s, event_id: %s",
                 status_description_raw,
                 event_id,
             )
             return ParsedEventResult(kind="in_progress", **base_kwargs)
+
+        is_known_finished_status = status_code in FINISHED_EVENT_STATUS_CODES
+        is_unknown_but_terminal_status = (
+            status_code not in FINISHED_EVENT_STATUS_CODES
+            and status_code not in DELETABLE_EVENT_STATUS_CODES
+        )
+        if not is_known_finished_status and not is_unknown_but_terminal_status:
+            # A terminal-looking type must not override a known cancellation,
+            # postponement, or walkover code that wasn't classified as deletable.
+            return ParsedEventResult(kind="in_progress", **base_kwargs)
+
+        if is_unknown_but_terminal_status:
+            winner_code = event_data.get("winnerCode")
+            if isinstance(winner_code, bool) or winner_code not in {1, 2, 3}:
+                logger.warning(
+                    "Unknown terminal status code %s has no recognized winnerCode - event_id: %s",
+                    status_code,
+                    event_id,
+                )
+                return ParsedEventResult(kind="unparseable", **base_kwargs)
 
         if is_finished_event_without_score(event_data):
             logger.info(
@@ -416,6 +455,26 @@ def parse_event_result(
         )
         if result_data is None:
             return ParsedEventResult(kind="unparseable", **base_kwargs)
+
+        if is_unknown_but_terminal_status:
+            winner_by_code = {1: "1", 2: "2", 3: "X"}[event_data["winnerCode"]]
+            score_winner = (
+                "X"
+                if result_data["home_score"] == result_data["away_score"]
+                else "1"
+                if result_data["home_score"] > result_data["away_score"]
+                else "2"
+            )
+            if winner_by_code != score_winner:
+                logger.warning(
+                    "Unknown terminal status code %s has winnerCode %s inconsistent with parsed score %s-%s - event_id: %s",
+                    status_code,
+                    event_data["winnerCode"],
+                    result_data["home_score"],
+                    result_data["away_score"],
+                    event_id,
+                )
+                return ParsedEventResult(kind="unparseable", **base_kwargs)
 
         return ParsedEventResult(kind="finished", result=result_data, **base_kwargs)
     except Exception as exc:

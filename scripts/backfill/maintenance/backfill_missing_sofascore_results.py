@@ -71,6 +71,14 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Call SofaScore and report would-be upserts/deletions without persisting them.",
     )
+    parser.add_argument(
+        "--show-raw-score-status",
+        action="store_true",
+        help=(
+            "For responses without a parsed result, log the raw SofaScore status, "
+            "homeScore, awayScore, and winnerCode fields."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     if args.limit < 1:
@@ -151,7 +159,12 @@ def _select_candidates(*, limit: int, min_age_days: int, after_event_id: int):
     return rows
 
 
-def _process_batch(rows: list[tuple[Event, str]], *, dry_run: bool) -> dict[str, int]:
+def _process_batch(
+    rows: list[tuple[Event, str]],
+    *,
+    dry_run: bool,
+    show_raw_score_status: bool = False,
+) -> dict[str, int]:
     stats = {
         "results_saved": 0,
         "results_would_save": 0,
@@ -172,6 +185,7 @@ def _process_batch(rows: list[tuple[Event, str]], *, dry_run: bool) -> dict[str,
                 deferred_deletion_event_ids=deferred_deletion_ids,
                 on_not_started="delete",
                 update_event_info=not dry_run,
+                log_result_diagnostics=show_raw_score_status,
             )
             if not result_data:
                 if event.id not in deferred_deletion_ids:
@@ -263,7 +277,11 @@ def main() -> int:
     }
     for offset in range(0, len(rows), args.batch_size):
         batch = rows[offset : offset + args.batch_size]
-        batch_stats = _process_batch(batch, dry_run=args.dry_run)
+        batch_stats = _process_batch(
+            batch,
+            dry_run=args.dry_run,
+            show_raw_score_status=args.show_raw_score_status,
+        )
         for key, value in batch_stats.items():
             totals[key] += value
         logger.info(

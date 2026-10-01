@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Dict, List, Optional
 
+from infrastructure.settings import Config
 from infrastructure.persistence.repositories import EventRepository, SeasonRepository, EventSourceMappingRepository
 from modules.observations import sport_observation_service
 from modules.observations.sofascore_extractor import extract_observations_from_sofascore_response
@@ -193,7 +195,15 @@ def get_event_results(
     deferred_deletion_event_ids: set[int] | None = None,
     on_not_started: str = "ignore",
     also_parse_result: bool = False,
+    log_result_diagnostics: bool = False,
 ) -> EventResultsResponse:
+    log_result_diagnostics = bool(
+        log_result_diagnostics
+        or getattr(Config, "global_debug_mode", False)
+        or getattr(client, "debug_mode", False)
+        or getattr(client, "challenge_evidence_enabled", False)
+    )
+
     def _empty_response() -> EventResultsResponse:
         return (None, None) if return_snapshot else None
 
@@ -288,6 +298,8 @@ def get_event_results(
 
             if also_parse_result:
                 parsed = parse_event_result(response)
+                if log_result_diagnostics and parsed.kind != "finished":
+                    _log_result_parse_diagnostics(event_id, response, parsed.kind)
                 return timing_result, parsed
 
             if return_snapshot:
@@ -304,6 +316,8 @@ def get_event_results(
             )
 
         parsed = parse_event_result(response)
+        if log_result_diagnostics and parsed.kind != "finished":
+            _log_result_parse_diagnostics(event_id, response, parsed.kind)
         if parsed.kind == "canceled":
             deletion_reason = (
                 "walkover"
@@ -343,3 +357,20 @@ def get_event_results(
     except Exception as exc:
         logger.error("Error fetching event results for %s: %s", event_id, exc)
         return _empty_response()
+
+
+def _log_result_parse_diagnostics(event_id: int, response: Dict, parsed_kind: str) -> None:
+    """Log raw SofaScore status and score fields when a result was not parsed."""
+    event_data = response.get("event") or {}
+    payload = {
+        "status": event_data.get("status"),
+        "homeScore": event_data.get("homeScore"),
+        "awayScore": event_data.get("awayScore"),
+        "winnerCode": event_data.get("winnerCode"),
+    }
+    logger.warning(
+        "Result parse diagnostics: sofascore_event_id=%s classification=%s raw=%s",
+        event_id,
+        parsed_kind,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
+    )
