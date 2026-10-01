@@ -123,3 +123,6 @@ def filter_tracked_source_events(
         for event in events or ()
         if is_tracked_source_event(event, tracked_competitions)
     ]
+
+# Omitted scope loads configuration; explicit None means filtering is disabled.
+UNRESOLVED_SCOPE = object()

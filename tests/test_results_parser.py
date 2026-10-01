@@ -61,7 +61,7 @@ def test_real_walkover_tennis_doubles_payload_is_queued_for_deletion(monkeypatch
 
     client = SimpleNamespace(request_json=lambda *_args, **_kwargs: response)
 
-    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids):
+    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids, *, parsed=None):
         queued_reasons.append(reason)
         deferred_ids.add(canonical_event_id)
         return True
@@ -159,7 +159,7 @@ def test_finished_event_with_empty_score_is_queued_for_deletion(monkeypatch):
 
     client = SimpleNamespace(request_json=lambda *_args, **_kwargs: response)
 
-    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids):
+    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids, *, parsed=None):
         queued_reasons.append(reason)
         deferred_ids.add(canonical_event_id)
         return True

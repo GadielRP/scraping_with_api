@@ -519,7 +519,7 @@ def test_walkover_is_queued_for_batch_deletion_with_walkover_reason(monkeypatch)
         }
     )
 
-    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids):
+    def _tracking_queue(canonical_event_id, sofascore_event_id, reason, deferred_ids, *, parsed=None):
         queued_reasons.append(reason)
         deferred_ids.add(canonical_event_id)
         return True
@@ -659,7 +659,7 @@ def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch
 
     assert stats["queued_for_deletion"] == 1
     assert stats["deleted_events"] == 1
-    assert deleted_batches == [[101]]
+    assert [sorted(batch) for batch in deleted_batches] == [[101]]
 
 
 def test_intraday_batches_event_endpoint_404(monkeypatch):
@@ -695,7 +695,7 @@ def test_intraday_batches_event_endpoint_404(monkeypatch):
     assert stats["queued_for_deletion"] == 1
     assert stats["deleted_events"] == 1
     assert stats["failed"] == 0
-    assert deleted_batches == [[101]]
+    assert [sorted(batch) for batch in deleted_batches] == [[101]]
 
 
 def test_sofascore_fetcher_translates_404_to_expected_result():

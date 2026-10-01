@@ -14,6 +14,7 @@ from modules.observations.sofascore_extractor import extract_observations_from_s
 from .event_normalizer import normalize_event_payload
 from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
 from .results_parser import parse_event_result
+from modules.events.discards.contracts import DeletionBatch
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,8 @@ def _queue_canonical_event_for_deletion(
     sofascore_event_id: int,
     reason: str,
     deferred_deletion_event_ids: set[int] | None,
+    *,
+    parsed=None,
 ) -> bool:
     """Queue a deletion for a caller-owned batch; never delete inline."""
     if deferred_deletion_event_ids is None:
@@ -55,7 +58,10 @@ def _queue_canonical_event_for_deletion(
         )
         return False
 
-    deferred_deletion_event_ids.add(canonical_event_id)
+    if parsed is not None and isinstance(deferred_deletion_event_ids, DeletionBatch):
+        deferred_deletion_event_ids.record(canonical_event_id, sofascore_event_id, parsed, reason)
+    else:
+        deferred_deletion_event_ids.add(canonical_event_id)
     logger.info(
         "🗑️ Queued canonical event %s for batch deletion "
         "(SofaScore event %s, reason=%s)",
@@ -329,6 +335,7 @@ def get_event_results(
                 event_id,
                 deletion_reason,
                 deferred_deletion_event_ids,
+                parsed=parsed,
             )
             return _empty_response()
 
@@ -338,6 +345,7 @@ def get_event_results(
                 event_id,
                 "stale_not_started",
                 deferred_deletion_event_ids,
+                parsed=parsed,
             )
             return _empty_response()
 
@@ -347,6 +355,7 @@ def get_event_results(
                 event_id,
                 "finished_empty_score",
                 deferred_deletion_event_ids,
+                parsed=parsed,
             )
             return _empty_response()
 

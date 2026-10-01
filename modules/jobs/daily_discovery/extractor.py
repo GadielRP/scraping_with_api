@@ -19,7 +19,7 @@ from modules.sports.catalog import is_supported_sofascore_event, sofascore_sport
 from shared.shutdown import is_shutdown_requested
 
 from .odds_parser import parse_today_market_odds_response
-from .persistence import persist_event_and_optional_odds
+from .persistence import persist_events_and_optional_odds
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +251,6 @@ class DailyDiscoveryExtractor:
                             logger.warning("No odds response for %s, proceeding without odds", sport)
                     except Exception as exc:
                         logger.warning("Failed to fetch odds for %s: %s. Will proceed without odds.", sport, exc)
-                    odds_event_ids = set(odds_map)
 
                     # Determine which events have not started yet (using our standard min_minutes_away=10 threshold)
                     upcoming_events = filter_upcoming_events(all_events, min_minutes_away=10)
@@ -261,34 +260,17 @@ class DailyDiscoveryExtractor:
                     sport_events_inserted = 0
                     sport_odds_inserted = 0
 
-                    for event in all_events:
-                        if is_shutdown_requested():
-                            raise KeyboardInterrupt()
-
-                        event_id = event.get("id")
-                        if not event_id:
-                            failed = True
-                            logger.debug(
-                                "Daily discovery skipped event reason=missing_source_event_id"
-                            )
-                            continue
-
-                        # Only persist odds if the event has not started yet and is present in the odds feed
-                        has_odds_data = event_id in odds_event_ids and event_id in upcoming_event_ids
-                        event_odds = odds_map.get(event_id) if has_odds_data else None
-
-                        success = persist_event_and_optional_odds(
-                            self.api_client,
-                            event,
-                            event_odds,
-                            tracked_competitions=tracked_competitions,
-                        )
-                        if success:
-                            sport_events_inserted += 1
-                            if event_odds:
-                                sport_odds_inserted += 1
-                        else:
-                            failed = True
+                    selected_odds = {sid: odds for sid, odds in odds_map.items() if sid in upcoming_event_ids}
+                    write_summary = persist_events_and_optional_odds(
+                        self.api_client, all_events, selected_odds,
+                        tracked_competitions=tracked_competitions,
+                    )
+                    sport_events_inserted = write_summary.persisted
+                    sport_odds_inserted = write_summary.odds_saved
+                    failed = failed or write_summary.failed > 0
+                    logger.info("Daily persistence sport=%s persisted=%s discarded=%s out_of_scope=%s failed=%s",
+                                sport, write_summary.persisted, write_summary.discarded,
+                                write_summary.out_of_scope, write_summary.failed)
 
                     DailyDiscoveryRepository.update_sport_status(
                         date, normalized_run_slot, sport, "failed" if failed else "completed"

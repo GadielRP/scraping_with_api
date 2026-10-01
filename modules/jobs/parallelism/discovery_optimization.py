@@ -13,6 +13,7 @@ from modules.competition.discovery_scope import (
     filter_tracked_source_events,
     is_tracked_source_event,
     load_tracked_source_competitions,
+    UNRESOLVED_SCOPE,
 )
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
@@ -32,25 +33,27 @@ def _event_id(event_data: Dict) -> int:
     return _event_payload(event_data)["id"]
 
 
-def _eligible_discovery_events(events, tracked_competitions=None):
+def _eligible_discovery_events(events, tracked_competitions=UNRESOLVED_SCOPE):
     supported = filter_supported_sofascore_events(events)
     if not supported:
         return []
-    if tracked_competitions is None:
+    if tracked_competitions is UNRESOLVED_SCOPE:
         tracked_competitions = load_tracked_source_competitions("sofascore")
-    return filter_tracked_source_events(supported, tracked_competitions)
+    eligible = filter_tracked_source_events(supported, tracked_competitions)
+    blocked = EventRepository.discarded_source_ids("sofascore", [_event_id(e) for e in eligible])
+    return [e for e in eligible if str(_event_id(e)) not in blocked]
 
 
 def parallel_team_event_fetching(
     team_ids: List[int],
     max_workers: int = 5,
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> List[Dict]:
     """Fetch nearest events for multiple teams in parallel."""
     tracked_competitions = (
         tracked_competitions
-        if tracked_competitions is not None
+        if tracked_competitions is not UNRESOLVED_SCOPE
         else load_tracked_source_competitions("sofascore")
     )
 
@@ -161,24 +164,17 @@ def _mark_missing_sofascore_odds(
     )
 
 
-def batch_upsert_events(events: List[Dict], *, tracked_competitions=None) -> int:
+def batch_upsert_events(events: List[Dict], *, tracked_competitions=UNRESOLVED_SCOPE) -> int:
     """Upsert multiple events efficiently."""
-    upserted_count = 0
-    for event_data in _eligible_discovery_events(events, tracked_competitions):
-        try:
-            event = EventRepository.upsert_event(event_data)
-            if event:
-                upserted_count += 1
-        except Exception as exc:
-            logger.debug("Error upserting event %s: %s", _event_payload(event_data).get("id"), exc)
-    return upserted_count
+    result = EventRepository.batch_upsert_events(_eligible_discovery_events(events, tracked_competitions))
+    return len(result.events)
 
 
 def batch_process_odds(
     events_with_odds: Dict[str, Dict],
     events: List[Dict],
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[int, int]:
     """Process odds data for multiple events efficiently."""
     if not events:
@@ -190,6 +186,10 @@ def batch_process_odds(
     if not eligible_events:
         return 0, len(events)
     skipped_count += len(events) - len(eligible_events)
+    write_result = EventRepository.batch_upsert_events(
+        event for event in eligible_events
+        if events_with_odds.get(str(_event_id(event))) or events_with_odds.get(int(_event_id(event)))
+    )
     for event_data in eligible_events:
         sofascore_event_id = str(_event_id(event_data))
         odds_response = events_with_odds.get(sofascore_event_id) or events_with_odds.get(int(sofascore_event_id))
@@ -197,7 +197,7 @@ def batch_process_odds(
             continue
 
         try:
-            db_event = EventRepository.upsert_event(event_data)
+            db_event = write_result.events.get(sofascore_event_id)
             if not db_event:
                 logger.debug("Failed to upsert event %s before saving odds", sofascore_event_id)
                 skipped_count += 1
@@ -226,7 +226,7 @@ def process_odds_first(
     discovery_source: str = None,
     max_workers: int = 5,
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[int, int]:
     """Check odds BEFORE upserting. Only persist events that have valid odds.
 
@@ -284,19 +284,19 @@ def process_with_parallel_db_ops(
     discovery_source: str = None,
     max_workers: int = 5,
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[int, int]:
-    """Process events with pre-fetched odds using parallel database operations."""
+    """Write events in bounded transactions, then save pre-fetched odds concurrently."""
 
     def process_single_event(event_data: Dict) -> Tuple[bool, str]:
         try:
             sofascore_event_id = str(_event_id(event_data))
 
-            event = EventRepository.upsert_event(event_data)
+            event = write_result.events.get(sofascore_event_id)
             if not event:
                 return False, f"Failed to upsert event {sofascore_event_id}"
 
-            odds_map_entry = odds_map.get(sofascore_event_id) or odds_map.get(str(sofascore_event_id)) or odds_map.get(int(sofascore_event_id))
+            odds_map_entry = odds_map.get(sofascore_event_id) or odds_map.get(int(sofascore_event_id))
             if not odds_map_entry:
                 return False, f"No odds data found for event {sofascore_event_id}"
 
@@ -318,6 +318,8 @@ def process_with_parallel_db_ops(
     skipped_count = original_count - len(events)
     if not events:
         return processed_count, skipped_count
+
+    write_result = EventRepository.batch_upsert_events(events)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_event = {executor.submit(process_single_event, event_data): event_data for event_data in events}
@@ -341,7 +343,7 @@ def process_events_only(
     events: List[Dict],
     discovery_source: str = None,
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[int, int]:
     """Process events without fetching odds."""
     original_count = len(events)

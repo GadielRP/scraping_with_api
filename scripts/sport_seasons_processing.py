@@ -39,6 +39,8 @@ from shared.temporal import utc_now
 from sqlalchemy import or_
 from typing import Dict, List, Tuple
 import logging
+from modules.events.discards.contracts import DeletionBatch
+from modules.sofascore.results_parser import parse_event_result
 import argparse
 import time
 
@@ -196,7 +198,7 @@ def get_season_events_missing_from_view(
 def reconcile_existing_season_events(
     season_ids: tuple[int, ...],
     fetched_canonical_event_ids: set[int],
-    canceled_event_ids_to_delete: set[int],
+    canceled_event_ids_to_delete: DeletionBatch,
     cutoff_time=None,
 ) -> dict:
     if cutoff_time is None:
@@ -241,10 +243,11 @@ def reconcile_existing_season_events(
             if EventRepository.upsert_event(event_data):
                 reconciled_metadata += 1
 
-            result_data = api_client.extract_results_from_response({"event": raw_event})
+            parsed = parse_event_result({"event": raw_event})
+            result_data = parsed.result if parsed.kind == "finished" else None
 
-            if result_data and result_data.get("_canceled"):
-                canceled_event_ids_to_delete.add(event_id)
+            if parsed.kind in {"canceled", "finished_empty_score"}:
+                canceled_event_ids_to_delete.record(event_id, raw_event["id"], parsed)
                 logger.info(
                     "Queued canceled/postponed reconciliation event %s for batch deletion. status=%s",
                     event_id,
@@ -417,7 +420,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     markets_processed_count = 0
     markets_skipped_count = 0
     results_to_upsert: List[Tuple[int, Dict]] = []
-    canceled_event_ids_to_delete = set()
+    canceled_event_ids_to_delete = DeletionBatch(origin="sport_seasons_processing")
     missing_odds_event_ids = set()
     odds_fetcher = SofaScoreOddsFetcher(api_client) if fetch_odds else None
 
@@ -492,10 +495,11 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
                 try:
                     raw_event = event_data.get('_raw_event')
                     if raw_event:
-                        result_data = api_client.extract_results_from_response({'event': raw_event})
+                        parsed = parse_event_result({'event': raw_event})
+                        result_data = parsed.result if parsed.kind == 'finished' else None
 
-                        if result_data and result_data.get('_canceled'):
-                            canceled_event_ids_to_delete.add(event_id)
+                        if parsed.kind in {'canceled', 'finished_empty_score'}:
+                            canceled_event_ids_to_delete.record(event_id, raw_event["id"], parsed)
                             logger.info(
                                 "Queued canceled/postponed event %s for batch deletion. status=%s",
                                 event_id,
@@ -552,7 +556,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
 
     canceled_events_deleted = 0
     if canceled_event_ids_to_delete:
-        canceled_events_deleted = EventRepository.batch_delete_events(sorted(canceled_event_ids_to_delete))
+        canceled_events_deleted = EventRepository.batch_delete_events(canceled_event_ids_to_delete)
         logger.info(
             "Deleted %s canceled events in batch: %s",
             canceled_events_deleted,

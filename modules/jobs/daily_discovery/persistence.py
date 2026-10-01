@@ -1,69 +1,78 @@
-"""Persistence helpers for daily discovery events."""
-
-from __future__ import annotations
-
+"""Daily batch boundary; event transactions contain no HTTP work."""
+from dataclasses import dataclass
 import logging
-from typing import Dict
-
 from infrastructure.persistence.repositories import EventRepository
-from modules.competition.discovery_scope import (
-    is_tracked_source_event,
-    load_tracked_source_competitions,
-)
+from infrastructure.persistence.repositories.event_batch_writer import chunks
+from modules.competition.discovery_scope import is_tracked_source_event, load_tracked_source_competitions, UNRESOLVED_SCOPE
+from modules.events.discards.settings import DiscardSettings
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sports.catalog import is_supported_sofascore_event
+from shared.shutdown import is_shutdown_requested
 
 logger = logging.getLogger(__name__)
 
 
-def persist_event_and_optional_odds(
-    api_client,
-    event: Dict,
-    odds_data: Dict | None = None,
-    *,
-    tracked_competitions=None,
-) -> bool:
-    try:
-        source = "sofascore"
-        source_event_id = event.get("id")
-        if not source_event_id:
-            logger.warning("Event has no ID, skipping")
-            return False
+@dataclass
+class DiscoveryWriteSummary:
+    persisted: int = 0
+    odds_saved: int = 0
+    discarded: int = 0
+    out_of_scope: int = 0
+    failed: int = 0
 
-        if not is_supported_sofascore_event(event):
-            logger.info("Skipping unsupported sport event source=%s source_event_id=%s", source, source_event_id)
-            return False
-        if tracked_competitions is None:
-            tracked_competitions = load_tracked_source_competitions(source)
-        if not is_tracked_source_event(event, tracked_competitions):
-            logger.info("Skipping untracked competition event source=%s source_event_id=%s", source, source_event_id)
-            return False
 
-        event_data = api_client.normalize_event_payload(event, discovery_source="daily_discovery")
-        event_payload = event_data.get("event", event_data) if event_data else {}
-        if not event_payload or not event_payload.get("id"):
-            logger.warning("Could not extract event information for source=%s source_event_id=%s", source, source_event_id)
-            return False
-        if not is_supported_sofascore_event(event_data):
-            logger.info("Skipping unsupported sport event source=%s source_event_id=%s", source, source_event_id)
-            return False
+def persist_events_and_optional_odds(api_client, events, odds_map=None, *, tracked_competitions=UNRESOLVED_SCOPE):
+    if tracked_competitions is UNRESOLVED_SCOPE:
+        tracked_competitions = load_tracked_source_competitions('sofascore')
+    summary = DiscoveryWriteSummary()
+    odds_map = odds_map or {}
+    for batch in chunks(events, DiscardSettings.current().batch_size):
+        if is_shutdown_requested():
+            raise KeyboardInterrupt()
+        eligible = []
+        for raw in batch:
+            if not raw.get('id'):
+                summary.failed += 1
+            elif not is_supported_sofascore_event(raw) or not is_tracked_source_event(raw, tracked_competitions):
+                summary.out_of_scope += 1
+            else:
+                eligible.append(raw)
+        blocked = EventRepository.discarded_source_ids('sofascore', [e['id'] for e in eligible])
+        normalized = []
+        for raw in eligible:
+            if str(raw['id']) in blocked:
+                summary.discarded += 1
+                continue
+            try:
+                data = api_client.normalize_event_payload(raw, discovery_source='daily_discovery')
+                if not data or not is_supported_sofascore_event(data):
+                    raise ValueError('Invalid normalized event')
+                normalized.append(data)
+            except Exception:
+                logger.exception('Cannot normalize daily event %s', raw['id'])
+                summary.failed += 1
+        result = EventRepository.batch_upsert_events(normalized)
+        summary.persisted += len(result.events)
+        summary.discarded += len(result.discarded)
+        summary.failed += len(result.errors)
+        for sid, event in result.events.items():
+            odds = odds_map.get(sid) or odds_map.get(int(sid))
+            if not odds:
+                continue
+            try:
+                saved = MarketOddsIngestionService.save_from_sofascore_response(event.id, odds, source='sofascore')
+                if saved.markets_saved <= 0 and not saved.dual_process_market_available:
+                    summary.failed += 1
+                else:
+                    summary.odds_saved += 1
+            except Exception:
+                logger.exception('Cannot persist daily odds source_event_id=%s', sid)
+                summary.failed += 1
+    return summary
 
-        db_event = EventRepository.upsert_event(event_data)
-        if not db_event:
-            logger.error("Failed to upsert event source=%s source_event_id=%s to database", source, source_event_id)
-            return False
 
-        if odds_data:
-            ingestion_result = MarketOddsIngestionService.save_from_sofascore_response(
-                db_event.id,
-                odds_data,
-                source="sofascore",
-            )
-            if ingestion_result.markets_saved <= 0 and not ingestion_result.dual_process_market_available:
-                logger.warning("Failed to save market odds for event %s: %s", db_event.id, ingestion_result.reason)
-                return False
-
-        return True
-    except Exception as exc:
-        logger.error("Error processing event %s: %s", event.get("id", "unknown"), exc)
-        return False
+def persist_event_and_optional_odds(api_client, event, odds_data=None, *, tracked_competitions=UNRESOLVED_SCOPE):
+    """Single-item compatibility; discarded identities are a successful omission."""
+    result = persist_events_and_optional_odds(api_client, [event], {str(event.get('id')): odds_data},
+                                             tracked_competitions=tracked_competitions)
+    return result.failed == 0 and (result.persisted + result.discarded) > 0

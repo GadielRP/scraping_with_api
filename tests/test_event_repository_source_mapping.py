@@ -6,6 +6,7 @@ from infrastructure.persistence.models import Event, EventSourceMapping, Partici
 from infrastructure.persistence.repositories import event_repository as event_repo_module
 from infrastructure.persistence.repositories import event_source_mapping_repository as mapping_repo_module
 from infrastructure.persistence.repositories.event_repository import EventRepository
+from infrastructure.persistence.repositories.event_batch_writer import source_mapping_fields
 
 
 def _normalized_event_payload(*, source_event_id=123456, season_id=80229, tournament_id=132):
@@ -58,7 +59,7 @@ def _normalized_event_payload(*, source_event_id=123456, season_id=80229, tourna
 
 
 def test_source_mapping_fields_include_tournament_season_and_participants():
-    fields = EventRepository._source_mapping_fields(
+    fields = source_mapping_fields(
         event_id=10,
         source="sofascore",
         source_event_id="123456",

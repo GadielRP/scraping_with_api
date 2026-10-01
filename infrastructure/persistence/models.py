@@ -743,3 +743,6 @@ class OddspapiMainlineOutcomeCache(Base):
         Index('idx_oddspapi_mainline_cache_event_id', 'event_id'),
         Index('idx_oddspapi_mainline_cache_is_exchange', 'is_exchange'),
     )
+
+# Register independent lifecycle tables in the shared metadata.
+from infrastructure.persistence.discard_models import EventDiscardMemory  # noqa: E402,F401

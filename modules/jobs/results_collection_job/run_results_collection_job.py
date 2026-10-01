@@ -15,6 +15,7 @@ from infrastructure.settings import Config
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client
 from shared.temporal import now_in_timezone
+from modules.events.discards.contracts import DeletionBatch
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
         [event.id for event in events],
         "sofascore",
     )
-    deferred_deletion_event_ids: set[int] = set()
+    deferred_deletion_event_ids = DeletionBatch(origin=job_name)
     results_to_upsert: List[Tuple[int, Dict]] = []
     events_for_observations: List[Tuple[object, Dict]] = []
 
@@ -80,7 +81,7 @@ def _collect_results_for_events(events: List, job_name: str = "Results Collectio
         requested_deletions = len(deferred_deletion_event_ids)
         stats["deleted"] = int(
             EventRepository.batch_delete_events(
-                sorted(deferred_deletion_event_ids)
+                deferred_deletion_event_ids
             )
             or 0
         )

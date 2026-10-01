@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from modules.events.discards.contracts import DeletionBatch
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -173,7 +174,7 @@ def _process_batch(
         "no_result_response": 0,
         "errors": 0,
     }
-    deferred_deletion_ids: set[int] = set()
+    deferred_deletion_ids = DeletionBatch(origin="backfill_missing_sofascore_results")
     results_to_upsert: list[tuple[int, dict[str, Any]]] = []
     observations_to_process: list[tuple[Event, dict[str, Any]]] = []
 
@@ -235,7 +236,7 @@ def _process_batch(
             stats["events_would_delete"] = len(deferred_deletion_ids)
         else:
             stats["events_deleted"] = int(
-                EventRepository.batch_delete_events(sorted(deferred_deletion_ids)) or 0
+                EventRepository.batch_delete_events(deferred_deletion_ids) or 0
             )
             if stats["events_deleted"] < len(deferred_deletion_ids):
                 stats["errors"] += len(deferred_deletion_ids) - stats["events_deleted"]

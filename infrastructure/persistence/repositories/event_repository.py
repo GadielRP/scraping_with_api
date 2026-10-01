@@ -1,34 +1,24 @@
 import logging
 from typing import List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy import and_, or_, event, DDL
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import joinedload
 
-from infrastructure.persistence.models import Competition, Event, Result, EventObservation, Season, Base
+from infrastructure.persistence.models import Competition, Event, Result
 from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
 from shared.temporal import (
     as_utc,
-    from_unix_timestamp,
     local_day_bounds_utc,
     now_in_timezone,
     utc_now,
 )
-from .season_repository import SeasonRepository
-from .participant_repository import ParticipantRepository
-from .competition_repository import CompetitionRepository
 from .event_source_mapping_repository import EventSourceMappingRepository
 
 logger = logging.getLogger(__name__)
 
-NBA_SEASONS = [
-    {"season_name": "NBA 2020/2021", "season_id": 34951, "year": 2020, "nba_cup_season_id": 0}, 
-    {"season_name": "NBA 2021/2022", "season_id": 38191, "year": 2021, "nba_cup_season_id": 0},
-    {"season_name": "NBA 2022/2023", "season_id": 45096, "year": 2022, "nba_cup_season_id": 0},
-    {"season_name": "NBA 2023/2024", "season_id": 54105, "year": 2023, "nba_cup_season_id": 56094},
-    {"season_name": "NBA 2024/2025", "season_id": 65360, "year": 2024, "nba_cup_season_id": 69143},
-    {"season_name": "NBA 2025/2026", "season_id": 80229, "year": 2025, "nba_cup_season_id": 84238},
-]
+from modules.events.round_policy import NBA_SEASONS  # Compatibility export.
+
 
 class EventRepository:
     """Repository for event-related database operations"""
@@ -133,284 +123,33 @@ class EventRepository:
         }
     
     @staticmethod
-    def _source_mapping_fields(
-        *,
-        event_id: int,
-        source: str,
-        source_event_id: str,
-        match_method: str,
-        confidence: float,
-        event_payload: Dict,
-        home_participant,
-        away_participant,
-        competition,
-    ) -> Dict:
-        """Build EventSourceMapping fields from the normalized SofaScore payload.
-
-        Event.id is canonical. Provider IDs belong on the mapping row, including
-        tournament/season and the source-scoped participant FKs used by later
-        cross-source matching.
-        """
-        source_season_id = event_payload.get("season_id")
-        source_tournament_id = None
-        if competition is not None and competition.source_tournament_id is not None:
-            source_tournament_id = str(competition.source_tournament_id)
-
-        return {
-            "event_id": event_id,
-            "source": source,
-            "source_event_id": source_event_id,
-            "source_tournament_id": source_tournament_id,
-            "source_season_id": str(source_season_id) if source_season_id is not None else None,
-            "source_participant_home_id": home_participant.participant_id if home_participant else None,
-            "source_participant_away_id": away_participant.participant_id if away_participant else None,
-            "match_method": match_method,
-            "confidence": confidence,
-        }
+    def discarded_source_ids(source, source_event_ids):
+        """Bulk optimization only; writes recheck under the identity lock."""
+        from .event_discard_repository import EventDiscardRepository
+        from .event_batch_writer import chunks
+        from modules.events.discards.settings import DiscardSettings
+        settings = DiscardSettings.current()
+        if not settings.enabled or not settings.kinds:
+            return set()
+        source = str(source or 'sofascore').strip().lower()
+        blocked = set()
+        for ids in chunks((str(value) for value in source_event_ids), settings.batch_size):
+            with db_manager.get_session() as session:
+                blocked.update(EventDiscardRepository.blocked_ids(session, source, ids, settings))
+        return blocked
 
     @staticmethod
-    def upsert_event(
-        event_data: Dict,
-        source: str = "sofascore",
-        match_method: str = "direct",
-        confidence: float = 1.000,
-    ) -> Optional[Event]:
-        """Insert or update an event.
+    def batch_upsert_events(events, source="sofascore", match_method="direct", confidence=1.0):
+        """Bounded transactions with batch preloads and explicit skipped/error outcomes."""
+        from .event_batch_writer import write_events
+        return write_events(db_manager, events, source=source, match_method=match_method, confidence=confidence)
 
-        The incoming payload still carries the provider external ID in
-        ``event_payload["id"]``. The returned ``Event.id`` is the canonical
-        internal database ID. The default ``source`` preserves existing
-        SofaScore callers.
-        """
-        source = str(source or "sofascore").strip().lower()
-        source_event_id = None
-        try:
-            event_payload = event_data.get('event', event_data) if event_data else {}
-            home_participant_data = event_data.get('home_participant') if event_data and 'event' in event_data else None
-            away_participant_data = event_data.get('away_participant') if event_data and 'event' in event_data else None
-            competition_data = event_data.get('competition_ref') if event_data and 'event' in event_data else None
+    @staticmethod
+    def upsert_event(event_data, source="sofascore", match_method="direct", confidence=1.0):
+        """Compatibility entrypoint for a single event; shares the batch implementation."""
+        result = EventRepository.batch_upsert_events([event_data], source, match_method, confidence)
+        return next(iter(result.events.values()), None)
 
-            source_event_id = event_payload.get('id')
-            if not source_event_id:
-                logger.warning("🚫 Skipping event upsert because source_event_id is missing for source=%s", source)
-                return None
-
-            if event_payload.get('startTimestamp') is None:
-                logger.warning(
-                    "🚫 Skipping event upsert because startTimestamp is missing for source=%s source_event_id=%s",
-                    source,
-                    source_event_id,
-                )
-                return None
-
-            source_event_id = str(source_event_id).strip()
-            if not source_event_id:
-                logger.warning(
-                    "🚫 Skipping event upsert because source_event_id is empty after normalization for source=%s",
-                    source,
-                )
-                return None
-
-            canonical_event_id = EventSourceMappingRepository.get_event_id_by_source(
-                source=source,
-                source_event_id=source_event_id,
-            )
-
-            with db_manager.get_session() as session:
-                round_info = event_payload.get('round')
-
-                home_participant = None
-                away_participant = None
-                competition = None
-                
-                if 'season_id' in event_payload and event_payload['season_id']:
-                    season_id = event_payload['season_id']
-                    season_name = event_payload.get('season_name')
-                    season_year = event_payload.get('season_year')
-                    sport = event_payload.get('sport')
-                    competition_name = event_payload.get('competition') or ""
-                    
-                    if season_year and isinstance(season_year, str):
-                        year = SeasonRepository._parse_year(season_year)
-                    elif season_year:
-                        year = season_year
-                    else:
-                        year = None
-                    
-                    if season_id in [season['nba_cup_season_id'] for season in NBA_SEASONS] and 'nba cup' in competition_name.lower():
-                        round_info = 'knockouts/playoffs'
-                    
-                    if season_name and year and sport:
-                        SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, year, sport)
-                    elif season_name and sport:
-                        parsed_year = SeasonRepository._parse_year(season_name)
-                        if parsed_year:
-                            SeasonRepository.get_or_create_season_in_session(session, season_id, season_name, parsed_year, sport)
-
-                if home_participant_data and home_participant_data.get('source_participant_id') is not None:
-                    home_participant = ParticipantRepository.upsert_participant(session, home_participant_data)
-                elif home_participant_data:
-                    logger.warning(
-                        "Event %s has no home participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for home_team persistence",
-                        source_event_id,
-                    )
-
-                if away_participant_data and away_participant_data.get('source_participant_id') is not None:
-                    away_participant = ParticipantRepository.upsert_participant(session, away_participant_data)
-                elif away_participant_data:
-                    logger.warning(
-                        "Event %s has no away participant id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for away_team persistence",
-                        source_event_id,
-                    )
-
-                if competition_data and competition_data.get('source_tournament_id') is not None:
-                    competition = CompetitionRepository.upsert_competition(session, competition_data)
-                elif competition_data:
-                    logger.warning(
-                        "Event %s has no tournament id; LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION is still required for competition persistence",
-                        source_event_id,
-                    )
-
-                if canonical_event_id is not None:
-                    event_obj = session.query(Event).filter(Event.id == canonical_event_id).first()
-                    if not event_obj:
-                        logger.error(
-                            "Inconsistent event source mapping: source=%s source_event_id=%s resolved canonical_event_id=%s but no Event row exists",
-                            source,
-                            source_event_id,
-                            canonical_event_id,
-                        )
-                        return None
-                else:
-                    event_obj = None
-                
-                if event_obj:
-                    event_obj.custom_id = event_payload.get('customId')
-                    event_obj.slug = event_payload.get('slug') or event_obj.slug
-                    event_obj.starts_at = from_unix_timestamp(
-                        event_payload['startTimestamp']
-                    )
-                    event_obj.sport = event_payload.get('sport') or event_obj.sport
-                    event_obj.country = event_payload.get('country')
-                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                    event_obj.competition = event_payload.get('competition') or event_obj.competition
-                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                    event_obj.home_team = event_payload.get('homeTeam') or event_obj.home_team
-                    # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                    event_obj.away_team = event_payload.get('awayTeam') or event_obj.away_team
-                    gender = event_payload.get('gender') or 'unknown'
-                    event_obj.gender = gender[:10] if len(gender) > 10 else gender
-                    if home_participant:
-                        event_obj.home_participant_id = home_participant.participant_id
-                    if away_participant:
-                        event_obj.away_participant_id = away_participant.participant_id
-                    if competition:
-                        event_obj.competition_id = competition.competition_id
-                    
-                    if event_payload.get('discovery_source') == 'dropping_odds':
-                        old_source = event_obj.discovery_source
-                        if old_source != 'dropping_odds':
-                            event_obj.discovery_source = 'dropping_odds'
-                            logger.debug(
-                                "Overwrote discovery_source to 'dropping_odds' for event %s (source=%s source_event_id=%s) (was: %s)",
-                                event_obj.id,
-                                source,
-                                source_event_id,
-                                old_source,
-                            )
-                    
-                    if event_payload.get('season_id'):
-                        event_obj.season_id = event_payload['season_id']
-                    if round_info:
-                        existing = (event_obj.round or "").lower()
-                        incoming = str(round_info).lower()
-                        if existing == "knockouts/playoffs" and incoming == "regular_season":
-                            pass
-                        else:
-                            event_obj.round = round_info
-
-                    event_obj.updated_at = utc_now()
-                    EventSourceMappingRepository.upsert_mapping(
-                        session=session,
-                        **EventRepository._source_mapping_fields(
-                            event_id=event_obj.id,
-                            source=source,
-                            source_event_id=source_event_id,
-                            match_method=match_method,
-                            confidence=confidence,
-                            event_payload=event_payload,
-                            home_participant=home_participant,
-                            away_participant=away_participant,
-                            competition=competition,
-                        ),
-                    )
-                    logger.info(
-                        "Updated event %s from source=%s source_event_id=%s",
-                        event_obj.id,
-                        source,
-                        source_event_id,
-                    )
-                else:
-                    gender = event_payload.get('gender') or 'unknown'
-                    gender = gender[:10] if len(gender) > 10 else gender
-                    
-                    event_obj = Event(
-                        custom_id=event_payload.get('customId'),
-                        slug=event_payload.get('slug') or source_event_id,
-                        starts_at=from_unix_timestamp(
-                            event_payload['startTimestamp']
-                        ),
-                        sport=event_payload.get('sport') or 'Unknown',
-                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                        competition=event_payload.get('competition') or 'Unknown',
-                        country=event_payload.get('country'),
-                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                        home_team=event_payload.get('homeTeam') or 'Unknown',
-                        # LEGACY_DB_SHIM_REMOVE_AFTER_SCHEMA_MIGRATION: keep legacy column writes until the DB schema no longer requires them.
-                        away_team=event_payload.get('awayTeam') or 'Unknown',
-                        gender=gender,
-                        discovery_source=event_payload.get('discovery_source', 'dropping_odds'),
-                        season_id=event_payload.get('season_id'),
-                        round=round_info,
-                        home_participant_id=home_participant.participant_id if home_participant else None,
-                        away_participant_id=away_participant.participant_id if away_participant else None,
-                        competition_id=competition.competition_id if competition else None
-                    )
-                    session.add(event_obj)
-                    session.flush()
-                    EventSourceMappingRepository.upsert_mapping(
-                        session=session,
-                        **EventRepository._source_mapping_fields(
-                            event_id=event_obj.id,
-                            source=source,
-                            source_event_id=source_event_id,
-                            match_method=match_method,
-                            confidence=confidence,
-                            event_payload=event_payload,
-                            home_participant=home_participant,
-                            away_participant=away_participant,
-                            competition=competition,
-                        ),
-                    )
-                    logger.info(
-                        "Created new event %s from source=%s source_event_id=%s",
-                        event_obj.id,
-                        source,
-                        source_event_id,
-                    )
-                
-                return event_obj
-                
-        except Exception as e:
-            event_payload = event_data.get('event', event_data) if event_data else {}
-            logger.error(
-                "Error upserting event source=%s source_event_id=%s: %s",
-                source,
-                source_event_id or event_payload.get('id'),
-                e,
-            )
-            return None
-    
     @staticmethod
     def get_event_by_id(event_id: int) -> Optional[Event]:
         """Get event by ID with display relationships loaded."""
@@ -561,106 +300,13 @@ class EventRepository:
 
     @staticmethod
     def delete_event(event_id: int) -> bool:
-        """Delete an event and all its related data (odds, results, observations)"""
-        try:
-            with db_manager.get_session() as session:
-                event_obj = session.query(Event).filter(Event.id == event_id).first()
-                if not event_obj:
-                    logger.warning(f"Event {event_id} not found for deletion")
-                    return False
-                
-                season_id_to_check = event_obj.season_id
-                session.query(Result).filter(Result.event_id == event_id).delete()
-                session.query(EventObservation).filter(EventObservation.event_id == event_id).delete()
-                session.query(Event).filter(Event.id == event_id).delete()
-                
-                if season_id_to_check:
-                    remaining_events = session.query(Event).filter(Event.season_id == season_id_to_check).count()
-                    if remaining_events == 0:
-                        session.query(Season).filter(Season.id == season_id_to_check).delete()
-                        logger.info(f"🧹 Cleaned up orphaned season {season_id_to_check} after event deletion")
-                
-                logger.info(f"✅ Deleted event {event_id} and all related data")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error deleting event {event_id}: {e}")
-            return False
-    
+        return bool(EventRepository.batch_delete_events([event_id]))
+
     @staticmethod
-    def batch_delete_events(event_ids: List[int]) -> int:
-        """Delete events in one transaction and log the exact affected IDs."""
-        if not event_ids:
-            return 0
-        
-        requested_event_ids = sorted(set(event_ids))
-
-        try:
-            with db_manager.get_session() as session:
-                event_rows = (
-                    session.query(Event.id, Event.season_id)
-                    .filter(Event.id.in_(requested_event_ids))
-                    .with_for_update()
-                    .all()
-                )
-                deleted_event_ids = sorted(row.id for row in event_rows)
-                affected_season_ids = {
-                    row.season_id
-                    for row in event_rows
-                    if row.season_id is not None
-                }
-
-                session.query(Result).filter(
-                    Result.event_id.in_(deleted_event_ids)
-                ).delete(synchronize_session=False)
-                session.query(EventObservation).filter(
-                    EventObservation.event_id.in_(deleted_event_ids)
-                ).delete(synchronize_session=False)
-                deleted_count = session.query(Event).filter(
-                    Event.id.in_(deleted_event_ids)
-                ).delete(synchronize_session=False)
-                
-                remaining_season_ids = set()
-                if affected_season_ids:
-                    remaining_season_ids = {
-                        season_id
-                        for (season_id,) in (
-                            session.query(Event.season_id)
-                            .filter(Event.season_id.in_(affected_season_ids))
-                            .distinct()
-                            .all()
-                        )
-                    }
-                orphaned_season_ids = sorted(
-                    affected_season_ids - remaining_season_ids
-                )
-
-                if orphaned_season_ids:
-                    deleted_seasons_count = session.query(Season).filter(Season.id.in_(orphaned_season_ids)).delete(synchronize_session=False)
-                    logger.info(f"🧹 Cleaned up {deleted_seasons_count} orphaned season(s) with 0 events after batch deletion")
-                
-            missing_event_ids = sorted(
-                set(requested_event_ids) - set(deleted_event_ids)
-            )
-            logger.info(
-                "✅🧹 Batch deletion recap: requested=%s deleted=%s missing=%s "
-                "deleted_event_ids=%s",
-                len(requested_event_ids),
-                deleted_count,
-                len(missing_event_ids),
-                deleted_event_ids,
-            )
-            if missing_event_ids:
-                logger.warning(
-                    "Batch deletion skipped missing event_ids=%s",
-                    missing_event_ids,
-                )
-
-            return deleted_count
-                
-        except Exception as e:
-            logger.error(f"Error batch deleting events: {e}")
-            return 0
+    def batch_delete_events(event_ids) -> int:
+        """Preserve DeletionBatch evidence; commit memory and deletion together."""
+        from .event_deletion_writer import delete_events
+        return delete_events(db_manager, event_ids)
 
     @staticmethod
     def get_events_starting_between(

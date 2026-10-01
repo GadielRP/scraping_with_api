@@ -9,7 +9,7 @@ import pytest
 from infrastructure.settings import Config
 from modules.competition.discovery_scope import SourceCompetitionIds
 from modules.jobs.daily_discovery.extractor import DailyDiscoveryExtractor
-from modules.jobs.daily_discovery.persistence import persist_event_and_optional_odds
+from modules.jobs.daily_discovery.persistence import persist_event_and_optional_odds, DiscoveryWriteSummary
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources as run_secondary_discovery
 from modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor import (
     OddspapiFixtureBatchResult,
@@ -242,8 +242,8 @@ def test_daily_discovery_scopes_tournament_calls_before_fetching_events(monkeypa
     )
     persisted = []
     monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.persist_event_and_optional_odds",
-        lambda _client, event, _odds, **kwargs: persisted.append((event, kwargs)) or True,
+        "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
+        lambda _client, events, _odds, **kwargs: persisted.extend((event, kwargs) for event in events) or DiscoveryWriteSummary(persisted=len(events)),
     )
     requested_tournaments = []
 
@@ -303,8 +303,8 @@ def test_daily_discovery_toggle_off_logs_shadow_rejections_without_filtering(mon
     )
     persisted = []
     monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.persist_event_and_optional_odds",
-        lambda _client, event, _odds, **_kwargs: persisted.append(event) or True,
+        "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
+        lambda _client, events, _odds, **_kwargs: persisted.extend(events) or DiscoveryWriteSummary(persisted=len(events)),
     )
     requested_tournaments = []
 

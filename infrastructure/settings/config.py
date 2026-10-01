@@ -189,6 +189,15 @@ def _parse_x_requested_with_value(
     return value
 
 class Config:
+    # Discard memory: cleanup owns expiry; disabled cleanup retains blocking rows.
+    EVENT_DISCARD_MEMORY_ENABLED = os.getenv('EVENT_DISCARD_MEMORY_ENABLED', 'true').lower() == 'true'
+    EVENT_DISCARD_MEMORY_KINDS = _parse_env_list('EVENT_DISCARD_MEMORY_KINDS', ['canceled'])
+    EVENT_DISCARD_MEMORY_RETENTION_DAYS = int(os.getenv('EVENT_DISCARD_MEMORY_RETENTION_DAYS', '3'))
+    EVENT_DISCARD_MEMORY_CLEANUP_ENABLED = os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_ENABLED', 'true').lower() == 'true'
+    EVENT_DISCARD_MEMORY_CLEANUP_INTERVAL_HOURS = int(os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_INTERVAL_HOURS', '1'))
+    EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE = int(os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE', '1000'))
+    EVENT_WRITE_BATCH_SIZE = int(os.getenv('EVENT_WRITE_BATCH_SIZE', '100'))
+
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
     # Production PostgreSQL schemas are migrated by the deployment job.  A

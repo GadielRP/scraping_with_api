@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from modules.events.discards.contracts import DeletionBatch
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set
@@ -88,7 +89,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
         corrected_count = 0
         # Accumulated in-memory; flushed to DB in batch after workers finish.
         results_to_upsert: list[tuple[int, dict]] = []
-        event_ids_to_delete: set[int] = set()
+        event_ids_to_delete = DeletionBatch(origin="timestamp_corrections")
 
         def _process_single_recently_started(event_data: Dict) -> dict:
             result = {
@@ -160,6 +161,8 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                             event_id, sport,
                         )
                         result["delete_id"] = event_id
+                        result["parsed"] = parsed
+                        result["source_event_id"] = sofascore_event_id
 
             except Exception as exc:
                 logger.error(
@@ -183,7 +186,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 if res["upsert"] is not None:
                     results_to_upsert.append(res["upsert"])
                 if res["delete_id"] is not None:
-                    event_ids_to_delete.add(res["delete_id"])
+                    event_ids_to_delete.record(res["delete_id"], res["source_event_id"], res["parsed"])
 
         if modified_event_ids:
             logger.info("🔄 Timestamp correction detected for %s event(s)", len(modified_event_ids))
@@ -214,7 +217,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
         if event_ids_to_delete:
             requested = len(event_ids_to_delete)
             deleted_count = int(
-                EventRepository.batch_delete_events(sorted(event_ids_to_delete))
+                EventRepository.batch_delete_events(event_ids_to_delete)
                 or 0
             )
             failed_deletes = max(0, requested - deleted_count)

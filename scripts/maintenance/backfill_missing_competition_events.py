@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from modules.events.discards.contracts import DeletionBatch
+from modules.sofascore.results_parser import parse_event_result
 import time
 from typing import Dict, List, Tuple
 
@@ -36,6 +38,12 @@ from modules.sofascore.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _with_evidence(ids, classified):
+    batch = DeletionBatch(ids, origin=classified.origin)
+    batch.evidence.update(classified.evidence)
+    return batch
 
 
 def get_events_with_missing_competition(limit: int | None = None) -> list[int]:
@@ -107,7 +115,7 @@ def update_missing_competition_events(
     total_results_upserted = 0
 
     results_to_upsert: List[Tuple[int, Dict]] = []
-    canceled_ids_to_delete: set[int] = set()
+    canceled_ids_to_delete = DeletionBatch(origin="backfill_missing_competition_events")
     not_found_404_ids: set[int] = set()
 
     for idx, event_id in enumerate(event_ids, start=1):
@@ -182,9 +190,10 @@ def update_missing_competition_events(
                 continue
 
             # Extract results
-            result_data = api_client.extract_results_from_response({"event": raw_event})
+            parsed = parse_event_result({"event": raw_event})
+            result_data = parsed.result if parsed.kind == 'finished' else ({'_canceled': True} if parsed.kind in {'canceled', 'finished_empty_score'} else None)
             if result_data and result_data.get("_canceled"):
-                canceled_ids_to_delete.add(event_id)
+                canceled_ids_to_delete.record(event_id, raw_event["id"], parsed)
                 logger.info(
                     "Queued canceled event %s for deletion. status=%s",
                     event_id,
@@ -234,7 +243,7 @@ def update_missing_competition_events(
     all_ids_to_delete = sorted(canceled_ids_to_delete | events_404_to_delete)
     total_deleted = 0
     if all_ids_to_delete:
-        total_deleted = EventRepository.batch_delete_events(all_ids_to_delete)
+        total_deleted = EventRepository.batch_delete_events(_with_evidence(all_ids_to_delete, canceled_ids_to_delete))
         logger.info(
             "Batch deleted %s event(s) (canceled=%s, 404_without_results=%s)",
             total_deleted,

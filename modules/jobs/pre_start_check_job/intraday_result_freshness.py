@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
+from modules.events.discards.contracts import DeletionBatch
 
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
@@ -94,7 +95,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         logger.info("Intraday result freshness: job finished with stats=%s", stats)
         return stats
 
-    delete_event_ids: Set[int] = set()
+    delete_event_ids = DeletionBatch(origin="intraday_result_freshness")
     results_to_upsert: List[Tuple[int, Dict]] = []
 
     def _process_single_event(event_data: Dict) -> Dict:
@@ -156,6 +157,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                     "api_checked": 1,
                     "queued_for_deletion": 1,
                     "delete_event_id": event_id,
+                    "parsed": parsed, "source_event_id": sofascore_event_id,
                 }
 
             if parsed.kind != "finished" or not parsed.result:
@@ -207,7 +209,10 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
 
             delete_event_id = outcome.get("delete_event_id")
             if delete_event_id is not None:
-                delete_event_ids.add(delete_event_id)
+                if outcome.get("parsed") is not None:
+                    delete_event_ids.record(delete_event_id, outcome["source_event_id"], outcome["parsed"])
+                else:
+                    delete_event_ids.add(delete_event_id)
 
     if results_to_upsert:
         upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
@@ -218,7 +223,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         )
 
     if delete_event_ids:
-        deleted_count = EventRepository.batch_delete_events(sorted(delete_event_ids))
+        deleted_count = EventRepository.batch_delete_events(delete_event_ids)
         stats["deleted_events"] = deleted_count
         logger.info(
             "Intraday result freshness: batch deleted %s canceled event(s)",

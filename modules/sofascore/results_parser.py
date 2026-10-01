@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from copy import deepcopy
+from datetime import datetime
+from shared.temporal import utc_now
 from typing import Dict, Literal, Optional
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,8 @@ class ParsedEventResult:
     The parser describes status. Callers decide policy (upsert / delete / retry).
     """
 
+    raw_snapshot: dict = field(default_factory=dict, kw_only=True)
+    observed_at: datetime | None = field(default=None, kw_only=True)
     kind: ParsedEventResultKind
     result: Optional[Dict] = None
     status_code: Optional[int] = None
@@ -379,6 +384,9 @@ def parse_event_result(
         status_description_raw = status.get("description", "")
 
         base_kwargs = {
+            "raw_snapshot": deepcopy({k: event_data[k] for k in
+                ("status", "homeScore", "awayScore", "winnerCode", "startTimestamp") if k in event_data}),
+            "observed_at": utc_now(),
             "status_code": status_code,
             "status_type": status_type or None,
             "status_description": status_description or None,
