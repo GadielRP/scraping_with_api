@@ -794,7 +794,7 @@ To pull logs from the server `./logs/...` to your local `./logs/...`:
 New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_3"
 
 # use the following format: scp root@143.244.179.129:/opt/sofascore/logs/NN_Month/week_n/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\NN_Month\week_n\
-scp root@143.244.179.129:/opt/sofascore/logs/09_September/week_4/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\09_September\week_4\
+scp root@143.244.179.129:/opt/sofascore/logs/10_October/week_1/sofascore_odds.log C:\Users\gadie\Documents\projects\sofascore\logs\10_October/week_1\
 ```
 
 To pull debugging files from server `./debug/...` to local `./debug/...`:

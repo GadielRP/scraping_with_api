@@ -331,8 +331,7 @@ def test_optional_betfair_series_do_not_gate_global_profile_status() -> None:
         if series["MARKET"]["BOOKIE_ID"] == 4
         and series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
     ]
-    assert len(betfair_series) == 2
-    assert all(series["STATUS"] == "PARTIAL" for series in betfair_series)
+    assert all(series["STATUS"] in {"PARTIAL", "CONTRACT_ENDED"} for series in betfair_series)
     assert all(series["MARKET"]["SOURCE_ROLE"] == "OPTIONAL" for series in betfair_series)
 
 
@@ -642,7 +641,7 @@ def test_line_series_can_cross_contracts_without_crossing_price_series() -> None
     old_contract = next(
         item for item in price_series if item["MARKET"]["CHOICE_GROUP"] == "2.5"
     )
-    assert old_contract["STATUS"] == "PARTIAL"
+    assert old_contract["STATUS"] == "CONTRACT_ENDED"
     assert old_contract["TRACEABILITY"]["OPERATIVE_ENDPOINT_PRESENT"] is False
 
 
@@ -896,3 +895,179 @@ def test_non_main_line_contract_is_not_admitted_to_p4_scope() -> None:
 def test_target_minute_rejects_coercion_that_could_move_the_causal_boundary() -> None:
     with pytest.raises(TypeError):
         _run_p4(_event(5), _context([], 5), target_minute=5.5)  # type: ignore[arg-type]
+
+
+def test_line_transition_contract_ended_does_not_degrade_profile_status() -> None:
+    rows = []
+    # Both required books (302 Pinnacle, 3 bet365) have complete active series on line 3.0 at T-5
+    for bookie_id, bookie_name, offset in (
+        (302, "Pinnacle Sports", 0),
+        (3, "bet365", 100),
+    ):
+        for choice, choice_id, quote_id, values in (
+            ("Over", 11 + offset, 101 + offset, {120: "2.05", 30: "1.95", 5: "1.85"}),
+            ("Under", 12 + offset, 102 + offset, {120: "1.80", 30: "1.90", 5: "2.00"}),
+        ):
+            rows.extend(
+                _row(
+                    minute=minute,
+                    odds=odds,
+                    choice=choice,
+                    choice_id=choice_id,
+                    quote_id=quote_id,
+                    line="3.0",
+                    bookie_id=bookie_id,
+                    bookie_name=bookie_name,
+                )
+                for minute, odds in values.items()
+            )
+    # Pinnacle ALSO had an older line 2.5 contract that was active at T-120 and T-30, but ended before T-5
+    rows.extend(
+        _row(
+            minute=minute,
+            odds=odds,
+            choice="Over",
+            choice_id=21,
+            quote_id=201,
+            line="2.5",
+            bookie_id=302,
+            bookie_name="Pinnacle Sports",
+        )
+        for minute, odds in {120: "1.85", 30: "1.75"}.items()
+    )
+
+    result = _run_p4(_event(5), _context(rows, 5), target_minute=5)
+
+    assert result["P4_STATUS"] == "ACTIVE"
+    profile = result["P4_SIGNAL_PROFILE"]
+    assert profile["SUMMARY"]["STATUS"] == "ACTIVE"
+    # The old contract series must be CONTRACT_ENDED, not PARTIAL
+    old_series = next(
+        series
+        for series in profile["CHECKPOINT_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["MARKET"]["CHOICE_GROUP"] == "2.5"
+    )
+    assert old_series["STATUS"] == "CONTRACT_ENDED"
+    assert old_series["TRACEABILITY"]["OPERATIVE_ENDPOINT_PRESENT"] is False
+    # The new line 3.0 series is ACTIVE
+    new_series = next(
+        series
+        for series in profile["CHECKPOINT_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["MARKET"]["CHOICE_GROUP"] == "3.0"
+        and series["MARKET"]["BOOKIE_ID"] == 302
+        and series["MARKET"]["CHOICE_NAME"] == "Over"
+    )
+    assert new_series["STATUS"] == "ACTIVE"
+
+
+def test_adaptive_view_admits_historical_ticks_persisted_during_t5_ingestion() -> None:
+    t5_nominal = KICKOFF - timedelta(minutes=5)
+    # Operative endpoint snapshot collected at nominal T-5
+    endpoint_row = _row(
+        minute=5,
+        odds="1.85",
+        choice="Over",
+        collected_at=t5_nominal,
+        source_collected_at=t5_nominal - timedelta(seconds=10),
+        snapshot_id=5001,
+    )
+    # Earlier historical tick from days ago, but written during the T-5 ingestion batch 15 seconds after endpoint
+    hist_tick_row = _row(
+        minute=120,
+        odds="2.10",
+        choice="Over",
+        collected_at=t5_nominal + timedelta(seconds=15),
+        source_collected_at=KICKOFF - timedelta(hours=2),
+        snapshot_id=5002,
+    )
+    rows = [endpoint_row, hist_tick_row]
+    evaluation_time = t5_nominal + timedelta(seconds=30)
+
+    result = _run_p4(
+        _event(5),
+        _context(rows, 5),
+        target_minute=5,
+        evaluation_as_of=evaluation_time,
+    )
+
+    adaptive_series = next(
+        series
+        for series in result["P4_SIGNAL_PROFILE"]["ADAPTIVE_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+    )
+    # Both the earlier historical tick and the operative endpoint must be present
+    point_ids = [p["POINT_ID"] for p in adaptive_series["POINTS"]]
+    assert any("5002" in pid for pid in point_ids)
+    assert any("5001" in pid or "OPERATIVE" in pid for pid in point_ids)
+    assert len(adaptive_series["POINTS"]) == 2
+    assert adaptive_series["POINTS"][0]["VALUE"] == 2.10
+    assert adaptive_series["POINTS"][1]["VALUE"] == 1.85
+
+
+def test_adaptive_view_uses_endpoint_market_time_not_collection_time() -> None:
+    t5_nominal = KICKOFF - timedelta(minutes=5)
+    endpoint_market_time = t5_nominal - timedelta(seconds=10)
+    endpoint_row = _row(
+        minute=5,
+        odds="1.85",
+        collected_at=t5_nominal,
+        source_collected_at=endpoint_market_time,
+        snapshot_id=5101,
+    )
+    later_market_update = _row(
+        minute=5,
+        odds="1.80",
+        collected_at=t5_nominal + timedelta(seconds=5),
+        source_collected_at=t5_nominal - timedelta(seconds=5),
+        snapshot_id=5102,
+    )
+    evaluation_time = t5_nominal + timedelta(seconds=30)
+
+    result = _run_p4(
+        _event(5),
+        _context([endpoint_row, later_market_update], 5),
+        target_minute=5,
+        evaluation_as_of=evaluation_time,
+    )
+
+    adaptive_series = next(
+        series
+        for series in result["P4_SIGNAL_PROFILE"]["ADAPTIVE_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+    )
+    points = adaptive_series["POINTS"]
+    assert len(points) == 1
+    assert points[0]["VALUE"] == 1.85
+    assert points[0]["EFFECTIVE_AT"] == endpoint_market_time.isoformat()
+    assert points[0]["AVAILABILITY_AT"] == t5_nominal.isoformat()
+
+
+def test_evaluation_as_of_bounds_replay_availability() -> None:
+    t5_nominal = KICKOFF - timedelta(minutes=5)
+    # A valid T-5 snapshot
+    t5_row = _row(minute=5, odds="1.85", collected_at=t5_nominal)
+    # A future snapshot collected after evaluation cutoff (e.g. T-1 or during simulation days later)
+    future_row = _row(
+        minute=1,
+        odds="1.75",
+        collected_at=t5_nominal + timedelta(minutes=4),
+        snapshot_id=9999,
+    )
+    rows = [t5_row, future_row]
+
+    result = _run_p4(
+        _event(5),
+        _context(rows, 5),
+        target_minute=5,
+        evaluation_as_of=t5_nominal + timedelta(minutes=1),
+    )
+
+    adaptive_series = next(
+        series
+        for series in result["P4_SIGNAL_PROFILE"]["ADAPTIVE_VIEW"]["SERIES"]
+        if series["MARKET"]["VALUE_TYPE"] == "ODDS_PRICE"
+    )
+    assert not any("9999" in p["POINT_ID"] for p in adaptive_series["POINTS"])
+    assert result["raw"]["extraction_diagnostics"]["excluded_future_points"] >= 1

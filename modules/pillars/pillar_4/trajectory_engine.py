@@ -29,15 +29,12 @@ def _series_result(series: P4SeriesInput) -> P4SeriesResult:
             "ACCELERATION_RAW": None,
             "DECELERATION_RAW": None,
         }
-    status = (
-        "PARTIAL"
-        if (
-            len(series.points) < 2
-            or gap_present
-            or not series.operative_endpoint_present
-        )
-        else "ACTIVE"
-    )
+    if not series.operative_endpoint_present:
+        status = "CONTRACT_ENDED"
+    elif len(series.points) < 2 or gap_present:
+        status = "PARTIAL"
+    else:
+        status = "ACTIVE"
     return P4SeriesResult(
         series_id=series.series_id,
         status=status,

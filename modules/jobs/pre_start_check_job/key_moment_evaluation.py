@@ -460,6 +460,7 @@ def evaluate_pre_start_key_moments(
     enable_alert_pipeline: bool | None = None,
     enable_pillar_pipeline: bool | None = None,
     enabled_pillars: dict[str, bool] | None = None,
+    evaluation_as_of: datetime | None = None,
 ) -> None:
     """Build shared evaluation payloads, then run enabled alert pipelines."""
     legacy_alerts_enabled = (
@@ -558,14 +559,14 @@ def evaluate_pre_start_key_moments(
             # The loaded rows are the exact snapshot set evaluated by the pillars.
             # Capture the boundary after loading so writes completed during the
             # query are not accidentally cut off at the nominal key moment.
-            evaluation_as_of = utc_now()
+            effective_evaluation_as_of = evaluation_as_of or utc_now()
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,
                 event_repo=scheduler.event_repo,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
                 trajectories_by_event_id=trajectory_payloads,
-                evaluation_as_of=evaluation_as_of,
+                evaluation_as_of=effective_evaluation_as_of,
             )
 
 

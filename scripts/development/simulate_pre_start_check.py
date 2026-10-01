@@ -14,12 +14,13 @@ Examples:
     python -m scripts.development.simulate_pre_start_check 14083613 14083614 30
     python -m scripts.development.simulate_pre_start_check 14083613,14083614 30
     python -m scripts.development.simulate_pre_start_check 14083613 14083614 --minutes 30
+    python -m scripts.development.simulate_pre_start_check 14083613 5 --evaluation-as-of 2026-09-29T21:34:57Z
 """
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import sys
 from typing import Sequence
@@ -355,9 +356,29 @@ def _parse_event_ids_and_minutes(
     return event_ids, simulated_minutes
 
 
+def _parse_evaluation_as_of(value: str) -> datetime:
+    """Parse an explicit ISO-8601 evaluation instant for deterministic replay."""
+    normalized = value.strip()
+    if normalized.endswith(("Z", "z")):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "Use an ISO-8601 timestamp, for example 2026-09-29T21:34:57Z."
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError(
+            "evaluation-as-of must include a timezone, such as Z or +00:00."
+        )
+    return parsed.astimezone(timezone.utc)
+
+
 def simulate_pre_start_check(
     event_ids: int | Sequence[int],
     simulated_minutes: int,
+    *,
+    evaluation_as_of: datetime | None = None,
 ) -> bool:
     """Run the pre-start flow for one or more events with production observability and debug mode."""
     _ensure_logging_configured()
@@ -372,6 +393,7 @@ def simulate_pre_start_check(
             return _run_pre_start_check_simulation(
                 event_ids,
                 simulated_minutes,
+                evaluation_as_of=evaluation_as_of,
             )
     finally:
         if previous_evidence_mode is not None:
@@ -381,6 +403,8 @@ def simulate_pre_start_check(
 def _run_pre_start_check_simulation(
     event_ids: int | Sequence[int],
     simulated_minutes: int,
+    *,
+    evaluation_as_of: datetime | None = None,
 ) -> bool:
     if isinstance(event_ids, int):
         event_id_list = [event_ids]
@@ -551,6 +575,20 @@ def _run_pre_start_check_simulation(
 
     if ENABLE_ALERT_PIPELINE or ENABLE_PILLAR_PIPELINE:
         logger.info("Step 4: Running production key-moment evaluation")
+        tolerance_minutes = max(0, int(getattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 2)))
+        valid_boundaries = [b for b in oddspapi_boundaries_by_event.values() if b is not None]
+        simulated_eval_as_of = evaluation_as_of or (
+            max(valid_boundaries) + timedelta(minutes=tolerance_minutes)
+            if valid_boundaries
+            else None
+        )
+        logger.info(
+            "Pillar evaluation_as_of: %s%s",
+            simulated_eval_as_of,
+            " (explicit replay value)"
+            if evaluation_as_of is not None
+            else " (derived from the simulated target window)",
+        )
         if ENABLE_CUSTOM_PILLAR_FILTER:
             evaluate_pre_start_key_moments(
                 scheduler,
@@ -559,6 +597,7 @@ def _run_pre_start_check_simulation(
                 debug_mode=debug_mode,
                 enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
                 enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
+                evaluation_as_of=simulated_eval_as_of,
                 enabled_pillars={
                     "pillar_1": ENABLE_PILLAR_1,
                     "pillar_2": ENABLE_PILLAR_2,
@@ -573,6 +612,7 @@ def _run_pre_start_check_simulation(
                 event_plan,
                 oddsportal_context,
                 debug_mode=debug_mode,
+                evaluation_as_of=simulated_eval_as_of,
             )
     else:
         logger.info(
@@ -612,6 +652,15 @@ def main() -> int:
         default=None,
         help="Forced minutes until start. If omitted, the last positional argument is used as minutes.",
     )
+    parser.add_argument(
+        "--evaluation-as-of",
+        type=_parse_evaluation_as_of,
+        default=None,
+        help=(
+            "Explicit timezone-aware ISO-8601 evaluation instant for a reproducible replay "
+            "(for example 2026-09-29T21:34:57Z)."
+        ),
+    )
     args = parser.parse_args()
     _ensure_logging_configured()
 
@@ -627,7 +676,15 @@ def main() -> int:
         )
         return 1
 
-    return 0 if simulate_pre_start_check(event_ids, minutes) else 1
+    return (
+        0
+        if simulate_pre_start_check(
+            event_ids,
+            minutes,
+            evaluation_as_of=args.evaluation_as_of,
+        )
+        else 1
+    )
 
 
 if __name__ == "__main__":

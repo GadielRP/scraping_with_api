@@ -102,7 +102,23 @@ def _normalize_snapshot(
     target_window: SnapshotTargetWindow,
     invalid: list[str],
     series_label: str,
+    evaluation_as_of: datetime | None = None,
 ) -> tuple[P4Point | None, bool]:
+    """Normalise a raw snapshot into a P4Point.
+
+    When ``evaluation_as_of`` is provided, the stored ``collected_at`` must not
+    be later than that evaluation boundary, and the
+    provider's market timestamp must not be later than the target window.
+
+    ``collected_at`` is the timestamp recorded for the observation. For a
+    reconstructed historical key moment, ingestion deliberately records the
+    target moment there; it is not necessarily the physical PostgreSQL insert
+    time. ``evaluation_as_of`` therefore bounds recorded timestamps, while the
+    fact that a row was actually loaded comes from the trajectory query itself.
+
+    When ``evaluation_as_of`` is *None* (no simulation) the original
+    ``target_window.is_after_cutoff(collected_at)`` logic applies.
+    """
     collected_at = snapshot.collected_at
     source_at = snapshot.source_collected_at
     availability_at = collected_at
@@ -114,7 +130,22 @@ def _normalize_snapshot(
             f"{series_label}:snapshot:{snapshot.snapshot_id}:{time_error}"
         )
         return None, False
-    if target_window.is_after_cutoff(availability_at):
+    if evaluation_as_of is not None:
+        # Phase 1: recorded observation time must be within the run's boundary.
+        # This is not a physical insert-time check for reconstructed moments.
+        if (
+            availability_at is not None
+            and _datetime_value(availability_at) > _datetime_value(evaluation_as_of)
+        ):
+            return None, True
+        # Phase 2: prevent market observations after the permitted target window.
+        effective_at_pre = effective_snapshot_timestamp(
+            collected_at=availability_at,
+            source_collected_at=source_at,
+        )
+        if _datetime_value(effective_at_pre) > _datetime_value(target_window.latest_at):
+            return None, True
+    elif target_window.is_after_cutoff(availability_at):
         return None, True
     try:
         odds = Decimal(snapshot.odds_value)
@@ -208,10 +239,12 @@ def _project_checkpoints(
         projected[target] = replace(
             selected,
             point_id=f"{selected.point_id}_TARGET_{target}",
-            effective_at=selected.availability_at,
+            # Select by the recorded collection time, but preserve when this
+            # price actually became effective in the market.
+            effective_at=selected.effective_at,
             minutes_before_start=_minutes_before_start(
                 event_start,
-                selected.availability_at,
+                selected.effective_at,
             ),
             observation_kind=(
                 "OPERATIVE_ENDPOINT" if target == min(target_minutes) else "CHECKPOINT"
@@ -228,15 +261,35 @@ def _adaptive_with_endpoint(
     *,
     target_minute: int,
     event_start: datetime,
+    evaluation_as_of: datetime | None = None,
 ) -> tuple[P4Point, ...]:
-    # The checkpoint nearest the nominal target is the operative endpoint.
-    # A later snapshot may already be available at evaluation time, but it
-    # belongs to a later market state and must not extend this trajectory.
+    operative = replace(
+        endpoint,
+        point_id=f"{endpoint.point_id}_OPERATIVE_{target_minute}",
+        # The endpoint defines the market cutoff through its source/effective
+        # timestamp. Its recorded collection time remains a separate axis.
+        effective_at=endpoint.effective_at,
+        minutes_before_start=_minutes_before_start(
+            event_start,
+            endpoint.effective_at,
+        ),
+        observation_kind="OPERATIVE_ENDPOINT",
+        target_minute=target_minute,
+        distance_from_target_minutes=endpoint.distance_from_target_minutes,
+    )
+    # The operative endpoint sets the market-state boundary. Independently,
+    # evaluation_as_of bounds recorded collection timestamps.
+    market_cutoff = _datetime_value(operative.effective_at)
+    availability_cutoff = (
+        _datetime_value(evaluation_as_of)
+        if evaluation_as_of is not None
+        else float("inf")
+    )
     result = [
         point
         for point in points
-        if _datetime_value(point.availability_at)
-        <= _datetime_value(endpoint.availability_at)
+        if _datetime_value(point.effective_at) <= market_cutoff
+        and _datetime_value(point.availability_at) <= availability_cutoff
     ]
     exact_index = next(
         (
@@ -246,18 +299,6 @@ def _adaptive_with_endpoint(
             and point.snapshot_id == endpoint.snapshot_id
         ),
         None,
-    )
-    operative = replace(
-        endpoint,
-        point_id=f"{endpoint.point_id}_OPERATIVE_{target_minute}",
-        effective_at=endpoint.availability_at,
-        minutes_before_start=_minutes_before_start(
-            event_start,
-            endpoint.availability_at,
-        ),
-        observation_kind="OPERATIVE_ENDPOINT",
-        target_minute=target_minute,
-        distance_from_target_minutes=endpoint.distance_from_target_minutes,
     )
     if exact_index is None:
         result.append(operative)
@@ -365,6 +406,22 @@ def _line_series(
 
     result: list[P4SeriesInput] = []
     for key, related in sorted(groups.items(), key=lambda item: str(item[0])):
+        # Determine the unique operative line at the target_minute first.
+        # This is used to disambiguate historical checkpoints where an old
+        # line contract overlaps with the new (operative) one.
+        operative_line_candidates: dict[Decimal, list[P4Point]] = defaultdict(list)
+        for observation in related:
+            line = _decimal_line(observation["line_value"])
+            if line is None:
+                continue
+            point = observation["projected"].get(target_minute)
+            if point is not None:
+                operative_line_candidates[line].append(point)
+        operative_line: Decimal | None = (
+            next(iter(operative_line_candidates))
+            if len(operative_line_candidates) == 1
+            else None
+        )
         points: list[P4Point] = []
         missing: list[int] = []
         for target in expected_targets:
@@ -377,16 +434,26 @@ def _line_series(
                 if point is not None:
                     line_candidates[line].append(point)
             if len(line_candidates) != 1:
-                missing.append(target)
-                if len(line_candidates) > 1:
-                    label = "|".join(str(part) for part in key)
-                    ambiguous.append(
-                        f"LINE_SELECTION:{label}:TARGET:{target}:"
-                        f"{','.join(str(line) for line in sorted(line_candidates))}"
-                    )
-                    if key[5] is not None:
-                        issue_bookie_ids.add(int(key[5]))
-                continue
+                # If a unique operative line was identified, use it to select
+                # among historical checkpoint candidates (line transition case).
+                if len(line_candidates) > 1 and operative_line is not None and operative_line in line_candidates:
+                    # Disambiguate: use the operative line's checkpoint projection.
+                    # No ambiguity flag — this is an expected line transition.
+                    pass
+                else:
+                    missing.append(target)
+                    if len(line_candidates) > 1:
+                        label = "|".join(str(part) for part in key)
+                        ambiguous.append(
+                            f"LINE_SELECTION:{label}:TARGET:{target}:"
+                            f"{','.join(str(line) for line in sorted(line_candidates))}"
+                        )
+                        if key[5] is not None:
+                            issue_bookie_ids.add(int(key[5]))
+                    continue
+                # Override line_candidates to just the operative line's data
+                line_candidates = {operative_line: line_candidates[operative_line]}
+            # fall through: len(line_candidates) == 1
             line, source_points = next(iter(line_candidates.items()))
             availability = max(
                 source_points,
@@ -614,6 +681,42 @@ def extract_p4_trajectory_inputs(
                 domain = resolve_domain(market_group, market_name)
                 if domain is None:
                     continue
+                bookie_choices_with_endpoint: set[tuple[int, str, str | None, int, str]] = set()
+                for _, m_line in line_values.items():
+                    for _, b_obj in m_line.bookies.items():
+                        if b_obj.bookie_id not in SUPPORTED_BOOKIE_IDS:
+                            continue
+                        for _, c_obj in b_obj.choices.items():
+                            if c_obj.main_line is False:
+                                continue
+                            norm_pts: list[P4Point] = []
+                            for sn in c_obj.snapshots:
+                                pt, _ = _normalize_snapshot(
+                                    sn,
+                                    event_start=start,
+                                    target_window=target_window,
+                                    invalid=[],
+                                    series_label="",
+                                    evaluation_as_of=observed_as_of,
+                                )
+                                if pt is not None:
+                                    norm_pts.append(pt)
+                            p_pts = _project_checkpoints(
+                                _deduplicate_points(norm_pts),
+                                event_start=start,
+                                target_minutes=expected_targets,
+                                target_windows=checkpoint_windows,
+                            )
+                            if target in p_pts:
+                                bookie_choices_with_endpoint.add(
+                                    (
+                                        int(b_obj.bookie_id),
+                                        str(b_obj.source or ""),
+                                        b_obj.exchange_side,
+                                        int(b_obj.exchange_level or 0),
+                                        str(c_obj.choice_name),
+                                    )
+                                )
                 for line_value_key, market_line in sorted(line_values.items()):
                     line_value = market_line.line_value
                     if line_value_key == "__default__":
@@ -650,6 +753,7 @@ def extract_p4_trajectory_inputs(
                                     target_window=target_window,
                                     invalid=invalid,
                                     series_label=base,
+                                    evaluation_as_of=observed_as_of,
                                 )
                                 if len(invalid) > invalid_count:
                                     issue_bookie_ids.add(int(bookie.bookie_id))
@@ -704,40 +808,57 @@ def extract_p4_trajectory_inputs(
                                 "quote_id": choice.quote_id,
                             }
                             if endpoint is None:
-                                missing.append(f"{base}:OPERATIVE_TARGET:{target}")
-                                issue_bookie_ids.add(int(bookie.bookie_id))
-                                missing_endpoint_details.append(
-                                    {
-                                        "market_group": market_group,
-                                        "market_period": market_period,
-                                        "market_name": market_name,
-                                        "line_value": line_value,
-                                        "choice_name": choice.choice_name,
-                                        "bookie_name": bookie.bookie_name,
-                                        "exchange_side": bookie.exchange_side,
-                                        "last_available_at": (
-                                            max(
-                                                (point.availability_at for point in safe_points),
-                                                key=_datetime_value,
-                                            ).isoformat()
-                                            if safe_points
-                                            else None
-                                        ),
-                                        "first_after_cutoff_at": (
-                                            min(
-                                                future_availability,
-                                                key=_datetime_value,
-                                            ).isoformat()
-                                            if future_availability
-                                            else None
-                                        ),
-                                    }
+                                bookie_choice_key = (
+                                    int(bookie.bookie_id),
+                                    str(bookie.source or ""),
+                                    bookie.exchange_side,
+                                    int(bookie.exchange_level or 0),
+                                    str(choice.choice_name),
                                 )
-                                adaptive_points = tuple(safe_points)
-                                adaptive_diagnostics = (
-                                    "LEGACY_MIXED_TIMESTAMP_PROVENANCE",
-                                    "OPERATIVE_ENDPOINT_MISSING",
+                                has_transitioned_line = (
+                                    bookie_choice_key in bookie_choices_with_endpoint
                                 )
+                                if has_transitioned_line:
+                                    adaptive_points = tuple(safe_points)
+                                    adaptive_diagnostics = (
+                                        "LEGACY_MIXED_TIMESTAMP_PROVENANCE",
+                                        "LINE_CONTRACT_ENDED",
+                                    )
+                                else:
+                                    missing.append(f"{base}:OPERATIVE_TARGET:{target}")
+                                    issue_bookie_ids.add(int(bookie.bookie_id))
+                                    missing_endpoint_details.append(
+                                        {
+                                            "market_group": market_group,
+                                            "market_period": market_period,
+                                            "market_name": market_name,
+                                            "line_value": line_value,
+                                            "choice_name": choice.choice_name,
+                                            "bookie_name": bookie.bookie_name,
+                                            "exchange_side": bookie.exchange_side,
+                                            "last_available_at": (
+                                                max(
+                                                    (point.availability_at for point in safe_points),
+                                                    key=_datetime_value,
+                                                ).isoformat()
+                                                if safe_points
+                                                else None
+                                            ),
+                                            "first_after_cutoff_at": (
+                                                min(
+                                                    future_availability,
+                                                    key=_datetime_value,
+                                                ).isoformat()
+                                                if future_availability
+                                                else None
+                                            ),
+                                        }
+                                    )
+                                    adaptive_points = tuple(safe_points)
+                                    adaptive_diagnostics = (
+                                        "LEGACY_MIXED_TIMESTAMP_PROVENANCE",
+                                        "OPERATIVE_ENDPOINT_MISSING",
+                                    )
                             else:
                                 endpoint_series_present += 1
                                 adaptive_points = _adaptive_with_endpoint(
@@ -745,6 +866,7 @@ def extract_p4_trajectory_inputs(
                                     endpoint,
                                     target_minute=target,
                                     event_start=start,
+                                    evaluation_as_of=observed_as_of,
                                 )
                                 adaptive_diagnostics = (
                                     "LEGACY_MIXED_TIMESTAMP_PROVENANCE",

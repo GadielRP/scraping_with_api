@@ -178,13 +178,17 @@ def log_p4_signal_profile(
         if (series.get("MARKET") or {}).get("VALUE_TYPE") == "ODDS_PRICE"
     ]
     incomplete_required = sum(
-        series.get("STATUS") != "ACTIVE"
+        series.get("STATUS") == "PARTIAL"
         and (series.get("MARKET") or {}).get("BOOKIE_ID") in REQUIRED_BOOKIE_IDS
         for series in primary
     )
     incomplete_optional = sum(
-        series.get("STATUS") != "ACTIVE"
+        series.get("STATUS") == "PARTIAL"
         and (series.get("MARKET") or {}).get("BOOKIE_ID") not in REQUIRED_BOOKIE_IDS
+        for series in primary
+    )
+    contract_ended_count = sum(
+        series.get("STATUS") == "CONTRACT_ENDED"
         for series in primary
     )
     missing_required_sources = [
@@ -203,7 +207,8 @@ def log_p4_signal_profile(
         "P4 result | status=%s | missing T-%s selections=%s | "
         "invalid observations=%s | ambiguous lines=%s | "
         "missing required sources=%s | required sources with issues=%s | "
-        "incomplete required price series=%s | incomplete optional price series=%s",
+        "incomplete required price series=%s | incomplete optional price series=%s | "
+        "contract ended price series=%s",
         summary["STATUS"],
         extraction.target_minute,
         len(extraction.missing_inputs),
@@ -213,6 +218,7 @@ def log_p4_signal_profile(
         required_sources_with_issues,
         incomplete_required,
         incomplete_optional,
+        contract_ended_count,
     )
     for view_name, label in (
         ("ADAPTIVE_VIEW", "all available snapshots"),

@@ -44,10 +44,15 @@ def _view_status(
     ]
     if not primary:
         return "INSUFFICIENT_DATA"
+    current_primary = [
+        item for item in primary if item.status != "CONTRACT_ENDED"
+    ]
+    if not current_primary:
+        return "INSUFFICIENT_DATA"
     if (
         missing_required_sources
         or required_issue_sources
-        or any(item.status != "ACTIVE" for item in primary)
+        or any(item.status != "ACTIVE" for item in current_primary)
     ):
         return "PARTIAL"
     return "ACTIVE"
@@ -67,13 +72,16 @@ def _source_status(
             for item in primary
             if item.market.get("BOOKIE_ID") == bookie_id
         ]
+        active_series = [
+            item for item in source_series if item.status != "CONTRACT_ENDED"
+        ]
         present = bookie_id in observed_bookie_ids
         if not present:
             status = "MISSING" if bookie_id in REQUIRED_BOOKIE_IDS else "NOT_PRESENT"
         elif (
             bookie_id in issue_bookie_ids
-            or not source_series
-            or any(item.status != "ACTIVE" for item in source_series)
+            or not active_series
+            or any(item.status != "ACTIVE" for item in active_series)
         ):
             status = "PARTIAL"
         else:
@@ -91,7 +99,10 @@ def _source_status(
             "STATUS": status,
             "PRICE_SERIES_COUNT": len(source_series),
             "PARTIAL_PRICE_SERIES_COUNT": sum(
-                item.status != "ACTIVE" for item in source_series
+                item.status == "PARTIAL" for item in source_series
+            ),
+            "CONTRACT_ENDED_PRICE_SERIES_COUNT": sum(
+                item.status == "CONTRACT_ENDED" for item in source_series
             ),
         }
     return result
@@ -234,12 +245,17 @@ def build_p4_signal_profile(
         observed_bookie_ids=observed_bookie_ids,
         issue_bookie_ids=issue_bookie_ids,
     )
-    if not required_primary:
+    current_required_primary = tuple(
+        item
+        for item in required_primary
+        if item.status != "CONTRACT_ENDED"
+    )
+    if not current_required_primary:
         profile_status = "INSUFFICIENT_DATA"
     elif (
         missing_required_sources
         or required_issue_sources
-        or any(item.status != "ACTIVE" for item in required_primary)
+        or any(item.status != "ACTIVE" for item in current_required_primary)
     ):
         profile_status = "PARTIAL"
     else:
