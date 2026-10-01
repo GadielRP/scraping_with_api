@@ -1,4 +1,4 @@
-"""One bounded cleanup batch per scheduler tick; no provider requests."""
+"""One bounded cleanup batch per daily discovery heartbeat; no provider requests."""
 import logging
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories.event_discard_repository import EventDiscardRepository

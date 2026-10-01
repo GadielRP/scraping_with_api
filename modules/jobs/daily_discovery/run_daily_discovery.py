@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
+from modules.jobs.event_discard_cleanup import run_event_discard_cleanup
 from modules.sports.catalog import sofascore_sport_slugs
 from shared.temporal import now_in_timezone
 
@@ -49,6 +50,8 @@ def run_daily_discovery(sports=None, date_str=None, run_slot=None):
 
 def run_daily_discovery_job() -> None:
     logger.info("Starting Job E: Daily discovery heartbeat")
+    # Run before slot/cache checks so every heartbeat can advance bounded cleanup.
+    run_event_discard_cleanup()
 
     try:
         from infrastructure.settings import Config

@@ -38,19 +38,23 @@ instantánea tipada y valida que los valores positivos y los kinds sean elegible
 | `EVENT_DISCARD_MEMORY_KINDS` | `canceled` | CSV de kinds que se registran y bloquean |
 | `EVENT_DISCARD_MEMORY_RETENTION_DAYS` | `3` | Antigüedad mínima desde el descarte para limpiar |
 | `EVENT_DISCARD_MEMORY_CLEANUP_ENABLED` | `true` | Habilitar eliminación de filas de memoria |
-| `EVENT_DISCARD_MEMORY_CLEANUP_INTERVAL_HOURS` | `1` | Frecuencia del job de limpieza |
 | `EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE` | `1000` | Máximo de filas eliminadas por ejecución |
 | `EVENT_WRITE_BATCH_SIZE` | `100` | Tamaño de las transacciones de eventos |
 
 También se pueden configurar `not_started` y `finished_empty_score` como kinds.
 No se admite `finished`: la memoria representa descartes, no resultados válidos.
 
+La limpieza se ejecuta al comienzo de cada invocación de `run_daily_discovery_job`,
+antes de comprobar la ranura del día y si quedan deportes pendientes. Por eso
+también corre en heartbeats fuera de la ranura o cuando la caché indica que el
+trabajo ya terminó. El scheduler programa heartbeats en horarios fijos y reintentos.
+
 **La caducidad depende de la limpieza física.** Una fila con más de tres días
 continúa bloqueando hasta que el job la elimine. Con cleanup desactivado no se
 limpia ni se ignora por su edad. Al reactivarlo se limpia progresivamente. Cada
-ejecución procesa un lote; una cola grande puede necesitar varias ejecuciones.
-Con memoria desactivada se permite ingerir y no se registran nuevos descartes;
-la limpieza mantiene su toggle independiente.
+invocación procesa como máximo un lote; una cola grande puede necesitar varias
+invocaciones de daily discovery. Con memoria desactivada se permite ingerir y no
+se registran nuevos descartes; la limpieza mantiene su toggle independiente.
 
 ## Transacciones, consultas y concurrencia
 

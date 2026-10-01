@@ -67,10 +67,6 @@ class JobScheduler:
 
     def _setup_jobs(self):
         """Register all scheduled jobs."""
-        from modules.events.discards.settings import DiscardSettings
-        from modules.jobs.event_discard_cleanup import run_event_discard_cleanup
-        discard_settings = DiscardSettings.current()
-        schedule.every(discard_settings.cleanup_interval_hours).hours.do(run_event_discard_cleanup)
         for time_str in Config.DISCOVERY_TIMES:
             schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_discovery)
 

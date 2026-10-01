@@ -13,6 +13,12 @@ from modules.jobs.daily_discovery.run_daily_discovery import resolve_daily_disco
 daily_job = import_module("modules.jobs.daily_discovery.run_daily_discovery")
 
 
+@pytest.fixture(autouse=True)
+def avoid_database_cleanup(monkeypatch):
+    """Keep heartbeat unit tests from invoking the real discard-memory cleanup."""
+    monkeypatch.setattr(daily_job, "run_event_discard_cleanup", lambda: 0)
+
+
 def test_daily_discovery_log_uses_slot_scoped_uniqueness():
     column_names = {column.name for column in DailyDiscoveryLog.__table__.columns}
     constraint_names = {constraint.name for constraint in DailyDiscoveryLog.__table__.constraints}
