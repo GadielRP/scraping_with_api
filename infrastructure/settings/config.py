@@ -268,8 +268,8 @@ class Config:
             str(DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES),
         )
     )
-    # AM slot: 17:00 MX = 23:00 UTC (opens 1 hour before next UTC day starts — fetches tomorrow's events).
-    # PM slot:  8:00 MX = 14:00 UTC (midday retry for the current UTC day).
+    # Legacy slot labels: PM opens in the morning, AM in the evening.
+    # Both request the current local calendar date; neither wraps past midnight.
     DAILY_DISCOVERY_AM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '17'))
     DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '8'))
 

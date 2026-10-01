@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from modules.sports.catalog import sofascore_sport_slugs
-from shared.temporal import now_in_timezone, utc_now
+from shared.temporal import now_in_timezone
 
 from .extractor import DailyDiscoveryExtractor
 
@@ -24,11 +23,12 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
     am_hour = Config.DAILY_DISCOVERY_AM_OPEN_HOUR
     pm_hour = Config.DAILY_DISCOVERY_PM_OPEN_HOUR
 
-    # If am_hour is in the evening (e.g. 17) and pm_hour is in the morning (e.g. 8)
+    # Slot names are legacy labels: some deployments open PM before AM.
+    # Neither window carries over from the previous local calendar day.
     if am_hour > pm_hour:
         if pm_hour <= current_hour < am_hour:
             return "PM"
-        return "AM"
+        return "AM" if current_hour >= am_hour else None
     else:
         # Standard case (am_hour < pm_hour, e.g. AM=5, PM=16)
         if current_hour >= pm_hour:
@@ -68,22 +68,22 @@ def run_daily_discovery_job() -> None:
             )
             return
 
-        # Calculate target date:
-        # AM slot (evening MX / night UTC) targets tomorrow's UTC date.
-        # PM slot (morning MX / afternoon UTC) targets today's UTC date.
-        current_utc = utc_now()
-        if run_slot == "AM":
-            target_date_obj = current_utc + timedelta(days=1)
-        else:
-            target_date_obj = current_utc
-        today_str = target_date_obj.strftime("%Y-%m-%d")
+        # Resolve both the slot and its target from the same local clock read.
+        today_str = now.date().isoformat()
+        logger.info(
+            "Daily discovery target_date=%s slot=%s local_now=%s timezone=%s",
+            today_str, run_slot, now.isoformat(), Config.TIMEZONE,
+        )
 
         discovery_sports = sofascore_sport_slugs()
-        DailyDiscoveryRepository.initialize_sports_for_slot(
+        initialized = DailyDiscoveryRepository.initialize_sports_for_slot(
             today_str,
             run_slot,
             discovery_sports,
         )
+        if not initialized:
+            logger.error("Daily discovery could not initialize date=%s slot=%s", today_str, run_slot)
+            return
 
         pending_sports = sofascore_sport_slugs(
             DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)

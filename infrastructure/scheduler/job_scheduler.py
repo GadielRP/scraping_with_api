@@ -24,6 +24,7 @@ from infrastructure.persistence.repositories import (
 from infrastructure.settings import Config
 from modules.jobs.clean_league_cache import run_clean_league_cache_job
 from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_discovery_retry_job
+from modules.jobs.daily_discovery.run_daily_discovery import resolve_daily_discovery_slot
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
 from modules.jobs.midnight_sync_job import run_midnight_sync_job
@@ -85,7 +86,22 @@ class JobScheduler:
         schedule.every().day.at("04:00", Config.TIMEZONE).do(self.job_midnight_sync)
         schedule.every(3).days.at("05:00", Config.TIMEZONE).do(self.job_clean_league_cache)
 
-        daily_discovery_fixed_times = getattr(Config, "DAILY_DISCOVERY_FIXED_TIMES", ["18:10"])
+        # Ensure a daily trigger for both slots even when the retry interval is
+        # longer than one slot window. Completed sports remain idempotent.
+        daily_discovery_fixed_times = set(
+            getattr(Config, "DAILY_DISCOVERY_FIXED_TIMES", ["17:10"])
+        )
+        configured_slots = {
+            resolve_daily_discovery_slot(datetime.strptime(time_str, "%H:%M"))
+            for time_str in daily_discovery_fixed_times
+        }
+        for slot, hour in (
+            ("AM", Config.DAILY_DISCOVERY_AM_OPEN_HOUR),
+            ("PM", Config.DAILY_DISCOVERY_PM_OPEN_HOUR),
+        ):
+            if slot not in configured_slots:
+                daily_discovery_fixed_times.add(f"{hour:02d}:00")
+        daily_discovery_fixed_times = sorted(daily_discovery_fixed_times)
         for time_str in daily_discovery_fixed_times:
             schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_daily_discovery)
 

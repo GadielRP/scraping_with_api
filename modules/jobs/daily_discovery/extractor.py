@@ -103,8 +103,7 @@ class DailyDiscoveryExtractor:
                         page_response = self.api_client.get_today_sport_events_response(date, sport, page)
 
                         if not page_response:
-                            if page == 1:
-                                failed = True
+                            failed = True
                             break
 
                         scheduled = page_response.get("scheduled", [])
@@ -164,7 +163,7 @@ class DailyDiscoveryExtractor:
                     )
 
                     if failed:
-                        logger.warning("No tournaments response for %s, skipping", sport)
+                        logger.warning("Incomplete tournaments response for %s, leaving slot retryable", sport)
                         DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                         continue
 
@@ -176,6 +175,7 @@ class DailyDiscoveryExtractor:
                         try:
                             ut_events_response = self.api_client.get_unique_tournament_scheduled_events(ut_id, date)
                             if not ut_events_response or "events" not in ut_events_response:
+                                failed = True
                                 event_filter_counts["tournaments_without_events_payload"] += 1
                                 logger.warning(
                                     "Daily discovery received no tournament events "
@@ -197,6 +197,7 @@ class DailyDiscoveryExtractor:
                                         continue
                                 all_events.append(event)
                         except Exception as exc:
+                            failed = True
                             event_filter_counts["tournament_fetch_errors"] += 1
                             logger.warning(
                                 "Failed to fetch events for tournament %s "
@@ -232,7 +233,9 @@ class DailyDiscoveryExtractor:
                             "reason=no_events_after_sport_and_tracked_competition_filters",
                             sport,
                         )
-                        DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
+                        DailyDiscoveryRepository.update_sport_status(
+                            date, normalized_run_slot, sport, "failed" if failed else "completed"
+                        )
                         continue
 
                     logger.info("Fetching today's %s odds for tracked events...", sport)
@@ -264,6 +267,7 @@ class DailyDiscoveryExtractor:
 
                         event_id = event.get("id")
                         if not event_id:
+                            failed = True
                             logger.debug(
                                 "Daily discovery skipped event reason=missing_source_event_id"
                             )
@@ -283,11 +287,16 @@ class DailyDiscoveryExtractor:
                             sport_events_inserted += 1
                             if event_odds:
                                 sport_odds_inserted += 1
+                        else:
+                            failed = True
 
-                    DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "completed")
+                    DailyDiscoveryRepository.update_sport_status(
+                        date, normalized_run_slot, sport, "failed" if failed else "completed"
+                    )
                     logger.info(
-                        "%s completed: %s/%s events inserted, %s with odds",
+                        "%s status=%s: %s/%s events inserted, %s with odds",
                         sport,
+                        "failed" if failed else "completed",
                         sport_events_inserted,
                         len(all_events),
                         sport_odds_inserted,

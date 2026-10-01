@@ -1,11 +1,13 @@
 import logging
 from typing import List
-from datetime import timedelta
+from datetime import date, timedelta
+
+from sqlalchemy import or_
 
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
-from shared.temporal import now_in_timezone, utc_now
+from shared.temporal import local_day_bounds_utc, now_in_timezone, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +57,20 @@ class DailyDiscoveryRepository:
     @staticmethod
     def get_pending_sports(date_str: str, run_slot: str) -> List[str]:
         """
-        Returns a list of sports that are 'pending' or 'failed' for the given date/slot.
+        Return unfinished sports, including premature completions from the old UTC rule.
         """
         normalized_run_slot = (run_slot or "AM").strip().upper()
         try:
+            day_start, _ = local_day_bounds_utc(date.fromisoformat(date_str), Config.TIMEZONE)
             with db_manager.get_session() as session:
                 pending_logs = session.query(DailyDiscoveryLog).filter(
                     DailyDiscoveryLog.date == date_str,
                     DailyDiscoveryLog.run_slot == normalized_run_slot,
-                    DailyDiscoveryLog.status != 'completed'
+                    or_(
+                        DailyDiscoveryLog.status != 'completed',
+                        DailyDiscoveryLog.last_attempt_at.is_(None),
+                        DailyDiscoveryLog.last_attempt_at < day_start,
+                    ),
                 ).order_by(DailyDiscoveryLog.id).all()
 
                 return [log.sport for log in pending_logs]
