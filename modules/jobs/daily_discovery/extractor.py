@@ -8,6 +8,7 @@ from typing import Dict, List
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from modules.jobs.discovery_filters import filter_upcoming_events
+from modules.jobs.discovery_persistence_summary import DiscoveryPersistenceSummary
 from modules.sofascore import api_client as default_api_client
 from modules.competition.discovery_scope import (
     load_source_competitions,
@@ -36,9 +37,11 @@ class DailyDiscoveryExtractor:
         sports: List[str] | None = None,
         run_slot: str | None = None,
     ) -> Dict[str, int]:
+        stats = dict.fromkeys(("events_processed", "events_persisted", "events_inserted",
+                               "events_updated", "events_discarded", "events_failed", "odds_inserted"), 0)
         sports = sofascore_sport_slugs(sports)
         if not sports:
-            return {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+            return stats
         tracked_competitions = load_tracked_source_competitions("sofascore")
         tracked_competition_scope = (
             tracked_competitions
@@ -59,7 +62,7 @@ class DailyDiscoveryExtractor:
                 "Daily discovery stopped reason=tracked_competition_scope_empty; "
                 "no SofaScore provider IDs are mapped for tracked competitions"
             )
-            return {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+            return stats
         if not tracked_filter_enabled:
             logger.warning(
                 "Daily discovery tracked competition filter is disabled; "
@@ -80,10 +83,7 @@ class DailyDiscoveryExtractor:
             )
 
         logger.info("Starting daily discovery for date: %s", date)
-
-        total_events_processed = 0
-        total_events_inserted = 0
-        total_odds_inserted = 0
+        persistence_summary = DiscoveryPersistenceSummary()
 
         try:
             for sport in sports:
@@ -257,53 +257,48 @@ class DailyDiscoveryExtractor:
                     upcoming_event_ids = {e["id"] for e in upcoming_events if e.get("id")}
 
                     logger.info("Processing %s %s events...", len(all_events), sport)
-                    sport_events_inserted = 0
-                    sport_odds_inserted = 0
 
                     selected_odds = {sid: odds for sid, odds in odds_map.items() if sid in upcoming_event_ids}
                     write_summary = persist_events_and_optional_odds(
                         self.api_client, all_events, selected_odds,
                         tracked_competitions=tracked_competitions,
+                        persistence_summary=persistence_summary,
                     )
-                    sport_events_inserted = write_summary.persisted
-                    sport_odds_inserted = write_summary.odds_saved
                     failed = failed or write_summary.failed > 0
-                    logger.info("Daily persistence sport=%s persisted=%s discarded=%s out_of_scope=%s failed=%s",
-                                sport, write_summary.persisted, write_summary.discarded,
+                    logger.info("Daily persistence sport=%s persisted=%s inserted=%s updated=%s discarded=%s out_of_scope=%s failed=%s",
+                                sport, write_summary.persisted, write_summary.inserted, write_summary.updated, write_summary.discarded,
                                 write_summary.out_of_scope, write_summary.failed)
 
                     DailyDiscoveryRepository.update_sport_status(
                         date, normalized_run_slot, sport, "failed" if failed else "completed"
                     )
                     logger.info(
-                        "%s status=%s: %s/%s events inserted, %s with odds",
+                        "%s status=%s: %s/%s events persisted, %s with odds",
                         sport,
                         "failed" if failed else "completed",
-                        sport_events_inserted,
+                        write_summary.persisted,
                         len(all_events),
-                        sport_odds_inserted,
+                        write_summary.odds_saved,
                     )
 
-                    total_events_processed += len(all_events)
-                    total_events_inserted += sport_events_inserted
-                    total_odds_inserted += sport_odds_inserted
+                    stats["events_processed"] += len(all_events)
+                    stats["events_persisted"] += write_summary.persisted
+                    stats["events_inserted"] += write_summary.inserted
+                    stats["events_updated"] += write_summary.updated
+                    stats["events_discarded"] += write_summary.discarded
+                    stats["events_failed"] += write_summary.failed
+                    stats["odds_inserted"] += write_summary.odds_saved
                 except Exception as exc:
                     logger.error("Error processing %s: %s", sport, exc)
                     DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")
                     continue
 
-            logger.info(
-                "Daily discovery completed for all sports: %s/%s events inserted, %s with odds",
-                total_events_inserted,
-                total_events_processed,
-                total_odds_inserted,
-            )
-
-            return {
-                "events_processed": total_events_processed,
-                "events_inserted": total_events_inserted,
-                "odds_inserted": total_odds_inserted,
-            }
+            logger.info("Daily discovery persistence summary: %s", stats)
+            return stats
         except Exception as exc:
             logger.error("Error in discover_events_for_date: %s", exc)
-            return {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+            return stats
+        finally:
+            persistence_summary.log(
+                logger, job="daily_discovery", requested_date=date, run_slot=normalized_run_slot,
+            )

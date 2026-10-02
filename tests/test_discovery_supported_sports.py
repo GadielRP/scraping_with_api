@@ -243,7 +243,7 @@ def test_daily_discovery_scopes_tournament_calls_before_fetching_events(monkeypa
     persisted = []
     monkeypatch.setattr(
         "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
-        lambda _client, events, _odds, **kwargs: persisted.extend((event, kwargs) for event in events) or DiscoveryWriteSummary(persisted=len(events)),
+        lambda _client, events, _odds, **kwargs: persisted.extend((event, kwargs) for event in events) or DiscoveryWriteSummary(persisted=len(events), inserted=len(events)),
     )
     requested_tournaments = []
 
@@ -304,7 +304,7 @@ def test_daily_discovery_toggle_off_logs_shadow_rejections_without_filtering(mon
     persisted = []
     monkeypatch.setattr(
         "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
-        lambda _client, events, _odds, **_kwargs: persisted.extend(events) or DiscoveryWriteSummary(persisted=len(events)),
+        lambda _client, events, _odds, **_kwargs: persisted.extend(events) or DiscoveryWriteSummary(persisted=len(events), inserted=len(events)),
     )
     requested_tournaments = []
 
@@ -449,7 +449,8 @@ def test_daily_discovery_skips_unsupported_sport_scope_before_api_calls(monkeypa
         sports=["table-tennis"],
     )
 
-    assert result == {"events_processed": 0, "events_inserted": 0, "odds_inserted": 0}
+    assert result == dict.fromkeys(("events_processed", "events_persisted", "events_inserted",
+                                    "events_updated", "events_discarded", "events_failed", "odds_inserted"), 0)
 
 
 def test_oddspapi_discovery_filters_scope_and_fixture_payloads(monkeypatch):

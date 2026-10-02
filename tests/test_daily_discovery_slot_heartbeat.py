@@ -254,7 +254,7 @@ def test_partial_discovery_stays_retryable(monkeypatch, failure):
                         lambda _: frozenset({SourceCompetitionIds(None, 777)}))
     from modules.jobs.daily_discovery.persistence import DiscoveryWriteSummary
     monkeypatch.setattr(extractor_module, "persist_events_and_optional_odds",
-                        lambda *a, **k: DiscoveryWriteSummary(persisted=int(failure != "persistence"), failed=int(failure == "persistence")))
+                        lambda *a, **k: DiscoveryWriteSummary(persisted=int(failure != "persistence"), inserted=int(failure != "persistence"), failed=int(failure == "persistence")))
     monkeypatch.setattr(DailyDiscoveryRepository, "update_sport_status", lambda *args: statuses.append(args))
     DailyDiscoveryExtractor(FakeClient()).discover_events_for_date("2026-09-29", ["football"], "PM")
     assert statuses[-1] == ("2026-09-29", "PM", "football", "failed" if failure else "completed")

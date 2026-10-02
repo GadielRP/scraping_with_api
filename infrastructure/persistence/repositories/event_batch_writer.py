@@ -5,6 +5,7 @@ Single-event callers use exactly the same path. This module owns no HTTP work.
 from dataclasses import dataclass, field
 from itertools import islice
 import logging
+from time import monotonic
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, DataError, OperationalError
 from infrastructure.persistence.models import Event, EventSourceMapping, Competition, Season
@@ -25,6 +26,8 @@ class EventWriteResult:
     events: dict[str, Event] = field(default_factory=dict)
     discarded: set[str] = field(default_factory=set)
     errors: dict[str, str] = field(default_factory=dict)
+    inserted: int = 0
+    updated: int = 0
 
 
 def chunks(values, size):
@@ -155,6 +158,9 @@ def _write_chunk(session, data_by_id, source, match_method, confidence, settings
         if new:
             obj = Event(discovery_source=p.get('discovery_source', 'dropping_odds'))
             session.add(obj)
+            result.inserted += 1
+        else:
+            result.updated += 1
         obj.custom_id = p.get('customId')
         obj.slug = p.get('slug') or obj.slug or sid
         obj.starts_at = from_unix_timestamp(p['startTimestamp'])
@@ -201,10 +207,18 @@ def write_events(db_manager, events, *, source='sofascore', match_method='direct
 
     def persist(batch, attempt=0):
         try:
+            started = monotonic()
             with db_manager.get_session() as session:
                 saved = _write_chunk(session, batch, source, match_method, confidence, settings)
             result.events.update(saved.events)
             result.discarded.update(saved.discarded)
+            result.inserted += saved.inserted
+            result.updated += saved.updated
+            log = logger.info if len(batch) > 1 or saved.discarded else logger.debug
+            log('Event batch committed: source=%s inserted=%s updated=%s discarded=%s '
+                'duration_s=%.3f discarded_source_event_ids=%s',
+                source, saved.inserted, saved.updated, len(saved.discarded),
+                monotonic() - started, sorted(saved.discarded))
         except (IntegrityError, DataError) as exc:
             if len(batch) > 1:
                 items = list(batch.items())

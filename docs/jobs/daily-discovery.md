@@ -72,10 +72,12 @@ The extractor checks `is_shutdown_requested()` between sports and inside event p
 
 Direct execution invokes the extractor without the scheduled entrypoint's cleanup, state initialization, or pending-sport selection. Status updates require an existing state row.
 
-The extractor returns `events_processed`, `events_inserted`, and `odds_inserted`. These counters cover the processed payloads and successful persistence operations; `events_inserted` includes successful upserts and does not distinguish newly created rows from updates. Callers must inspect per-sport state to determine completeness; a returned statistics dictionary alone does not establish success for every sport.
+The extractor returns `events_processed`, `events_persisted`, `events_inserted`, `events_updated`, `events_discarded`, `events_failed`, and `odds_inserted`. Persistence counters measure successful write operations; inserted and updated distinguish new rows from existing rows. Callers must inspect per-sport state to determine completeness; a returned statistics dictionary alone does not establish success for every sport.
 
 ## Scheduler follow-up and observability
 
 After the scheduled discovery entrypoint returns normally, `JobScheduler.job_daily_discovery()` invokes `job_refresh_alert_materialized_views()`. This follow-up also runs when discovery skips because no slot is open or all sports are already completed.
 
 Operational logging records the local clock reading, timezone, target date, slot, selected sport scope, filter mode, tournament and event filtering counts, persistence totals, and sport status. These fields describe each run; persistent completion and retry decisions use `DailyDiscoveryLog`.
+
+At the end of extraction, the [discovery persistence calendar summary](discovery-persistence-logging.md) logs committed canonical events grouped by their local start date and persisted sport, with daily totals and a unique total for the run. The requested discovery date and slot are logged separately from the event start date.

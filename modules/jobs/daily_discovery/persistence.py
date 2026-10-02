@@ -15,13 +15,16 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DiscoveryWriteSummary:
     persisted: int = 0
+    inserted: int = 0
+    updated: int = 0
     odds_saved: int = 0
     discarded: int = 0
     out_of_scope: int = 0
     failed: int = 0
 
 
-def persist_events_and_optional_odds(api_client, events, odds_map=None, *, tracked_competitions=UNRESOLVED_SCOPE):
+def persist_events_and_optional_odds(api_client, events, odds_map=None, *, tracked_competitions=UNRESOLVED_SCOPE,
+                                     persistence_summary=None):
     if tracked_competitions is UNRESOLVED_SCOPE:
         tracked_competitions = load_tracked_source_competitions('sofascore')
     summary = DiscoveryWriteSummary()
@@ -38,6 +41,9 @@ def persist_events_and_optional_odds(api_client, events, odds_map=None, *, track
             else:
                 eligible.append(raw)
         blocked = EventRepository.discarded_source_ids('sofascore', [e['id'] for e in eligible])
+        if blocked:
+            logger.info('Discovery discard memory blocked: source=sofascore phase=before_normalization '
+                        'unique_ids=%s source_event_ids=%s', len(blocked), sorted(blocked))
         normalized = []
         for raw in eligible:
             if str(raw['id']) in blocked:
@@ -52,7 +58,11 @@ def persist_events_and_optional_odds(api_client, events, odds_map=None, *, track
                 logger.exception('Cannot normalize daily event %s', raw['id'])
                 summary.failed += 1
         result = EventRepository.batch_upsert_events(normalized)
+        if persistence_summary is not None:
+            persistence_summary.record(result.events.values())
         summary.persisted += len(result.events)
+        summary.inserted += result.inserted
+        summary.updated += result.updated
         summary.discarded += len(result.discarded)
         summary.failed += len(result.errors)
         for sid, event in result.events.items():

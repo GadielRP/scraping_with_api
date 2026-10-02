@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from modules.competition.discovery_scope import load_tracked_source_competitions
+from modules.jobs.discovery_persistence_summary import DiscoveryPersistenceSummary
 from modules.jobs.parallelism import (
     process_events_only,
     process_odds_first,
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 def run_discover_secondary_sources() -> None:
     """Discover events from streaks, H2H and winning odds sources."""
     logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
+    persistence_summary = DiscoveryPersistenceSummary()
 
     try:
         if not sofascore_sport_slugs():
@@ -44,6 +46,7 @@ def run_discover_secondary_sources() -> None:
                 discovery_source="team_streaks",
                 max_workers=10,
                 tracked_competitions=tracked_competitions,
+                persistence_summary=persistence_summary,
             )
             logger.info(
                 "team streaks events completed: processed %s/%s events, skipped %s events",
@@ -67,6 +70,7 @@ def run_discover_secondary_sources() -> None:
                 events,
                 discovery_source=source,
                 tracked_competitions=tracked_competitions,
+                persistence_summary=persistence_summary,
             )
             logger.info(
                 "%s events completed: processed %s/%s events, skipped %s events",
@@ -82,6 +86,7 @@ def run_discover_secondary_sources() -> None:
             discovery_source="winning_odds",
             max_workers=10,
             tracked_competitions=tracked_competitions,
+            persistence_summary=persistence_summary,
         )
         logger.info(
             "winning odds events completed: processed %s/%s events, skipped %s events",
@@ -91,3 +96,5 @@ def run_discover_secondary_sources() -> None:
         )
     except Exception as exc:
         logger.error("Error in Job B: %s", exc)
+    finally:
+        persistence_summary.log(logger, job="secondary_sources")

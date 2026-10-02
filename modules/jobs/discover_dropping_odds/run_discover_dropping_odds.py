@@ -7,6 +7,7 @@ import logging
 from infrastructure.settings import Config
 from modules.competition.discovery_scope import load_tracked_source_competitions
 from modules.jobs.discovery_filters import filter_upcoming_events
+from modules.jobs.discovery_persistence_summary import DiscoveryPersistenceSummary
 from modules.jobs.parallelism import process_with_parallel_db_ops
 from modules.sofascore import api_client
 from modules.sports.catalog import configured_sport_ids, sofascore_sport_routes
@@ -53,6 +54,7 @@ def run_discover_dropping_odds() -> None:
     )
     totals = {"processed": 0, "skipped": 0}
     processed_event_ids = set()
+    persistence_summary = DiscoveryPersistenceSummary()
 
     for sport in sports:
         try:
@@ -147,6 +149,7 @@ def run_discover_dropping_odds() -> None:
                 discovery_source="dropping_odds",
                 max_workers=10,
                 tracked_competitions=tracked_competitions,
+                persistence_summary=persistence_summary,
             )
             totals["processed"] += processed
             totals["skipped"] += skipped
@@ -167,3 +170,4 @@ def run_discover_dropping_odds() -> None:
         totals["skipped"],
         len(processed_event_ids),
     )
+    persistence_summary.log(logger, job="dropping_odds")
