@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from time import monotonic
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -10,10 +11,15 @@ from sqlalchemy.engine import Engine
 from infrastructure.settings import Config
 
 logger = logging.getLogger(__name__)
+REPORTING_MATERIALIZED_VIEWS = ('mv_alert_events', 'mv_p5_price_memory')
 
 
 def refresh_materialized_views(engine: Engine) -> None:
     """Refresh reporting materialized views, with optional per-view diagnostics."""
+    started = monotonic()
+    logger.info('Reporting views refresh started targets=%s mode=%s',
+                REPORTING_MATERIALIZED_VIEWS,
+                'refresh_and_count_all_public_views' if Config.global_debug_mode else 'refresh_only')
     with engine.begin() as connection:
         if Config.global_debug_mode:
             rows = connection.execute(
@@ -42,3 +48,5 @@ def refresh_materialized_views(engine: Engine) -> None:
                     )
         else:
             connection.execute(text("SELECT public.refresh_reporting_views()"))
+    logger.info('Reporting views refresh committed targets=%s duration_s=%.3f',
+                REPORTING_MATERIALIZED_VIEWS, monotonic() - started)

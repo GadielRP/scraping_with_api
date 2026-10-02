@@ -17,7 +17,8 @@ class EventDiscardRepository:
         ).all()}
 
     @staticmethod
-    def remember(session, evidence_by_id, settings):
+    def remember(session, evidence_by_id, settings) -> int:
+        """Return inserted rows; the transaction owner logs success after commit."""
         rows = [dict(source=e.source, source_event_id=e.source_event_id,
                      original_event_id=eid, parser_kind=e.parser_kind,
                      deletion_reason=e.reason, snapshot=e.snapshot, observed_at=e.observed_at,
@@ -25,14 +26,17 @@ class EventDiscardRepository:
                 for eid, e in evidence_by_id.items()
                 if settings.enabled and e.parser_kind in settings.kinds]
         if not rows:
-            return
+            return 0
         if session.get_bind().dialect.name == 'postgresql':
             from sqlalchemy.dialects.postgresql import insert
         else:
             from sqlalchemy.dialects.sqlite import insert
         statement = insert(EventDiscardMemory).values(rows)
         # A repeated observation must not extend the original retention period.
-        session.execute(statement.on_conflict_do_nothing(index_elements=['source', 'source_event_id']))
+        inserted = session.execute(statement.on_conflict_do_nothing(
+            index_elements=['source', 'source_event_id']
+        ).returning(EventDiscardMemory.source_event_id)).all()
+        return len(inserted)  # Count actual inserts, including ON CONFLICT omissions.
 
     @staticmethod
     def cleanup(session, settings, *, now=None):

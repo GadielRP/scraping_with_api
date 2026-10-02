@@ -29,8 +29,8 @@ def run_midnight_sync_job() -> None:
                 stats["cancelled"],
             )
 
-        logger.info("Midnight Sync: refreshing alert materialized view")
+        logger.info("Midnight Sync: refreshing reporting materialized views")
         refresh_materialized_views(db_manager.engine)
-        logger.info("Midnight Sync: alert materialized view refreshed")
+        logger.info("Midnight Sync: reporting materialized views refreshed")
     except Exception as exc:
         logger.exception("Midnight Sync failed: %s", exc)

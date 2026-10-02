@@ -71,7 +71,8 @@ def test_canceled_memory_survives_deletion_and_blocks_recreation(database):
         assert s.query(EventSourceMapping).filter_by(source_event_id='123').count() == 0
 
 
-def test_memory_and_deletion_rollback_together(database, monkeypatch):
+def test_memory_and_deletion_rollback_together(database, monkeypatch, caplog):
+    caplog.set_level('INFO')
     obj = EventRepository.upsert_event(payload(200))
     batch = deletion(obj, 200)
     original = EventDiscardRepository.remember
@@ -84,6 +85,39 @@ def test_memory_and_deletion_rollback_together(database, monkeypatch):
     with database.get_session() as s:
         assert s.get(Event, obj.id) is not None
         assert s.query(EventDiscardMemory).count() == 0
+    assert 'Batch deletion committed:' not in caplog.text
+
+
+def test_memory_counts_actual_inserts_not_conflicts(database):
+    obj = EventRepository.upsert_event(payload(201))
+    proof = deletion(obj, 201).evidence
+    settings = DiscardSettings.current()
+    with database.get_session() as s:
+        assert EventDiscardRepository.remember(s, proof, settings) == 1
+        assert EventDiscardRepository.remember(s, proof, settings) == 0
+        assert EventDiscardRepository.remember(s, proof, replace(settings, enabled=False)) == 0
+
+
+def test_committed_deletion_log_distinguishes_memory_policy(database, caplog):
+    caplog.set_level('INFO')
+    canceled = EventRepository.upsert_event(payload(202))
+    pending = EventRepository.upsert_event(payload(203))
+    batch = deletion(canceled, 202)
+    other = deletion(pending, 203, code=0, status_type='notstarted')
+    batch.update(other)
+    batch.evidence.update(other.evidence)
+    assert EventRepository.batch_delete_events(batch) == 2
+    assert 'deleted=2 memory_eligible=1 memory_inserted=1 memory_existing=0 deleted_without_memory=1' in caplog.text
+
+
+def test_event_write_counts_new_existing_and_blocked(database):
+    existing = EventRepository.upsert_event(payload(204))
+    blocked = EventRepository.upsert_event(payload(205))
+    EventRepository.batch_delete_events(deletion(blocked, 205))
+    result = EventRepository.batch_upsert_events([payload(204), payload(205), payload(206)])
+    assert result.inserted == result.updated == 1
+    assert result.events['204'].id == existing.id
+    assert result.discarded == {'205'}
 
 
 def test_unselected_kind_deleted_without_memory(database):

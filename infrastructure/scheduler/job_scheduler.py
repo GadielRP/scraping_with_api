@@ -143,7 +143,7 @@ class JobScheduler:
         logger.info("  - Midnight sync: daily at 04:00")
         logger.info(
             "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; "
-            "AM opens at %s:00, PM opens at %s:00; refreshes mv_alert_events after each run",
+            "AM opens at %s:00, PM opens at %s:00; refreshes both reporting materialized views after each run",
             ", ".join(daily_discovery_fixed_times),
             daily_discovery_interval,
             Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
@@ -391,24 +391,22 @@ class JobScheduler:
             logger.exception("Scheduled Daily Discovery failed: %s", exc)
             return
 
-        # Keep discovery and MV refresh as separate scheduler steps: discovery
-        # remains focused on ingestion, while this follow-up refreshes the
-        # historical-match pool used by dual-process / Pillar 5.
+        # Both reporting views refresh synchronously, including skipped heartbeats.
         self.job_refresh_alert_materialized_views()
 
     def job_refresh_alert_materialized_views(self):
-        """Refresh mv_alert_events after discovery so historical matching stays current."""
-        logger.info("Starting Alert Materialized View Refresh after Daily Discovery")
+        """Refresh both reporting materialized views after the discovery heartbeat."""
+        logger.info("Starting Reporting Materialized Views Refresh after Daily Discovery")
         started = time.monotonic()
         try:
             refresh_materialized_views(db_manager.engine)
             logger.info(
-                "Alert Materialized View Refresh completed duration_s=%.1f",
+                "Reporting Materialized Views Refresh completed duration_s=%.1f",
                 time.monotonic() - started,
             )
         except Exception as exc:
             logger.exception(
-                "Alert Materialized View Refresh after Daily Discovery failed duration_s=%.1f: %s",
+                "Reporting Materialized Views Refresh after Daily Discovery failed duration_s=%.1f: %s",
                 time.monotonic() - started,
                 exc,
             )

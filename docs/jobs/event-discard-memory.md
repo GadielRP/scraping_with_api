@@ -90,6 +90,24 @@ configuración; `None` explícito desactiva el filtro; un conjunto vacío no per
 ninguna competición. La reconciliación de temporadas y las listas independientes
 por proveedor/job quedan fuera de este cambio.
 
+## Logs operativos
+
+Los contadores de escritura se emiten después del commit. `memory_inserted`
+cuenta filas realmente devueltas por `INSERT ... ON CONFLICT DO NOTHING RETURNING`;
+`memory_existing` cuenta los conflictos de identidad que no insertaron otra fila.
+`memory_eligible` identifica los descartes cubiertos por la política y
+`deleted_without_memory` las eliminaciones sin registro de memoria. El log incluye
+kind, conflictos de eliminación, IDs canónicos y duración del lote.
+
+Discovery registra los IDs externos bloqueados antes de normalizar y los que
+bloquea la comprobación final dentro de la transacción. Los resúmenes distinguen
+`events_persisted`, `events_inserted`, `events_updated` y `events_discarded`.
+`events_inserted` ahora significa exclusivamente eventos nuevos; anteriormente
+incluía todos los upserts. `updated` cuenta eventos existentes escritos, aunque
+sus valores de negocio no cambien; los contadores reflejan operaciones y no un
+conteo global de IDs únicos entre lotes. No se carga la tabla completa ni se
+añaden consultas por evento para calcularlos.
+
 ## Instalación y validación
 
 Aplicar la migración antes de arrancar procesos con este código:

@@ -1,5 +1,7 @@
 """Atomic event removal and optional evidence, bounded by write batch size."""
 import logging
+from collections import Counter
+from time import monotonic
 from infrastructure.persistence.models import Event, EventSourceMapping, Result, EventObservation, Season
 from infrastructure.persistence.event_identity_lock import lock_event_identities
 from modules.events.discards.settings import DiscardSettings
@@ -14,6 +16,7 @@ def delete_events(db_manager, event_ids):
     evidence = getattr(event_ids, 'evidence', {})
     total = 0
     for ids in chunks(sorted(set(event_ids)), settings.batch_size):
+        started = monotonic()
         with db_manager.get_session() as session:
             identities = session.query(EventSourceMapping.source, EventSourceMapping.source_event_id).filter(
                 EventSourceMapping.event_id.in_(ids)).all()
@@ -34,7 +37,9 @@ def delete_events(db_manager, event_ids):
             deleted_ids = [e.id for e in selected]
             if not deleted_ids:
                 continue
-            EventDiscardRepository.remember(session, {eid: evidence[eid] for eid in deleted_ids if eid in evidence}, settings)
+            proofs = {eid: evidence[eid] for eid in deleted_ids if eid in evidence}
+            eligible = [p for p in proofs.values() if settings.enabled and p.parser_kind in settings.kinds]
+            memorized = EventDiscardRepository.remember(session, proofs, settings)
             session.query(Result).filter(Result.event_id.in_(deleted_ids)).delete(synchronize_session=False)
             session.query(EventObservation).filter(EventObservation.event_id.in_(deleted_ids)).delete(synchronize_session=False)
             # Explicit for SQLite tests and non-cascading legacy schemas too.
@@ -45,5 +50,12 @@ def delete_events(db_manager, event_ids):
                 remaining = session.query(Event.season_id).filter(Event.season_id.in_(seasons))
                 session.query(Season).filter(Season.id.in_(seasons), ~Season.id.in_(remaining)).delete(synchronize_session=False)
         total += count
-        logger.info('Batch deletion committed: deleted=%s deleted_event_ids=%s', count, deleted_ids)
+        logger.info(
+            'Batch deletion committed: deleted=%s memory_eligible=%s memory_inserted=%s '
+            'memory_existing=%s deleted_without_memory=%s memory_kinds=%s '
+            'conflicts=%s missing=%s duration_s=%.3f deleted_event_ids=%s',
+            count, len(eligible), memorized, len(eligible) - memorized,
+            count - len(eligible), dict(Counter(p.parser_kind for p in eligible)),
+            len(events) - len(selected), len(ids) - len(events), monotonic() - started, deleted_ids,
+        )
     return total
