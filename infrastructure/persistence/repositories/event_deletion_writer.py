@@ -6,7 +6,7 @@ from infrastructure.persistence.models import Event, EventSourceMapping, Result,
 from infrastructure.persistence.event_identity_lock import lock_event_identities
 from modules.events.discards.settings import DiscardSettings
 from .event_discard_repository import EventDiscardRepository
-from .event_batch_writer import chunks
+from shared.batching import chunks
 
 logger = logging.getLogger(__name__)
 

@@ -264,6 +264,14 @@ class DailyDiscoveryExtractor:
                         tracked_competitions=tracked_competitions,
                         persistence_summary=persistence_summary,
                     )
+                    stats["events_processed"] += len(all_events)
+                    stats["events_persisted"] += write_summary.persisted
+                    stats["events_inserted"] += write_summary.inserted
+                    stats["events_updated"] += write_summary.updated
+                    stats["events_discarded"] += write_summary.discarded
+                    stats["events_failed"] += write_summary.failed
+                    stats["odds_inserted"] += write_summary.odds_saved
+
                     failed = failed or write_summary.failed > 0
                     logger.info("Daily persistence sport=%s persisted=%s inserted=%s updated=%s discarded=%s out_of_scope=%s failed=%s",
                                 sport, write_summary.persisted, write_summary.inserted, write_summary.updated, write_summary.discarded,
@@ -281,13 +289,6 @@ class DailyDiscoveryExtractor:
                         write_summary.odds_saved,
                     )
 
-                    stats["events_processed"] += len(all_events)
-                    stats["events_persisted"] += write_summary.persisted
-                    stats["events_inserted"] += write_summary.inserted
-                    stats["events_updated"] += write_summary.updated
-                    stats["events_discarded"] += write_summary.discarded
-                    stats["events_failed"] += write_summary.failed
-                    stats["odds_inserted"] += write_summary.odds_saved
                 except Exception as exc:
                     logger.error("Error processing %s: %s", sport, exc)
                     DailyDiscoveryRepository.update_sport_status(date, normalized_run_slot, sport, "failed")

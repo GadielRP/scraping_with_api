@@ -48,7 +48,7 @@ def run_daily_discovery(sports=None, date_str=None, run_slot=None):
     return DailyDiscoveryExtractor().discover_events_for_date(date_str, sports=sports, run_slot=run_slot)
 
 
-def run_daily_discovery_job() -> None:
+def run_daily_discovery_job() -> dict | None:
     logger.info("Starting Job E: Daily discovery heartbeat")
     # Run before slot/cache checks so every heartbeat can advance bounded cleanup.
     run_event_discard_cleanup()
@@ -85,8 +85,7 @@ def run_daily_discovery_job() -> None:
             discovery_sports,
         )
         if not initialized:
-            logger.error("Daily discovery could not initialize date=%s slot=%s", today_str, run_slot)
-            return
+            raise RuntimeError(f"Daily discovery could not initialize date={today_str} slot={run_slot}")
 
         pending_sports = sofascore_sport_slugs(
             DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
@@ -101,13 +100,15 @@ def run_daily_discovery_job() -> None:
 
         stats = run_daily_discovery(sports=pending_sports, date_str=today_str, run_slot=run_slot)
         if stats:
-            logger.info("Daily discovery slot %s completed successfully: %s", run_slot, stats)
+            logger.info("Daily discovery slot %s returned persistence stats: %s", run_slot, stats)
         else:
             logger.warning("Daily discovery slot %s completed with no results", run_slot)
+        return stats
     except Exception as exc:
-        logger.error("Error in Job E (Daily Discovery): %s", exc)
+        logger.exception("Error in Job E (Daily Discovery): %s", exc)
+        raise
 
 
-def run_daily_discovery_retry_job() -> None:
+def run_daily_discovery_retry_job() -> dict | None:
     logger.info("Starting Job E_Retry: Delegating to slot-aware Daily Discovery heartbeat")
-    run_daily_discovery_job()
+    return run_daily_discovery_job()

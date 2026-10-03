@@ -16,7 +16,7 @@ from curl_cffi.const import CurlECode
 
 from infrastructure.network import ProxyIdentityManager
 from infrastructure.settings import Config
-from shared.shutdown import is_shutdown_requested
+from shared.shutdown import is_shutdown_requested, is_background_work
 
 from .discovery_feeds import (
     extract_events_and_odds_from_dropping_response,
@@ -134,7 +134,8 @@ class SofaScoreAPI:
         self.session = None
         self.x_requested_with = getattr(Config, "SOFASCORE_X_REQUESTED_WITH", "XMLHttpRequest")
         self.last_request_time = 0
-        self._rate_limit_lock = threading.Lock()
+        self._rate_limit_condition = threading.Condition()
+        self._foreground_waiters = 0
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
@@ -333,26 +334,24 @@ class SofaScoreAPI:
             self._proxy_error_streak = 0
 
     def _rate_limit(self):
-        if is_shutdown_requested():
-            raise KeyboardInterrupt()
-
-        with self._rate_limit_lock:
-            if is_shutdown_requested():
-                raise KeyboardInterrupt()
-
-            current_time = time.time()
-            time_since_last = current_time - self.last_request_time
-            min_interval = Config.REQUEST_DELAY_SECONDS
-
-            if time_since_last < min_interval:
-                sleep_time = min_interval - time_since_last
-                logger.debug("Rate limiting: sleeping for %.2f seconds", sleep_time)
-                time.sleep(sleep_time)
-
-            if is_shutdown_requested():
-                raise KeyboardInterrupt()
-
-            self.last_request_time = time.time()
+        """Share the request budget; foreground waiters precede maintenance work."""
+        foreground = not is_background_work()
+        with self._rate_limit_condition:
+            self._foreground_waiters += int(foreground)
+            try:
+                while True:
+                    if is_shutdown_requested():
+                        raise KeyboardInterrupt()
+                    remaining = Config.REQUEST_DELAY_SECONDS - (time.monotonic() - self.last_request_time)
+                    if remaining <= 0 and (foreground or not self._foreground_waiters):
+                        self.last_request_time = time.monotonic()
+                        return
+                    # Release the condition while waiting, including during a
+                    # long configured delay, so urgent requests can be admitted.
+                    self._rate_limit_condition.wait(min(max(remaining, 0.01), 0.1))
+            finally:
+                self._foreground_waiters -= int(foreground)
+                self._rate_limit_condition.notify_all()
 
     def _extract_endpoint_event_id(self, endpoint: str) -> int:
         parts = endpoint.split("/")

@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 import logging
 from infrastructure.persistence.repositories import EventRepository
-from infrastructure.persistence.repositories.event_batch_writer import chunks
+from shared.batching import chunks
 from modules.competition.discovery_scope import is_tracked_source_event, load_tracked_source_competitions, UNRESOLVED_SCOPE
 from modules.events.discards.settings import DiscardSettings
 from modules.odds_ingestion import MarketOddsIngestionService

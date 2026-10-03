@@ -11,7 +11,7 @@ from modules.jobs.results_collection_job.run_results_collection_job import (
 
 def test_run_results_collection_previous_day_no_events():
     with patch(
-        "modules.jobs.results_collection_job.run_results_collection_job.EventRepository.get_events_by_date",
+        "modules.jobs.results_collection_job.run_results_collection_job.ResultRepository.pending_batches",
         return_value=[],
     ) as mock_get_events:
         stats = run_results_collection_previous_day()
@@ -24,7 +24,7 @@ def test_run_results_collection_previous_day_no_events():
 def test_run_results_collection_for_date_specific_date():
     target = date(2026, 9, 23)
     with patch(
-        "modules.jobs.results_collection_job.run_results_collection_job.EventRepository.get_events_by_date",
+        "modules.jobs.results_collection_job.run_results_collection_job.ResultRepository.pending_batches",
         return_value=[],
     ) as mock_get_events:
         stats = run_results_collection_for_date(target)
@@ -34,7 +34,7 @@ def test_run_results_collection_for_date_specific_date():
 
 def test_run_results_collection_for_date_string_format():
     with patch(
-        "modules.jobs.results_collection_job.run_results_collection_job.EventRepository.get_events_by_date",
+        "modules.jobs.results_collection_job.run_results_collection_job.ResultRepository.pending_batches",
         return_value=[],
     ) as mock_get_events:
         stats = run_results_collection_for_date("2026-09-23")

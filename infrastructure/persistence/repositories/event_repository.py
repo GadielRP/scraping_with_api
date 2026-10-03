@@ -126,7 +126,7 @@ class EventRepository:
     def discarded_source_ids(source, source_event_ids):
         """Bulk optimization only; writes recheck under the identity lock."""
         from .event_discard_repository import EventDiscardRepository
-        from .event_batch_writer import chunks
+        from shared.batching import chunks
         from modules.events.discards.settings import DiscardSettings
         settings = DiscardSettings.current()
         if not settings.enabled or not settings.kinds:
@@ -139,10 +139,12 @@ class EventRepository:
         return blocked
 
     @staticmethod
-    def batch_upsert_events(events, source="sofascore", match_method="direct", confidence=1.0):
+    def batch_upsert_events(events, source="sofascore", match_method="direct", confidence=1.0,
+                            *, expected_event_ids=None):
         """Bounded transactions with batch preloads and explicit skipped/error outcomes."""
         from .event_batch_writer import write_events
-        return write_events(db_manager, events, source=source, match_method=match_method, confidence=confidence)
+        return write_events(db_manager, events, source=source, match_method=match_method, confidence=confidence,
+                            expected_event_ids=expected_event_ids)
 
     @staticmethod
     def upsert_event(event_data, source="sofascore", match_method="direct", confidence=1.0):
@@ -515,29 +517,6 @@ class EventRepository:
             logger.error(f"Error getting events for date {target_date}: {e}")
             return []
     
-    @staticmethod
-    def get_all_finished_events() -> List[Event]:
-        """Get all events that should be finished"""
-        try:
-            with db_manager.get_session() as session:
-                now = utc_now()
-                return session.query(Event).options(
-                    joinedload(Event.home_participant),
-                    joinedload(Event.away_participant),
-                    joinedload(Event.competition_ref),
-                ).filter(
-                    or_(
-                        and_(Event.sport.in_(['Football', 'Futsal']), Event.starts_at < now - timedelta(hours=2.5)),
-                        and_(Event.sport == 'Tennis', Event.starts_at < now - timedelta(hours=4)),
-                        and_(Event.sport == 'Baseball', Event.starts_at < now - timedelta(hours=4)),
-                        and_(Event.sport == 'Basketball', Event.starts_at < now - timedelta(hours=3)),
-                        and_(~Event.sport.in_(['Football', 'Futsal', 'Tennis', 'Baseball', 'Basketball']), Event.starts_at < now - timedelta(hours=3))
-                    )
-                ).all()
-        except Exception as e:
-            logger.error(f"Error getting finished events: {e}")
-            return []
-
     @staticmethod
     def mark_event_as_alerted(event_id: int) -> bool:
         """

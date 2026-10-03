@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -87,7 +88,7 @@ def parallel_team_event_fetching(
 
     team_events = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_team = {executor.submit(fetch_team_event, team_id): team_id for team_id in team_ids}
+        future_to_team = {executor.submit(copy_context().run, fetch_team_event, team_id): team_id for team_id in team_ids}
         for future in as_completed(future_to_team):
             event_data = future.result()
             if event_data:
@@ -122,7 +123,7 @@ def fetch_event_odds_in_parallel(
     summary = ParallelOddsFetchSummary()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_event = {
-            executor.submit(fetch_event_odds, event_data): event_data
+            executor.submit(copy_context().run, fetch_event_odds, event_data): event_data
             for event_data in events
         }
         for future in as_completed(future_to_event):
@@ -333,7 +334,7 @@ def process_with_parallel_db_ops(
         persistence_summary.record(write_result.events.values())
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_event = {executor.submit(process_single_event, event_data): event_data for event_data in events}
+        future_to_event = {executor.submit(copy_context().run, process_single_event, event_data): event_data for event_data in events}
         for future in as_completed(future_to_event):
             try:
                 success, reason = future.result()

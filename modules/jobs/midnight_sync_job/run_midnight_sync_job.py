@@ -16,7 +16,9 @@ def run_midnight_sync_job() -> None:
     logger.info("Starting Midnight Sync")
     try:
         logger.info("Midnight Sync: starting previous-day results collection")
-        run_results_collection_previous_day()
+        result_stats = run_results_collection_previous_day()
+        if result_stats['failed']:
+            logger.warning("Midnight Sync: results remain pending stats=%s", result_stats)
 
         logger.info("Midnight Sync: updating prediction logs with actual results")
         stats = prediction_logger.update_predictions_with_results()
@@ -34,3 +36,4 @@ def run_midnight_sync_job() -> None:
         logger.info("Midnight Sync: reporting materialized views refreshed")
     except Exception as exc:
         logger.exception("Midnight Sync failed: %s", exc)
+        raise

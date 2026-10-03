@@ -1,171 +1,118 @@
-"""Results collection jobs."""
-
+"""Resumable result collection: bounded reads, provider work, then committed writes."""
 from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Tuple, Union
+from time import monotonic
 
-from infrastructure.persistence.repositories import (
-    EventRepository,
-    EventSourceMappingRepository,
-    ResultRepository,
-)
+from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
+from modules.events.discards.contracts import DeletionBatch
 from modules.observations import sport_observation_service
 from modules.sofascore import api_client
+from modules.sofascore.event_details import fetch_authoritative_event_response, result_from_response
+from modules.sofascore.event_normalizer import normalize_event_payload
+from shared.shutdown import is_shutdown_requested
 from shared.temporal import now_in_timezone
-from modules.events.discards.contracts import DeletionBatch
 
 logger = logging.getLogger(__name__)
 
 
-def _collect_results_for_events(events: List, job_name: str = "Results Collection") -> Dict[str, int]:
-    stats = {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
-    source_event_ids = EventSourceMappingRepository.get_source_event_ids_by_event_ids(
-        [event.id for event in events],
-        "sofascore",
-    )
-    deferred_deletion_event_ids = DeletionBatch(origin=job_name)
-    results_to_upsert: List[Tuple[int, Dict]] = []
-    events_for_observations: List[Tuple[object, Dict]] = []
-
+def _collect_batch(events, job_name):
+    stats = dict(updated=0, skipped=0, failed=0, deleted=0)
+    deletions = DeletionBatch(origin=job_name)
+    results = {}
+    metadata = []
+    expected_ids = {}
+    fetch_started = monotonic()
     for event in events:
+        if is_shutdown_requested():
+            raise KeyboardInterrupt()
         try:
-            if ResultRepository.get_result_by_event_id(event.id):
-                logger.info("Results exist for event %s, skipping", event.id)
-                stats["skipped"] += 1
-                continue
-
-            source_event_id = source_event_ids.get(event.id)
-            if source_event_id is None:
-                raise ValueError(
-                    f"Missing SofaScore source mapping for event_id={event.id}"
-                )
-
-            # Previous-day/date collection: stale not_started events are a minority
-            # of zombie fixtures that never update on SofaScore. Policy lives
-            # here (caller), not in the shared results parser.
-            result_data = api_client.get_event_results(
-                int(source_event_id),
-                canonical_event_id=event.id,
-                deferred_deletion_event_ids=deferred_deletion_event_ids,
-                on_not_started="delete",
+            if event.source_event_id is None:
+                raise ValueError(f"Missing or ambiguous SofaScore mapping for event_id={event.id}")
+            source_id = int(event.source_event_id)
+            response = fetch_authoritative_event_response(
+                api_client, source_id, canonical_event_id=event.id,
+                deferred_deletion_event_ids=deletions,
             )
-            if not result_data:
-                if event.id not in deferred_deletion_event_ids:
-                    stats["failed"] += 1
+            if not response:
+                stats['failed'] += int(event.id not in deletions)
                 continue
-
-            results_to_upsert.append((event.id, result_data))
-            events_for_observations.append((event, result_data))
-        except Exception as exc:
-            logger.error("Error in %s for event %s: %s", job_name, event.id, exc)
-            stats["failed"] += 1
-
-    if results_to_upsert:
-        upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
-        stats["updated"] = upserted_count
-        logger.info(
-            "%s: batch upserted %s result(s)",
-            job_name,
-            upserted_count,
-        )
-        for event, r_data in events_for_observations:
-            try:
-                sport_observation_service.process_result_observations(event, r_data)
-            except Exception as obs_exc:
-                logger.error("Error processing observations for event %s: %s", event.id, obs_exc)
-
-    if deferred_deletion_event_ids:
-        requested_deletions = len(deferred_deletion_event_ids)
-        stats["deleted"] = int(
-            EventRepository.batch_delete_events(
-                deferred_deletion_event_ids
+            if str(response.get('event', {}).get('id')) != str(source_id):
+                raise ValueError('Provider response identity does not match requested event')
+            result = result_from_response(
+                response, source_id, canonical_event_id=event.id,
+                deferred_deletion_event_ids=deletions, on_not_started='delete',
+                log_result_diagnostics=Config.global_debug_mode,
             )
-            or 0
-        )
-        failed_deletions = max(0, requested_deletions - stats["deleted"])
-        stats["failed"] += failed_deletions
-        logger.info(
-            "%s batch deletion completed: requested=%s deleted=%s failed=%s",
-            job_name,
-            requested_deletions,
-            stats["deleted"],
-            failed_deletions,
-        )
-
+            # Do not update metadata after observing a deletion: that would make
+            # our own evidence stale and defeat the deletion concurrency guard.
+            if event.id in deletions:
+                continue
+            normalized = normalize_event_payload(response['event'], discovery_source='results_sync')
+            payload = normalized.get('event', normalized)
+            payload.pop('discovery_source', None)
+            metadata.append(normalized)
+            expected_ids[str(source_id)] = event.id
+            if result:
+                results[str(source_id)] = result
+            else:
+                stats['failed'] += 1
+        except Exception:
+            logger.exception('%s event failed event_id=%s', job_name, event.id)
+            stats['failed'] += 1
+    fetch_seconds = monotonic() - fetch_started
+    write_started = monotonic()
+    saved = EventRepository.batch_upsert_events(metadata, expected_event_ids=expected_ids)
+    persistable = [(event.id, results[sid]) for sid, event in saved.events.items() if sid in results]
+    stats['failed'] += sum(sid not in saved.events for sid in results)
+    stats['updated'] = ResultRepository.batch_upsert_results(persistable)
+    stats['failed'] += len(persistable) - stats['updated']
+    for sid, event in saved.events.items():
+        if sid in results:
+            sport_observation_service.process_result_observations(event, results[sid])
+    if deletions:
+        stats['deleted'] = EventRepository.batch_delete_events(deletions)
+        stats['failed'] += len(deletions) - stats['deleted']
+    logger.info('%s batch completed candidates=%s last_event_id=%s fetch_parse_s=%.3f '
+                'persist_s=%.3f stats=%s', job_name, len(events), events[-1].id,
+                fetch_seconds, monotonic() - write_started, stats)
     return stats
 
 
-def run_results_collection_for_date(
-    target_date: Optional[Union[date, str]] = None,
-    job_name: Optional[str] = None,
-) -> Dict[str, int]:
-    """Collect results for events on a specific target date (defaults to previous day).
+def _run_collection(target_date, job_name):
+    stats = dict(updated=0, skipped=0, failed=0, deleted=0)
+    started = monotonic()
+    logger.info('Starting %s target_date=%s batch_size=%s', job_name, target_date, Config.EVENT_WRITE_BATCH_SIZE)
+    try:
+        for batch in ResultRepository.pending_batches(target_date):
+            if is_shutdown_requested():
+                raise KeyboardInterrupt()
+            batch_stats = _collect_batch(batch, job_name)
+            for key, count in batch_stats.items():
+                stats[key] += count
+    except KeyboardInterrupt:
+        logger.info('%s interrupted; committed batches retained stats=%s', job_name, stats)
+        raise
+    except Exception:
+        logger.exception('%s failed; committed batches retained stats=%s', job_name, stats)
+        raise
+    logger.info('%s completed duration_s=%.3f stats=%s', job_name, monotonic() - started, stats)
+    return stats
 
-    Following SOLID design principles, this serves as the unified engine for date-based
-    results collection, shared by scheduled midnight sync and ad-hoc CLI executions.
-    """
+
+def run_results_collection_for_date(target_date=None, job_name=None):
     if target_date is None:
-        resolved_date = now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
-        job_label = job_name or "Results Collection (previous day)"
+        target_date = now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
     elif isinstance(target_date, str):
-        resolved_date = date.fromisoformat(target_date)
-        job_label = job_name or f"Results Collection ({resolved_date})"
-    else:
-        resolved_date = target_date
-        job_label = job_name or f"Results Collection ({resolved_date})"
-
-    logger.info("Starting %s for date: %s", job_label, resolved_date)
-    try:
-        events = EventRepository.get_events_by_date(resolved_date)
-        if not events:
-            logger.info("No events found for %s (%s)", resolved_date, job_label)
-            return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
-
-        logger.info("Processing %s events from %s (%s)", len(events), resolved_date, job_label)
-        stats = _collect_results_for_events(events, job_label)
-        logger.info(
-            "%s completed: %s updated, %s skipped, %s deleted, %s failed",
-            job_label,
-            stats["updated"],
-            stats["skipped"],
-            stats["deleted"],
-            stats["failed"],
-        )
-        return stats
-    except Exception as exc:
-        logger.exception("Error in %s for %s: %s", job_label, resolved_date, exc)
-        return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
+        target_date = date.fromisoformat(target_date)
+    return _run_collection(target_date, job_name or f'Results Collection ({target_date})')
 
 
-def run_results_collection_previous_day() -> Dict[str, int]:
-    """Scheduled entrypoint for collecting previous-day results."""
-    return run_results_collection_for_date(
-        target_date=None,
-        job_name="Results Collection (previous day)",
-    )
+def run_results_collection_previous_day():
+    return run_results_collection_for_date(job_name='Results Collection (previous day)')
 
 
-def run_results_collection_all_finished() -> Dict[str, int]:
-    logger.info("Starting Results Collection (all finished)")
-    try:
-        events = EventRepository.get_all_finished_events()
-        if not events:
-            logger.info("No finished events found")
-            return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
-
-        logger.info("Processing %s finished events", len(events))
-        stats = _collect_results_for_events(events, "Results Collection (all finished)")
-        logger.info(
-            "Results Collection (all finished) completed: %s updated, %s skipped, %s deleted, %s failed",
-            stats["updated"],
-            stats["skipped"],
-            stats["deleted"],
-            stats["failed"],
-        )
-        return stats
-    except Exception as exc:
-        logger.exception("Results Collection (all finished) failed: %s", exc)
-        return {"updated": 0, "skipped": 0, "failed": 0, "deleted": 0}
+def run_results_collection_all_finished():
+    return _run_collection(None, 'Results Collection (all finished)')

@@ -3,7 +3,6 @@
 Single-event callers use exactly the same path. This module owns no HTTP work.
 """
 from dataclasses import dataclass, field
-from itertools import islice
 import logging
 from time import monotonic
 from sqlalchemy import func
@@ -13,6 +12,7 @@ from infrastructure.persistence.event_identity_lock import lock_event_identities
 from modules.events.discards.settings import DiscardSettings
 from modules.events.round_policy import resolve_event_round
 from shared.temporal import from_unix_timestamp, utc_now
+from shared.batching import chunks
 from .event_discard_repository import EventDiscardRepository
 from .participant_repository import ParticipantRepository
 from .season_repository import SeasonRepository
@@ -28,12 +28,6 @@ class EventWriteResult:
     errors: dict[str, str] = field(default_factory=dict)
     inserted: int = 0
     updated: int = 0
-
-
-def chunks(values, size):
-    iterator = iter(values)
-    while batch := list(islice(iterator, size)):
-        yield batch
 
 
 def _upsert_references(session, model, rows, keys):
@@ -137,7 +131,7 @@ def source_mapping_fields(
     }
 
 
-def _write_chunk(session, data_by_id, source, match_method, confidence, settings):
+def _write_chunk(session, data_by_id, source, match_method, confidence, settings, expected_event_ids=None):
     lock_event_identities(session, [(source, sid) for sid in data_by_id])
     blocked = EventDiscardRepository.blocked_ids(session, source, list(data_by_id), settings)
     eligible = {sid: data for sid, data in data_by_id.items() if sid not in blocked}
@@ -149,6 +143,13 @@ def _write_chunk(session, data_by_id, source, match_method, confidence, settings
     existing = {e.id: e for e in session.query(Event).filter(Event.id.in_(mappings.values())).order_by(Event.id).with_for_update().all()}
     if set(mappings.values()) - set(existing):
         raise ValueError('Source mapping refers to an absent canonical event')
+    if expected_event_ids is not None:
+        for sid in list(eligible):
+            if sid not in mappings or mappings[sid] != expected_event_ids.get(sid):
+                result.errors[sid] = 'Canonical identity changed or event was deleted'
+                del eligible[sid]
+        if not eligible:
+            return result
     teams, leagues = _references(session, eligible)
     mapping_rows = []
     for sid, data in eligible.items():
@@ -200,7 +201,8 @@ def _write_chunk(session, data_by_id, source, match_method, confidence, settings
     return result
 
 
-def write_events(db_manager, events, *, source='sofascore', match_method='direct', confidence=1.0):
+def write_events(db_manager, events, *, source='sofascore', match_method='direct', confidence=1.0,
+                 expected_event_ids=None):
     settings = DiscardSettings.current()
     source = str(source or 'sofascore').strip().lower()
     result = EventWriteResult()
@@ -209,9 +211,10 @@ def write_events(db_manager, events, *, source='sofascore', match_method='direct
         try:
             started = monotonic()
             with db_manager.get_session() as session:
-                saved = _write_chunk(session, batch, source, match_method, confidence, settings)
+                saved = _write_chunk(session, batch, source, match_method, confidence, settings, expected_event_ids)
             result.events.update(saved.events)
             result.discarded.update(saved.discarded)
+            result.errors.update(saved.errors)
             result.inserted += saved.inserted
             result.updated += saved.updated
             log = logger.info if len(batch) > 1 or saved.discarded else logger.debug

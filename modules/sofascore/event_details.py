@@ -60,6 +60,8 @@ def _queue_canonical_event_for_deletion(
 
     if parsed is not None and isinstance(deferred_deletion_event_ids, DeletionBatch):
         deferred_deletion_event_ids.record(canonical_event_id, sofascore_event_id, parsed, reason)
+    elif isinstance(deferred_deletion_event_ids, DeletionBatch):
+        deferred_deletion_event_ids.record_missing(canonical_event_id, sofascore_event_id, reason)
     else:
         deferred_deletion_event_ids.add(canonical_event_id)
     logger.info(
@@ -186,6 +188,59 @@ def _extract_metadata_snapshot(response: Dict) -> Optional[Dict]:
     except Exception as exc:
         logger.warning("Error extracting metadata snapshot: %s", exc)
         return None
+
+
+def result_from_response(response, event_id, *, canonical_event_id=None,
+                         deferred_deletion_event_ids=None, on_not_started="ignore",
+                         log_result_diagnostics=False):
+    """Interpret a fetched response and collect deletion evidence without writing."""
+    if on_not_started not in {"ignore", "delete"}:
+        raise ValueError(
+            f"Unsupported on_not_started policy: {on_not_started!r}"
+        )
+
+    parsed = parse_event_result(response)
+    if log_result_diagnostics and parsed.kind != "finished":
+        _log_result_parse_diagnostics(event_id, response, parsed.kind)
+    if parsed.kind == "canceled":
+        deletion_reason = (
+            "walkover"
+            if (parsed.status_description or "") == "walkover"
+            else "canceled_or_postponed"
+        )
+        _queue_canonical_event_for_deletion(
+            canonical_event_id,
+            event_id,
+            deletion_reason,
+            deferred_deletion_event_ids,
+            parsed=parsed,
+        )
+        return None
+
+    if parsed.kind == "not_started" and on_not_started == "delete":
+        _queue_canonical_event_for_deletion(
+            canonical_event_id,
+            event_id,
+            "stale_not_started",
+            deferred_deletion_event_ids,
+            parsed=parsed,
+        )
+        return None
+
+    if parsed.kind == "finished_empty_score":
+        _queue_canonical_event_for_deletion(
+            canonical_event_id,
+            event_id,
+            "finished_empty_score",
+            deferred_deletion_event_ids,
+            parsed=parsed,
+        )
+        return None
+
+    if parsed.kind == "finished":
+        return parsed.result
+
+    return None
 
 
 def get_event_results(
@@ -316,53 +371,11 @@ def get_event_results(
             logger.info("Parsing metadata snapshot for event %s (timestamp correction bypassed)", event_id)
             return True, _extract_metadata_snapshot(response)
 
-        if on_not_started not in {"ignore", "delete"}:
-            raise ValueError(
-                f"Unsupported on_not_started policy: {on_not_started!r}"
-            )
-
-        parsed = parse_event_result(response)
-        if log_result_diagnostics and parsed.kind != "finished":
-            _log_result_parse_diagnostics(event_id, response, parsed.kind)
-        if parsed.kind == "canceled":
-            deletion_reason = (
-                "walkover"
-                if (parsed.status_description or "") == "walkover"
-                else "canceled_or_postponed"
-            )
-            _queue_canonical_event_for_deletion(
-                canonical_event_id,
-                event_id,
-                deletion_reason,
-                deferred_deletion_event_ids,
-                parsed=parsed,
-            )
-            return _empty_response()
-
-        if parsed.kind == "not_started" and on_not_started == "delete":
-            _queue_canonical_event_for_deletion(
-                canonical_event_id,
-                event_id,
-                "stale_not_started",
-                deferred_deletion_event_ids,
-                parsed=parsed,
-            )
-            return _empty_response()
-
-        if parsed.kind == "finished_empty_score":
-            _queue_canonical_event_for_deletion(
-                canonical_event_id,
-                event_id,
-                "finished_empty_score",
-                deferred_deletion_event_ids,
-                parsed=parsed,
-            )
-            return _empty_response()
-
-        if parsed.kind == "finished":
-            return parsed.result
-
-        return _empty_response()
+        return result_from_response(
+            response, event_id, canonical_event_id=canonical_event_id,
+            deferred_deletion_event_ids=deferred_deletion_event_ids,
+            on_not_started=on_not_started, log_result_diagnostics=log_result_diagnostics,
+        )
     except Exception as exc:
         logger.error("Error fetching event results for %s: %s", event_id, exc)
         return _empty_response()

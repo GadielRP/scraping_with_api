@@ -76,7 +76,7 @@ The extractor returns `events_processed`, `events_persisted`, `events_inserted`,
 
 ## Scheduler follow-up and observability
 
-After the scheduled discovery entrypoint returns normally, `JobScheduler.job_daily_discovery()` invokes `job_refresh_alert_materialized_views()`. This follow-up also runs when discovery skips because no slot is open or all sports are already completed.
+Scheduled Daily Discovery runs on the bounded maintenance worker, outside the pre-start scheduler thread. After committed event writes, `JobScheduler.job_daily_discovery()` invokes `job_refresh_reporting_views()`. Skipped heartbeats still perform discard cleanup but normally skip refresh. A pending failed refresh is retried on a later heartbeat, and the first heartbeat after process startup refreshes once to recover interrupted work. A successful midnight refresh clears the same pending flag. Direct CLI calls remain synchronous.
 
 Operational logging records the local clock reading, timezone, target date, slot, selected sport scope, filter mode, tournament and event filtering counts, persistence totals, and sport status. These fields describe each run; persistent completion and retry decisions use `DailyDiscoveryLog`.
 

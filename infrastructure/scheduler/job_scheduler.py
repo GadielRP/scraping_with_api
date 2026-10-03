@@ -8,6 +8,7 @@ import schedule
 import threading
 import time
 from contextlib import nullcontext
+from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 from zoneinfo import ZoneInfo
@@ -22,8 +23,9 @@ from infrastructure.persistence.repositories import (
     ResultRepository,
 )
 from infrastructure.settings import Config
+from infrastructure.scheduler.maintenance_executor import MaintenanceExecutor
 from modules.jobs.clean_league_cache import run_clean_league_cache_job
-from modules.jobs.daily_discovery import run_daily_discovery_job, run_daily_discovery_retry_job
+from modules.jobs.daily_discovery import run_daily_discovery_job
 from modules.jobs.daily_discovery.run_daily_discovery import resolve_daily_discovery_slot
 from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
 from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
@@ -63,15 +65,25 @@ class JobScheduler:
         self.recently_rescheduled = set()
         self.last_cleanup_time = time.time()
         self._active_op_thread = None
+        self._maintenance = MaintenanceExecutor()
+        # Recover a refresh interrupted by a previous process, once per startup.
+        self._reporting_refresh_pending = True
         self._setup_jobs()
+
+    def _background(self, job):
+        """Scheduled triggers enqueue work; direct/manual entrypoints stay synchronous."""
+        @wraps(job)
+        def enqueue():
+            return self._maintenance.submit(job.__name__, job)
+        return enqueue
 
     def _setup_jobs(self):
         """Register all scheduled jobs."""
         for time_str in Config.DISCOVERY_TIMES:
-            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_discovery)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self._background(self.job_discovery))
 
         for time_str in Config.DISCOVERY2_TIMES:
-            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_discovery2)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self._background(self.job_discovery2))
 
         self._setup_pre_start_jobs()
         if Config.ENABLE_PRE_START_T_MINUS_ONE_JOB:
@@ -83,7 +95,7 @@ class JobScheduler:
                 Config.PRE_START_CLOSING_ODDS_MINUTE,
             )
 
-        schedule.every().day.at("04:00", Config.TIMEZONE).do(self.job_midnight_sync)
+        schedule.every().day.at("04:00", Config.TIMEZONE).do(self._background(self.job_midnight_sync))
         schedule.every(3).days.at("05:00", Config.TIMEZONE).do(self.job_clean_league_cache)
 
         # Ensure a daily trigger for both slots even when the retry interval is
@@ -103,14 +115,14 @@ class JobScheduler:
                 daily_discovery_fixed_times.add(f"{hour:02d}:00")
         daily_discovery_fixed_times = sorted(daily_discovery_fixed_times)
         for time_str in daily_discovery_fixed_times:
-            schedule.every().day.at(time_str, Config.TIMEZONE).do(self.job_daily_discovery)
+            schedule.every().day.at(time_str, Config.TIMEZONE).do(self._background(self.job_daily_discovery))
 
         daily_discovery_interval = getattr(
             Config,
             "DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES",
             getattr(Config, "DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES", 240),
         )
-        schedule.every(daily_discovery_interval).minutes.do(self.job_daily_discovery)
+        schedule.every(daily_discovery_interval).minutes.do(self._background(self.job_daily_discovery))
 
         oddspapi_fixture_discovery_times = getattr(
             Config,
@@ -143,7 +155,7 @@ class JobScheduler:
         logger.info("  - Midnight sync: daily at 04:00")
         logger.info(
             "  - Daily discovery: fixed trigger(s) at %s; retry heartbeat every %s minutes; "
-            "AM opens at %s:00, PM opens at %s:00; refreshes both reporting materialized views after each run",
+            "AM opens at %s:00, PM opens at %s:00; refreshes reporting views after persisted events",
             ", ".join(daily_discovery_fixed_times),
             daily_discovery_interval,
             Config.DAILY_DISCOVERY_AM_OPEN_HOUR,
@@ -222,6 +234,8 @@ class JobScheduler:
             self.thread.join()
         if self.critical_thread:
             self.critical_thread.join()
+        self._maintenance.shutdown()
+        self._maintenance = MaintenanceExecutor()
         logger.info("Job scheduler stopped")
 
     def _run_scheduler(self):
@@ -274,16 +288,11 @@ class JobScheduler:
 
     def job_discovery(self):
         logger.info("Starting Job A: Event Discovery with Odds Processing")
-        try:
-            run_discover_dropping_odds()
-        except Exception as exc:
-            logger.error(f"Error in Job A: {exc}")
+        run_discover_dropping_odds()
+
     def job_discovery2(self):
         logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
-        try:
-            run_discover_secondary_sources()
-        except Exception as exc:
-            logger.error(f"Error in Job B: {exc}")
+        run_discover_secondary_sources()
 
     def job_pre_start_check(self):
         with observe_operation("pre_start_check"):
@@ -357,59 +366,50 @@ class JobScheduler:
 
     def job_results_collection(self):
         logger.info("Starting scheduled Results Collection (previous day)")
-        try:
-            run_results_collection_previous_day()
-        except Exception as exc:
-            logger.exception("Scheduled Results Collection (previous day) failed: %s", exc)
+        return run_results_collection_previous_day()
 
     def job_results_collection_all_finished(self):
         logger.info("Starting scheduled Results Collection (all finished)")
-        try:
-            run_results_collection_all_finished()
-        except Exception as exc:
-            logger.exception("Scheduled Results Collection (all finished) failed: %s", exc)
+        return run_results_collection_all_finished()
 
     def job_results_collection_for_date(self, target_date):
         logger.info(f"Starting results collection for date: {target_date}")
-        try:
-            run_results_collection_for_date(target_date)
-        except Exception as exc:
-            logger.error(f"Error in results collection for {target_date}: {exc}")
+        return run_results_collection_for_date(target_date)
 
     def job_midnight_sync(self):
         logger.info("Starting scheduled Midnight Sync")
-        try:
-            run_midnight_sync_job()
-        except Exception as exc:
-            logger.exception("Scheduled Midnight Sync failed: %s", exc)
+        self._reporting_refresh_pending = True
+        run_midnight_sync_job()
+        self._reporting_refresh_pending = False
 
     def job_daily_discovery(self):
         logger.info("Starting scheduled Daily Discovery")
-        try:
-            run_daily_discovery_job()
-        except Exception as exc:
-            logger.exception("Scheduled Daily Discovery failed: %s", exc)
-            return
+        stats = run_daily_discovery_job()
+        self._reporting_refresh_pending |= bool(stats and stats.get('events_persisted', 0))
+        if self._reporting_refresh_pending:
+            self.job_refresh_reporting_views()
+        else:
+            logger.info("Reporting refresh skipped: daily discovery persisted no events")
 
-        # Both reporting views refresh synchronously, including skipped heartbeats.
-        self.job_refresh_alert_materialized_views()
-
-    def job_refresh_alert_materialized_views(self):
+    def job_refresh_reporting_views(self):
         """Refresh both reporting materialized views after the discovery heartbeat."""
         logger.info("Starting Reporting Materialized Views Refresh after Daily Discovery")
         started = time.monotonic()
         try:
             refresh_materialized_views(db_manager.engine)
+            self._reporting_refresh_pending = False
             logger.info(
                 "Reporting Materialized Views Refresh completed duration_s=%.1f",
                 time.monotonic() - started,
             )
         except Exception as exc:
+            self._reporting_refresh_pending = True
             logger.exception(
                 "Reporting Materialized Views Refresh after Daily Discovery failed duration_s=%.1f: %s",
                 time.monotonic() - started,
                 exc,
             )
+            raise
 
     def job_oddspapi_fixture_discovery(self, **kwargs):
         self.job_oddspapi_account_usage_refresh()
@@ -703,14 +703,7 @@ class JobScheduler:
             logger.error(f"Error in Job F (Clean up OddsPortal league cache): {exc}")
 
     def job_daily_discovery_retry(self):
-        logger.info("Starting scheduled Daily Discovery retry heartbeat")
-        try:
-            run_daily_discovery_retry_job()
-        except Exception as exc:
-            logger.exception("Scheduled Daily Discovery retry failed: %s", exc)
-            return
-
-        self.job_refresh_alert_materialized_views()
+        return self.job_daily_discovery()
 
     def run_job_discovery_now(self):
         logger.info("Running Job A immediately")

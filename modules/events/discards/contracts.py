@@ -17,7 +17,7 @@ class DiscardEvidence:
 
 
 class DeletionBatch(set):
-    """IDs to delete plus evidence for classified deletions (404 has no kind).
+    """IDs to delete plus evidence for classified deletions and missing endpoints.
 
     Passing this object intact to batch_delete_events preserves evidence.
     A bare set remains an administrative deletion, never an inferred canceled.
@@ -32,4 +32,11 @@ class DeletionBatch(set):
         self.evidence[event_id] = DiscardEvidence(
             source, str(source_event_id), parsed.kind, reason or parsed.kind,
             deepcopy(parsed.raw_snapshot), parsed.observed_at or utc_now(), self.origin,
+        )
+
+    def record_missing(self, event_id, source_event_id, reason, *, source='sofascore'):
+        """Guard a 404 deletion against results/identity changes observed later."""
+        self.add(event_id)
+        self.evidence[event_id] = DiscardEvidence(
+            source, str(source_event_id), 'not_found', reason, {}, utc_now(), self.origin,
         )
