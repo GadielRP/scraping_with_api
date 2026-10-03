@@ -12,7 +12,7 @@ Daily Discovery includes `requested_date` and `slot` as separate context fields.
 
 `persisted_unique` counts canonical event IDs once per job invocation, including both created and updated events. Repeated writes through different batches, tournament routes, or secondary sources do not increase this count. If an event is written again with a different kickoff or sport within the same run, its latest persisted values determine the final grouping.
 
-The log emits one row for each populated date/sport group, one total per populated date, and one total for the entire run. A run with no committed events emits a unique total of zero when it reaches the summary. A missing or invalid aware kickoff is grouped under `event_date=unknown`; a missing sport is grouped under `Unknown`.
+The log emits one multiline record with the job context and unique run total in its header. Its body groups counts by sport, with chronologically sorted local dates under each sport, followed by totals for each date. Sports are sorted alphabetically. A run with no committed events emits only the header with a unique total of zero. A missing or invalid aware kickoff is grouped under the date `unknown`; a missing sport is grouped under `Unknown`.
 
 Filtered events, discard-memory exclusions, and failed event writes are excluded. A committed event remains included if optional odds persistence subsequently fails. The existing operation and odds counters remain separate from the calendar summary.
 
