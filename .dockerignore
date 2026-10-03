@@ -20,6 +20,8 @@
 !scripts/**
 !config/
 !config/odds_read_priority.json
+!docs/**
+!docs/
 
 **/__pycache__/
 **/*.py[cod]
