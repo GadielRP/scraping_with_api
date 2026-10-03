@@ -34,10 +34,12 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(328, "Liga MX Apertura", "Football"),
     TrackedCompetition(429, "Euroleague", "Basketball"),
     TrackedCompetition(525, "Liiga", "Ice hockey"),
-    TrackedCompetition(526, "SHL", "Ice hockey"),
+    TrackedCompetition(180, "SHL", "Ice hockey"),
     TrackedCompetition(527, "NHL", "Ice hockey"),
     TrackedCompetition(317, "Eredivisie", "Football"),
-    TrackedCompetition(5153, "NFL", "American football")
+    TrackedCompetition(5153, "NFL", "American football"),
+    TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
+    TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
 )
 
 TRACKED_COMPETITIONS_BY_ID: Final[Mapping[int, TrackedCompetition]] = (
