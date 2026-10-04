@@ -1,3 +1,4 @@
+# LEGACY(EXEC-006): historical payload retention needs a dedicated volume/lifecycle probe.
 """Concurrent HTTP fan-out for OddsPapi exchange historical-odds requests.
 
 Fetching opening/live exchange odds for one fixture can require one
@@ -12,6 +13,9 @@ can balance both quota and endpoint cooldown availability.
 """
 
 from __future__ import annotations
+
+from contextvars import copy_context
+from shared.execution_context import WorkDeferred, check_execution_budget
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -162,6 +166,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
         kickoff_utc: datetime | None = None,
         available_through_utc: datetime | None = None,
     ) -> ExchangeHistoricalFetchOutcome:
+        check_execution_budget()
         try:
             result = fetcher.fetch_odds(
                 fixture_id,
@@ -183,6 +188,8 @@ class OddspapiExchangeHistoricalFetchExecutor:
                 available_through_utc=available_through_utc,
             )
             return ExchangeHistoricalFetchOutcome(selection=selection, result=result)
+        except WorkDeferred:
+            raise
         except Exception as exc:  # noqa: BLE001 - surfaced for caller bookkeeping/logging
             return ExchangeHistoricalFetchOutcome(
                 selection=selection, result=None, error=exc
@@ -302,7 +309,7 @@ class OddspapiExchangeHistoricalFetchExecutor:
             thread_name_prefix="oddspapi-exchange-historical",
         ) as executor:
             future_to_index = {
-                executor.submit(run_worker, index): index
+                executor.submit(copy_context().run, run_worker, index): index
                 for index in range(worker_count)
             }
             for future in future_to_index:

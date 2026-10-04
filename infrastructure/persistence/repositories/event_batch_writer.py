@@ -198,6 +198,9 @@ def _write_chunk(session, data_by_id, source, match_method, confidence, settings
         event_id=obj.id, source=source, source_event_id=sid, match_method=match_method,
         confidence=confidence, event_payload=p, home_participant=home, away_participant=away,
         competition=league) for sid, obj, p, home, away, league in mapping_rows])
+    if result.events:
+        from .reporting_refresh_repository import invalidate_reporting
+        invalidate_reporting(session)
     return result
 
 

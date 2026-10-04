@@ -1,3 +1,4 @@
+# LEGACY(EXEC-005): migrate materialized dropping/secondary feeds; see docs/maintenance/execution-legacy-cleanup.md.
 """Discovery and secondary SofaScore feed helpers."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from modules.competition.discovery_scope import (
     is_tracked_source_event,
     load_tracked_source_competitions,
     source_competition_ids,
+    UNRESOLVED_SCOPE,
 )
 from modules.sports.catalog import (
     canonical_sport_id,
@@ -18,6 +20,7 @@ from modules.sports.catalog import (
 )
 
 from .event_normalizer import normalize_event_payload
+from shared.execution_context import WorkDeferred, check_execution_budget
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +62,13 @@ def get_winning_odds_events(client):
 def extract_events_from_high_value_streaks(
     response: Dict,
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[List[Dict], List[Dict]]:
     if not isinstance(response, dict) or not response:
         return [], []
     tracked_competitions = (
         tracked_competitions
-        if tracked_competitions is not None
+        if tracked_competitions is not UNRESOLVED_SCOPE
         else load_tracked_source_competitions("sofascore")
     )
     events = []
@@ -74,6 +77,7 @@ def extract_events_from_high_value_streaks(
     try:
         if "general" in response:
             for item in response["general"]:
+                check_execution_budget()
                 event = item.get("event")
                 if (
                     event
@@ -84,6 +88,7 @@ def extract_events_from_high_value_streaks(
 
         if "head2head" in response:
             for item in response["head2head"]:
+                check_execution_budget()
                 event = item.get("event")
                 if (
                     event
@@ -98,6 +103,8 @@ def extract_events_from_high_value_streaks(
             len(events_h2h),
         )
         return events, events_h2h
+    except WorkDeferred:
+        raise
     except Exception as exc:
         logger.error("Error extracting high value streak events: %s", exc)
         return [], []
@@ -108,7 +115,7 @@ def extract_events_and_odds_from_dropping_response(
     odds_extraction: bool = True,
     discovery_source: str = "dropping_odds",
     *,
-    tracked_competitions=None,
+    tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[List[Dict], Dict]:
     events: List[Dict] = []
     odds_map: Dict = {}
@@ -128,7 +135,7 @@ def extract_events_and_odds_from_dropping_response(
         return events, odds_map
     tracked_competitions = (
         tracked_competitions
-        if tracked_competitions is not None
+        if tracked_competitions is not UNRESOLVED_SCOPE
         else load_tracked_source_competitions("sofascore")
     )
     rejected_unsupported_sport = 0
@@ -147,6 +154,7 @@ def extract_events_and_odds_from_dropping_response(
                 )
                 continue
             try:
+                check_execution_budget()
                 if not is_supported_sofascore_event(event):
                     rejected_unsupported_sport += 1
                     payload = event.get("event", event)
@@ -160,10 +168,11 @@ def extract_events_and_odds_from_dropping_response(
                 if not is_tracked_source_event(event, tracked_competitions):
                     ids = source_competition_ids(event)
                     missing_ids = (
-                        ids.source_tournament_id is None
-                        and ids.source_unique_tournament_id is None
+                        ids.source_tournament_id is None and ids.source_unique_tournament_id is None
                     )
-                    reason = "missing_source_competition_ids" if missing_ids else "untracked_competition"
+                    reason = (
+                        "missing_source_competition_ids" if missing_ids else "untracked_competition"
+                    )
                     if missing_ids:
                         rejected_missing_competition_ids += 1
                     else:
@@ -180,7 +189,15 @@ def extract_events_and_odds_from_dropping_response(
                     continue
                 event_data = normalize_event_payload(event, discovery_source)
                 event_payload = event_data.get("event", event_data)
-                required_fields = ["id", "slug", "startTimestamp", "sport", "competition", "homeTeam", "awayTeam"]
+                required_fields = [
+                    "id",
+                    "slug",
+                    "startTimestamp",
+                    "sport",
+                    "competition",
+                    "homeTeam",
+                    "awayTeam",
+                ]
                 missing_fields = [
                     field
                     for field in required_fields
@@ -197,6 +214,8 @@ def extract_events_and_odds_from_dropping_response(
                         event.get("id"),
                         missing_fields,
                     )
+            except WorkDeferred:
+                raise
             except Exception as exc:
                 normalization_errors += 1
                 logger.warning(
@@ -243,6 +262,8 @@ def extract_events_and_odds_from_dropping_response(
         )
 
         return events, odds_map
+    except WorkDeferred:
+        raise
     except Exception as exc:
         logger.error("Error extracting events and odds: %s", exc)
         return events, odds_map

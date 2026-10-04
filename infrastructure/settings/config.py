@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+from .job_execution import JobExecutionSettings
 
 # Load environment variables
 load_dotenv()
@@ -195,7 +196,7 @@ class Config:
     EVENT_DISCARD_MEMORY_RETENTION_DAYS = int(os.getenv('EVENT_DISCARD_MEMORY_RETENTION_DAYS', '3'))
     EVENT_DISCARD_MEMORY_CLEANUP_ENABLED = os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_ENABLED', 'true').lower() == 'true'
     EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE = int(os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE', '1000'))
-    EVENT_WRITE_BATCH_SIZE = int(os.getenv('EVENT_WRITE_BATCH_SIZE', '100'))
+    EVENT_WRITE_BATCH_SIZE = JobExecutionSettings().event_write_batch_size
 
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///sofascore_odds.db')
@@ -607,9 +608,6 @@ class Config:
     # OddsPortal parallel scraping (requires 2GB+ RAM)
     ODDSPORTAL_PARALLEL_BROWSERS = int(os.getenv('ODDSPORTAL_PARALLEL_BROWSERS', '1'))
     
-    # Max seconds to wait for a previous OP cycle to finish before proceeding
-    ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT = int(os.getenv('ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT', '120'))
-
     # Max seconds an odds alert thread will wait for OddsPortal scraping to finish for a specific event
     # before proceeding without the OddsPortal section.
     ODDSPORTAL_ALERT_WAIT_TIMEOUT = int(os.getenv('ODDSPORTAL_ALERT_WAIT_TIMEOUT', '180'))    

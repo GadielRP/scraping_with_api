@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared.execution_context import WorkDeferred, check_execution_budget
+
 import logging
 import pprint
 
@@ -156,7 +158,7 @@ def flush_missing_standings_endpoints(missing_competition_ids: set[int]) -> None
 
 
 def _hydrate_missing_tennis_metadata(
-    scheduler,
+    runtime,
     candidates: list[dict],
     key_moments: list[int],
 ) -> None:
@@ -180,6 +182,7 @@ def _hydrate_missing_tennis_metadata(
     missing_sofascore_id = 0
 
     for candidate in candidates:
+        check_execution_budget()
         if candidate.get("metadata_snapshot") is not None:
             already_had_snapshot += 1
             continue
@@ -191,7 +194,7 @@ def _hydrate_missing_tennis_metadata(
             continue
 
         event_id = candidate.get("event_id")
-        event_obj = scheduler.event_repo.get_event_by_id(event_id)
+        event_obj = runtime.event_repo.get_event_by_id(event_id)
         if event_obj is not None:
             # Cache the loaded event so _build_evaluation_payloads can reuse
             # it instead of repeating the same joined query.
@@ -204,7 +207,7 @@ def _hydrate_missing_tennis_metadata(
         if (
             event_obj.round != "regular_season"
             or not is_supported_sport_name(event_obj.sport)
-            or event_obj.id in scheduler.recently_rescheduled
+            or event_obj.id in runtime.recently_rescheduled
         ):
             skipped_by_filters += 1
             continue
@@ -237,6 +240,8 @@ def _hydrate_missing_tennis_metadata(
                 fetch_succeeded += 1
             else:
                 fetch_failed += 1
+        except WorkDeferred:
+            raise
         except Exception as exc:
             fetch_failed += 1
             logger.warning(
@@ -285,7 +290,7 @@ def _load_trajectory_payloads(
 
 
 def _build_evaluation_payloads(
-    scheduler,
+    runtime,
     event_plan: PreStartEventPlan,
     key_event_ids: set[int],
     missing_competition_ids: set[int],
@@ -309,6 +314,7 @@ def _build_evaluation_payloads(
     skipped_non_regular = 0
 
     for candidate in event_plan.candidates:
+        check_execution_budget()
         event_id = candidate["event_id"]
         if event_id not in key_event_ids:
             continue
@@ -317,11 +323,11 @@ def _build_evaluation_payloads(
         # available; otherwise load it once here.
         event_obj = candidate.get("event_obj")
         if event_obj is None:
-            event_obj = scheduler.event_repo.get_event_by_id(event_id)
+            event_obj = runtime.event_repo.get_event_by_id(event_id)
         if not event_obj or not is_supported_sport_name(event_obj.sport):
             skipped_unsupported_or_rescheduled += 1
             continue
-        if event_obj.id in scheduler.recently_rescheduled:
+        if event_obj.id in runtime.recently_rescheduled:
             skipped_unsupported_or_rescheduled += 1
             continue
 
@@ -404,6 +410,7 @@ def _build_evaluation_payloads(
 def _log_debug_payloads(contexts: list[EventContext]) -> None:
     logger.info("EVENTS FOR PILLARS (DEBUG MODE)")
     for index, context in enumerate(contexts, 1):
+        check_execution_budget()
         label = (
             context.participants_label
             if context
@@ -452,7 +459,7 @@ def _select_pipeline_candidates(
 
 
 def evaluate_pre_start_key_moments(
-    scheduler,
+    runtime,
     event_plan: PreStartEventPlan,
     oddsportal_context: OddsPortalScrapeContext,
     *,
@@ -490,7 +497,7 @@ def evaluate_pre_start_key_moments(
         return
 
     _hydrate_missing_tennis_metadata(
-        scheduler,
+        runtime,
         pipeline_candidates,
         key_moments,
     )
@@ -505,7 +512,7 @@ def evaluate_pre_start_key_moments(
     )
     missing_competition_ids: set[int] = set()
     contexts = _build_evaluation_payloads(
-        scheduler,
+        runtime,
         event_plan,
         key_event_ids,
         missing_competition_ids,
@@ -517,7 +524,7 @@ def evaluate_pre_start_key_moments(
         evaluate_and_dispatch_alerts_batch(
             contexts,
             key_moments,
-            scheduler.event_repo,
+            runtime.event_repo,
             op_event_states=oddsportal_context.event_states,
             op_event_ids=oddsportal_context.event_ids,
             op_data_cache=oddsportal_context.data_cache,
@@ -562,7 +569,7 @@ def evaluate_pre_start_key_moments(
             effective_evaluation_as_of = evaluation_as_of or utc_now()
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,
-                event_repo=scheduler.event_repo,
+                event_repo=runtime.event_repo,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
                 trajectories_by_event_id=trajectory_payloads,

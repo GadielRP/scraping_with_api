@@ -211,7 +211,7 @@ def _process_batch(
         if dry_run:
             stats["results_would_save"] = len(results_to_upsert)
         else:
-            saved_count = ResultRepository.batch_upsert_results(results_to_upsert)
+            saved_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
             stats["results_saved"] = saved_count
             if saved_count != len(results_to_upsert):
                 stats["errors"] += len(results_to_upsert) - saved_count

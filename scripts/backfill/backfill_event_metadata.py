@@ -13,7 +13,7 @@ Uses the current architecture:
   SofaScore /event/{id}
   -> api_client.normalize_event_payload()
   -> EventRepository.upsert_event()
-  -> ResultRepository.batch_upsert_results()  (optional)
+  -> ResultRepository.batch_upsert_results()  (optional; returns confirmed IDs)
   -> checkpoint
 
 Usage examples:
@@ -569,7 +569,7 @@ def process_event(
                     logger.debug("⏭️  Event %s already has complete result — skipped", candidate.id)
 
             if should_upsert_result:
-                count = ResultRepository.batch_upsert_results([(candidate.id, result_data)])
+                count = len(ResultRepository.batch_upsert_results([(candidate.id, result_data)]))
                 if count > 0:
                     result_obj.result_updated = True
                     logger.info(

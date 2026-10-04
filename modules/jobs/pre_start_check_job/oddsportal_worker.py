@@ -1,3 +1,4 @@
+# LEGACY(EXEC-006): validate browser-process memory and deadline shutdown under real scraping load.
 """OddsPortal worker helpers for the pre-start job."""
 
 from __future__ import annotations
@@ -5,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import threading
+from functools import partial
 import time
 import traceback
 from typing import Any, Dict, List, Optional
@@ -17,6 +19,7 @@ from modules.oddsportal.oddsportal_config import (
     get_current_date,
 )
 from modules.oddsportal.scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
+from shared.execution_context import WorkDeferred, check_execution_budget
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class OddsPortalScrapeContext:
 
 
 def start_oddsportal_scrape_for_events(
-    scheduler,
+    runtime,
     upcoming_events: List[Dict],
     pre_calculated_timings: Dict[int, int],
     *,
@@ -49,7 +52,7 @@ def start_oddsportal_scrape_for_events(
         data_cache={},
     )
     start_oddsportal_scrape_thread(
-        scheduler,
+        runtime,
         candidates,
         context.event_states,
         context.data_cache,
@@ -115,7 +118,7 @@ def create_oddsportal_scrape_state(op_candidates: List[Dict]) -> Dict[int, Dict[
 
 
 def start_oddsportal_scrape_thread(
-    scheduler,
+    runtime,
     op_candidates: List[Dict],
     op_event_states: Dict[int, Dict[str, threading.Event]],
     op_data_cache: Dict[int, Any],
@@ -124,54 +127,19 @@ def start_oddsportal_scrape_thread(
 ):
     """Start OddsPortal scraping in the background if there is work to do."""
     if not Config.ODDSPORTAL_SCRAPING_ENABLED or not op_candidates:
-        scheduler._active_op_thread = None
         return None
 
-    def _orchestrate(
-        previous_thread,
-        candidates,
-        event_states,
-        data_cache,
-        oddsportal_debug_mode,
-    ):
-        if previous_thread and previous_thread.is_alive():
-            timeout = Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT
-            logger.warning(f"⏳ Previous OP worker still running - waiting up to {timeout}s for it to finish...")
-            previous_thread.join(timeout=timeout)
-            if previous_thread.is_alive():
-                logger.error(
-                    f"🛑 Previous OP worker STILL didn't finish after {timeout}s! "
-                    "Aborting new OP cycle to prevent double-activation and memory exhaustion."
-                )
-                for state in event_states.values():
-                    state["done_event"].set()
-                return
-            logger.info("✅ Previous OP worker finished - proceeding with new cycle")
-
-        logger.info(f"🚀 Launching OddsPortal scraper for {len(candidates)} tracked-league events...")
-        run_oddsportal_scrape_cycle(
-            candidates,
-            event_states,
-            data_cache,
-            debug_mode=oddsportal_debug_mode,
-        )
-
-    previous_thread = getattr(scheduler, "_active_op_thread", None)
-    oddsportal_thread = threading.Thread(
-        target=_orchestrate,
-        args=(
-            previous_thread,
-            op_candidates,
-            op_event_states,
-            op_data_cache,
-            debug_mode,
-        ),
-        name="oddsportal_worker_launcher",
-        daemon=False,
+    thread = runtime.oddsportal.launch(
+        partial(run_oddsportal_scrape_cycle, op_candidates, op_event_states, op_data_cache,
+                debug_mode=debug_mode)
     )
-    oddsportal_thread.start()
-    scheduler._active_op_thread = oddsportal_thread
-    return oddsportal_thread
+    if thread is None:
+        logger.warning("OddsPortal cycle skipped: worker busy or stopping; events=%s",
+                       len(op_candidates))
+        for state in op_event_states.values():
+            state["done_at_monotonic"] = time.monotonic()
+            state["done_event"].set()
+    return thread
 
 
 def run_oddsportal_scrape_cycle(
@@ -190,6 +158,8 @@ def run_oddsportal_scrape_cycle(
             op_data_cache,
             debug_mode=debug_mode,
         )
+    except (KeyboardInterrupt, WorkDeferred) as exc:
+        logger.info("OddsPortal cycle interrupted reason=%s", exc)
     except Exception as exc:
         logger.error(f"❌ OddsPortal Worker CRASHED: {exc}\n{traceback.format_exc()}")
     finally:
@@ -226,6 +196,7 @@ def scrape_oddsportal_batch(
     op_tasks = []
 
     for event_info in events_to_process:
+        check_execution_budget()
         event_data = event_info["event_data"]
         season_id = event_data.get("season_id")
         competition_id = event_data.get("competition_id")
@@ -300,6 +271,7 @@ def scrape_oddsportal_batch(
                 )
 
     def _on_event_scraped(event_id, op_data):
+        check_execution_budget()
         if op_data:
             try:
                 ingestion_result = MarketOddsIngestionService.save_from_oddsportal_data(
@@ -371,14 +343,6 @@ def _source_bookie_slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
 
 
-# Backward-compatible aliases for the earlier refactor names.
-build_oddsportal_candidates = build_oddsportal_scrape_candidates
-create_oddsportal_tracking_state = create_oddsportal_scrape_state
-launch_oddsportal_scraper_worker = start_oddsportal_scrape_thread
-run_oddsportal_scrape_worker = run_oddsportal_scrape_cycle
-run_oddsportal_scrape_batch = scrape_oddsportal_batch
-
-
 __all__ = [
     "OddsPortalScrapeContext",
     "start_oddsportal_scrape_for_events",
@@ -387,9 +351,4 @@ __all__ = [
     "start_oddsportal_scrape_thread",
     "run_oddsportal_scrape_cycle",
     "scrape_oddsportal_batch",
-    "build_oddsportal_candidates",
-    "create_oddsportal_tracking_state",
-    "launch_oddsportal_scraper_worker",
-    "run_oddsportal_scrape_worker",
-    "run_oddsportal_scrape_batch",
 ]

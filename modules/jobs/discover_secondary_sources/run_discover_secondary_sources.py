@@ -1,100 +1,66 @@
-"""Secondary discovery orchestrator."""
-
-from __future__ import annotations
+"""Fetch and persist secondary feeds sequentially without retaining every response."""
 
 import logging
 
+from infrastructure.persistence.transient.discovery_run_store import DiscoveryRunStore
 from modules.competition.discovery_scope import load_tracked_source_competitions
-from modules.jobs.discovery_persistence_summary import DiscoveryPersistenceSummary
-from modules.jobs.parallelism import (
-    process_events_only,
-    process_odds_first,
-    process_with_parallel_db_ops,
+from modules.jobs.discovery.persistence import (
+    persist_events,
+    fetch_and_persist_events_with_odds,
+    persist_events_with_odds,
 )
+from modules.jobs.discovery.summary import log_discovery_summary
 from modules.sports.catalog import sofascore_sport_slugs
-from modules.jobs.discover_secondary_sources.run_high_value_streaks import run_high_value_streaks
-from modules.jobs.discover_secondary_sources.run_team_streaks import run_team_streaks
-from modules.jobs.discover_secondary_sources.run_top_h2h import run_top_h2h
-from modules.jobs.discover_secondary_sources.run_winning_odds import run_winning_odds
+from shared.execution_context import check_execution_budget
+from .run_high_value_streaks import run_high_value_streaks
+from .run_team_streaks import run_team_streaks
+from .run_top_h2h import run_top_h2h
+from .run_winning_odds import run_winning_odds
 
 logger = logging.getLogger(__name__)
 
 
 def run_discover_secondary_sources() -> None:
-    """Discover events from streaks, H2H and winning odds sources."""
-    logger.info("Starting Job B: Event Discovery from streaks, team streaks, h2h and winning odds events")
-    persistence_summary = DiscoveryPersistenceSummary()
-
-    try:
-        if not sofascore_sport_slugs():
-            logger.info("No supported SofaScore sport routes configured; skipping secondary discoveries")
-            return
-        tracked_competitions = load_tracked_source_competitions("sofascore")
-        if tracked_competitions is not None and not tracked_competitions:
-            logger.warning("No tracked SofaScore tournament IDs are mapped; skipping secondary discoveries")
-            return
-        # HIGH VALUE STREAKS
-        high_value_streaks_events, high_value_streaks_events_h2h = run_high_value_streaks(tracked_competitions)
-
-        # TEAM STREAKS
-        team_streaks_events = run_team_streaks(tracked_competitions)
-        if not team_streaks_events:
-            logger.warning("No events found after processing team streaks")
-        else:
-            processed_count, skipped_count = process_odds_first(
-                team_streaks_events,
-                discovery_source="team_streaks",
-                max_workers=10,
-                tracked_competitions=tracked_competitions,
-                persistence_summary=persistence_summary,
-            )
-            logger.info(
-                "team streaks events completed: processed %s/%s events, skipped %s events",
-                processed_count,
-                len(team_streaks_events),
-                skipped_count,
-            )
-
-        # TOP H2H
-        matchup_events = run_top_h2h(tracked_competitions)
-
-        # WINNING ODDS
-        winning_odds_events, winning_odds_events_odds_map = run_winning_odds(tracked_competitions)
-
-        for source, events in (
-            ("high_value_streaks", high_value_streaks_events),
-            ("high_value_streaks_h2h", high_value_streaks_events_h2h),
-            ("h2h", matchup_events),
-        ):
-            processed_count, skipped_count = process_events_only(
-                events,
-                discovery_source=source,
-                tracked_competitions=tracked_competitions,
-                persistence_summary=persistence_summary,
-            )
-            logger.info(
-                "%s events completed: processed %s/%s events, skipped %s events",
-                source,
-                processed_count,
-                len(events),
-                skipped_count,
-            )
-
-        processed_count, skipped_count = process_with_parallel_db_ops(
-            winning_odds_events,
-            winning_odds_events_odds_map,
-            discovery_source="winning_odds",
-            max_workers=10,
-            tracked_competitions=tracked_competitions,
-            persistence_summary=persistence_summary,
-        )
+    if not sofascore_sport_slugs():
         logger.info(
-            "winning odds events completed: processed %s/%s events, skipped %s events",
-            processed_count,
-            len(winning_odds_events),
-            skipped_count,
+            "No supported SofaScore sport routes configured; skipping secondary discoveries"
         )
-    except Exception as exc:
-        logger.error("Error in Job B: %s", exc)
-    finally:
-        persistence_summary.log(logger, job="secondary_sources")
+        return
+    scope = load_tracked_source_competitions("sofascore")
+    if scope is not None and not scope:
+        logger.warning(
+            "No tracked SofaScore tournament IDs are mapped; skipping secondary discoveries"
+        )
+        return
+    logger.info("Starting secondary discovery")
+    with DiscoveryRunStore() as store:
+        try:
+            check_execution_budget()
+            streaks, streaks_h2h = run_high_value_streaks(scope)
+            for source, events in (
+                ("high_value_streaks", streaks),
+                ("high_value_streaks_h2h", streaks_h2h),
+            ):
+                persist_events(events, source, tracked_competitions=scope, run_store=store)
+            del streaks, streaks_h2h, events
+
+            check_execution_budget()
+            events = run_team_streaks(scope)
+            processed, skipped = fetch_and_persist_events_with_odds(
+                events, "team_streaks", tracked_competitions=scope, run_store=store
+            )
+            logger.info("Team streaks discovery processed=%s skipped=%s", processed, skipped)
+            del events
+
+            check_execution_budget()
+            events = run_top_h2h(scope)
+            persist_events(events, "h2h", tracked_competitions=scope, run_store=store)
+            del events
+
+            check_execution_budget()
+            events, odds = run_winning_odds(scope)
+            persist_events_with_odds(
+                events, odds, "winning_odds", tracked_competitions=scope, run_store=store
+            )
+        finally:
+            log_discovery_summary(store, logger, job="secondary_sources")

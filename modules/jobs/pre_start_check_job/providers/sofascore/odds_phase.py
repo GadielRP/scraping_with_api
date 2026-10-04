@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Collection
-import inspect
 import logging
+from infrastructure.settings import Config
 
 
 from modules.competition.tracked_competitions import (
@@ -50,6 +50,7 @@ def run_sofascore_pre_start_odds(
     debug_mode: bool = False,
     odds_fetcher: SofaScoreOddsFetcher | None = None,
     tracked_competition_ids: Collection[int] | None = None,
+    cooldown=None,
 ) -> ProviderOddsSummary:
     """Fetch eligible SofaScore odds and persist confirmed 404s in one update."""
     logger.info("🔵 SofaScore pre-start odds starting...")
@@ -67,28 +68,17 @@ def run_sofascore_pre_start_odds(
                 candidate["event_id"],
             )
             return False
+        if cooldown and not cooldown.allows(candidate['sofascore_event_id'], candidate.get('minutes_until_start'), Config.PRE_START_ODDS_MOMENTS):
+            logger.info('SofaScore missing odds retry suppressed event_id=%s moment=%s', candidate['event_id'], candidate.get('minutes_until_start'))
+            return False
         return True
 
     def _fetch_sofascore_odds(candidate: dict):
         sofascore_event_id = candidate["sofascore_event_id"]
-        fetch_odds = fetcher.fetch_odds
-        fetch_parameters = inspect.signature(fetch_odds).parameters
-        supports_raw_capture = (
-            "capture_raw_response" in fetch_parameters
-            or any(
-                parameter.kind is inspect.Parameter.VAR_KEYWORD
-                for parameter in fetch_parameters.values()
-            )
-        )
-        fetch_kwargs = (
-            {"capture_raw_response": debug_mode}
-            if supports_raw_capture
-            else {}
-        )
-        result = fetch_odds(
+        result = fetcher.fetch_odds(
             sofascore_event_id,
             candidate["event_data"].get("slug"),
-            **fetch_kwargs,
+            capture_raw_response=debug_mode,
         )
         raw_payload = getattr(result, "raw_payload", None)
         if debug_mode and raw_payload is not None:
@@ -99,11 +89,15 @@ def run_sofascore_pre_start_odds(
                 payload=raw_payload,
             )
         if result.endpoint_missing:
+            if cooldown:
+                cooldown.missing(sofascore_event_id, candidate.get('minutes_until_start'))
             logger.info(
                 "🚫 SofaScore odds endpoint missing for event_id=%s sofascore_event_id=%s",
                 candidate["event_id"],
                 sofascore_event_id,
             )
+        elif result.payload and cooldown:
+            cooldown.available(sofascore_event_id)
         return result
 
     def _ingest_sofascore_odds(candidate: dict, payload: dict):
@@ -151,6 +145,7 @@ def run_sofascore_pre_start_odds(
             fetch=_fetch_sofascore_odds,
             ingest=_ingest_sofascore_odds,
             on_ingested=enrich_tennis_observations,
+            retry_missing=_has_resolved_sofascore_id if cooldown else None,
         )
         if has_active_tracked:
             logger.info(
@@ -176,6 +171,7 @@ def run_sofascore_pre_start_odds(
             fetch=_fetch_sofascore_odds,
             ingest=_ingest_sofascore_odds,
             on_ingested=enrich_tennis_observations,
+            retry_missing=_has_resolved_sofascore_id if cooldown else None,
         )
         if has_active_untracked:
             logger.info(

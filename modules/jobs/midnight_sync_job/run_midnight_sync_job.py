@@ -3,37 +3,31 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
-from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.views.view_manager import refresh_materialized_views
-from modules.jobs.results_collection_job import run_results_collection_previous_day
+from modules.jobs.results_collection_job import run_results_collection
 from modules.prediction import prediction_logger
+from infrastructure.settings import Config
+from shared.temporal import now_in_timezone
 
 logger = logging.getLogger(__name__)
 
 
-def run_midnight_sync_job() -> None:
+def run_midnight_sync_job(target_date=None) -> None:
     logger.info("Starting Midnight Sync")
-    try:
-        logger.info("Midnight Sync: starting previous-day results collection")
-        result_stats = run_results_collection_previous_day()
-        if result_stats['failed']:
-            logger.warning("Midnight Sync: results remain pending stats=%s", result_stats)
+    target_date = target_date or now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
+    logger.info("Midnight Sync: starting previous-day results collection")
+    result_stats = run_results_collection(target_date, job_name="Results Collection (midnight)")
+    if result_stats["failed"]:
+        logger.warning("Midnight Sync: results remain pending stats=%s", result_stats)
 
-        logger.info("Midnight Sync: updating prediction logs with actual results")
-        stats = prediction_logger.update_predictions_with_results()
-        if "error" in stats:
-            logger.error("Midnight Sync: prediction log update failed: %s", stats["error"])
-        else:
-            logger.info(
-                "Midnight Sync: prediction logs updated: %s completed, %s cancelled",
-                stats["updated"],
-                stats["cancelled"],
-            )
-
-        logger.info("Midnight Sync: refreshing reporting materialized views")
-        refresh_materialized_views(db_manager.engine)
-        logger.info("Midnight Sync: reporting materialized views refreshed")
-    except Exception as exc:
-        logger.exception("Midnight Sync failed: %s", exc)
-        raise
+    logger.info("Midnight Sync: updating prediction logs with actual results")
+    stats = prediction_logger.update_predictions_with_results()
+    if "error" in stats:
+        logger.error("Midnight Sync: prediction log update failed: %s", stats["error"])
+    else:
+        logger.info(
+            "Midnight Sync: prediction logs updated: %s completed, %s cancelled",
+            stats["updated"],
+            stats["cancelled"],
+        )

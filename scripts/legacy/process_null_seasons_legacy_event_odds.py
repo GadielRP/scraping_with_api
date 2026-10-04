@@ -20,7 +20,7 @@ logger = logging.getLogger("process_null_seasons")
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
-from infrastructure.persistence.views.view_manager import refresh_materialized_views
+from modules.jobs.reporting_refresh.run_reporting_refresh import run_reporting_refresh
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
@@ -225,7 +225,7 @@ def process_event(event_id: int, slug: str):
         else:
             result_data = api_client.get_event_results(event_id)
             if result_data:
-                if ResultRepository.batch_upsert_results([(event_id, result_data)]) > 0:
+                if len(ResultRepository.batch_upsert_results([(event_id, result_data)])) > 0:
                     logger.info(f"✅ Result updated for event {event_id}: {result_data['home_score']}-{result_data['away_score']}")
                     
                     # Process observations
@@ -312,7 +312,7 @@ def main():
         logger.info("\n" + "=" * 80)
         logger.info("🔄 Refreshing alert materialized views...")
         try:
-            refresh_materialized_views(db_manager.engine)
+            run_reporting_refresh(force=True, request=True)
             logger.info("✅ Materialized views refreshed")
         except Exception as e:
             logger.error(f"Error refreshing materialized views: {e}")

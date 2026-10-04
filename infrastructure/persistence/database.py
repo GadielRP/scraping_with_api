@@ -9,9 +9,11 @@ from typing import Generator
 from sqlalchemy import create_engine, event as sqlalchemy_event, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from infrastructure.persistence import reporting_models as _reporting_models  # noqa: F401
 from infrastructure.persistence import models as _registered_models  # noqa: F401
 from infrastructure.persistence.orm_base import Base
 from infrastructure.settings import Config
+from infrastructure.settings.job_execution import JobExecutionSettings
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +25,15 @@ class DatabaseManager:
             {} if self.database_url.startswith("sqlite")
             else {"connect_timeout": Config.DB_CONNECT_TIMEOUT}
         )
+        limits = JobExecutionSettings()
+        pool_options = {} if self.database_url.startswith('sqlite') else dict(
+            pool_size=limits.db_pool_size, max_overflow=0, pool_timeout=limits.db_pool_timeout_seconds)
         self.engine = create_engine(
             self.database_url,
             pool_pre_ping=True,
             pool_recycle=300,
             connect_args=connect_args,
+            **pool_options,
         )
         if self.engine.dialect.name == "postgresql":
             @sqlalchemy_event.listens_for(self.engine, "connect")

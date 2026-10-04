@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared.execution_context import WorkDeferred
+
 import logging
 from collections import Counter
 from collections.abc import Collection
@@ -210,6 +212,8 @@ def run_oddspapi_pre_start_odds(
     if getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True):
         try:
             refresh_oddspapi_account_usage_if_due()
+        except WorkDeferred:
+            raise
         except Exception:
             logger.exception(
                 "Oddspapi account usage preflight failed; using persisted estimates"
@@ -222,6 +226,8 @@ def run_oddspapi_pre_start_odds(
     if source_states is None:
         try:
             source_states = _resolve_source_states(events_to_process)
+        except WorkDeferred:
+            raise
         except Exception as exc:
             logger.exception("Oddspapi pre-start fixture mapping lookup failed")
             summary = OddspapiPreStartOddsBatchProcessor._failed_worker_summary(candidates, exc)

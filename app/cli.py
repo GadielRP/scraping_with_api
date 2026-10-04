@@ -4,7 +4,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import date
 
 from infrastructure.settings import Config
 from modules.oddsportal.scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
@@ -17,103 +17,17 @@ from shared.runtime_observability import (
 from .logging_setup import setup_logging
 
 
-def run_discovery():
-    """Run event discovery job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running event discovery...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_discovery_now()
-
-
-def run_discovery2():
-    """Run event discovery 2 job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running event discovery 2 (streaks, h2h, winning odds)...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_discovery2_now()
-
-
-def run_pre_start_check():
-    """Run pre-start check job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running pre-start check...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_pre_start_check_now()
-
-
-def run_midnight_sync():
-    """Run midnight results collection job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running midnight results collection...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_midnight_sync_now()
-
-
-def run_results_collection():
-    """Run results collection job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running results collection...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_results_collection_now()
-
-
-def run_results_collection_all():
-    """Run comprehensive results collection for all finished events."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running comprehensive results collection...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_results_collection_all_now()
-
-
-def run_results_for_date(date_str: str):
-    """Run results collection for a specific date (yyyy-mm-dd)."""
-    logger = logging.getLogger(__name__)
-
-    try:
-        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except ValueError:
-        logger.error(f"Invalid date format: '{date_str}'. Use yyyy-mm-dd format.")
-        sys.exit(1)
-
-    logger.info(f"Running results collection for date: {target_date}")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_results_collection_for_date_now(target_date)
-
-
-def run_daily_discovery():
-    """Run daily discovery job."""
-    logger = logging.getLogger(__name__)
-    logger.info("Running daily discovery heartbeat (slot-aware scheduled events with odds)...")
-
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.run_job_daily_discovery_now()
-
-
-def run_oddspapi_fixture_discovery(args):
+def _run_oddspapi_fixture_discovery(args):
     """Run Oddspapi fixture discovery for a UTC day from the application CLI."""
     logger = logging.getLogger(__name__)
     logger.info("Running Oddspapi fixture discovery command...")
 
-    from infrastructure.scheduler import job_scheduler
+    from app.runtime import ApplicationRuntime
     from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import _resolve_sports
 
     sports = _resolve_sports(args.sports)
-    summary = job_scheduler.run_job_oddspapi_fixture_discovery_now(
+    summary = ApplicationRuntime().run(
+        "fixtures",
         target_date=args.date,
         lookahead_days=args.lookahead_days,
         sports=sports,
@@ -137,61 +51,17 @@ def run_oddspapi_fixture_discovery(args):
         )
 
 
-def start_scheduler():
-    """Start the job scheduler."""
-    logger = logging.getLogger(__name__)
-    logger.info("Starting job scheduler...")
+def _start_scheduler():
+    from app.runtime import ApplicationRuntime
 
-    from infrastructure.scheduler import job_scheduler
-
-    job_scheduler.start()
-
-    print("\n🟢 SofaScore Odds System Started Successfully!")
-    print("=" * 50)
-    print("Scheduled Jobs:")
-    print(f"  - Discovery (dropping odds): Daily at {', '.join(Config.DISCOVERY_TIMES)}")
-    print(
-        f"  - Discovery 2 (streaks, top team streaks, h2h, winning odds): Daily at {', '.join(Config.DISCOVERY2_TIMES)}"
-    )
-
-    print(
-        "  - Pre-start check: Every 5 minutes at clock intervals "
-        "(00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)"
-    )
-    print("    - Scans for games starting within 30 minutes")
-    print("    - Fetches final odds only when games are starting soon")
-
-    print("  - Results collection: Daily at 00:05 (collect results from finished games)")
-    print(
-        f"  - Daily discovery: Fixed trigger at {', '.join(Config.DAILY_DISCOVERY_FIXED_TIMES)}"
-        f" | Retry heartbeat every {Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES} minutes"
-        f" | AM opens at {Config.DAILY_DISCOVERY_AM_OPEN_HOUR}:00 MX (UTC date)"
-        f", PM opens at {Config.DAILY_DISCOVERY_PM_OPEN_HOUR}:00 MX"
-    )
-    print(
-        "  - Oddspapi fixture discovery: Daily at "
-        f"{', '.join(Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES)} "
-        "(UTC calendar day)"
-    )
-
-    print("\nSystem is running in background. Press Ctrl+C to stop.")
-    print("=" * 50)
-
-    def signal_handler(signum, frame):
-        logger.info("Received shutdown signal, stopping scheduler...")
-        request_shutdown()
-        job_scheduler.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
+    runtime = ApplicationRuntime()
     try:
-        while True:
+        runtime.start()
+        print("Scheduler running. Press Ctrl+C to stop.")
+        while not is_shutdown_requested():
             time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt, shutting down...")
-        job_scheduler.stop()
+    finally:
+        runtime.close()
 
 
 def _build_parser():
@@ -221,7 +91,7 @@ def _build_parser():
         "--date",
         type=str,
         default=None,
-        help="Target UTC date in yyyy-mm-dd format (for results-date or Oddspapi discovery)",
+        help="Calendar date yyyy-mm-dd (local for results-date; UTC for Oddspapi discovery)",
     )
     parser.add_argument(
         "--sports",
@@ -245,44 +115,35 @@ def _build_parser():
 
 
 def _run_command(args):
-    from .commands import (
-        refresh_alert_data,
-        run_backfill_results,
-        show_events,
-        show_status,
-    )
+    from app.runtime import ApplicationRuntime
+    from .commands import run_backfill_results, show_events, show_status
     from .initialize import initialize_system
 
-    if args.command == "results-date" and not args.date:
-        logging.getLogger(__name__).error(
-            "--date argument is required for results-date command (format: yyyy-mm-dd)"
-        )
-        sys.exit(1)
-
+    target_date = None
+    if args.command == "results-date":
+        if not args.date:
+            raise ValueError("results-date requires --date yyyy-mm-dd")
+        target_date = date.fromisoformat(args.date)
     if not initialize_system():
-        logging.getLogger(__name__).error("Failed to initialize system")
-        sys.exit(1)
+        raise RuntimeError("Failed to initialize system")
 
-    if args.command == "start":
-        start_scheduler()
-    elif args.command == "discovery":
-        run_discovery()
-    elif args.command == "discovery2":
-        run_discovery2()
-    elif args.command == "pre-start":
-        run_pre_start_check()
-    elif args.command == "midnight":
-        run_midnight_sync()
-    elif args.command == "results":
-        run_results_collection()
+    jobs = {
+        "discovery": "discovery",
+        "discovery2": "discovery2",
+        "pre-start": "pre_start",
+        "midnight": "midnight",
+        "results": "results",
+        "results-all": "results_all",
+        "daily-discovery": "daily",
+    }
+    if args.command in jobs:
+        ApplicationRuntime().run(jobs[args.command])
     elif args.command == "results-date":
-        run_results_for_date(args.date)
-    elif args.command == "results-all":
-        run_results_collection_all()
-    elif args.command == "daily-discovery":
-        run_daily_discovery()
+        ApplicationRuntime().run("results_date", target_date=target_date)
+    elif args.command == "start":
+        _start_scheduler()
     elif args.command == "oddspapi-fixture-discovery":
-        run_oddspapi_fixture_discovery(args)
+        _run_oddspapi_fixture_discovery(args)
     elif args.command == "backfill-results":
         run_backfill_results(args.limit)
     elif args.command == "status":
@@ -290,7 +151,10 @@ def _run_command(args):
     elif args.command == "events":
         show_events(args.limit)
     elif args.command == "refresh-alerts":
-        refresh_alert_data()
+        summary = ApplicationRuntime().run("reporting", force=True, request=True)
+        if summary["failed"]:
+            raise RuntimeError(f"Reporting refresh incomplete: {summary}")
+        logging.getLogger(__name__).info("Alert data refresh summary=%s", summary)
 
 
 def main():
@@ -303,14 +167,13 @@ def main():
     logger.info(
         "OddsPortal config: enabled=%s parallel_browsers=%s "
         "block_resources=%s language=%s domain=%s "
-        "previous_cycle_timeout_s=%s alert_wait_timeout_s=%s "
+        "alert_wait_timeout_s=%s "
         "proxy_enabled=%s proxy_endpoint_set=%s",
         Config.ODDSPORTAL_SCRAPING_ENABLED,
         Config.ODDSPORTAL_PARALLEL_BROWSERS,
         ODDSPORTAL_SCRAPING_SETTINGS.browser.block_resources,
         ODDSPORTAL_SCRAPING_SETTINGS.ui_language,
         ODDSPORTAL_SCRAPING_SETTINGS.domain,
-        Config.ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT,
         Config.ODDSPORTAL_ALERT_WAIT_TIMEOUT,
         Config.PROXY_ENABLED,
         bool(getattr(Config, "PROXY_ENDPOINT", "")),
@@ -345,18 +208,3 @@ def main():
             mark_clean_shutdown()
         if is_shutdown_requested():
             sys.exit(130)
-
-
-__all__ = [
-    "main",
-    "run_daily_discovery",
-    "run_oddspapi_fixture_discovery",
-    "run_discovery",
-    "run_discovery2",
-    "run_midnight_sync",
-    "run_pre_start_check",
-    "run_results_collection",
-    "run_results_collection_all",
-    "run_results_for_date",
-    "start_scheduler",
-]

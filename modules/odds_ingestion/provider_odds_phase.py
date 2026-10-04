@@ -22,6 +22,7 @@ import logging
 from typing import Callable, Collection, Protocol
 
 from infrastructure.persistence.repositories import EventSourceMappingRepository
+from shared.execution_context import WorkDeferred, check_execution_budget
 
 from .fetch_result import OddsFetchResult
 
@@ -84,12 +85,14 @@ def restrict_candidates_to_tracked_competitions(
     return eligible
 
 
-def is_eligible_for_source(candidate: dict, source_states: dict, source: str) -> bool:
+def is_eligible_for_source(candidate: dict, source_states: dict, source: str, retry_missing=None) -> bool:
     """Timing eligibility plus this source's own recorded availability."""
     if not should_extract_odds(candidate):
         return False
     source_state = source_states.get(candidate.get("event_id"), {}).get(source)
     if source_state is not None and source_state.has_odds is False:
+        if retry_missing is not None and retry_missing(candidate):
+            return True
         logger.info(
             "🚫 Skipping %s odds fetch for event_id=%s because recorded has_odds=False",
             source,
@@ -103,12 +106,13 @@ def select_candidates_for_source(
     candidates: list[dict],
     source_states: dict,
     source: str,
+    retry_missing=None,
 ) -> list[dict]:
     """Filter the shared candidate plan down to one source's requestable events."""
     return [
         candidate
         for candidate in candidates
-        if is_eligible_for_source(candidate, source_states, source)
+        if is_eligible_for_source(candidate, source_states, source, retry_missing)
     ]
 
 
@@ -129,6 +133,7 @@ def run_provider_odds_phase(
     can_fetch: Callable[[dict], bool] | None = None,
     on_ingested: Callable[[dict], None] | None = None,
     summary_factory: Callable[[], ProviderOddsSummary] = ProviderOddsSummary,
+    retry_missing: Callable[[dict], bool] | None = None,
 ) -> ProviderOddsSummary:
     """Run one provider's fetch/ingest loop over its eligible candidates.
 
@@ -144,66 +149,71 @@ def run_provider_odds_phase(
     summary = summary_factory()
     summary.candidates_seen = len(candidates)
 
-    eligible = select_candidates_for_source(candidates, source_states, source)
+    eligible = select_candidates_for_source(candidates, source_states, source, retry_missing)
     summary.events_skipped = len(candidates) - len(eligible)
 
     missing_endpoint_ids: set[int] = set()
     odds_available_event_ids: set[int] = set()
-    for candidate in eligible:
-        event_id = candidate["event_id"]
-        try:
-            if can_fetch is not None and not can_fetch(candidate):
-                summary.events_skipped += 1
-                continue
+    try:
+        for candidate in eligible:
+            check_execution_budget()
+            event_id = candidate["event_id"]
+            try:
+                if can_fetch is not None and not can_fetch(candidate):
+                    summary.events_skipped += 1
+                    continue
 
-            summary.requests_attempted += 1
-            fetch_result = fetch(candidate)
+                summary.requests_attempted += 1
+                fetch_result = fetch(candidate)
 
-            if fetch_result.endpoint_missing:
-                missing_endpoint_ids.add(event_id)
-                summary.missing_endpoints += 1
-                summary.events_skipped += 1
-                continue
+                if fetch_result.endpoint_missing:
+                    missing_endpoint_ids.add(event_id)
+                    summary.missing_endpoints += 1
+                    summary.events_skipped += 1
+                    continue
 
-            payload = fetch_result.payload
-            if not payload:
-                summary.events_skipped += 1
-                continue
+                payload = fetch_result.payload
+                if not payload:
+                    summary.events_skipped += 1
+                    continue
 
-            if getattr(fetch_result, "provider_has_odds", None) is True:
-                # Provider availability is independent of whether local
-                # normalization/persistence accepts any of the returned odds.
-                odds_available_event_ids.add(event_id)
+                if getattr(fetch_result, "provider_has_odds", None) is True:
+                    # Provider availability is independent of whether local
+                    # normalization/persistence accepts any of the returned odds.
+                    odds_available_event_ids.add(event_id)
 
-            candidate["odds_response"] = payload
-            ingestion_result = ingest(candidate, payload)
-            candidate["ingestion_result"] = ingestion_result
+                candidate["odds_response"] = payload
+                ingestion_result = ingest(candidate, payload)
+                candidate["ingestion_result"] = ingestion_result
 
-            summary.markets_saved += getattr(ingestion_result, "markets_saved", 0) or 0
-            if getattr(ingestion_result, "markets_saved", 0) > 0 or getattr(
-                ingestion_result, "dual_process_market_available", False
-            ):
-                summary.events_ingested += 1
-                if on_ingested is not None:
-                    on_ingested(candidate)
-            else:
-                summary.events_skipped += 1
-                logger.warning(
-                    "No market odds saved for event %s (source=%s): %s",
-                    event_id,
-                    source,
-                    getattr(ingestion_result, "reason", None),
+                summary.markets_saved += getattr(ingestion_result, "markets_saved", 0) or 0
+                if getattr(ingestion_result, "markets_saved", 0) > 0 or getattr(
+                    ingestion_result, "dual_process_market_available", False
+                ):
+                    summary.events_ingested += 1
+                    if on_ingested is not None:
+                        on_ingested(candidate)
+                else:
+                    summary.events_skipped += 1
+                    logger.warning(
+                        "No market odds saved for event %s (source=%s): %s",
+                        event_id,
+                        source,
+                        getattr(ingestion_result, "reason", None),
+                    )
+            except WorkDeferred:
+                raise
+            except Exception as exc:
+                summary.events_failed += 1
+                logger.error(
+                    "Error processing %s odds for event %s: %s", source, event_id, exc
                 )
-        except Exception as exc:
-            summary.events_failed += 1
-            logger.error(
-                "Error processing %s odds for event %s: %s", source, event_id, exc
-            )
 
-    if odds_available_event_ids:
-        EventSourceMappingRepository.mark_odds_available(
-            odds_available_event_ids,
-            source,
-        )
-    mark_missing_endpoints_unavailable(missing_endpoint_ids, source)
+    finally:
+        if odds_available_event_ids:
+            EventSourceMappingRepository.mark_odds_available(
+                odds_available_event_ids,
+                source,
+            )
+        mark_missing_endpoints_unavailable(missing_endpoint_ids, source)
     return summary

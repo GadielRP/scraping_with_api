@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from modules.events.discards.contracts import DeletionBatch
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from shared.concurrency import bounded_results
+from shared.execution_context import WorkDeferred, check_execution_budget
 from typing import Dict, List, Optional, Set
 
 from infrastructure.persistence.repositories import EventRepository
@@ -164,6 +165,8 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                         result["parsed"] = parsed
                         result["source_event_id"] = sofascore_event_id
 
+            except WorkDeferred:
+                raise
             except Exception as exc:
                 logger.error(
                     "Error checking recently started event %s: %s",
@@ -172,21 +175,18 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 )
             return result
 
-        max_workers = getattr(Config, "PRE_START_WORKERS", 5)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(_process_single_recently_started, event) for event in events_started_recently]
-            for future in as_completed(futures):
-                res = future.result()
-                if res["checked"]:
-                    checked_count += 1
-                if res["corrected"]:
-                    corrected_count += 1
-                if res["modified_event_id"]:
-                    modified_event_ids.add(res["modified_event_id"])
-                if res["upsert"] is not None:
-                    results_to_upsert.append(res["upsert"])
-                if res["delete_id"] is not None:
-                    event_ids_to_delete.record(res["delete_id"], res["source_event_id"], res["parsed"])
+        max_workers = Config.PRE_START_WORKERS
+        for res in bounded_results(_process_single_recently_started, events_started_recently, max_workers):
+            if res["checked"]:
+                checked_count += 1
+            if res["corrected"]:
+                corrected_count += 1
+            if res["modified_event_id"]:
+                modified_event_ids.add(res["modified_event_id"])
+            if res["upsert"] is not None:
+                results_to_upsert.append(res["upsert"])
+            if res["delete_id"] is not None:
+                event_ids_to_delete.record(res["delete_id"], res["source_event_id"], res["parsed"])
 
         if modified_event_ids:
             logger.info("🔄 Timestamp correction detected for %s event(s)", len(modified_event_ids))
@@ -201,12 +201,14 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
         upserted_count = 0
         if results_to_upsert:
             try:
-                upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
+                upserted_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
                 if upserted_count:
                     logger.info(
                         "⚡ Timestamp correction: %s early result(s) upserted in batch",
                         upserted_count,
                     )
+            except WorkDeferred:
+                raise
             except Exception as exc:
                 logger.error(
                     "Failed to batch upsert early results: %s",
@@ -229,6 +231,8 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
             )
 
         return modified_event_ids
+    except WorkDeferred:
+        raise
     except Exception as exc:
         logger.error("Error in timestamp correction checks: %s", exc)
         return modified_event_ids

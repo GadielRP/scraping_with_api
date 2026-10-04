@@ -34,3 +34,6 @@ psycopg[binary]==3.2.9
 pandas>=1.5.0
 playwright>=1.40.0
 pytest>=8.0.0
+
+# Incremental parsing of bulk provider responses
+ijson>=3.3,<4

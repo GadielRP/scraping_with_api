@@ -45,6 +45,8 @@ def delete_events(db_manager, event_ids):
             # Explicit for SQLite tests and non-cascading legacy schemas too.
             session.query(EventSourceMapping).filter(EventSourceMapping.event_id.in_(deleted_ids)).delete(synchronize_session=False)
             count = session.query(Event).filter(Event.id.in_(deleted_ids)).delete(synchronize_session=False)
+            from .reporting_refresh_repository import invalidate_reporting
+            invalidate_reporting(session)
             seasons = {e.season_id for e in selected if e.season_id is not None}
             if seasons:
                 remaining = session.query(Event.season_id).filter(Event.season_id.in_(seasons))

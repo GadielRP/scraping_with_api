@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from shared.concurrency import bounded_results
+from shared.execution_context import WorkDeferred, check_execution_budget
 from typing import Dict, List, Set, Tuple
 from modules.events.discards.contracts import DeletionBatch
 
@@ -77,6 +78,8 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         try:
             if _should_check_result_now(event_data):
                 candidates.append(event_data)
+        except WorkDeferred:
+            raise
         except Exception as exc:
             logger.warning(
                 "Intraday result freshness: could not evaluate check window for event %s: %s",
@@ -103,6 +106,8 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         sport = event_data.get("sport")
         try:
             minutes_ago = _get_minutes_ago(event_data)
+        except WorkDeferred:
+            raise
         except Exception:
             minutes_ago = None
 
@@ -175,6 +180,8 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                 "api_checked": 1,
                 "upsert_data": (event_id, result_data),
             }
+        except WorkDeferred:
+            raise
         except Exception as exc:
             logger.exception(
                 "Intraday result freshness: failed processing event %s: %s",
@@ -184,38 +191,26 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             return {"api_checked": 1, "failed": 1}
 
     max_workers = min(Config.INTRADAY_RESULT_FRESHNESS_WORKERS, len(candidates))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_event = {
-            executor.submit(_process_single_event, event_data): event_data for event_data in candidates
-        }
-        for future in as_completed(future_to_event):
-            try:
-                outcome = future.result()
-            except Exception as exc:
-                logger.exception("Intraday result freshness worker failed unexpectedly: %s", exc)
-                stats["api_checked"] += 1
-                stats["failed"] += 1
-                continue
+    for outcome in bounded_results(_process_single_event, candidates, max_workers):
+        stats["api_checked"] += outcome.get("api_checked", 0)
+        stats["results_upserted"] += outcome.get("results_upserted", 0)
+        stats["not_finished"] += outcome.get("not_finished", 0)
+        stats["queued_for_deletion"] += outcome.get("queued_for_deletion", 0)
+        stats["failed"] += outcome.get("failed", 0)
 
-            stats["api_checked"] += outcome.get("api_checked", 0)
-            stats["results_upserted"] += outcome.get("results_upserted", 0)
-            stats["not_finished"] += outcome.get("not_finished", 0)
-            stats["queued_for_deletion"] += outcome.get("queued_for_deletion", 0)
-            stats["failed"] += outcome.get("failed", 0)
+        upsert_data = outcome.get("upsert_data")
+        if upsert_data is not None:
+            results_to_upsert.append(upsert_data)
 
-            upsert_data = outcome.get("upsert_data")
-            if upsert_data is not None:
-                results_to_upsert.append(upsert_data)
-
-            delete_event_id = outcome.get("delete_event_id")
-            if delete_event_id is not None:
-                if outcome.get("parsed") is not None:
-                    delete_event_ids.record(delete_event_id, outcome["source_event_id"], outcome["parsed"])
-                else:
-                    delete_event_ids.add(delete_event_id)
+        delete_event_id = outcome.get("delete_event_id")
+        if delete_event_id is not None:
+            if outcome.get("parsed") is not None:
+                delete_event_ids.record(delete_event_id, outcome["source_event_id"], outcome["parsed"])
+            else:
+                delete_event_ids.add(delete_event_id)
 
     if results_to_upsert:
-        upserted_count = ResultRepository.batch_upsert_results(results_to_upsert)
+        upserted_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
         stats["results_upserted"] = upserted_count
         logger.info(
             "Intraday result freshness: batch upserted %s result(s)",

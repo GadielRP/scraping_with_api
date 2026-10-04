@@ -7,6 +7,7 @@ import logging
 from typing import Collection
 
 from infrastructure.settings import Config
+from shared.execution_context import check_execution_budget, WorkDeferred
 
 from .odds_source_state import (
     SOFASCORE_SOURCE,
@@ -28,7 +29,7 @@ class PreStartEventPlan:
 
 
 def build_pre_start_event_candidates(
-    scheduler,
+    runtime,
     upcoming_events: list[dict],
     pre_calculated_timings: dict[int, int],
     source_states: PreStartOddsSourceStates,
@@ -44,7 +45,8 @@ def build_pre_start_event_candidates(
     event_meta_lookup: dict[int, dict] = {}
     skipped_untracked_odds = 0
 
-    for event_data in upcoming_events:
+    for event_data in sorted(upcoming_events, key=lambda event: event['starts_at']):
+        check_execution_budget()
         try:
             event_id = event_data["id"]
             minutes = pre_calculated_timings.get(event_id)
@@ -86,16 +88,16 @@ def build_pre_start_event_candidates(
                 continue
 
             if timing_changed:
-                scheduler.recently_rescheduled.add(event_id)
+                runtime.recently_rescheduled.add(event_id)
                 handle_rescheduled_event(
                     event_id,
-                    scheduler.event_repo,
+                    runtime.event_repo,
                     minutes,
                     metadata_snapshot=metadata_snapshot,
                     sofascore_event_id=sofascore_event_id,
                 )
 
-                refreshed_event = scheduler.event_repo.get_event_by_id(event_id)
+                refreshed_event = runtime.event_repo.get_event_by_id(event_id)
                 if refreshed_event:
                     event_data["season_id"] = refreshed_event.season_id
                     event_data["starts_at"] = refreshed_event.starts_at
@@ -119,6 +121,8 @@ def build_pre_start_event_candidates(
             }
             events_to_process.append(candidate)
             event_meta_lookup[event_id] = candidate
+        except WorkDeferred:
+            raise
         except Exception as exc:
             logger.error(
                 "Error processing upcoming event %s: %s",

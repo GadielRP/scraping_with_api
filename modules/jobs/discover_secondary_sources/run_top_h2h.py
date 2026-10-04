@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 
 from modules.sofascore import api_client
-from modules.competition.discovery_scope import load_tracked_source_competitions
+from modules.competition.discovery_scope import load_tracked_source_competitions, UNRESOLVED_SCOPE
 from modules.jobs.discovery_filters import filter_upcoming_events
 
 logger = logging.getLogger(__name__)
 
 
-def run_top_h2h(tracked_competitions=None):
-    if tracked_competitions is None:
+def run_top_h2h(tracked_competitions=UNRESOLVED_SCOPE):
+    if tracked_competitions is UNRESOLVED_SCOPE:
         tracked_competitions = load_tracked_source_competitions("sofascore")
     if tracked_competitions is not None and not tracked_competitions:
         return []

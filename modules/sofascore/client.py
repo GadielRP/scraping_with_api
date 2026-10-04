@@ -16,7 +16,16 @@ from curl_cffi.const import CurlECode
 
 from infrastructure.network import ProxyIdentityManager
 from infrastructure.settings import Config
-from shared.shutdown import is_shutdown_requested, is_background_work
+from modules.competition.discovery_scope import UNRESOLVED_SCOPE
+from shared.shutdown import is_shutdown_requested
+from shared.execution_context import (
+    current_priority,
+    Priority,
+    check_execution_budget,
+    WorkDeferred,
+    wait_interruptibly,
+    request_timeout,
+)
 
 from .discovery_feeds import (
     extract_events_and_odds_from_dropping_response,
@@ -27,7 +36,11 @@ from .discovery_feeds import (
     get_team_streaks_events,
     get_winning_odds_events,
 )
-from .event_details import get_event_details, get_event_results, update_event_information_from_response
+from .event_details import (
+    get_event_details,
+    get_event_results,
+    update_event_information_from_response,
+)
 from .event_normalizer import clean_competition, get_gender, normalize_event_payload
 from .challenge import (
     body_preview,
@@ -135,7 +148,7 @@ class SofaScoreAPI:
         self.x_requested_with = getattr(Config, "SOFASCORE_X_REQUESTED_WITH", "XMLHttpRequest")
         self.last_request_time = 0
         self._rate_limit_condition = threading.Condition()
-        self._foreground_waiters = 0
+        self._priority_waiters = [0, 0, 0]
         self.proxy_manager = ProxyIdentityManager(Config, client_name="sofascore")
         self.proxy_identity = None
         self._proxy_error_streak = 0
@@ -197,8 +210,16 @@ class SofaScoreAPI:
         with self._challenge_circuit_lock:
             self._consecutive_challenge_responses = 0
 
+    @property
+    def challenge_evidence_enabled(self):
+        return getattr(self._thread_local, "challenge_evidence_enabled", Config.global_debug_mode)
+
+    @challenge_evidence_enabled.setter
+    def challenge_evidence_enabled(self, enabled):
+        self._thread_local.challenge_evidence_enabled = bool(enabled)
+
     def set_challenge_evidence_enabled(self, enabled: bool) -> None:
-        self.challenge_evidence_enabled = bool(enabled)
+        self._thread_local.challenge_evidence_enabled = bool(enabled)
 
     def _should_capture_challenge_evidence(self) -> bool:
         return bool(self.challenge_evidence_enabled)
@@ -265,7 +286,9 @@ class SofaScoreAPI:
 
         proxies = state.proxy_manager.build_requests_proxies(state.proxy_identity)
         if not proxies:
-            logger.warning("Proxy is enabled but proxy identity is not valid; using direct connection")
+            logger.warning(
+                "Proxy is enabled but proxy identity is not valid; using direct connection"
+            )
             state.proxy_identity = None
             self._publish_main_thread_state(state)
             return
@@ -334,23 +357,21 @@ class SofaScoreAPI:
             self._proxy_error_streak = 0
 
     def _rate_limit(self):
-        """Share the request budget; foreground waiters precede maintenance work."""
-        foreground = not is_background_work()
+        priority = int(current_priority())
         with self._rate_limit_condition:
-            self._foreground_waiters += int(foreground)
+            self._priority_waiters[priority] += 1
             try:
                 while True:
-                    if is_shutdown_requested():
-                        raise KeyboardInterrupt()
-                    remaining = Config.REQUEST_DELAY_SECONDS - (time.monotonic() - self.last_request_time)
-                    if remaining <= 0 and (foreground or not self._foreground_waiters):
+                    check_execution_budget()
+                    remaining = Config.REQUEST_DELAY_SECONDS - (
+                        time.monotonic() - self.last_request_time
+                    )
+                    if remaining <= 0 and not any(self._priority_waiters[:priority]):
                         self.last_request_time = time.monotonic()
                         return
-                    # Release the condition while waiting, including during a
-                    # long configured delay, so urgent requests can be admitted.
                     self._rate_limit_condition.wait(min(max(remaining, 0.01), 0.1))
             finally:
-                self._foreground_waiters -= int(foreground)
+                self._priority_waiters[priority] -= 1
                 self._rate_limit_condition.notify_all()
 
     def _extract_endpoint_event_id(self, endpoint: str) -> int:
@@ -363,6 +384,8 @@ class SofaScoreAPI:
         self,
         endpoint: str,
         params: Optional[Dict] = None,
+        *,
+        body_file=None,
     ) -> Optional[Dict]:
         """Execute a JSON request while preserving structured HTTP exceptions."""
         url = f"{self.base_url}{endpoint}"
@@ -385,18 +408,30 @@ class SofaScoreAPI:
 
                 logger.debug("Making request to: %s", url)
                 request_started_at = time.perf_counter()
+                transfer_options = {}
+                if body_file is not None:
+                    body_file.seek(0)
+                    body_file.truncate()
+                    transfer_options["content_callback"] = body_file.write
                 response = request_state.session.get(
                     url,
                     headers=headers,
                     params=params,
-                    timeout=30,
+                    timeout=request_timeout(30),
+                    **transfer_options,
                 )
 
                 if response.status_code == 200:
                     self._proxy_error_streak = 0
                     self._record_successful_response()
+                    if body_file is not None:
+                        body_file.seek(0)
+                        return body_file
                     return response.json()
 
+                if body_file is not None:
+                    body_file.seek(0)
+                    response.content = body_file.read(65536)
                 if is_sofascore_challenge_response(response):
                     self._record_challenge_response(endpoint)
                     reason = get_challenge_reason(response)
@@ -486,7 +521,11 @@ class SofaScoreAPI:
                         request_state.proxy_manager.provider,
                         request_state.proxy_manager.mode,
                         request_state.proxy_manager.endpoint,
-                        request_state.proxy_identity.generation if request_state.proxy_identity else 0,
+                        (
+                            request_state.proxy_identity.generation
+                            if request_state.proxy_identity
+                            else 0
+                        ),
                         wait_time,
                         attempt + 1,
                         Config.MAX_RETRIES,
@@ -497,7 +536,7 @@ class SofaScoreAPI:
                             state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
-                        time.sleep(wait_time)
+                        wait_interruptibly(wait_time)
                         continue
                     break
 
@@ -516,7 +555,7 @@ class SofaScoreAPI:
                             state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
-                        time.sleep(wait_time)
+                        wait_interruptibly(wait_time)
                         continue
                     raise SofaScoreRateLimitException(
                         self._extract_endpoint_event_id(endpoint),
@@ -547,7 +586,7 @@ class SofaScoreAPI:
                             state=request_state,
                         )
                     if attempt < Config.MAX_RETRIES - 1:
-                        time.sleep(wait_time)
+                        wait_interruptibly(wait_time)
                         continue
                     raise SofaScoreRateLimitException(
                         self._extract_endpoint_event_id(endpoint),
@@ -566,7 +605,7 @@ class SofaScoreAPI:
                         Config.MAX_RETRIES,
                     )
                     if attempt < Config.MAX_RETRIES - 1:
-                        time.sleep(wait_time)
+                        wait_interruptibly(wait_time)
                         continue
                     break
 
@@ -583,7 +622,7 @@ class SofaScoreAPI:
                 SofaScoreRateLimitException,
             ):
                 raise
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, WorkDeferred):
                 raise
             except Exception as exc:
                 if is_shutdown_requested():
@@ -728,7 +767,7 @@ class SofaScoreAPI:
         self,
         response: Dict,
         *,
-        tracked_competitions=None,
+        tracked_competitions=UNRESOLVED_SCOPE,
     ) -> Tuple[List[Dict], List[Dict]]:
         return extract_events_from_high_value_streaks(
             response,
@@ -809,7 +848,7 @@ class SofaScoreAPI:
         odds_extraction: bool = True,
         discovery_source: str = "dropping_odds",
         *,
-        tracked_competitions=None,
+        tracked_competitions=UNRESOLVED_SCOPE,
     ) -> Tuple[List[Dict], Dict]:
         return extract_events_and_odds_from_dropping_response(
             response,
@@ -825,7 +864,9 @@ class SofaScoreAPI:
         send_alert: bool = False,
         current_starting_time: Optional[datetime] = None,
     ) -> bool:
-        from modules.jobs.pre_start_check_job.timestamp_corrections import check_and_update_starting_time as _check
+        from modules.jobs.pre_start_check_job.timestamp_corrections import (
+            check_and_update_starting_time as _check,
+        )
 
         return _check(
             event_id,

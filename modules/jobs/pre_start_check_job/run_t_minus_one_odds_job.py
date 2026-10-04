@@ -6,6 +6,8 @@ import logging
 from datetime import datetime, timedelta
 
 from infrastructure.settings import Config
+from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from infrastructure.persistence.advisory_lock import exclusive_slot
 from shared.temporal import as_utc, utc_now
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
@@ -17,8 +19,9 @@ from modules.jobs.pre_start_check_job.run_pre_start_check_job import (
 logger = logging.getLogger(__name__)
 
 
+@reporting_exclusion.pre_start()
 def run_t_minus_one_odds_job(
-    scheduler,
+    runtime,
     scheduled_at: datetime,
     *,
     debug_mode: bool = False,
@@ -57,7 +60,7 @@ def run_t_minus_one_odds_job(
     if Config.TRACKED_COMPETITIONS_ONLY:
         tracked_ids = list(tracked_competition_ids())
 
-    events = scheduler.event_repo.get_events_starting_between(
+    events = runtime.event_repo.get_events_starting_between(
         target_start,
         target_start + timedelta(seconds=1),
         competition_ids=tracked_ids,
@@ -67,16 +70,20 @@ def run_t_minus_one_odds_job(
         return None
 
     timings = {event["id"]: closing_minute for event in events}
-    return run_pre_start_odds_moments(
-        scheduler,
-        events,
-        timings,
-        key_moments=(closing_minute,),
-        oddsportal_context=OddsPortalScrapeContext({}, set(), {}),
-        debug_mode=debug_mode,
-        timestamp_correction_enabled=False,
-        evaluate_key_moments=False,
-    )
+    with exclusive_slot(736105, int(scheduled_at.timestamp()) // 60) as acquired:
+        if not acquired:
+            logger.info('Closing slot already executing scheduled_at=%s', scheduled_at.isoformat())
+            return None
+        return run_pre_start_odds_moments(
+            runtime,
+            events,
+            timings,
+            key_moments=(closing_minute,),
+            oddsportal_context=OddsPortalScrapeContext({}, set(), {}),
+            debug_mode=debug_mode,
+            timestamp_correction_enabled=False,
+            evaluate_key_moments=False,
+        )
 
 
 __all__ = ["run_t_minus_one_odds_job"]

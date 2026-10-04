@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 
 from infrastructure.settings import Config
+from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from shared.execution_context import check_execution_budget, WorkDeferred
+from shared.runtime_observability import observe_operation
 from modules.alerts.matchup_streak_analysis.standings_engine import (
     standings_calculator,
 )
@@ -17,9 +20,7 @@ from modules.jobs.pre_start_check_job.intraday_result_freshness import (
     process_intraday_result_freshness,
 )
 from modules.jobs.pre_start_check_job.key_moment_evaluation import (
-    enrich_event_context_competition_metadata as _enrich_event_context_competition_metadata,
     evaluate_pre_start_key_moments,
-    flush_missing_standings_endpoints as _flush_missing_standings_endpoints,
 )
 from modules.jobs.pre_start_check_job.moment_policy import regular_pre_start_moments
 from modules.jobs.pre_start_check_job.odds_source_state import (
@@ -98,12 +99,11 @@ def _split_recently_started_events(
 
 
 def _maintain_recently_started_events(
-    scheduler,
-    upcoming_events: list[dict],
+    runtime,
     active_tracked_competition_ids: list[int] | None,
-) -> list[dict]:
-    """Run timestamp/result maintenance and remove newly rescheduled events."""
-    started_events = scheduler.event_repo.get_events_started_recently(
+) -> None:
+    """Maintain already-started events after critical upcoming-event work."""
+    started_events = runtime.event_repo.get_events_started_recently(
         window_minutes=Config.INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES,
         competition_ids=active_tracked_competition_ids,
     )
@@ -143,22 +143,10 @@ def _maintain_recently_started_events(
         timestamp_candidates
     )
     if modified_event_ids:
-        upcoming_events = [
-            event
-            for event in upcoming_events
-            if event["id"] not in modified_event_ids
-        ]
         logger.info(
-            "Filtered %s upcoming events modified by timestamp correction",
+            "Corrected %s recently-started event timestamps",
             len(modified_event_ids),
         )
-
-    scheduler._cleanup_recently_rescheduled()
-    upcoming_events = [
-        event
-        for event in upcoming_events
-        if event["id"] not in scheduler.recently_rescheduled
-    ]
 
     if Config.INTRADAY_RESULT_FRESHNESS_TRACKED_COMPETITIONS_ONLY:
         freshness_tracked_ids = tracked_competition_ids()
@@ -185,7 +173,6 @@ def _maintain_recently_started_events(
             "Cleared standings calculator cache after intraday result changes"
         )
 
-    return upcoming_events
 
 
 def _ingest_provider_odds(
@@ -194,6 +181,7 @@ def _ingest_provider_odds(
     *,
     debug_mode: bool,
     tracked_competition_ids: set[int] | None = None,
+    cooldown=None,
 ) -> None:
     """Execute independent provider phases using the same candidate plan."""
     active_count = sum(
@@ -213,26 +201,32 @@ def _ingest_provider_odds(
             Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY,
         ),
     ):
+        check_execution_budget()
         phase_name = getattr(phase, "__name__", repr(phase))
         try:
-            phase(
-                event_plan.candidates,
-                source_states,
-                debug_mode=debug_mode,
-                tracked_competition_ids=(
-                    tracked_competition_ids if restrict_to_tracked else None
-                ),
-            )
+            options = {'cooldown': cooldown} if phase is run_sofascore_pre_start_odds else {}
+            with observe_operation(f'pre-start:{phase_name}'):
+                phase(
+                    event_plan.candidates,
+                    source_states,
+                    debug_mode=debug_mode,
+                    tracked_competition_ids=(
+                        tracked_competition_ids if restrict_to_tracked else None
+                    ),
+                    **options,
+                )
+        except WorkDeferred:
+            raise
         except Exception:
             logger.exception("%s odds ingestion failed", phase_name)
 
 
-def _load_upcoming_events(scheduler, tracked_competition_ids) -> list[dict]:
+def _load_upcoming_events(runtime, tracked_competition_ids) -> list[dict]:
     logger.info(
         "📋 Starting upcoming-event load (window=%s minutes)",
         Config.PRE_START_WINDOW_MINUTES,
     )
-    upcoming_events = scheduler.event_repo.get_events_starting_soon(
+    upcoming_events = runtime.event_repo.get_events_starting_soon(
         Config.PRE_START_WINDOW_MINUTES,
         competition_ids=tracked_competition_ids,
     )
@@ -257,7 +251,7 @@ def _count_key_moment_events(
 
 
 def run_pre_start_odds_moments(
-    scheduler,
+    runtime,
     upcoming_events: list[dict],
     timings: dict[int, int],
     *,
@@ -282,12 +276,6 @@ def run_pre_start_odds_moments(
     )
     restrict_general_odds_extraction = (
         Config.ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY
-    )
-    restrict_sofascore_odds_extraction = (
-        Config.ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY
-    )
-    restrict_oddspapi_odds_extraction = (
-        Config.ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY
     )
     tracked_ids = set(tracked_competition_ids())
     include_all_tennis = getattr(
@@ -325,13 +313,13 @@ def run_pre_start_odds_moments(
             len(ts_events),
         )
     plan_ts = build_pre_start_event_candidates(
-        scheduler,
+        runtime,
         ts_events,
         timings,
         source_states,
         key_moments=key_moments,
         timestamp_correction_enabled=global_ts_correction,
-        fetch_alert_metadata=True,
+        fetch_alert_metadata=evaluate_key_moments,
         general_odds_extraction_competition_ids=general_odds_extraction_competition_ids,
     )
     if ts_events:
@@ -346,7 +334,7 @@ def run_pre_start_odds_moments(
             len(no_ts_events),
         )
         plan_no_ts = build_pre_start_event_candidates(
-            scheduler,
+            runtime,
             no_ts_events,
             timings,
             source_states,
@@ -373,6 +361,7 @@ def run_pre_start_odds_moments(
         source_states,
         debug_mode=debug_mode,
         tracked_competition_ids=tracked_ids,
+        cooldown=runtime.missing_odds,
     )
     logger.info(
         "Provider odds ingestion completed for %s candidates",
@@ -384,7 +373,7 @@ def run_pre_start_odds_moments(
     )
     if evaluate_key_moments:
         evaluate_pre_start_key_moments(
-            scheduler,
+            runtime,
             event_plan,
             oddsportal_context,
             debug_mode=debug_mode,
@@ -392,8 +381,9 @@ def run_pre_start_odds_moments(
     return event_plan
 
 
-def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
-    """Run maintenance, odds ingestion, and key-moment evaluation in order."""
+@reporting_exclusion.pre_start()
+def run_pre_start_check_job(runtime, global_debug_mode: bool = False) -> None:
+    """Capture upcoming events first; spend only remaining budget on intraday work."""
     logger.info(
         "🚀 PRE-START CHECK EXECUTED at %s",
         now_in_timezone(Config.TIMEZONE).strftime("%H:%M:%S %Z"),
@@ -412,9 +402,11 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
     try:
         tracked_competition_ids = _tracked_competition_ids()
         upcoming_events = _load_upcoming_events(
-            scheduler,
+            runtime,
             tracked_competition_ids,
         )
+        runtime.recently_rescheduled.cleanup()
+        upcoming_events = [event for event in upcoming_events if event['id'] not in runtime.recently_rescheduled]
         timings = {
             event["id"]: minutes_until_start(event["starts_at"])
             for event in upcoming_events
@@ -426,29 +418,12 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
         )
         oddsportal_context: OddsPortalScrapeContext = (
             start_oddsportal_scrape_for_events(
-                scheduler,
+                runtime,
                 upcoming_events,
                 timings,
                 debug_mode=global_debug_mode,
             )
         )
-
-        logger.info(
-            "🔧 Starting maintenance "
-            "(recently-started timestamp corrections + intraday freshness)"
-        )
-        upcoming_events = _maintain_recently_started_events(
-            scheduler,
-            upcoming_events,
-            tracked_competition_ids,
-        )
-
-        logger.info("🏀 Starting in-game checks (NBA 4th quarter)")
-        run_in_game_checks()
-
-        if not upcoming_events:
-            logger.warning("No upcoming events found after maintenance checks")
-            return
 
         key_moments = regular_pre_start_moments()
         key_moment_count = _count_key_moment_events(
@@ -465,16 +440,25 @@ def run_pre_start_check_job(scheduler, global_debug_mode: bool = False) -> None:
         )
 
         run_pre_start_odds_moments(
-            scheduler,
+            runtime,
             upcoming_events,
             timings,
             key_moments=key_moments,
             oddsportal_context=oddsportal_context,
             debug_mode=global_debug_mode,
         )
+        check_execution_budget()
+        with observe_operation('pre-start:intraday'):
+            _maintain_recently_started_events(runtime, tracked_competition_ids)
+        check_execution_budget()
+        with observe_operation('pre-start:in-game'):
+            run_in_game_checks()
         logger.info("✅ Pre-start check phases completed")
+    except WorkDeferred:
+        raise
     except Exception:
         logger.exception("Pre-start check job failed")
+        raise
     finally:
         if previous_evidence_mode is not None:
             api_client.set_challenge_evidence_enabled(previous_evidence_mode)

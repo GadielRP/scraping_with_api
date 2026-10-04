@@ -984,6 +984,8 @@ class MarketRepository:
             # relationships can reference pending quotes; SQLAlchemy orders the
             # INSERTs by FK dependency without a per-choice round trip.
             session.flush()
+            from .reporting_refresh_repository import invalidate_reporting
+            invalidate_reporting(session)
 
         operation_logger.info(
             "✅ Saved canonical event batch: event=%s input_bookies=%s "

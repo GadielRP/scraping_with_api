@@ -291,7 +291,7 @@ class OddspapiFixtureDiscoveryJob:
                 finally:
                     sport_summary.duration_seconds = round(monotonic() - sport_started, 3)
                     logger.info(
-                        "Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
+                        "👨 Oddspapi fixture batch processed sport=%s resolved_existing=%s resolved_sofascore=%s "
                         "resolved_candidate=%s skipped_untracked=%s unresolved=%s "
                         "mappings_created=%s queue_rows=%s duration_s=%s %s",
                         sport_slug,

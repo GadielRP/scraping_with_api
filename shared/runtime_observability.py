@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from functools import lru_cache
 from datetime import datetime, timezone
 import faulthandler
 import json
@@ -22,52 +23,43 @@ _STOP = threading.Event()
 _THREAD: threading.Thread | None = None
 _FATAL_HANDLE = None
 _STATE: dict = {}
+_OPERATIONS = {}
 _CGROUP_V2_ROOT = Path('/sys/fs/cgroup')
 _CGROUP_V1_MEMORY_ROOT = Path('/sys/fs/cgroup/memory')
 
 
+@lru_cache(maxsize=1)
+def _windows_memory_api():
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
+            ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+            ('QuotaPeakPagedPoolUsage', ctypes.c_size_t), ('QuotaPagedPoolUsage', ctypes.c_size_t),
+            ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t), ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+            ('PagefileUsage', ctypes.c_size_t), ('PeakPagefileUsage', ctypes.c_size_t),
+        ]
+    current = ctypes.windll.kernel32.GetCurrentProcess
+    current.restype = wintypes.HANDLE
+    info = ctypes.windll.psapi.GetProcessMemoryInfo
+    info.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD]
+    info.restype = wintypes.BOOL
+    return ProcessMemoryCounters, current, info
+
+
 def _get_rss_mb_windows() -> float | None:
-    """Return current working-set size on Windows via WinAPI (no psutil)."""
+    """Return current working set without rebuilding ctypes classes per sample."""
     try:
         import ctypes
-        from ctypes import wintypes
-    except ImportError:
-        return None
-
-    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-        _fields_ = [
-            ("cb", wintypes.DWORD),
-            ("PageFaultCount", wintypes.DWORD),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-        ]
-
-    try:
-        counters = PROCESS_MEMORY_COUNTERS()
-        counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
-        get_current_process.restype = wintypes.HANDLE
-        get_process_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
-        get_process_memory_info.argtypes = [
-            wintypes.HANDLE,
-            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-            wintypes.DWORD,
-        ]
-        get_process_memory_info.restype = wintypes.BOOL
-        if not get_process_memory_info(
-            get_current_process(),
-            ctypes.byref(counters),
-            counters.cb,
-        ):
+        counters_type, current, info = _windows_memory_api()
+        counters = counters_type()
+        counters.cb = ctypes.sizeof(counters_type)
+        if not info(current(), ctypes.byref(counters), counters.cb):
             return None
         return round(counters.WorkingSetSize / (1024 * 1024), 1)
-    except (AttributeError, OSError, ValueError, TypeError):
+    except (ImportError, AttributeError, OSError, ValueError, TypeError):
         return None
 
 
@@ -211,12 +203,22 @@ def _write_state() -> None:
         os.replace(temporary_path, _STATE_PATH)
 
 
-def _heartbeat_loop(interval_seconds: int) -> None:
-    while not _STOP.wait(interval_seconds):
-        try:
-            _write_state()
-        except Exception:
-            logger.exception('Could not persist runtime heartbeat')
+def _heartbeat_loop(interval_seconds):
+    last_persisted = 0
+    while not _STOP.wait(0.5):
+        rss = get_rss_mb()
+        with _LOCK:
+            for operation in _OPERATIONS.values():
+                peak = operation.get('process_peak_rss_mb')
+                if rss is not None and (peak is None or rss > peak):
+                    operation['process_peak_rss_mb'] = rss
+            _STATE['active_operations'] = [dict(item) for item in _OPERATIONS.values()]
+        if time.monotonic() - last_persisted >= interval_seconds:
+            try:
+                _write_state()
+            except Exception:
+                logger.exception('Could not persist runtime heartbeat')
+            last_persisted = time.monotonic()
 
 
 def start_runtime_observability(interval_seconds: int = 30) -> None:
@@ -231,11 +233,11 @@ def start_runtime_observability(interval_seconds: int = 30) -> None:
     if previous and not previous.get('clean_shutdown', False):
         logger.critical(
             'Previous process ended without a clean shutdown: pid=%s '
-            'last_heartbeat_utc=%s active_operation=%s rss_mb=%s '
+            'last_heartbeat_utc=%s active_operations=%s rss_mb=%s '
             'cgroup_memory_mb=%s cgroup_oom_kill=%s',
             previous.get('pid'),
             previous.get('heartbeat_at_utc'),
-            previous.get('active_operation'),
+            previous.get('active_operations'),
             previous.get('rss_mb'),
             previous.get('cgroup_memory_mb'),
             previous.get('cgroup_oom_kill'),
@@ -257,8 +259,7 @@ def start_runtime_observability(interval_seconds: int = 30) -> None:
             pid=os.getpid(),
             started_at_utc=_utc_iso(),
             clean_shutdown=False,
-            active_operation=None,
-            operation_started_at_utc=None,
+            active_operations=[],
         )
     _STOP.clear()
     _write_state()
@@ -289,8 +290,7 @@ def mark_clean_shutdown() -> None:
     _STOP.set()
     with _LOCK:
         _STATE['clean_shutdown'] = True
-        _STATE['active_operation'] = None
-        _STATE['operation_started_at_utc'] = None
+        _STATE['active_operations'] = []
     try:
         _write_state()
     except Exception:
@@ -303,178 +303,33 @@ def mark_clean_shutdown() -> None:
             pass
 
 
-def _sample_operation_peak(
-    stop_event: threading.Event,
-    peak_holder: dict[str, float | None],
-    sample_interval_seconds: float,
-) -> None:
-    """Track short RSS spikes and persist a breadcrumb every five seconds."""
-    last_persisted = time.monotonic()
-    while not stop_event.wait(sample_interval_seconds):
-        rss_mb = get_rss_mb()
-        cgroup_memory_mb = get_cgroup_memory_snapshot().get('current_mb')
+@contextmanager
+def observe_operation(name):
+    """Track concurrent operations; memory samples describe the entire process."""
+    from uuid import uuid4
+    from shared.execution_context import current_execution
+    context = current_execution()
+    key = uuid4().hex
+    started = time.monotonic()
+    start_rss = get_rss_mb()
+    operation = dict(name=name, run_id=context.run_id if context else key,
+                     thread=threading.current_thread().name, started_at_utc=_utc_iso(),
+                     process_peak_rss_mb=start_rss)
+    with _LOCK:
+        _OPERATIONS[key] = operation
+        _STATE['active_operations'] = [dict(item) for item in _OPERATIONS.values()]
+    logger.info('Operation started %s process_rss_mb=%s', operation, start_rss)
+    try:
+        yield
+    finally:
         with _LOCK:
-            current_peak = peak_holder.get('rss_mb')
-            if rss_mb is not None and (
-                current_peak is None or rss_mb > current_peak
-            ):
-                peak_holder['rss_mb'] = rss_mb
-                _STATE['active_operation_peak_rss_mb'] = rss_mb
-            current_cgroup_peak = peak_holder.get('cgroup_mb')
-            if isinstance(cgroup_memory_mb, (int, float)) and (
-                current_cgroup_peak is None
-                or cgroup_memory_mb > current_cgroup_peak
-            ):
-                peak_holder['cgroup_mb'] = cgroup_memory_mb
-                _STATE['active_operation_peak_cgroup_memory_mb'] = (
-                    cgroup_memory_mb
-                )
-
-        if time.monotonic() - last_persisted >= 5:
+            _OPERATIONS.pop(key, None)
+            _STATE['active_operations'] = [dict(item) for item in _OPERATIONS.values()]
+        logger.info('✅ Operation finished name=%s run_id=%s duration_s=%.3f '
+                    'process_rss_mb=%s process_peak_rss_mb=%s', name, operation['run_id'],
+                    time.monotonic() - started, get_rss_mb(), operation['process_peak_rss_mb'])
+        if _STATE:
             try:
                 _write_state()
             except Exception:
-                logger.warning('Could not persist operation memory sample')
-            last_persisted = time.monotonic()
-
-
-@contextmanager
-def observe_operation(name: str) -> Iterator[None]:
-    """Log and persist operation duration plus RSS before and after."""
-    started = time.monotonic()
-    start_rss = get_rss_mb()
-    memory_limit_mb = get_memory_limit_mb()
-    start_cgroup = get_cgroup_memory_snapshot()
-    start_cgroup_mb = start_cgroup.get('current_mb')
-    peak_holder = {
-        'rss_mb': start_rss,
-        'cgroup_mb': (
-            float(start_cgroup_mb)
-            if isinstance(start_cgroup_mb, (int, float))
-            else None
-        ),
-    }
-    sampler_stop = threading.Event()
-    sampler_thread = None
-    with _LOCK:
-        _STATE['active_operation'] = name
-        _STATE['operation_started_at_utc'] = _utc_iso()
-        _STATE['active_operation_peak_rss_mb'] = start_rss
-        _STATE['active_operation_peak_cgroup_memory_mb'] = start_cgroup_mb
-        _STATE['memory_limit_mb'] = memory_limit_mb
-    try:
-        _write_state()
-    except Exception:
-        logger.warning('Could not persist start breadcrumb for %s', name)
-
-    if start_rss is not None or start_cgroup_mb is not None:
-        sampler_thread = threading.Thread(
-            target=_sample_operation_peak,
-            args=(sampler_stop, peak_holder, 0.25),
-            name='operation-memory-sampler',
-            daemon=True,
-        )
-        sampler_thread.start()
-
-    logger.info(
-        'Operation started name=%s rss_mb=%s cgroup_memory_mb=%s '
-        'cgroup_anon_mb=%s cgroup_file_mb=%s memory_limit_mb=%s '
-        'cgroup_oom=%s cgroup_oom_kill=%s',
-        name,
-        start_rss,
-        start_cgroup_mb,
-        start_cgroup.get('anon_mb'),
-        start_cgroup.get('file_mb'),
-        memory_limit_mb,
-        start_cgroup.get('oom'),
-        start_cgroup.get('oom_kill'),
-    )
-    try:
-        yield
-    except BaseException:
-        logger.exception(
-            'Operation failed name=%s duration_s=%.1f rss_mb=%s',
-            name,
-            time.monotonic() - started,
-            get_rss_mb(),
-        )
-        raise
-    finally:
-        sampler_stop.set()
-        if sampler_thread is not None:
-            sampler_thread.join(timeout=1)
-        end_rss = get_rss_mb()
-        end_cgroup = get_cgroup_memory_snapshot()
-        end_cgroup_mb = end_cgroup.get('current_mb')
-        peak_rss = peak_holder.get('rss_mb')
-        if end_rss is not None and (peak_rss is None or end_rss > peak_rss):
-            peak_rss = end_rss
-        peak_cgroup = peak_holder.get('cgroup_mb')
-        if isinstance(end_cgroup_mb, (int, float)) and (
-            peak_cgroup is None or end_cgroup_mb > peak_cgroup
-        ):
-            peak_cgroup = float(end_cgroup_mb)
-        process_headroom_mb = (
-            round(memory_limit_mb - peak_rss, 1)
-            if memory_limit_mb is not None and peak_rss is not None
-            else None
-        )
-        cgroup_headroom_mb = (
-            round(memory_limit_mb - peak_cgroup, 1)
-            if memory_limit_mb is not None and peak_cgroup is not None
-            else None
-        )
-        headroom_mb = (
-            cgroup_headroom_mb
-            if cgroup_headroom_mb is not None
-            else process_headroom_mb
-        )
-        with _LOCK:
-            _STATE['active_operation'] = None
-            _STATE['operation_started_at_utc'] = None
-            _STATE['active_operation_peak_rss_mb'] = None
-            _STATE['active_operation_peak_cgroup_memory_mb'] = None
-            _STATE['last_operation'] = name
-            _STATE['last_operation_peak_rss_mb'] = peak_rss
-            _STATE['last_operation_peak_cgroup_memory_mb'] = peak_cgroup
-            _STATE['last_operation_finished_at_utc'] = _utc_iso()
-        try:
-            _write_state()
-        except Exception:
-            logger.warning('Could not persist finish breadcrumb for %s', name)
-        logger.info(
-            'Operation finished name=%s duration_s=%.1f rss_mb=%s '
-            'peak_rss_mb=%s cgroup_memory_mb=%s '
-            'peak_cgroup_memory_mb=%s cgroup_anon_mb=%s cgroup_file_mb=%s '
-            'memory_limit_mb=%s headroom_mb=%s '
-            'process_headroom_mb=%s rss_delta_mb=%s '
-            'cgroup_oom=%s cgroup_oom_kill=%s',
-            name,
-            time.monotonic() - started,
-            end_rss,
-            peak_rss,
-            end_cgroup_mb,
-            peak_cgroup,
-            end_cgroup.get('anon_mb'),
-            end_cgroup.get('file_mb'),
-            memory_limit_mb,
-            headroom_mb,
-            process_headroom_mb,
-            (
-                round(end_rss - start_rss, 1)
-                if end_rss is not None and start_rss is not None
-                else None
-            ),
-            end_cgroup.get('oom'),
-            end_cgroup.get('oom_kill'),
-        )
-
-
-__all__ = [
-    'get_cgroup_memory_snapshot',
-    'get_memory_limit_mb',
-    'get_rss_mb',
-    'mark_clean_shutdown',
-    'observe_operation',
-    'start_runtime_observability',
-]
+                logger.warning('Could not persist operation breadcrumb')

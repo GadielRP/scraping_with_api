@@ -204,7 +204,7 @@ def update_missing_competition_events(
 
             # Periodic batch flush of results to prevent holding too many in memory
             if len(results_to_upsert) >= batch_flush_size:
-                upserted = ResultRepository.batch_upsert_results(results_to_upsert)
+                upserted = len(ResultRepository.batch_upsert_results(results_to_upsert))
                 total_results_upserted += upserted
                 logger.info(
                     "Flushed batch of %s results (total so far: %s)",
@@ -222,7 +222,7 @@ def update_missing_competition_events(
 
     # Final flush of results
     if results_to_upsert:
-        upserted = ResultRepository.batch_upsert_results(results_to_upsert)
+        upserted = len(ResultRepository.batch_upsert_results(results_to_upsert))
         total_results_upserted += upserted
         logger.info("Batch upserted final %s results", upserted)
         results_to_upsert.clear()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared.execution_context import check_execution_budget, wait_interruptibly, request_timeout
+
 import logging
 import threading
 import time
@@ -36,7 +38,6 @@ class OddsPapiClient:
         timeout: float | None = None,
         max_retries: int | None = None,
         request_delay_seconds: float | None = None,
-        fixtures_cooldown_seconds: float | None = None,
         endpoint_cooldowns: dict[str, float] | None = None,
         key_scheduler: OddsPapiApiKeyScheduler | None = None,
     ) -> None:
@@ -51,21 +52,11 @@ class OddsPapiClient:
             if request_delay_seconds is None
             else request_delay_seconds
         )
-        configured_cooldowns = getattr(Config, "ODDSPAPI_ENDPOINT_COOLDOWNS", {})
         self.endpoint_cooldowns = self._normalize_endpoint_cooldowns(
-            configured_cooldowns
+            Config.ODDSPAPI_ENDPOINT_COOLDOWNS
         )
-        # Keep the old constructor argument working for callers/tests that
-        # configured only the fixtures endpoint before the generic map existed.
-        if fixtures_cooldown_seconds is not None:
-            self.endpoint_cooldowns["fixtures"] = max(
-                0.0,
-                float(fixtures_cooldown_seconds),
-            )
         if endpoint_cooldowns is not None:
-            self.endpoint_cooldowns.update(
-                self._normalize_endpoint_cooldowns(endpoint_cooldowns)
-            )
+            self.endpoint_cooldowns.update(self._normalize_endpoint_cooldowns(endpoint_cooldowns))
         self.session = requests.Session()
         # OddsPapi must never inherit HTTP(S)_PROXY or other request settings from env.
         self.session.trust_env = False
@@ -121,9 +112,7 @@ class OddsPapiClient:
     def _endpoint_lock(self, endpoint: str, api_key: str) -> threading.Lock:
         identity = self._cooldown_identity(endpoint, api_key)
         with OddsPapiClient._key_endpoint_locks_guard:
-            return OddsPapiClient._key_endpoint_locks.setdefault(
-                identity, threading.Lock()
-            )
+            return OddsPapiClient._key_endpoint_locks.setdefault(identity, threading.Lock())
 
     @contextmanager
     def _endpoint_request_slot(self, endpoint: str, api_key: str):
@@ -133,26 +122,26 @@ class OddsPapiClient:
             yield
             return
 
-        with self._endpoint_lock(endpoint, api_key):
+        lock = self._endpoint_lock(endpoint, api_key)
+        check_execution_budget()
+        while not lock.acquire(timeout=0.1):
+            check_execution_budget()
+        try:
             now = time.monotonic()
             identity = self._cooldown_identity(endpoint, api_key)
-            last_completed_at = OddsPapiClient._last_request_completed_at.get(
-                identity
-            )
+            last_completed_at = OddsPapiClient._last_request_completed_at.get(identity)
             if last_completed_at is not None:
-                remaining = cooldown_seconds - (
-                    now - last_completed_at
-                )
+                remaining = cooldown_seconds - (now - last_completed_at)
                 if remaining > 0:
-                    time.sleep(remaining)
+                    wait_interruptibly(remaining)
             try:
                 yield
             finally:
                 # OddsPapi's documented cooldown is effectively response-to-next
                 # request for sequential calls, so record completion, not start.
-                OddsPapiClient._last_request_completed_at[identity] = (
-                    time.monotonic()
-                )
+                OddsPapiClient._last_request_completed_at[identity] = time.monotonic()
+        finally:
+            lock.release()
 
     @staticmethod
     def _retry_after_seconds(response) -> float | None:
@@ -202,6 +191,7 @@ class OddsPapiClient:
         safe_params: dict,
     ):
         """Execute one physical request and always return its lease."""
+        check_execution_budget()
         lease = self._acquire_lease(endpoint)
         outcome = RequestOutcome()
         try:
@@ -214,7 +204,7 @@ class OddsPapiClient:
                 safe_params,
             )
             if lease.wait_seconds > 0:
-                time.sleep(lease.wait_seconds)
+                wait_interruptibly(lease.wait_seconds)
 
             # Do not add a proxies argument: trust_env=False is the single
             # source of truth for the proxy-free OddsPapi session.
@@ -222,7 +212,7 @@ class OddsPapiClient:
                 response = self.session.get(
                     url,
                     params=request_params,
-                    timeout=self.timeout,
+                    timeout=request_timeout(self.timeout),
                 )
 
             status_code = int(response.status_code)
@@ -282,8 +272,9 @@ class OddsPapiClient:
         )
         retry_delay_seconds = self.request_delay_seconds
         while transient_attempt < attempts:
+            check_execution_budget()
             if transient_attempt and self.request_delay_seconds > 0:
-                time.sleep(retry_delay_seconds)
+                wait_interruptibly(retry_delay_seconds)
 
             try:
                 (
@@ -374,7 +365,9 @@ class OddsPapiClient:
                 )
             return payload
 
-        raise OddsPapiError(f"OddsPapi request exhausted retries endpoint=/v4/{normalized_endpoint}")
+        raise OddsPapiError(
+            f"OddsPapi request exhausted retries endpoint=/v4/{normalized_endpoint}"
+        )
 
     def _acquire_lease(self, endpoint: str) -> ApiKeyLease:
         if self._uses_dynamic_key:
@@ -457,9 +450,7 @@ class OddsPapiClient:
         active: bool | None = None,
     ) -> dict:
         selected_bookmakers = (
-            Config.ODDSPAPI_DEFAULT_BOOKMAKERS
-            if bookmakers is None
-            else bookmakers
+            Config.ODDSPAPI_DEFAULT_BOOKMAKERS if bookmakers is None else bookmakers
         )
         cleaned_bookmakers = [
             str(bookmaker).strip()
@@ -467,17 +458,10 @@ class OddsPapiClient:
             if str(bookmaker).strip()
         ]
         if not cleaned_bookmakers:
-            raise ValueError(
-                "At least one bookmaker is required for OddsPapi historical odds"
-            )
+            raise ValueError("At least one bookmaker is required for OddsPapi historical odds")
         if len(cleaned_bookmakers) > 3:
-            raise ValueError(
-                "OddsPapi historical odds supports at most 3 bookmakers"
-            )
-        normalized_bookmakers = {
-            bookmaker.lower()
-            for bookmaker in cleaned_bookmakers
-        }
+            raise ValueError("OddsPapi historical odds supports at most 3 bookmakers")
+        normalized_bookmakers = {bookmaker.lower() for bookmaker in cleaned_bookmakers}
         if "betfair-ex" in normalized_bookmakers:
             if len(cleaned_bookmakers) != 1 or outcome_id is None:
                 raise ValueError(
@@ -497,9 +481,7 @@ class OddsPapiClient:
             },
         )
         if not isinstance(payload, dict):
-            raise OddsPapiError(
-                "OddsPapi /v4/historical-odds response must be an object"
-            )
+            raise OddsPapiError("OddsPapi /v4/historical-odds response must be an object")
         return payload
 
     def get_odds_by_tournaments(

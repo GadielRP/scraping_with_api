@@ -270,7 +270,7 @@ def reconcile_existing_season_events(
 
     results_inserted_or_updated = 0
     if results_to_upsert:
-        results_inserted_or_updated = ResultRepository.batch_upsert_results(results_to_upsert)
+        results_inserted_or_updated = len(ResultRepository.batch_upsert_results(results_to_upsert))
         logger.info(
             "Batch upserted %s reconciliation results for %s events",
             results_inserted_or_updated,
@@ -534,7 +534,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
 
     results_processed_count = 0
     if results_to_upsert:
-        results_processed_count = ResultRepository.batch_upsert_results(results_to_upsert)
+        results_processed_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
         logger.info(
             "Batch upserted results for %s/%s finished events",
             results_processed_count,

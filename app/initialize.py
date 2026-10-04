@@ -30,7 +30,7 @@ def initialize_system() -> bool:
             )
             return False
 
-        logger.info("System initialized successfully")
+        logger.info("✅ System initialized successfully")
         return True
     except Exception as exc:
         logger.error(f"Failed to initialize system: {exc}")

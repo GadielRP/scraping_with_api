@@ -11,3 +11,6 @@ pytz>=2023.3
 playwright>=1.40.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+
+# Incremental parsing of bulk provider responses
+ijson>=3.3,<4

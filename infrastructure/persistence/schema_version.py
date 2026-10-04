@@ -48,6 +48,7 @@ def verify_schema_at_head(engine: Engine) -> bool:
             "canonical_market_types": {"market_type_id", "requires_line_value"},
             "market_source_mappings": {"market_type_id"},
             "markets": {"market_type_id", "line_value"},
+            "reporting_refresh_state": {"requested_generation", "completed_generation", "next_attempt_at"},
         }
         forbidden_columns = {
             "markets": {"market_name", "market_group", "market_period", "choice_group"},
@@ -103,7 +104,7 @@ def verify_schema_at_head(engine: Engine) -> bool:
                 return False
             with engine.connect() as connection:
                 refresh_function = connection.scalar(
-                    text("SELECT to_regprocedure('public.refresh_reporting_views()')")
+                    text("SELECT to_regprocedure('public.refresh_reporting_view(text)')")
                 )
             if refresh_function is None:
                 logger.error("Reporting refresh function is missing")
