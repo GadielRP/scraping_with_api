@@ -1,9 +1,20 @@
 services:
+  postgres:
+    # Set both services to a pre-provisioned 1 GiB parent, or run this profile
+    # on a dedicated 1 GiB VM. Child limits alone do not emulate host pressure.
+    cgroup_parent: "${EXECUTION_MEMORY_CGROUP_PARENT:-}"
+    mem_limit: "${POSTGRES_MEMORY_TEST_LIMIT:-384m}"
+    memswap_limit: "${POSTGRES_MEMORY_TEST_LIMIT:-384m}"
+    shm_size: "128m"
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "work_mem=4MB",
+              "-c", "maintenance_work_mem=32MB", "-c", "max_connections=20",
+              "-c", "max_parallel_workers_per_gather=0"]
   app:
+    cgroup_parent: "${EXECUTION_MEMORY_CGROUP_PARENT:-}"
     # This is a test-only hard ceiling. Matching memswap_limit disables swap,
     # making an OOM reproducible instead of hiding it behind host swap.
-    mem_limit: "${APP_MEMORY_TEST_LIMIT:-1g}"
-    memswap_limit: "${APP_MEMORY_TEST_LIMIT:-1g}"
+    mem_limit: "${APP_MEMORY_TEST_LIMIT:-384m}"
+    memswap_limit: "${APP_MEMORY_TEST_LIMIT:-384m}"
     mem_swappiness: 0
     restart: "no"
     environment:

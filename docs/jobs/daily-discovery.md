@@ -1,83 +1,33 @@
 # Daily Discovery
 
-## Purpose and entrypoints
+## Calendar and progress
 
-Daily Discovery fetches scheduled SofaScore events for the current local calendar date, persists eligible events, and optionally ingests available odds for upcoming events.
+`run_daily_discovery_job(target_date=None, run_slot=None)` is the heartbeat used by the CLI and scheduler. The scheduler binds its original local date and slot before admission. Delay cannot silently turn an old request into another calendar day. AM/PM retain their stored historical meanings: defaults open PM at 08:00 and AM at 17:00 in `Config.TIMEZONE`.
 
-- [Scheduled entrypoint](../../modules/jobs/daily_discovery/run_daily_discovery.py): `run_daily_discovery_job()`.
-- Retry entrypoint: `run_daily_discovery_retry_job()`, which delegates to the scheduled entrypoint.
-- Direct entrypoint: `run_daily_discovery(sports=None, date_str=None, run_slot=None)`.
-- [Extractor](../../modules/jobs/daily_discovery/extractor.py): `DailyDiscoveryExtractor.discover_events_for_date()`.
-- [State repository](../../infrastructure/persistence/repositories/daily_discovery_repository.py): `DailyDiscoveryRepository`.
-- [Scheduler](../../infrastructure/scheduler/job_scheduler.py): `JobScheduler`.
+Discard-memory cleanup runs first on **every heartbeat**, even when no slot is open or every sport is already completed. Its existing enabled toggle and three-day retention remain in `modules/events/discards/settings.py` / Config. There is no separate timed cleanup job.
 
-## Calendar and execution slots
+The heartbeat cleans old progress rows, initializes missing `(date, run_slot, sport)` rows, reads unfinished sports and coordinates discovery. A completed sport is not replayed. A truncated response, failed write or failed odds response leaves that sport retryable. Valid empty collections can complete it. PostgreSQL/session errors propagate; they are not interpreted as an empty run. Progress is per sport, not per event, and does not provide a distributed lease for multiple application instances.
 
-The scheduled entrypoint resolves the target date and execution slot from a single clock reading in `Config.TIMEZONE`. Both daily passes request the same local calendar date. Neither slot carries over past local midnight.
+## Bounded ingestion
 
-AM and PM are persisted slot labels; their chronological order follows the configured opening hours.
+`event_source.py` yields eligible raw events from scheduled-tournament pages and tournament responses. Supported-sport and mapped-competition policies remain unchanged. Discovery still accepts past events as well as upcoming events.
 
-| Slot | Opening setting | Default local window | Target date |
-|---|---|---|---|
-| PM | `DAILY_DISCOVERY_PM_OPEN_HOUR=8` | 08:00–16:59 | Current local date |
-| AM | `DAILY_DISCOVERY_AM_OPEN_HOUR=17` | 17:00–23:59 | Current local date |
+`modules/sofascore/streaming.py` reuses the authenticated HTTP client and writes the response to a disk-backed temporary file through libcurl's callback. It parses one JSON member at a time, validates the complete document and bounds response bytes, individual elements/tokens and nesting depth, including ignored fields. It never retains a full sport payload in `Response.content`, `all_events` or a Python odds dictionary.
 
-Before the earliest opening hour, the heartbeat skips discovery. Only the currently open slot is processed. Slots missed while the scheduler is stopped or blocked are not automatically recovered after their window closes.
+`pipeline.py` groups events with `shared/batching.chunks`. The existing identity/discard-aware event batch writer performs persistence; `modules/jobs/daily_discovery/persistence.py` owns normalization and confirmed-write counters; the incremental source owns sport and competition filtering. There is no second event upsert implementation.
 
-The scheduler preserves `DAILY_DISCOVERY_FIXED_TIMES` and adds an opening-time trigger for each slot without a configured fixed trigger. The default fixed trigger is `17:10`; the scheduler also registers `08:00` for the morning slot.
+Confirmed canonical IDs, source associations, final kickoff/sport metadata and tournament deduplication live in a temporary SQLite store with a bounded page cache. It accepts multiple source IDs for one canonical event. Calendar counts use SQL grouping and only confirmed writes. The store is closed at the end of the run. Startup removes abandoned discovery directories older than 24 hours only after acquiring their OS ownership lock; active runs are preserved.
 
-`DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES` controls periodic heartbeats. Its fallback is `DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES`, whose default is 240 minutes. Heartbeats retry unfinished sports in the active slot. A completed sport is not repeated within that slot. The two daily passes are independent; failed passes may require additional attempts.
+After event batches commit, a second streamed pass reads the sport's odds. Each small group looks up run membership and checks current canonical identity/kickoff in one short database read. Odds are persisted only for events more than ten minutes from kickoff. Odds ingestion failures remain visible in the sport's retry state.
 
-## Discovery scope
+No HTTP call runs inside an event write transaction. A failed run can retain earlier committed batches; retry repeats that sport and safely updates existing events. Operation counters count writes; the calendar summary counts unique canonical events and cannot be added across runs to establish daily uniqueness.
 
-`SUPPORTED_SPORTS` determines eligible sports. The sport catalog translates canonical sport IDs into SofaScore routes, removes duplicate routes, and excludes sports without a provider route.
+## Execution and configuration
 
-`DISCOVERY_TRACKED_COMPETITIONS_ONLY` defaults to `true`. When enabled, canonical IDs from [tracked_competitions.py](../../modules/competition/tracked_competitions.py) select competition rows. The job compares their SofaScore `source_tournament_id` and `source_unique_tournament_id` with provider payload IDs.
+Daily, other discoveries, midnight and reporting execute serially on the maintenance channel. Pre-start and T−1 have their own channels. Cooperative cancellation/available-memory checks occur at unit boundaries; unfinished daily work retains its date/slot when deferred by the executor.
 
-Tournament selection happens before requesting tournament events. Returned events are filtered again before normalization and persistence. An enabled filter with no mapped tracked competitions stops extraction without completing pending sports.
+Configure execution limits directly in `infrastructure/settings/job_execution.py`; there are no environment overrides. `event_read_batch_size` controls pipeline groups, `event_write_batch_size` controls database write chunks, `response_max_bytes` / `json_item_max_bytes` / `json_max_depth` control transport/parser limits and `temporary_cache_kib` controls SQLite's cache. Restart after editing. The default group/write size is 100, nesting depth is 128 and the cache is 2 MiB.
 
-When the competition filter is disabled, all competitions remain eligible within the supported sports. Tracked competition IDs are still loaded to measure which payloads the filter would reject. Supported-sport filtering remains enforced. Odds parsing retains only eligible event IDs.
+Direct `discover_events_for_date(date, sports, run_slot)` requires an explicit valid slot and initialized progress rows. It does not perform the heartbeat's cleanup/selection. `python main.py daily-discovery` invokes the heartbeat.
 
-## Persistent state and retries
-
-[DailyDiscoveryLog](../../infrastructure/persistence/models.py) has a unique key on `(date, run_slot, sport)`. `date` is the requested calendar date; `created_at` and `last_attempt_at` are UTC instants.
-
-Each scheduled run performs these steps:
-
-1. Delete state rows older than the local-date retention cutoff configured by `DAILY_DISCOVERY_DAYS_TO_KEEP`, defaulting to one day. A negative value disables cleanup.
-2. Initialize missing rows for supported sports in the active date and slot with status `pending`. If initialization fails, stop the run.
-3. Select unfinished sports. Completed rows with no attempt timestamp or with an attempt before the target local day are also eligible for processing.
-4. Extract each pending sport and record `completed` or `failed`. Status updates increment `attempts` and set `last_attempt_at`.
-
-A missing pagination response, failed tournament fetch, missing event ID, or failed persistence leaves the sport retryable. A valid empty response or a scope with no eligible events can complete the sport. Missing optional odds alone does not fail event discovery.
-
-State is tracked at sport granularity: retrying a partially successful sport repeats extraction for that sport and upserts eligible events again. The repository does not atomically claim runs across multiple scheduler processes.
-
-## Extraction and persistence
-
-For each pending sport, the extractor executes the following sequence:
-
-1. **Paginate scheduled tournaments.** Call `get_today_sport_events_response(date, sport, page)` starting at page 1. Inspect `timezoneEventCount`, apply the competition scope, and collect distinct unique-tournament IDs. Continue while `hasNextPage` is true. A missing page leaves the sport failed.
-2. **Fetch tournament events.** Call `get_unique_tournament_scheduled_events(tournament_id, date)` for selected tournaments. Filter unsupported sports and out-of-scope competitions. Tournament failures leave the sport retryable while other tournament responses can still be persisted.
-3. **Fetch optional odds.** If eligible events remain, call `get_today_sport_events_odds_response(date, sport)`. Parse fractional values into decimal odds keyed by eligible event ID. Continue without odds when the feed is unavailable.
-4. **Select events eligible for odds.** `filter_upcoming_events(..., min_minutes_away=10)` uses aware timestamps to require at least ten minutes before kickoff. This threshold controls odds ingestion; past and imminent eligible events can still be persisted without odds.
-5. **Persist events and optional odds.** `persist_event_and_optional_odds()` rechecks sport and competition scope, calls `normalize_event_payload(..., discovery_source="daily_discovery")`, and upserts the event through `EventRepository`. Available odds for eligible upcoming events are saved through `MarketOddsIngestionService.save_from_sofascore_response()`.
-6. **Record sport status.** Mark the sport completed only if its event extraction and persistence had no recorded failures. Continue to the next sport after recording a failure.
-
-The extractor checks `is_shutdown_requested()` between sports and inside event persistence loops. Each repository operation manages its own transaction; there is no transaction spanning the entire discovery pass.
-
-## Direct execution and return values
-
-`run_daily_discovery()` accepts an optional sport scope, explicit date string, and slot. Without a date, it uses the current date in `Config.TIMEZONE`. Explicit dates are forwarded to the provider. A missing or invalid extractor slot defaults to AM.
-
-Direct execution invokes the extractor without the scheduled entrypoint's cleanup, state initialization, or pending-sport selection. Status updates require an existing state row.
-
-The extractor returns `events_processed`, `events_persisted`, `events_inserted`, `events_updated`, `events_discarded`, `events_failed`, and `odds_inserted`. Persistence counters measure successful write operations; inserted and updated distinguish new rows from existing rows. Callers must inspect per-sport state to determine completeness; a returned statistics dictionary alone does not establish success for every sport.
-
-## Scheduler follow-up and observability
-
-Scheduled Daily Discovery runs on the bounded maintenance worker, outside the pre-start scheduler thread. After committed event writes, `JobScheduler.job_daily_discovery()` invokes `job_refresh_reporting_views()`. Skipped heartbeats still perform discard cleanup but normally skip refresh. A pending failed refresh is retried on a later heartbeat, and the first heartbeat after process startup refreshes once to recover interrupted work. A successful midnight refresh clears the same pending flag. Direct CLI calls remain synchronous.
-
-Operational logging records the local clock reading, timezone, target date, slot, selected sport scope, filter mode, tournament and event filtering counts, persistence totals, and sport status. These fields describe each run; persistent completion and retry decisions use `DailyDiscoveryLog`.
-
-At the end of extraction, the [discovery persistence calendar summary](discovery-persistence-logging.md) logs committed canonical events grouped by their local start date and persisted sport, with daily totals and a unique total for the run. The requested discovery date and slot are logged separately from the event start date.
+Event writes invalidate reporting in their own transaction. Daily does not synchronously refresh views. The independent reporting poll drains durable pending generations, including after a process restart; see [results collection](results-collection.md).

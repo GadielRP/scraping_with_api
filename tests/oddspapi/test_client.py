@@ -120,12 +120,12 @@ def test_missing_key_fails_only_when_request_is_made():
 
 def test_fixtures_endpoint_observes_documented_cooldown(monkeypatch):
     OddsPapiClient._last_request_completed_at.clear()
-    api = client(fixtures_cooldown_seconds=2)
+    api = client(endpoint_cooldowns={"fixtures": 2})
     api.session.get = Mock(side_effect=[response(payload=[]), response(payload=[])])
     clock = iter([0.0, 0.0, 1.0, 1.0])
     sleeps = []
     monkeypatch.setattr(client_module.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(client_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(client_module, "wait_interruptibly", lambda seconds: sleeps.append(seconds))
 
     api.get_fixtures(sport_id=10)
     api.get_fixtures(sport_id=11)
@@ -140,9 +140,28 @@ def test_odds_endpoint_observes_configured_cooldown_from_response_completion(mon
     clock = iter([0.0, 0.0, 0.25, 0.25])
     sleeps = []
     monkeypatch.setattr(client_module.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(client_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(client_module, "wait_interruptibly", lambda seconds: sleeps.append(seconds))
 
     api.get_odds("fixture-1")
     api.get_odds("fixture-2")
 
     assert sleeps == [0.25]
+
+
+def test_contended_endpoint_lock_respects_execution_deadline():
+    from time import monotonic
+    from shared.execution_context import ExecutionContext, Priority, WorkDeferred, execution_scope
+
+    api = client(endpoint_cooldowns={"odds": 0.5})
+    lock = api._endpoint_lock("odds", api.api_key)
+    lock.acquire()
+    try:
+        context = ExecutionContext("closing", Priority.CLOSING, deadline=monotonic() + 0.01)
+        before = monotonic()
+        with execution_scope(context), pytest.raises(WorkDeferred):
+            with api._endpoint_request_slot("odds", api.api_key):
+                pytest.fail("A busy endpoint must not start HTTP after its deadline")
+        assert monotonic() - before < 1
+        assert lock.locked()
+    finally:
+        lock.release()

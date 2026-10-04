@@ -57,7 +57,7 @@ from shared.runtime_observability import observe_operation
 
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
-ENABLE_ALERT_PIPELINE = True
+ENABLE_ALERT_PIPELINE = False
 ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
@@ -77,22 +77,9 @@ ENABLE_CUSTOM_PILLAR_FILTER = True  # Set True to override production pillar sel
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
+from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
+
 logger = logging.getLogger(__name__)
-
-
-class _SingleEventSimulationScheduler:
-    """Small scheduler surface required by the production pre-start phases."""
-
-    def __init__(self) -> None:
-        self.event_repo = EventRepository()
-        self.recently_rescheduled: set[int] = set()
-        self._active_op_thread = None
-
-    def _cleanup_recently_rescheduled(self) -> None:
-        self.recently_rescheduled.clear()
-
-
-_SimulationScheduler = _SingleEventSimulationScheduler
 
 
 def _ensure_logging_configured() -> None:
@@ -413,7 +400,7 @@ def _run_pre_start_check_simulation(
 
     key_moments = Config.PRE_START_ODDS_MOMENTS
     debug_mode = True
-    scheduler = _SingleEventSimulationScheduler()
+    runtime = PreStartRuntime(EventRepository())
 
     logger.info("=" * 80)
     logger.info("PRE-START CHECK DEVELOPMENT SIMULATION")
@@ -427,7 +414,7 @@ def _run_pre_start_check_simulation(
     events_by_id: dict[int, Any] = {}
     missing_ids: list[int] = []
     for e_id in event_id_list:
-        event_obj = scheduler.event_repo.get_event_by_id(e_id)
+        event_obj = runtime.event_repo.get_event_by_id(e_id)
         if event_obj is None:
             logger.error("Event %s not found in database.", e_id)
             missing_ids.append(e_id)
@@ -510,7 +497,7 @@ def _run_pre_start_check_simulation(
                 len(events_data),
             )
             oddsportal_context = start_oddsportal_scrape_for_events(
-                scheduler,
+                runtime,
                 events_data,
                 timings,
                 debug_mode=debug_mode,
@@ -541,7 +528,7 @@ def _run_pre_start_check_simulation(
             debug_mode=debug_mode,
             show_persistence_report=SHOW_MARKET_PERSISTENCE_REPORT,
             log_persisted_market_odds=_log_persisted_market_odds,
-            scheduler=scheduler,
+            runtime=runtime,
             enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
             enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
             oddspapi_available_through_utc=(
@@ -566,7 +553,7 @@ def _run_pre_start_check_simulation(
         )
         source_states = load_pre_start_odds_source_states(events_data)
         event_plan = build_pre_start_event_candidates(
-            scheduler,
+            runtime,
             events_data,
             timings,
             source_states,
@@ -591,7 +578,7 @@ def _run_pre_start_check_simulation(
         )
         if ENABLE_CUSTOM_PILLAR_FILTER:
             evaluate_pre_start_key_moments(
-                scheduler,
+                runtime,
                 event_plan,
                 oddsportal_context,
                 debug_mode=debug_mode,
@@ -608,7 +595,7 @@ def _run_pre_start_check_simulation(
             )
         else:
             evaluate_pre_start_key_moments(
-                scheduler,
+                runtime,
                 event_plan,
                 oddsportal_context,
                 debug_mode=debug_mode,

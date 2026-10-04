@@ -154,19 +154,6 @@ def test_t_minus_one_job_skips_when_closing_moment_is_not_configured(monkeypatch
     )
 
 
-def test_critical_scheduler_runs_every_minute_for_asymmetric_start_times(
-    monkeypatch,
-):
-    scheduler = JobScheduler.__new__(JobScheduler)
-    scheduler.critical_scheduler = schedule.Scheduler()
-    monkeypatch.setattr(Config, "PRE_START_T_MINUS_ONE_INTERVAL_MINUTES", 1)
-    monkeypatch.setattr(Config, "PRE_START_CLOSING_ODDS_MINUTE", 1)
-
-    scheduler._setup_t_minus_one_jobs()
-
-    assert [job.at_time.minute for job in scheduler.critical_scheduler.jobs] == list(
-        range(0, 60)
-    )
 
 
 def test_t_minus_one_batch_fans_out_across_all_keys(monkeypatch):

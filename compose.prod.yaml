@@ -1,10 +1,12 @@
 services:
   postgres:
     restart: unless-stopped
-    # Parallel query workers need /dev/shm; Docker default (64MB) OOMs on
-    # large UNION/joins used by maintenance backfills (DiskFull on shm resize).
-    # 512m is enough on the 1GB host without matching local's full 1gb.
-    shm_size: "512m"
+    # Capacity for dynamic shared memory, not a RAM reservation.
+    shm_size: "128m"
+    mem_limit: "${POSTGRES_MEMORY_LIMIT:-384m}"
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "work_mem=4MB",
+              "-c", "maintenance_work_mem=32MB", "-c", "max_connections=20",
+              "-c", "max_parallel_workers_per_gather=0"]
     logging:
       driver: "json-file"
       options:
@@ -15,7 +17,7 @@ services:
     restart: unless-stopped
     # Hard containment boundary for the 1 GB production host. This is not a
     # reservation; Docker only kills/restarts the app if it reaches the ceiling.
-    mem_limit: "${APP_MEMORY_LIMIT:-768m}"
+    mem_limit: "${APP_MEMORY_LIMIT:-384m}"
     logging:
       driver: "json-file"
       options:

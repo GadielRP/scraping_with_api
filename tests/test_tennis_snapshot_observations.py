@@ -290,7 +290,7 @@ def test_run_pre_start_odds_moments_persists_snapshots_before_ingest(monkeypatch
     )
 
     run_pre_start_odds_moments(
-        scheduler=SimpleNamespace(),
+        runtime=SimpleNamespace(missing_odds=None),
         upcoming_events=[],
         timings={},
         key_moments=(30,),

@@ -8,9 +8,9 @@ import pytest
 
 from infrastructure.settings import Config
 from modules.competition.discovery_scope import SourceCompetitionIds
-from modules.jobs.daily_discovery.extractor import DailyDiscoveryExtractor
-from modules.jobs.daily_discovery.persistence import persist_event_and_optional_odds, DiscoveryWriteSummary
-from modules.jobs.discover_secondary_sources import run_discover_secondary_sources as run_secondary_discovery
+from modules.jobs.discover_secondary_sources import (
+    run_discover_secondary_sources as run_secondary_discovery,
+)
 from modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor import (
     OddspapiFixtureBatchResult,
 )
@@ -24,10 +24,8 @@ from modules.sports.catalog import (
     sofascore_sport_slugs,
     sofascore_sport_routes,
 )
-from modules.jobs.parallelism.discovery_optimization import (
-    parallel_team_event_fetching,
-    process_events_only,
-)
+from modules.jobs.discovery.fetching import fetch_nearest_team_events
+from modules.jobs.discovery.persistence import persist_events
 from modules.sofascore.discovery_feeds import extract_events_and_odds_from_dropping_response
 from modules.sofascore.discovery_feeds import get_dropping_odds_with_odds_and_events_response
 
@@ -81,10 +79,10 @@ def test_event_only_persistence_rejects_unsupported_sports(monkeypatch):
         raise AssertionError("unsupported event reached persistence")
 
     monkeypatch.setattr(
-        "modules.jobs.parallelism.discovery_optimization.EventRepository.upsert_event",
+        "modules.jobs.discovery.persistence.EventRepository.batch_upsert_events",
         unexpected_upsert,
     )
-    assert process_events_only([_future_event(1, "Darts")], discovery_source="test") == (0, 1)
+    assert persist_events([_future_event(1, "Darts")], discovery_source="test") == (0, 1)
 
 
 def test_event_only_persistence_rejects_untracked_normalized_event(monkeypatch):
@@ -94,7 +92,7 @@ def test_event_only_persistence_rejects_untracked_normalized_event(monkeypatch):
         raise AssertionError("untracked event reached persistence")
 
     monkeypatch.setattr(
-        "modules.jobs.parallelism.discovery_optimization.EventRepository.upsert_event",
+        "modules.jobs.discovery.persistence.EventRepository.batch_upsert_events",
         unexpected_upsert,
     )
     event = {
@@ -102,7 +100,7 @@ def test_event_only_persistence_rejects_untracked_normalized_event(monkeypatch):
         "competition_ref": {"source_unique_tournament_id": 888},
     }
 
-    assert process_events_only(
+    assert persist_events(
         [event],
         discovery_source="test",
         tracked_competitions={SourceCompetitionIds(None, 777)},
@@ -112,11 +110,11 @@ def test_event_only_persistence_rejects_untracked_normalized_event(monkeypatch):
 def test_team_streak_rejects_unsupported_raw_event_before_normalization(monkeypatch):
     monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["Football"])
     monkeypatch.setattr(
-        "modules.jobs.parallelism.discovery_optimization.load_tracked_source_competitions",
+        "modules.jobs.discovery.fetching.load_tracked_source_competitions",
         lambda _source: frozenset({SourceCompetitionIds(None, 777)}),
     )
     monkeypatch.setattr(
-        "modules.jobs.parallelism.discovery_optimization.api_client.get_nearest_event_for_team",
+        "modules.jobs.discovery.fetching.api_client.get_nearest_event_for_team",
         lambda _team_id: {"id": 1, "sport": "Darts"},
     )
 
@@ -124,49 +122,32 @@ def test_team_streak_rejects_unsupported_raw_event_before_normalization(monkeypa
         raise AssertionError("unsupported response reached event normalization")
 
     monkeypatch.setattr(
-        "modules.jobs.parallelism.discovery_optimization.api_client.normalize_event_payload",
+        "modules.jobs.discovery.fetching.api_client.normalize_event_payload",
         unexpected_normalization,
     )
 
-    assert parallel_team_event_fetching([42], max_workers=1) == []
-
-
-def test_daily_persistence_rejects_unsupported_sport_after_normalization(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["Football"])
-
-    class ApiClient:
-        @staticmethod
-        def normalize_event_payload(event, discovery_source):
-            assert discovery_source == "daily_discovery"
-            return {"event": event}
-
-    def unexpected_upsert(_event):
-        raise AssertionError("unsupported event reached persistence")
-
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.persistence.EventRepository.upsert_event",
-        unexpected_upsert,
-    )
-    assert not persist_event_and_optional_odds(
-        ApiClient(),
-        {"id": 1, "sport": "Darts"},
-    )
+    assert fetch_nearest_team_events([42], max_workers=1) == []
 
 
 def test_secondary_discoveries_run_independently_when_a_feed_is_empty(monkeypatch):
     module = import_module("modules.jobs.discover_secondary_sources.run_discover_secondary_sources")
     calls = []
-    monkeypatch.setattr(module, "load_tracked_source_competitions", lambda _source: {SourceCompetitionIds(None, 777)})
+    monkeypatch.setattr(
+        module,
+        "load_tracked_source_competitions",
+        lambda _source: {SourceCompetitionIds(None, 777)},
+    )
     monkeypatch.setattr(module, "run_high_value_streaks", lambda *_args: ([], [{"id": 2}]))
     monkeypatch.setattr(module, "run_team_streaks", lambda *_args: [])
     monkeypatch.setattr(module, "run_top_h2h", lambda *_args: [])
     monkeypatch.setattr(module, "run_winning_odds", lambda *_args: ([], {}))
     monkeypatch.setattr(
         module,
-        "process_events_only",
-        lambda events, discovery_source, **_kwargs: calls.append((discovery_source, events)) or (0, len(events)),
+        "persist_events",
+        lambda events, discovery_source, **_kwargs: calls.append((discovery_source, events))
+        or (0, len(events)),
     )
-    monkeypatch.setattr(module, "process_with_parallel_db_ops", lambda *args, **kwargs: (0, 0))
+    monkeypatch.setattr(module, "persist_events_with_odds", lambda *args, **kwargs: (0, 0))
 
     run_secondary_discovery()
 
@@ -225,158 +206,18 @@ def test_sofascore_feed_filters_before_event_normalization(monkeypatch, caplog):
     assert [event["event"]["id"] for event in events] == [2]
     assert list(odds_map) == ["2"]
     assert "events=3 rejected_unsupported_sport=1 rejected_untracked_competition=1" in caplog.text
-    assert "eligible_events=1 response_odds=3 odds_without_eligible_event=2 eligible_odds=1" in caplog.text
+    assert (
+        "eligible_events=1 response_odds=3 odds_without_eligible_event=2 eligible_odds=1"
+        in caplog.text
+    )
     assert "reason=unsupported_sport" in caplog.text
     assert "reason=untracked_competition" in caplog.text
 
 
-def test_daily_discovery_scopes_tournament_calls_before_fetching_events(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["football"])
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.load_tracked_source_competitions",
-        lambda _source: frozenset({SourceCompetitionIds(None, 100)}),
-    )
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.DailyDiscoveryRepository.update_sport_status",
-        lambda *_args: True,
-    )
-    persisted = []
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
-        lambda _client, events, _odds, **kwargs: persisted.extend((event, kwargs) for event in events) or DiscoveryWriteSummary(persisted=len(events), inserted=len(events)),
-    )
-    requested_tournaments = []
-
-    class ApiClient:
-        def get_today_sport_events_response(self, _date, _sport, _page):
-            return {
-                "scheduled": [
-                    {"timezoneEventCount": {"UTC": 1}, "tournament": {"uniqueTournament": {"id": 100}}},
-                    {"timezoneEventCount": {"UTC": 1}, "tournament": {"uniqueTournament": {"id": 200}}},
-                ],
-                "hasNextPage": False,
-            }
-
-        def get_unique_tournament_scheduled_events(self, tournament_id, _date):
-            requested_tournaments.append(tournament_id)
-            return {
-                "events": [
-                    {
-                        "id": 1,
-                        "sport": "Football",
-                        "startTimestamp": 4_102_444_800,
-                        "tournament": {"uniqueTournament": {"id": tournament_id}},
-                    }
-                ]
-            }
-
-        def get_today_sport_events_odds_response(self, _date, _sport):
-            return {"odds": {}}
-
-    from modules.jobs.daily_discovery.extractor import DailyDiscoveryExtractor
-
-    result = DailyDiscoveryExtractor(ApiClient()).discover_events_for_date(
-        "2100-01-01",
-        sports=["football"],
-        run_slot="AM",
-    )
-
-    assert requested_tournaments == [100]
-    assert result["events_inserted"] == 1
-    assert persisted[0][1]["tracked_competitions"] == frozenset({SourceCompetitionIds(None, 100)})
-
-
-def test_daily_discovery_toggle_off_logs_shadow_rejections_without_filtering(monkeypatch, caplog):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["football"])
-    monkeypatch.setattr(Config, "DISCOVERY_TRACKED_COMPETITIONS_ONLY", False)
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.load_tracked_source_competitions",
-        lambda _source: None,
-    )
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.load_source_competitions",
-        lambda _source: frozenset({SourceCompetitionIds(None, 100)}),
-    )
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.DailyDiscoveryRepository.update_sport_status",
-        lambda *_args: True,
-    )
-    persisted = []
-    monkeypatch.setattr(
-        "modules.jobs.daily_discovery.extractor.persist_events_and_optional_odds",
-        lambda _client, events, _odds, **_kwargs: persisted.extend(events) or DiscoveryWriteSummary(persisted=len(events), inserted=len(events)),
-    )
-    requested_tournaments = []
-
-    class ApiClient:
-        def get_today_sport_events_response(self, _date, _sport, _page):
-            return {
-                "scheduled": [
-                    {"timezoneEventCount": {"UTC": 1}, "tournament": {"uniqueTournament": {"id": 100}}},
-                    {"timezoneEventCount": {"UTC": 1}, "tournament": {"uniqueTournament": {"id": 200}}},
-                ],
-                "hasNextPage": False,
-            }
-
-        def get_unique_tournament_scheduled_events(self, tournament_id, _date):
-            requested_tournaments.append(tournament_id)
-            return {
-                "events": [
-                    {
-                        "id": tournament_id,
-                        "sport": "Football",
-                        "startTimestamp": 4_102_444_800,
-                        "tournament": {"uniqueTournament": {"id": tournament_id}},
-                    }
-                ]
-            }
-
-        def get_today_sport_events_odds_response(self, _date, _sport):
-            return {"odds": {}}
-
-    caplog.set_level("INFO", logger="modules.jobs.daily_discovery.extractor")
-    result = DailyDiscoveryExtractor(ApiClient()).discover_events_for_date(
-        "2100-01-01",
-        sports=["football"],
-        run_slot="AM",
-    )
-
-    assert requested_tournaments == [100, 200]
-    assert len(persisted) == 2
-    assert result["events_inserted"] == 2
-    assert "tracked_competition_filter=disabled_observation_only provider_competition_pairs=1" in caplog.text
-    assert "mode=observe_only" in caplog.text
-    assert "would_reject_untracked=1" in caplog.text
-    assert "rejected_untracked=0" in caplog.text
-    assert (
-        "Daily event filter sport=football mode=observe_only response_events=2 "
-        "rejected_unsupported_sport=0 rejected_untracked=0 rejected_missing_ids=0 "
-        "would_reject_untracked=1"
-    ) in caplog.text
-
-
-def test_daily_persistence_rejects_untracked_event_before_normalizing(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["football"])
-
-    class ApiClient:
-        @staticmethod
-        def normalize_event_payload(*_args, **_kwargs):
-            raise AssertionError("untracked event reached normalization")
-
-    event = {
-        "id": 10,
-        "sport": "Football",
-        "tournament": {"uniqueTournament": {"id": 200}},
-    }
-    assert not persist_event_and_optional_odds(
-        ApiClient(),
-        event,
-        tracked_competitions={SourceCompetitionIds(None, 100)},
-    )
-
-
 def test_canonical_sports_resolve_to_each_providers_exact_scope(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["american_football", "handball", "tennis_doubles"])
+    monkeypatch.setattr(
+        Config, "SUPPORTED_SPORTS", ["american_football", "handball", "tennis_doubles"]
+    )
 
     assert sofascore_sport_slugs() == ["american-football", "tennis", "handball"]
     assert sofascore_sport_routes() == [
@@ -385,8 +226,7 @@ def test_canonical_sports_resolve_to_each_providers_exact_scope(monkeypatch):
         ("handball", "handball"),
     ]
     assert {
-        slug: oddspapi_sport_ids()[slug]
-        for slug in ("american-football", "tennis", "handball")
+        slug: oddspapi_sport_ids()[slug] for slug in ("american-football", "tennis", "handball")
     } == {
         "american-football": 14,
         "tennis": 12,
@@ -394,7 +234,9 @@ def test_canonical_sports_resolve_to_each_providers_exact_scope(monkeypatch):
     }
 
 
-def test_display_sport_labels_normalize_and_dropping_adapter_uses_provider_slug(monkeypatch, caplog):
+def test_display_sport_labels_normalize_and_dropping_adapter_uses_provider_slug(
+    monkeypatch, caplog
+):
     monkeypatch.setattr(
         Config,
         "SUPPORTED_SPORTS",
@@ -435,22 +277,6 @@ def test_oddspapi_job_keeps_shared_tennis_route_for_doubles_only(monkeypatch):
     job = OddspapiFixtureDiscoveryJob(client=object())
 
     assert job.sports == {"tennis": 12}
-
-
-def test_daily_discovery_skips_unsupported_sport_scope_before_api_calls(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["Football"])
-
-    class FailingApiClient:
-        def __getattr__(self, name):
-            raise AssertionError(f"unsupported sport reached API: {name}")
-
-    result = DailyDiscoveryExtractor(api_client=FailingApiClient()).discover_events_for_date(
-        "2026-09-19",
-        sports=["table-tennis"],
-    )
-
-    assert result == dict.fromkeys(("events_processed", "events_persisted", "events_inserted",
-                                    "events_updated", "events_discarded", "events_failed", "odds_inserted"), 0)
 
 
 def test_oddspapi_discovery_filters_scope_and_fixture_payloads(monkeypatch):

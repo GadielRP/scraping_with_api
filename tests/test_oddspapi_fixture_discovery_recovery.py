@@ -4,7 +4,8 @@ from importlib import import_module
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from infrastructure.persistence.database import db_manager
+import pytest
+from infrastructure.persistence.database import db_manager, DatabaseManager
 from infrastructure.persistence.models import (
     Base,
     OddspapiFixtureDiscoveryRun,
@@ -12,15 +13,15 @@ from infrastructure.persistence.models import (
 from infrastructure.persistence.repositories import (
     OddspapiFixtureDiscoveryRunRepository,
 )
-from infrastructure.scheduler.job_scheduler import JobScheduler
+from modules.jobs.oddspapi.fixture_discovery.recovery import FixtureDiscoveryService
 from infrastructure.settings import Config
 from modules.sports.catalog import oddspapi_sport_ids
 
-scheduler_module = import_module("infrastructure.scheduler.job_scheduler")
+scheduler_module = import_module("modules.jobs.oddspapi.fixture_discovery.recovery")
 
 
-def _scheduler_without_setup() -> JobScheduler:
-    return JobScheduler.__new__(JobScheduler)
+def _scheduler_without_setup() -> FixtureDiscoveryService:
+    return FixtureDiscoveryService.__new__(FixtureDiscoveryService)
 
 
 def test_missed_slot_targets_next_utc_day_after_evening_restart(monkeypatch):
@@ -64,9 +65,7 @@ def test_missed_slot_is_still_recovered_next_morning(monkeypatch):
         now_local=datetime(2026, 7, 25, 10, 0),
     )
 
-    assert slots[-1][0] == datetime(
-        2026, 7, 24, 17, 45, tzinfo=ZoneInfo(Config.TIMEZONE)
-    )
+    assert slots[-1][0] == datetime(2026, 7, 24, 17, 45, tzinfo=ZoneInfo(Config.TIMEZONE))
     assert slots[-1][2] == "2026-07-25"
 
 
@@ -101,7 +100,7 @@ def test_fixture_discovery_records_success(monkeypatch):
         "observe_operation",
         lambda _name: nullcontext(),
     )
-    result = _scheduler_without_setup().job_oddspapi_fixture_discovery(
+    result = _scheduler_without_setup().run(
         target_date="2026-07-25",
         _trigger="catch_up",
         _scheduled_local_date="2026-07-24",
@@ -113,9 +112,7 @@ def test_fixture_discovery_records_success(monkeypatch):
     assert calls[0][1] == ("2026-07-25",)
     assert calls[0][2]["trigger"] == "catch_up"
     assert calls[0][2]["sport_scope"] == (
-        OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-            oddspapi_sport_ids()
-        )
+        OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(oddspapi_sport_ids())
     )
     assert calls[1][0] == "success"
     assert calls[1][1][0] == "2026-07-25"
@@ -139,7 +136,7 @@ def test_fixture_discovery_dry_run_does_not_claim_durable_marker(monkeypatch):
     monkeypatch.setattr(scheduler_module, "run_fixture_discovery_job", lambda **kwargs: summary)
     monkeypatch.setattr(scheduler_module, "observe_operation", lambda _name: nullcontext())
 
-    result = _scheduler_without_setup().job_oddspapi_fixture_discovery(
+    result = _scheduler_without_setup().run(
         target_date="2026-07-25",
         create_mappings=False,
     )
@@ -158,13 +155,8 @@ def test_fixture_discovery_defaults_when_cli_forwards_none_target_date(monkeypat
 
     monkeypatch.setattr(
         scheduler_module,
-        "utc_now",
-        lambda: datetime(2026, 8, 6, 13, 0, tzinfo=timezone.utc),
-    )
-    monkeypatch.setattr(
-        scheduler_module,
         "now_in_timezone",
-        lambda _zone: datetime(2026, 8, 6, 7, 0, tzinfo=timezone.utc),
+        lambda _zone: datetime(2026, 8, 6, 7, 0, tzinfo=ZoneInfo("America/Mexico_City")),
     )
     monkeypatch.setattr(
         scheduler_module.OddspapiFixtureDiscoveryRunRepository,
@@ -183,7 +175,7 @@ def test_fixture_discovery_defaults_when_cli_forwards_none_target_date(monkeypat
     )
     monkeypatch.setattr(scheduler_module, "observe_operation", lambda _name: nullcontext())
 
-    _scheduler_without_setup().job_oddspapi_fixture_discovery(
+    _scheduler_without_setup().run(
         target_date=None,
         sports={"soccer": 10},
     )
@@ -208,9 +200,7 @@ def test_fixture_discovery_skips_target_that_already_succeeded(monkeypatch):
         ),
     )
 
-    result = _scheduler_without_setup().job_oddspapi_fixture_discovery(
-        target_date="2026-07-25"
-    )
+    result = _scheduler_without_setup().run(target_date="2026-07-25")
 
     assert result is None
 
@@ -249,14 +239,12 @@ def test_fixture_discovery_with_sport_errors_remains_retryable(monkeypatch):
         lambda _name: nullcontext(),
     )
     monkeypatch.setattr(
-        JobScheduler,
+        FixtureDiscoveryService,
         "_send_fixture_discovery_ops_alert",
         lambda *args, **kwargs: calls.append(("alert", kwargs)),
     )
 
-    result = _scheduler_without_setup().job_oddspapi_fixture_discovery(
-        target_date="2026-07-25"
-    )
+    result = _scheduler_without_setup().run(target_date="2026-07-25")
 
     assert result is summary
     assert calls == [
@@ -275,8 +263,20 @@ def test_fixture_discovery_with_sport_errors_remains_retryable(monkeypatch):
     ]
 
 
-def test_running_fixture_discovery_cannot_be_claimed_twice():
-    Base.metadata.create_all(bind=db_manager.engine)
+@pytest.fixture
+def fixture_database(tmp_path, monkeypatch):
+    database = DatabaseManager(f'sqlite:///{tmp_path / "fixture_runs.db"}')
+    Base.metadata.create_all(database.engine)
+    monkeypatch.setitem(globals(), "db_manager", database)
+    module = import_module(
+        "infrastructure.persistence.repositories.oddspapi_fixture_discovery_run_repository"
+    )
+    monkeypatch.setattr(module, "db_manager", database)
+    yield database
+    database.engine.dispose()
+
+
+def test_running_fixture_discovery_cannot_be_claimed_twice(fixture_database):
 
     assert OddspapiFixtureDiscoveryRunRepository.begin(
         "2099-01-01",
@@ -297,8 +297,7 @@ def test_running_fixture_discovery_cannot_be_claimed_twice():
         assert run.trigger == "scheduled"
 
 
-def test_commit_run_can_replace_successful_dry_run_marker():
-    Base.metadata.create_all(bind=db_manager.engine)
+def test_commit_run_can_replace_successful_dry_run_marker(fixture_database):
 
     assert OddspapiFixtureDiscoveryRunRepository.begin(
         "2099-01-02",
@@ -317,8 +316,7 @@ def test_commit_run_can_replace_successful_dry_run_marker():
     )
 
 
-def test_same_target_date_can_be_claimed_for_different_sport_scopes():
-    Base.metadata.create_all(bind=db_manager.engine)
+def test_same_target_date_can_be_claimed_for_different_sport_scopes(fixture_database):
 
     assert OddspapiFixtureDiscoveryRunRepository.begin(
         "2099-01-03",
@@ -361,33 +359,6 @@ def test_same_target_date_can_be_claimed_for_different_sport_scopes():
         "2099-01-03",
         sport_scope="baseball",
     )
-
-
-def test_immediate_fixture_discovery_is_recorded_as_manual(monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        scheduler_module,
-        "now_in_timezone",
-        lambda _zone: datetime(2026, 8, 6, 11, 27, tzinfo=timezone.utc),
-    )
-    monkeypatch.setattr(
-        JobScheduler,
-        "job_oddspapi_fixture_discovery",
-        lambda self, **kwargs: calls.append(kwargs),
-    )
-
-    _scheduler_without_setup().run_job_oddspapi_fixture_discovery_now(
-        sports={"soccer": 10}
-    )
-
-    assert calls == [
-        {
-            "sports": {"soccer": 10},
-            "_trigger": "manual",
-            "_scheduled_local_date": "2026-08-06",
-            "_scheduled_time": "11:27",
-        }
-    ]
 
 
 def test_sport_scope_is_stable_for_multi_sport_runs():

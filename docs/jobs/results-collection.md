@@ -1,88 +1,49 @@
-# Results collection and maintenance scheduling
+# Results collection and execution
 
-## Execution
+## Scheduling and priorities
 
-Midnight remains scheduled at 04:00 in Config.TIMEZONE. Midnight, Daily Discovery,
-Dropping Odds and Secondary Sources scheduled triggers submit to one maintenance
-worker. The main scheduler can continue dispatching ordinary pre-start checks.
-The worker admits at most eight distinct active/queued job keys; duplicate active
-or queued triggers are suppressed and logged. The queue is in-process, not durable.
-Manual CLI entrypoints remain synchronous. Other scheduler jobs have not been moved.
+Midnight is scheduled at 04:00 in `Config.TIMEZONE` and collects the previous **local** calendar day. Application composition lives in `app/runtime.py`; manual CLI commands invoke the same use cases without constructing a scheduler.
 
-Shutdown rejects new submissions, cancels queued work, and signals cooperative
-cancellation to active work. Current HTTP calls are allowed to return; open database
-transactions finish/roll back normally. No thread is forcibly terminated.
+A lightweight private `schedule.Scheduler` only dispatches descriptions of work. Three bounded, serial executors own pre-start, closing T−1 and maintenance. Pre-start keeps at most one active run and one latest pending tick. Closing preserves the exact original occurrence, expires at its target kickoff and uses a PostgreSQL advisory session lock for simultaneous exclusion across instances. The lock uses an autocommit connection, with guaranteed release and no transaction held during HTTP; it does not record historical slot consumption.
 
-SofaScore requests share the existing client rate limiter. Foreground requests
-waiting for admission precede maintenance requests. This does not preempt requests
-already on the network. Discovery's existing worker pools inherit the background
-context. The limiter remains per client instance/process, not a distributed quota.
-Results collection still requests one event at a time; no extra HTTP concurrency
-or increase in provider rate is introduced.
+Maintenance admits eight active/queued identities by default. Date/slot are part of identity where relevant. A bounded retry registry handles full admission; maintenance deferred by resource pressure resumes the same date/slot after 60 seconds. This queue is in process. Missing midnight dates after a process crash still require `results-date` or a separately designed reconciliation job.
 
-## Selection and batches
+Provider calls share the existing SofaScore rate cap, with closing ahead of pre-start ahead of maintenance. Priority does not preempt requests already on the network. Provider pools have bounded pending futures and inherit execution/cancellation context. HTTP timeouts and retry waits respect remaining run budget. Pre-start processes acquisition/evaluation before intraday maintenance; its default cooperative budget is 240 seconds. Missing SofaScore odds endpoints use a bounded cooldown while permitting an attempt in each new configured critical moment, including T−1.
 
-`ResultRepository.pending_batches()` selects events without a Result row, with
-SofaScore mappings in the same query. Date-based collection uses the configured
-local day's UTC bounds. All-finished collection retains its sport-duration policy.
-Missing or ambiguous SofaScore mappings remain pending and are reported as failures;
-multiple mappings cannot duplicate a canonical event within a page. Response IDs
-are checked before parsing or queuing deletions.
+Shutdown stops admission, clears pending descriptions and signals active runs. Open SQL units finish or roll back normally. Total join time is bounded by `JobExecutionSettings.shutdown_grace_seconds` (30 seconds); noncooperating workers are logged. Existing browser/HTTP timeouts remain relevant; no thread is forcibly terminated.
 
-Pages use increasing canonical IDs and a fixed initial upper ID. Each read session
-closes before HTTP begins. Failures are visited once per invocation, not repeatedly
-within the same page loop. New events beyond the upper bound wait for the next run.
-An existing incomplete Result row is still treated as present, matching prior policy.
+## Selection and transactions
 
-The existing `EVENT_WRITE_BATCH_SIZE` controls page size, event writes and result
-writes (default 100). The shared bounded iterator was moved to `shared/batching.py`;
-there is no second independent batching framework.
+`run_results_collection(target_date=None)` is the single collection use case. An explicit date restricts collection to that local calendar day; omission selects sufficiently old incomplete events. The CLI `results` resolves the previous local day in `ApplicationRuntime`; `results-date --date YYYY-MM-DD` supplies its date and `results-all` omits it. Midnight binds yesterday to its original scheduled occurrence.
 
-Each page fetches authoritative responses and uses the shared result parser/policy.
-It then updates metadata through the existing event batch writer, writes results
-through SQL ON CONFLICT upserts, processes observations, and applies guarded batch
-deletions. Metadata, results and deletions use separate bounded transactions: a
-page is not one atomic transaction. HTTP never runs inside a write transaction.
+`contracts.result_selection` owns temporal/sport-duration policy. `ResultRepository.pending_batches(selection, read_size)` owns SQL projection and keyset pagination. Date bounds are UTC instants for the configured local day. A fixed initial maximum canonical ID bounds the invocation. Each read closes before HTTP begins. Complete rows require **both scores**; partial result rows remain eligible.
 
-Expected canonical IDs prevent late metadata responses from recreating deleted
-or remapped events. Result writes lock existing parent rows and omit parents removed
-before the lock. Classified and 404 deletion evidence is checked against identity,
-newer metadata and existing results. Only configured parser kinds enter discard
-memory; 404 evidence does not enter the default canceled-only memory.
+One mapping is resolved in the page query. Missing/ambiguous mappings are separate failures and cannot duplicate page entries. Provider response IDs must match the requested identity before parsing or deleting. No additional HTTP concurrency/rate is introduced into result collection.
 
-## Recovery and errors
+`batch_processor.collect_batch` classifies each unit and calls the existing writers. Confirmed result IDs determine counters. Unresolved/in-progress events are `deferred`, separate from provider/parse errors, mapping errors and persistence conflicts. Resolved units are committed before a deadline defers the rest of the page. `ResultBatchDeferred` carries that page's confirmed counters to the run summary, with separate `deferred_budget` and `deferred_unresolved` outcomes.
 
-Re-running `results-date` for the same date selects only remaining events. Committed
-results act as progress markers; no cursor table is required. To revisit a previous
-date after process downtime, explicitly run that date again. The scheduler does
-not replay missed midnight triggers or automatically reconcile older dates.
+Metadata, result and deletion writes are separate bounded transactions. Result rows and their observations are **one atomic transaction**, together with reporting invalidation. Observation failure rolls back its result. Parent row locks serialize result writes with event deletion, and removed parents are omitted. Expected canonical IDs prevent late metadata from recreating deleted/remapped parents. Guarded deletion checks identity/newer metadata/results and retains the existing discard categories/settings.
 
-Infrastructure failures propagate rather than returning a successful zero count.
-Individual provider/parsing failures remain pending and increment `failed`.
-`skipped` is retained for return-shape compatibility but is zero: existing results
-are filtered in SQL rather than loaded and counted individually.
+`JobExecutionSettings.event_read_batch_size` controls selection/pipeline groups. `JobExecutionSettings.event_write_batch_size` controls SQL write chunks. Configure both in `infrastructure/settings/job_execution.py`. Both default to 100 but are independent. `batch_upsert_results` returns a set of confirmed canonical IDs, not a speculative integer count. All internal consumers have been migrated.
 
-Collection logs fetch/parse time, persistence time, candidates, last canonical ID
-and outcome per page. Result-write logs report commits even when a later operation
-in that page fails. Maintenance logs distinguish queue waiting, execution and errors.
-Observation persistence retains its existing best-effort semantics; re-running
-collection does not repair missing observations on already-completed results.
+Re-running a date selects only unresolved/incomplete rows; no cursor table is required. Infrastructure errors propagate. A provider failure remains pending and increments `failed`; a valid unfinished response increments `deferred`.
 
-## Reporting refresh
+## Durable reporting
 
-Midnight keeps results -> prediction updates -> reporting refresh order. A failure
-leaves a refresh pending for a later Daily Discovery heartbeat. Ordinary skipped
-heartbeats do not refresh unless recovery is pending; startup marks recovery pending
-once. Both materialized views still refresh synchronously inside maintenance with
-the existing SQL, so database reader blocking is still possible.
+Exactly two materialized views are refreshed: `mv_alert_events` and `mv_p5_price_memory`. SQL views are evaluated on demand and are not refreshed. Source transactions increment requested generations; successful refresh acknowledges only the captured generation. New invalidations arriving during execution remain pending. Completion/failure is independent per view.
 
-## Validation
+A maintenance poll checks pending work every 60 seconds. Successful automatic refreshes are throttled to one per view per 30 minutes by default, coalescing repeated writes. Failure backoff starts at 60 seconds, doubles and caps at one hour. Daily, discovery, result collection and midnight leave refreshes to this poll; an explicit manual refresh requests fresh generations and forces an attempt. Reporting timing and limits are configured only in `infrastructure/settings/job_execution.py`, without environment overrides; restart after editing. Skipped daily heartbeats do not gate recovery.
 
-Tests cover keyset pagination while rows disappear, bounded commits, retry after a
-partially committed run, discard memory, late-response identity guards, PostgreSQL
-parent-row locking, duplicate/capacity admission, scheduler responsiveness,
-cooperative shutdown, request priority, and refresh failure recovery.
+Within the application process, each view refresh transaction is mutually exclusive with pre-start, closing T−1 and background OddsPortal cycles. Reporting defers through the existing retry path while critical work is active. Critical work waits, within its execution budget, for an already active refresh; waiting critical work takes precedence over the next view. Other maintenance jobs retain their existing concurrency behavior.
 
-PostgreSQL integration tests use only a disposable database supplied through
-`RESULTS_TEST_DATABASE_URL` or `DISCARD_TEST_DATABASE_URL`. Their fixtures create
-and drop tables; never point these variables at the application database.
+Each view uses `REFRESH MATERIALIZED VIEW CONCURRENTLY`, its own advisory transaction lock, `work_mem=4MB`, zero parallel query workers, `lock_timeout=5s` and a 180-second statement timeout by default. Existing unique indexes support concurrent refresh. Views are independent snapshots; consumers in this code read one reporting view per calculation, rather than requiring an atomic paired snapshot.
+
+Migration `20261003_01` adds `reporting_refresh_state` and a privileged allowlisted `public.refresh_reporting_view(text)`, grants the application role access, and retires the previous bulk/diagnostic functions. Historical migrations remain unchanged; downgrade restores the former callable surface without rebuilding views. The startup schema guard requires the new revision/function/table.
+
+Apply `alembic upgrade head` with the normal migration role before starting the new app. Update runtime dependencies, including `ijson>=3.3,<4`. The app must not acquire DDL privileges.
+
+## Measurement
+
+Logs distinguish admission, queue/dispatch lag, run ID, deferred/failed completion, provider/parse time, confirmed writes, per-view duration and pending reporting. The process has one sampler and a registry of concurrent active operations. RSS belongs to the process; it is not attributed exclusively to a job.
+
+See [validation and capacity](execution-validation.md) and the [single follow-up cleanup list](../maintenance/execution-legacy-cleanup.md). Disposable integration URLs (`RESULTS_TEST_DATABASE_URL`, `REPORTING_TEST_DATABASE_URL`, `DAILY_TEST_DATABASE_URL`) create/drop test tables and must never point at an application database.

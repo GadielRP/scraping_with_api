@@ -57,7 +57,7 @@ The application is driven by main.py, which delegates to app/cli.py. cli.py defi
 | discovery | Triggers Discovery A immediately – fetches dropping odds feeds and sport‑specific dropping endpoints, deduplicates and stores events. |
 | discovery2 | Runs Discovery B – pulls high‑value streaks, head‑to‑head (H2H), winning odds and other special feeds. |
 | pre-start | Executes the pre‑start cycle now – captures upcoming events, applies timestamp corrections, extracts odds snapshots at key moments and evaluates alerts. |
-| midnight | Performs the midnight sync job – collects results, updates prediction logs and refreshes materialised views. |
+| midnight | Performs the midnight sync job – collects results and updates prediction logs. |
 | results | Collects previous‑day results and updates prediction logs. |
 | results-date --date YYYY-MM-DD | Collects results for the specified date. |
 | oddspapi-fixture-discovery | Discovers Oddspapi fixture IDs for the UTC day and maps them to existing canonical events. It does not create events or ingest odds. |
@@ -89,8 +89,8 @@ Scheduled work is compartmentalised in the jobs/ package. Each job has its own s
 clean_league_cache/ – clears stale OddsPortal league cache rows before the day’s discovery.
 daily_discovery/ – fetches today’s events and odds across sports with AM/PM slots. It maintains status per sport and slot via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
-midnight_sync_job/ – runs after midnight to collect match results, update prediction logs and refresh materialised views.
-parallelism/ – utilities for job parallelisation, event filtering and recommendation generation.
+midnight_sync_job/ – runs after midnight to collect match results and update prediction logs. Reporting is refreshed independently by maintenance polling.
+discovery/ – bounded provider fetching, explicit event/odds admission policies and calendar audit logging. The application runtime dispatches jobs to separate pre-start, closing and maintenance workers.
 pre_start_check_job/ – executes the core pre-start lifecycle, provider odds ingestion, and prediction pipelines.
 
 #### Pre-Start Candidate Building & Lifecycle

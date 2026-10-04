@@ -39,7 +39,8 @@ instantánea tipada y valida que los valores positivos y los kinds sean elegible
 | `EVENT_DISCARD_MEMORY_RETENTION_DAYS` | `3` | Antigüedad mínima desde el descarte para limpiar |
 | `EVENT_DISCARD_MEMORY_CLEANUP_ENABLED` | `true` | Habilitar eliminación de filas de memoria |
 | `EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE` | `1000` | Máximo de filas eliminadas por ejecución |
-| `EVENT_WRITE_BATCH_SIZE` | `100` | Tamaño de las transacciones de eventos |
+
+El tamaño de las transacciones de eventos se configura mediante `JobExecutionSettings.event_write_batch_size` en `infrastructure/settings/job_execution.py` (100 por defecto), sin override de entorno.
 
 También se pueden configurar `not_started` y `finished_empty_score` como kinds.
 No se admite `finished`: la memoria representa descartes, no resultados válidos.

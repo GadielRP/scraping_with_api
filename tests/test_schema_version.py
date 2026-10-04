@@ -12,10 +12,23 @@ from infrastructure.persistence.schema_version import verify_schema_at_head
 def test_schema_gate_requires_current_revision() -> None:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)"))
-        connection.execute(text("CREATE TABLE canonical_market_types (market_type_id INTEGER, requires_line_value BOOLEAN)"))
+        connection.execute(
+            text("CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY)")
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE canonical_market_types (market_type_id INTEGER, requires_line_value BOOLEAN)"
+            )
+        )
         connection.execute(text("CREATE TABLE market_source_mappings (market_type_id INTEGER)"))
-        connection.execute(text("CREATE TABLE markets (market_type_id INTEGER, line_value NUMERIC)"))
+        connection.execute(
+            text("CREATE TABLE markets (market_type_id INTEGER, line_value NUMERIC)")
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE reporting_refresh_state (requested_generation INTEGER, completed_generation INTEGER, next_attempt_at DATETIME)"
+            )
+        )
 
     assert not verify_schema_at_head(engine)
 

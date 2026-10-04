@@ -188,7 +188,7 @@ def test_tennis_events_included_in_timestamp_corrections_even_when_untracked(mon
 
     # At T-30, untracked tennis is bypassed (in no_ts_events) to save API calls
     run_pre_start_odds_moments(
-        scheduler=MagicMock(),
+        runtime=MagicMock(),
         upcoming_events=upcoming,
         timings={1: 30, 2: 30, 3: 30},
         key_moments=[30],
@@ -203,7 +203,7 @@ def test_tennis_events_included_in_timestamp_corrections_even_when_untracked(mon
 
     # At T-5, untracked tennis is promoted to ts_events for final timestamp verification
     run_pre_start_odds_moments(
-        scheduler=MagicMock(),
+        runtime=MagicMock(),
         upcoming_events=upcoming,
         timings={1: 5, 2: 5, 3: 5},
         key_moments=[5],

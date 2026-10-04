@@ -60,7 +60,7 @@ def run_production_odds_phase(
     debug_mode: bool,
     show_persistence_report: bool,
     log_persisted_market_odds: Callable[[int, set[int], dict], None],
-    scheduler=None,
+    runtime=None,
     enable_sofascore: bool = True,
     enable_oddspapi: bool = True,
     oddspapi_available_through_utc: datetime | dict[int, datetime | None] | None = None,
@@ -74,11 +74,9 @@ def run_production_odds_phase(
     if not event_objs:
         raise ValueError("At least one event must be provided.")
 
-    if scheduler is None:
-        scheduler = SimpleNamespace(
-            event_repo=EventRepository(),
-            recently_rescheduled=set(),
-        )
+    if runtime is None:
+        from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
+        runtime = PreStartRuntime(EventRepository())
 
     events_data = [
         EventRepository._build_event_data_with_legacy_fallback(obj)
@@ -149,7 +147,7 @@ def run_production_odds_phase(
     def _safe_build_candidates(evts: list[dict], **kwargs) -> PreStartEventPlan:
         try:
             return build_pre_start_event_candidates(
-                scheduler,
+                runtime,
                 evts,
                 timings,
                 source_states,
@@ -157,7 +155,7 @@ def run_production_odds_phase(
             )
         except TypeError:
             return build_pre_start_event_candidates(
-                scheduler,
+                runtime,
                 evts,
                 timings,
                 source_states,

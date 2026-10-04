@@ -1,6 +1,9 @@
 import json
 import logging
 from types import SimpleNamespace
+from shared.temporal import utc_now
+from modules.jobs.pre_start_check_job.runtime import RescheduledEvents
+from modules.jobs.pre_start_check_job.budget import MissingOddsCooldown
 
 import pytest
 import modules.oddspapi.client as oddspapi_client_module
@@ -53,7 +56,7 @@ def _event_info(event_id=101):
             "sport": "Football",
             "home_team": "Home",
             "away_team": "Away",
-            "starts_at": None,
+            "starts_at": utc_now(),
         },
         "minutes_until_start": 30,
         "should_extract_odds": True,
@@ -117,7 +120,8 @@ def test_sofascore_false_state_skips_entire_odds_flow(monkeypatch):
 
 def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch):
     scheduler = SimpleNamespace(
-        recently_rescheduled=set(),
+        recently_rescheduled=RescheduledEvents(),
+        missing_odds=MissingOddsCooldown(600,2048),
         event_repo=SimpleNamespace(
             get_event_by_id=lambda *_args: (_ for _ in ()).throw(
                 AssertionError("unchanged events must not cause an N+1 database query")
@@ -128,7 +132,7 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
         "id": 101,
         "slug": "home-away",
         "sport": "Football",
-        "starts_at": None,
+        "starts_at": utc_now(),
     }
     state = _state(101, "sofascore", "9001", True)
 
@@ -143,7 +147,7 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
         assert (event_id, minutes, start_time, sofascore_event_id) == (
             101,
             30,
-            None,
+            event["starts_at"],
             9001,
         )
         return True, None, False, sofascore_event_id
@@ -167,14 +171,15 @@ def test_candidate_builder_reuses_bulk_mapping_without_event_requery(monkeypatch
 
 def test_candidate_builder_skips_key_moment_after_timing_api_failure(monkeypatch):
     scheduler = SimpleNamespace(
-        recently_rescheduled=set(),
+        recently_rescheduled=RescheduledEvents(),
+        missing_odds=MissingOddsCooldown(600,2048),
         event_repo=SimpleNamespace(),
     )
     event = {
         "id": 101,
         "slug": "home-away",
         "sport": "Football",
-        "starts_at": None,
+        "starts_at": utc_now(),
     }
     state = _state(101, "sofascore", "9001", True)
 
@@ -203,16 +208,18 @@ def test_candidate_builder_skips_key_moment_after_timing_api_failure(monkeypatch
     assert plan.by_event_id == {}
 
 
-def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
+def test_orchestrator_loads_odds_before_intraday_maintenance(monkeypatch):
+    monkeypatch.setattr(pre_start_job_runner.Config, 'ENABLE_TIMESTAMP_CORRECTION', False)
     upcoming_events = [
-        {"id": 101, "starts_at": None},
-        {"id": 102, "starts_at": None},
+        {"id": 101, "starts_at": utc_now()},
+        {"id": 102, "starts_at": utc_now()},
     ]
     filtered_events = [upcoming_events[1]]
     loaded_event_ids = []
     scheduler = SimpleNamespace(
         event_repo=SimpleNamespace(),
-        recently_rescheduled=set(),
+        recently_rescheduled=RescheduledEvents(),
+        missing_odds=MissingOddsCooldown(600,2048),
     )
 
     monkeypatch.setattr(
@@ -267,9 +274,9 @@ def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
                 candidates=[],
                 by_event_id={},
             )
-            if events == filtered_events
+            if events == upcoming_events
             else (_ for _ in ()).throw(
-                AssertionError("candidate planning must use filtered events")
+                AssertionError("critical planning must precede intraday maintenance")
             )
         ),
     )
@@ -286,7 +293,7 @@ def test_orchestrator_loads_odds_state_after_event_filtering(monkeypatch):
 
     pre_start_job_runner.run_pre_start_check_job(scheduler)
 
-    assert loaded_event_ids == [102]
+    assert loaded_event_ids == [101,102]
 
 
 def test_sofascore_404_is_batched_and_empty_response_is_not(monkeypatch):
@@ -654,7 +661,7 @@ def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch
     )
 
     stats = intraday_result_freshness.process_intraday_result_freshness(
-        [{"id": 101, "sport": "Football", "starts_at": None}]
+        [{"id": 101, "sport": "Football", "starts_at": utc_now()}]
     )
 
     assert stats["queued_for_deletion"] == 1
@@ -689,7 +696,7 @@ def test_intraday_batches_event_endpoint_404(monkeypatch):
     )
 
     stats = intraday_result_freshness.process_intraday_result_freshness(
-        [{"id": 101, "sport": "Football", "starts_at": None}]
+        [{"id": 101, "sport": "Football", "starts_at": utc_now()}]
     )
 
     assert stats["queued_for_deletion"] == 1
@@ -752,6 +759,8 @@ def test_sofascore_debug_mode_saves_raw_response_by_event_and_moment(
         ),
     )
 
+    monkeypatch.setattr(sofascore_odds_phase.run_provider_odds_phase.__globals__['EventSourceMappingRepository'],
+                        'mark_odds_available', lambda *_args: None)
     result = sofascore_odds_phase.run_sofascore_pre_start_odds(
         [_event_info()],
         {},
@@ -913,8 +922,8 @@ def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch)
         lambda: next(clock),
     )
     monkeypatch.setattr(
-        oddspapi_client_module.time,
-        "sleep",
+        oddspapi_client_module,
+        "wait_interruptibly",
         lambda seconds: sleeps.append(seconds),
     )
 
@@ -1386,7 +1395,8 @@ def test_odds_extraction_gate_uses_competition_id_already_on_event(
     caplog,
 ):
     scheduler = SimpleNamespace(
-        recently_rescheduled=set(),
+        recently_rescheduled=RescheduledEvents(),
+        missing_odds=MissingOddsCooldown(600,2048),
         event_repo=SimpleNamespace(),
     )
     tracked_event = {
@@ -1394,14 +1404,14 @@ def test_odds_extraction_gate_uses_competition_id_already_on_event(
         "competition_id": 176,
         "slug": "tracked",
         "sport": "Basketball",
-        "starts_at": None,
+        "starts_at": utc_now(),
     }
     untracked_event = {
         "id": 102,
         "competition_id": 999999,
         "slug": "untracked",
         "sport": "Football",
-        "starts_at": None,
+        "starts_at": utc_now(),
     }
     monkeypatch.setattr(
         event_candidate_builder,
@@ -1469,7 +1479,7 @@ def test_odds_moments_forwards_in_memory_tracked_ids_to_builder(monkeypatch):
     )
 
     pre_start_job_runner.run_pre_start_odds_moments(
-        scheduler=SimpleNamespace(),
+        runtime=SimpleNamespace(missing_odds=MissingOddsCooldown(600,2048)),
         upcoming_events=[],
         timings={},
         key_moments=(30,),
@@ -1490,7 +1500,7 @@ def test_sofascore_entry_skips_untracked_competition(monkeypatch, caplog):
     untracked["event_data"]["competition_id"] = 999999
     untracked["sofascore_event_id"] = 9002
     fetcher = SimpleNamespace(
-        fetch_odds=lambda sofascore_event_id, _slug: (
+        fetch_odds=lambda sofascore_event_id, _slug, **_kwargs: (
             fetched.append(sofascore_event_id)
             or OddsFetchResult.from_payload(None)
         )
@@ -1657,6 +1667,7 @@ def test_ingest_forwards_tracked_ids_only_to_gated_providers(monkeypatch):
 def test_single_event_simulator_uses_production_op_and_evaluation_flow(
     monkeypatch,
 ):
+    monkeypatch.setattr(simulate_pre_start_check, 'ENABLE_ODDSPORTAL_ODDS_SIMULATION', True)
     event = SimpleNamespace(
         id=101,
         home_team="Home",
@@ -1668,8 +1679,8 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
     )
     scheduler = SimpleNamespace(
         event_repo=SimpleNamespace(get_event_by_id=lambda _event_id: event),
-        recently_rescheduled=set(),
-        _active_op_thread=None,
+        recently_rescheduled=RescheduledEvents(),
+        missing_odds=MissingOddsCooldown(600,2048),
     )
     event_data = {
         "id": event.id,
@@ -1693,8 +1704,8 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
 
     monkeypatch.setattr(
         simulate_pre_start_check,
-        "_SingleEventSimulationScheduler",
-        lambda: scheduler,
+        "PreStartRuntime",
+        lambda _repo: scheduler,
     )
     monkeypatch.setattr(
         simulate_pre_start_check,
@@ -1750,10 +1761,10 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
     ]
     assert calls[0][3] == {101: 0}
     assert calls[0][4] == {"debug_mode": True}
-    assert calls[1][2]["scheduler"] is scheduler
+    assert calls[1][2]["runtime"] is scheduler
     assert calls[2][2] is event_plan
     assert calls[2][3] is op_context
-    assert calls[2][4] == {"debug_mode": True}
+    assert calls[2][4]["debug_mode"] is True
 
 
 def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():

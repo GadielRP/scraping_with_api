@@ -193,22 +193,17 @@ For each selected event, `create_oddsportal_scrape_state()` creates:
 
 ## 6. Cycle-level thread behavior
 
-`start_oddsportal_scrape_thread()` starts one non-daemon thread named `oddsportal_worker_launcher` when candidates exist.
+`start_oddsportal_scrape_thread()` asks `PreStartRuntime.oddsportal` to launch one daemon thread named `oddsportal-cycle` when candidates exist. `OddsPortalWorkerState` owns the thread under a lock until it actually finishes.
 
-Before starting browser work, the new launcher checks the previous `scheduler._active_op_thread`:
+1. If no cycle is alive and the runtime is accepting work, launch the new cycle with the execution context and deadline.
+2. If a cycle is alive or shutdown has started, skip the new cycle and set every new candidate's `done_event` so alert workers do not wait on work that was not admitted.
+3. Empty or disabled ticks preserve the reference to any existing cycle. The running thread clears its own reference in `finally`.
 
-1. If no previous thread is alive, start the new scrape cycle.
-2. If it is alive, join it for at most `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` seconds.
-3. If it finishes, start the new cycle.
-4. If it is still alive, abort the new cycle and set every new candidate's `done_event` so alert workers are not left blocked by that aborted cycle.
-
-This guard prevents two OddsPortal cycles from being intentionally activated by the same scheduler instance. It does not terminate the old thread.
+This guard prevents overlapping OddsPortal cycles within one application runtime. It does not terminate browser processes or coordinate separate application processes. `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` was removed; there is no chain of launchers waiting for previous launchers.
 
 The worker's outer `finally` also sets `done_event` for every event that did not receive a normal callback. This covers dispatcher crashes and chunk-level failures.
 
-When the toggle is false or there are no candidates, no new thread is launched and `_active_op_thread` is set to `None`.
-
-That assignment also clears the scheduler's reference when an older worker is still alive. A later cycle can therefore lose the previous-cycle guard and start another worker. The guard is reliable only while `_active_op_thread` still points to the older thread; it is not a global process lock.
+Shutdown closes admission and signals cooperative cancellation before waiting. `JOB_SHUTDOWN_GRACE_SECONDS` limits the application's total join budget; an unfinished cycle is logged. Third-party browser calls still depend on Playwright timeouts, and real browser memory/process cleanup is tracked as EXEC-006 in `docs/maintenance/execution-legacy-cleanup.md`.
 
 ## 7. Task construction and browser distribution
 
@@ -698,7 +693,6 @@ These remain environment-backed because they vary by machine, deployment, or int
 | `ODDSPORTAL_SCRAPING_ENABLED` | `true` | Master deployment feature flag; templates set it to false. |
 | `ODDSPORTAL_OPENING_CAPTURE_MINUTES` | `120` | Pre-start minute mark at which OddsPortal opening odds are scraped. |
 | `ODDSPORTAL_PARALLEL_BROWSERS` | `1` | Browser concurrency constrained by host RAM and task count. |
-| `ODDSPORTAL_PREVIOUS_CYCLE_TIMEOUT` | `120` s | Cross-cycle worker coordination timeout. |
 | `ODDSPORTAL_ALERT_WAIT_TIMEOUT` | `180` s | Alert-pipeline coordination SLA. |
 
 ### 17.3 Related pre-start variables
