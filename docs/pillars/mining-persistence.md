@@ -19,6 +19,10 @@ duplicados. El resultado real continúa en `results` y se relaciona por
 
 El contrato, el repositorio y la integración runtime están activos para P1, P2, P3, P4 y P5. El pipeline llama a la minería inmediatamente después de calcular cada output y conserva también los resultados de error donde el productor los expone. P5 proyecta cada memoria de bookmaker de forma independiente y mantiene Betfair como exposición diagnóstica sin score.
 
+P2–P5 escriben ahora esquema 4 con selección FT y estados compartidos; sus
+reglas están en [market-evaluation-v1.md](market-evaluation-v1.md). Los payloads
+históricos conservan su esquema y estado. P1 no cambia en esta refactorización.
+
 P1 se calcula en `pillar_pipeline.py` y ahora se persiste en dos runs
 independientes. Su orquestador devuelve dos salidas:
 
@@ -82,7 +86,9 @@ crea una observación independiente.
 ### 3.2 Unit
 
 Una unit es una parte evaluable del resultado. Los tipos iniciales son
-`summary`, `module`, `component`, `layer`, `market_period` y `choice`.
+`summary`, `module`, `component`, `layer`, `market_period`, `choice` y `signal`.
+En P2–P5 esquema 4, las units `signal` referencian inputs/contratos y conservan
+estado, evidencia y diagnóstico; su valor escalar vive en métricas.
 
 La identidad dentro del run es:
 
@@ -147,6 +153,11 @@ PILLAR_MINING_STATUS_MODE=all
 `all` conserva todos los estados para medir cobertura y fallos.
 `successful_only` conserva solamente `canonical_status = 'SUCCESS'`.
 
+En P2–P5 esquema 4, `ACTIVE` significa al menos una señal calculada, incluso
+neutral. Un run `SUCCESS` puede contener señales bloqueadas o con error;
+`execution_status` permite distinguirlo. Cobertura incompleta no genera
+`PARTIAL` global nuevo. Las filas históricas con `PARTIAL` se conservan.
+
 ## 5. Flujo de escritura
 
 1. El pipeline calcula el output normal del pilar.
@@ -154,20 +165,48 @@ PILLAR_MINING_STATUS_MODE=all
 3. El adaptador traduce el output a `PillarMiningRun` con units y métricas.
 4. El contrato valida identidades, parents, ciclos, estados y tipos escalares.
 5. La política de configuración decide si debe persistirse.
-6. El repositorio hace upsert del run y bloquea su identidad canónica.
-7. En la misma transacción reemplaza todas las units y métricas del run.
+6. El repositorio hace upsert del run y obtiene sólo su ID con `RETURNING`.
+   El `ON CONFLICT DO UPDATE` conserva el bloqueo de la identidad hasta terminar
+   la transacción; no se vuelve a descargar el JSON del run.
+7. En la misma transacción reemplaza las units y métricas mediante lotes de
+   hasta 1.000 filas. Se insertan los padres antes que sus hijos.
 8. Un error se registra con contexto, pero no detiene los pilares restantes.
 
 El reemplazo completo de hijos evita datos obsoletos. Si una repetición de P4
 deja de incluir una choice, esa choice no debe sobrevivir en la observación
 canónica anterior.
 
+### 5.1 Escritura por lotes y memoria
+
+`iter_unit_layers` comparte entre validación y escritura el recorrido del grafo:
+detecta padres ausentes, claves duplicadas y ciclos en tiempo lineal. No utiliza
+recursión ni búsquedas repetidas en una lista de pendientes.
+
+En PostgreSQL con psycopg 3, las units y métricas se transfieren mediante
+`COPY FROM STDIN`. Los IDs de units se reservan con la secuencia real de la tabla;
+no se calculan usando `MAX(id)`. Se conservan todas las señales, incluso las
+bloqueadas, y todas las restricciones de integridad. La conexión es la misma
+que usa el `Session`: el transporte no hace commits ni abre transacciones aparte.
+Las secuencias pueden dejar huecos al hacer rollback, como en un INSERT normal.
+
+SQLite y los otros drivers PostgreSQL usan INSERT por lotes. Los IDs devueltos
+se asocian mediante `unit_key`, sin asumir el orden de `RETURNING`.
+
+Se mantienen un mapa de IDs y buffers acotados, sin crear un objeto ORM por fila.
+El borrado previo resuelve los IDs en una subconsulta SQL. P5 conserva su captura
+de muestras y propiedad del run dentro de la misma transacción.
+
+El log de confirmación incluye `duration_ms` para la adaptación, validación y
+escritura, incluyendo commit cuando el servicio administra la transacción.
+El registro de la revisión está en
+[la auditoría de rendimiento](../audits/2026-10-04-pillar-mining-performance.md).
+
 ## 6. Lectura y queries
 
-### 6.1 Lectura del perfil estructural de P2
+### 6.1 Lectura histórica del perfil estructural de P2 (esquema menor que 4)
 
-P2 no publica un score escalar ni una dirección global. La unidad de minería
-conserva el perfil estructural completo en `payload->'P2_SIGNAL_PROFILE'`.
+En esquemas históricos P2 no publica un score escalar ni una dirección global.
+La unidad conserva el perfil en `payload->'P2_SIGNAL_PROFILE'`.
 
 ```sql
 SELECT
@@ -178,17 +217,38 @@ SELECT
 FROM pillar_mining_units u
 JOIN pillar_mining_runs r ON r.id = u.run_id
 WHERE r.pillar_id = 'pillar_2_side_market'
+  AND r.payload_schema_version < 4
   AND u.unit_type = 'summary'
   AND r.canonical_status = 'SUCCESS'
 GROUP BY r.sport, r.evaluation_minute, u.payload->'P2_SIGNAL_PROFILE';
 ```
 
-### 6.2 Evaluación posterior de P2
+### 6.2 Señales de P2–P5 (esquema 4)
 
-P2 no debe evaluarse mediante un `hit_rate` directo de la unidad resumen,
-porque no produce una predicción global. Cualquier evaluación futura debe
-seleccionar explícitamente una señal y relación dentro de
-`P2_SIGNAL_PROFILE`, y definir primero el contrato de outcome correspondiente.
+El resultado vive una vez en `run.output_payload`; sus inputs en `run.inputs`.
+`signal_unit_refs` enlaza las señales almacenadas como units. P2/P3/P4 no
+inventan una predicción global; una evaluación debe seleccionar una métrica y
+definir su outcome compatible. P5 conserva dirección e intermedios en su análisis.
+
+```sql
+SELECT r.pillar_id, r.engine_version, r.sport, r.target_minute,
+       r.output_payload->>'selected_full_time_period' AS ft_period,
+       u.payload->>'signal_key' AS signal_key,
+       u.diagnostics->'evidence'->>'metric' AS analytical_metric,
+       u.producer_status AS signal_status,
+       u.diagnostics->>'reason' AS blocked_reason,
+       m.numeric_value, m.text_value, m.boolean_value
+FROM pillar_mining_runs r
+JOIN pillar_mining_units u ON u.run_id = r.id AND u.unit_type = 'signal'
+LEFT JOIN pillar_mining_metric_values m ON m.unit_id = u.id AND m.metric_name = 'value'
+WHERE r.payload_schema_version = 4
+  AND r.pillar_id IN ('pillar_2_side_market', 'pillar_3_totals_market_context',
+                      'pillar_4_temporal_market_drift', 'pillar_5');
+```
+
+`PillarMiningRepository.get_result(run_id)` devuelve el resultado reconstruido
+de esquema 4 y el payload original de esquemas anteriores. No reinterpreta
+sus estados. Una señal bloqueada no tiene una fila numérica con cero.
 
 ### 6.3 Diagnóstico de cobertura
 
@@ -196,17 +256,23 @@ seleccionar explícitamente una señal y relación dentro de
 SELECT
     r.sport,
     r.producer_status,
-    r.diagnostics->>'reason' AS reason,
+    c->>'bookie_id' AS bookie_id,
+    c->>'family' AS family,
+    c->>'period' AS period,
+    c->>'status' AS coverage_status,
+    c->>'reason' AS reason,
     count(*) AS observations
 FROM pillar_mining_runs r
-WHERE r.pillar_id = 'pillar_2_side_market'
-GROUP BY r.sport, r.producer_status, r.diagnostics->>'reason'
+CROSS JOIN LATERAL jsonb_array_elements(r.output_payload->'coverage') c
+WHERE r.payload_schema_version = 4
+GROUP BY r.sport, r.producer_status, c->>'bookie_id', c->>'family',
+         c->>'period', c->>'status', c->>'reason'
 ORDER BY observations DESC;
 ```
 
-### 6.4 Lectura del perfil estructural de P3
+### 6.4 Lectura histórica del perfil estructural de P3 (esquema menor que 4)
 
-P3 sigue el mismo contrato de persistencia que P2: no publica un score escalar
+En esquemas históricos, P3 sigue el mismo contrato de P2: no publica un score escalar
 ni una dirección global. La unidad de minería conserva el perfil completo en
 `payload->'P3_SIGNAL_PROFILE'`. Sus bloques `FT`, `1H` y `FT_1H` contienen las
 lecturas individuales, relaciones entre books y representatives que existían
@@ -222,6 +288,7 @@ SELECT
 FROM pillar_mining_units u
 JOIN pillar_mining_runs r ON r.id = u.run_id
 WHERE r.pillar_id = 'pillar_3_totals_market_context'
+  AND r.payload_schema_version < 4
   AND u.unit_type = 'summary'
   AND r.canonical_status = 'SUCCESS'
 GROUP BY
@@ -239,20 +306,38 @@ No se debe calcular hit rate de cualquier `direction` sin mirar `signal_axis`.
 `SIDE` puede contrastarse con ganador; `IMPLIED_PROBABILITY_MOVE` describe un
 movimiento de mercado y no es automáticamente una predicción del partido.
 
+### 6.5 Muestras congeladas de P5
+
+```sql
+SELECT r.id AS run_id, r.engine_version, s.sample_id, s.cutoff,
+       s.query->'key' AS query_key, s.query->'filters' AS population_filters,
+       s.sample_size, s.wins_home, s.wins_draw, s.wins_away
+FROM pillar_mining_runs r
+JOIN p5_memory_samples s ON s.run_id = r.id
+WHERE r.pillar_id = 'pillar_5' AND r.payload_schema_version = 4;
+```
+
+Leer miembros mediante `SampleAuditReader.get_sample_page(sample_id, cursor,
+page_size)` implementado por `Pillar5PriceMemoryRepository`. El cursor ordena
+por fecha de inicio e identificador descendentes; default 100 y máximo 1.000.
+La fuente es la muestra congelada, sin consultar nuevamente la vista histórica.
+
 ## 7. Mapeo actual y futuro
 
 | Pilar | Scope | Jerarquía | Estado de Registro |
 |---|---|---|---|
 | P1 Side | `side` | summary → M1–M7 → components | Registrado y activo |
 | P1 Totals | `totals` | summary → structural/temporal/trend layers | Registrado y activo |
-| P2 | `side_market` | summary → `p2_signal_engine` | Registrado y activo |
-| P3 | `totals_market_context` | summary → `p3_signal_engine` | Registrado y activo |
-| P4 | `temporal_market_drift` | summary → module (`p4_signal_engine`) | Registrado y activo (`P4MiningAdapter`) |
-| P5 | `exact_price_memory` | summary → `p5_memory_engine` → bookmaker 1/3/302/4 | Registrado y activo (`P5MiningAdapter`) |
+| P2 | `side_market` | summary → señales | Esquema 4, motor `p2-signal-profile-v3` |
+| P3 | `totals_market_context` | summary → señales | Esquema 4, motor `p3-signal-profile-v3` |
+| P4 | `temporal_market_drift` | summary → señales | Esquema 4, motor `p4-signal-profile-v3` |
+| P5 | `price_memory` | summary → señales por bookmaker/contrato | Esquema 4, motor `p5_price_memory_v4_0` |
 
-P1, P2, P3, P4 y P5 están registrados para escritura actualmente en `_registered_mining_adapters()` (`modules/jobs/pre_start_check_job/pillar_pipeline.py`). P4 utiliza `P4MiningAdapter` (`modules/pillars/mining/adapters/pillar_4.py`) para persistir su perfil temporal en `payload_schema_version = 2` sin inventar score escalar ni dirección global; preserva el perfil estructurado completo en `payload->'P4_SIGNAL_PROFILE'` y proyecta dimensiones de mercado (mercados, períodos, vistas, bookies, fuentes, lados de exchange y series).
-
-P5 utiliza `P5MiningAdapter` (`modules/pillars/mining/adapters/pillar_5.py`) con `payload_schema_version = 3`. Conserva el payload completo, crea unidades separadas para SofaScore (`1`), Bet365 (`3`) y Pinnacle (`302`), y publica `P5`, dirección, fuerza, tamaño de muestra e intermedios sin agregarlos. La unidad Betfair (`4`) solo conserva BACK/LAY y tamaños como diagnóstico. La regla de procedencia canónica se mantiene: si una identidad o metadato no proviene del productor o del contexto, ningún adaptador debe adivinarla.
+Los cinco pilares siguen registrados en `_registered_mining_adapters()`.
+P2–P5 usan el escritor compartido `MarketMiningAdapter`, con inputs y análisis
+una sola vez. P5 nuevo calcula para bet365/Pinnacle y mantiene Betfair diagnóstico;
+las ejecuciones antiguas, incluyendo SofaScore, permanecen almacenadas.
+Los adaptadores proyectan identidad y metadatos del productor sin adivinarlos.
 
 Los resultados FT pueden evaluarse con `results`. Una evaluación de primer tiempo o de una línea totals necesita una fuente de outcome apropiada; no debe forzarse con `results.winner` si semánticamente no corresponde.
 
@@ -400,6 +485,20 @@ con pilar, evento, estado, target y versión, pero no detener P4, P5 ni el resto
 del procesamiento. Para troubleshooting, revisar primero ese log, después la
 validación del contrato y finalmente la conectividad/transacción del repositorio.
 
+Para P5 esquema 4 aplicar primero `20261002_01` y después la aplicación nueva.
+La migración aditiva crea las muestras y sus miembros. Captura y escritura usan
+una transacción; el reemplazo del mismo run elimina únicamente sus muestras.
+Volver a la aplicación anterior puede dejar estas tablas en su lugar, sin
+backfill ni reinterpretación de resultados históricos.
+
+Para la optimización de escritura aplicar `20261004_01`, posterior a
+`20261003_01`. Agrega exclusivamente `idx_pillar_mining_unit_parent` sobre
+`parent_unit_id`: las comprobaciones de la relación padre–hijo buscan por padre,
+sin conocer el `run_id` que encabeza el índice compuesto existente.
+PostgreSQL crea el índice con `CONCURRENTLY`; la migración reconoce una creación
+previa válida y permite reconstruir un índice inválido dejado por un intento
+interrumpido. El downgrade sólo retira ese índice. No cambia columnas ni filas.
+
 ## 11. Archivos principales
 
 - `modules/pillars/mining/contracts.py`: contrato y validación del grafo.
@@ -410,6 +509,6 @@ validación del contrato y finalmente la conectividad/transacción del repositor
 - `modules/pillars/mining/adapters/pillar_3.py`: traducción estructural de P3.
 - `modules/pillars/mining/adapters/pillar_4.py`: traducción del perfil temporal de P4.
 - `infrastructure/persistence/models.py`: esquema SQLAlchemy.
-- `infrastructure/persistence/repositories/pillar_mining_repository.py`: transacción.
-- `infrastructure/persistence/database.py`: migración de esquema.
+- `infrastructure/persistence/repositories/pillar_mining_repository.py`: transacción y escritura por lotes.
+- `infrastructure/persistence/alembic/versions/`: migraciones de esquema.
 - `modules/jobs/pre_start_check_job/pillar_pipeline.py`: integración runtime.

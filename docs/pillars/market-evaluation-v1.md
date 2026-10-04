@@ -29,6 +29,10 @@ flowchart LR
   de P2/P3. Separan disponibilidad y diagnóstico de las fórmulas.
 - Los motores específicos reciben snapshots o series acotados. Las primitivas
   numéricas comunes viven en `market_math.py`; P4 no importa matemática de P2/P3.
+- `trajectory_sampling.py`: validación, deduplicación, proyección de checkpoints y
+  corte por endpoint compartidos por la selección FT y P4. La decisión de si una
+  trayectoria permite calcular usa los puntos que admite el cálculo. Los puntos
+  derivados comparten procedencia; no existe caché global de observaciones.
 - `evaluation_contracts.py`: estado global, estado de ejecución y señales tipadas.
 - `mining/adapters/market.py`: persiste un resultado canónico, con units por señal
   y métricas escalares. P5 depende del puerto `PriceMemoryReader`, inyectado por
@@ -78,6 +82,12 @@ Distintos contratos legítimos, como 1X2 y Home/Away, se calculan por separado.
 | P4 | Una métrica de movimiento necesita al menos dos observaciones válidas y endpoint operativo. La continuidad se exige por métrica: un gap puede permitir net move y bloquear velocidad/path. Un contrato terminado conserva observaciones y diagnósticos, sin exponer movimiento cero. Los cambios de línea se representan explícitamente; no se unen trayectorias de precios de contratos distintos. Conserva moneyline, Asian Handicap, totals y sus periodos ya soportados, incluido OU First Quarter. |
 | P5 | Vector actual moneyline FT por Pinnacle/bet365 y contrato. 1X2 exige Home/Draw/Away; Home/Away excluye Draw. El mínimo histórico sigue siendo tres eventos elegibles, con las mismas fórmulas y cuantización de precios a tres decimales. Betfair permanece diagnóstico y SofaScore no participa en cálculos nuevos. |
 
+El contrato recibido refleja la historia de los outcomes de la línea principal
+que seleccionó `/odds` y cuya historia reconstruyó `/historical-odds`. El filtro
+`main_line IS TRUE` no proporciona la sucesión de todas las main lines históricas.
+P4 solo puede observar transiciones presentes en sus inputs; no observar una
+transición no demuestra que el mercado real nunca cambiara de línea.
+
 No hay bookmaker obligatorio para el éxito global. Betfair ausente nunca bloquea
 globalmente un pilar. Un resultado neutral, incluyendo cero, cuenta como cálculo
 válido; un valor ausente se mantiene ausente.
@@ -88,6 +98,13 @@ El resultado contiene evento, pilar, versiones, checkpoint, selección FT,
 `signals`, `coverage`, `inputs`, `contracts`, `analysis`, evidencia y diagnósticos.
 Las entradas se guardan una vez; señales y series apuntan a referencias.
 Los análisis específicos conservan los intermedios útiles para explicar fórmulas.
+Las señales derivadas de varias fuentes heredan los contratos de sus series
+constituyentes, incluso cuando no tienen un único `BOOKIE_ID`. P4 añade al
+`checkpoint` sus límites nominal y operativo sin modificar la selección compartida.
+Su logging de diagnóstico lee el resultado: límites temporales, fuentes, series,
+endpoints y motivos de indisponibilidad permanecen explicables sin recalcular.
+P5 conserva precios, tamaños y procedencia BACK/LAY en inputs diagnósticos de
+Betfair; `exchange_exposure` los referencia y no genera señales ni score.
 
 | Estado global | Condición |
 |---|---|
@@ -189,7 +206,6 @@ migración, lectores y memoria:
 ```powershell
 .venv/Scripts/python.exe -m pytest tests/pillars --ignore=tests/pillars/pillar_1_team_structure tests/test_p5_audit_repository.py tests/test_p5_audit_migration.py tests/test_pillar_mining_repository.py tests/test_pre_start_memory_limits.py tests/test_p5_price_memory_view.py tests/test_odds_trajectory_repository.py -q
 .venv/Scripts/python.exe -m pytest tests -q
-.venv/Scripts/python.exe tests/benchmarks/market_evaluation_memory.py --observations 500
 ```
 
 La comparación offline de P4 usa el mismo fixture de 2.000 filas, incluyendo
@@ -212,3 +228,15 @@ con los originales y sus archivos de motor/pruebas no fueron modificados.
 Los fallos restantes pertenecen a proveedores, resolución de eventos,
 normalización, adquisición y filtros fuera de esta refactorización. Los cambios
 simultáneos en descubrimiento/borrado de eventos se conservaron separados.
+
+Verificación de las correcciones del 3 de octubre de 2026: la batería centrada
+en pilares, selección, auditoría, minería y repositorio de trayectorias pasó sus
+199 pruebas. Incluye cuotas recogidas dentro de la tolerancia, separación entre
+tiempo de mercado y disponibilidad, fallback de periodo, una sola observación,
+transición observada frente a endpoint ausente, procedencia de señales derivadas,
+logs y exposición diagnóstica de Betfair en P5. No se repitió la suite global ni
+se ejecutó ingesta contra proveedores o PostgreSQL de producción.
+
+El fixture de memoria de 2.000 filas, después de estas correcciones, obtuvo
+14.091.010 bytes de pico y 9.805.398 bytes de payload, con resultado `ACTIVE`.
+Es una medición local de asignaciones Python, no del RSS del proceso.

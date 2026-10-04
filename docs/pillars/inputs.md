@@ -17,6 +17,9 @@ The pipeline uses these input contracts:
 4. `OddsTrajectoryContext`: one shared, structured read model built locally from
    the loaded rows and stamped with the UTC `evaluation_as_of`. All four market
    pillars receive the same `TargetMinuteSelection` and this same context.
+5. `EventMarketEvaluation`: one shared evaluation plan containing the accepted
+   market contracts, selected full-time period, and selection diagnostics. It
+   references the trajectory context without copying its snapshot histories.
 
 The trajectory context is assembled once per event. The pillars share that read
 model rather than each loading and rebuilding the event's odds history.
@@ -41,11 +44,12 @@ The pre-start pillar flow performs these steps:
    the processor can use `EventContext.odds_trajectory` as a compatibility
    fallback.
 4. Create `EventIdentity` with `EventContext.to_identity()` and select one
-   `TargetMinuteSelection` from the shared trajectory context. P2, P3, P4, and
-   P5 receive that same selection and the same `OddsTrajectoryContext`.
-5. Run P2–P5 with `EventIdentity` and the local trajectory context. Release
-   references to the raw rows and that context before P1, which continues to
-   receive the full `EventContext` and its `streak_analysis`.
+   `TargetMinuteSelection` from the shared trajectory context. Build one
+   `EventMarketEvaluation` with that selection, the context, and event identity.
+   P2, P3, P4, and P5 receive these same objects.
+5. Run P2–P5 with `EventIdentity`, the local trajectory context, and the shared
+   evaluation plan. Release references to the plan, raw rows, and context before
+   P1, which continues to receive the full `EventContext` and `streak_analysis`.
 
 The shared selection is causal: among allowed minutes present and not later than
 the current evaluation minute, it chooses the latest eligible target. A missing
@@ -417,7 +421,20 @@ The context also provides non-mutating filters used to derive consumer views:
 | Pillar | Event argument from the processor | Other inputs |
 |---|---|---|
 | P1 | Full `EventContext` | `debug_mode`; reads `event_context.streak_analysis`. Raw odds references have already been released. |
-| P2, P3, P4, and P5 | `EventIdentity` | Shared `OddsTrajectoryContext`, the same `TargetMinuteSelection`, `debug_mode`. |
+| P2, P3, P4, and P5 | `EventIdentity` | Shared `OddsTrajectoryContext`, `TargetMinuteSelection`, `EventMarketEvaluation`, and `debug_mode`. P5 also receives a `PriceMemoryReader`. |
+
+The processor builds `EventMarketEvaluation` once per event. It contains canonical
+contracts, the common Full Time selection and coverage. `Full Time Including
+Overtime` has priority only when a supported reading can actually be calculated;
+otherwise regulation is considered. All four pillars consume that selection.
+Other supported periods remain independently evaluable.
+
+Snapshot readings use `market_snapshot_extractor.py`. Temporal eligibility and
+P4 use the same `TrajectorySamplingPolicy` in
+[`trajectory_sampling.py`](../../modules/pillars/trajectory_sampling.py), including
+validation, deduplication, checkpoint ranking and endpoint bounds. Selection does
+not estimate temporal usability by counting unfiltered snapshots. The sampler
+has no process-wide cache; derived point views share source provenance.
 
 ### P2 and P3: structural target-minute snapshots
 
@@ -448,7 +465,7 @@ P4 uses the same windows to bound its trajectory:
 * retains historical points through the shared cutoff and uses the configured
   tolerance window when selecting each checkpoint;
 * keeps only supported/main-line series;
-* normalizes snapshots into `P4Point` values;
+* normalizes snapshots into shared `TrajectoryPoint` values;
 * selects the eligible snapshot nearest each nominal checkpoint and records its
   actual distance from that checkpoint; and
 * returns separate adaptive and checkpoint series, ending each adaptive series
@@ -460,7 +477,7 @@ acquisition, persistence, and evaluation finish. For example, if kickoff is
 03:05:15 UTC may serve as the T−5 endpoint when evaluation occurs at 03:05:16
 UTC, but a quote collected at 03:05:45 cannot be used in that evaluation. The
 result records `nominal_target_as_of`, `evaluation_as_of`, and
-`operative_as_of` separately. Legacy callers without an evaluation time use
+`operative_as_of` separately in `checkpoint`. Legacy callers without an evaluation time use
 the nominal target as the cutoff.
 
 `collected_at` is the timestamp the persistence contract assigns to the
@@ -472,141 +489,92 @@ P4's trajectory; if it is later than `collected_at`, P4 clamps its effective
 time to `collected_at` without discarding the price. A snapshot without
 `collected_at` cannot be placed on the shared timeline and is excluded.
 
-P4 must not query the repository to fill gaps. If no usable required-source
-price series exists, the global status is `INSUFFICIENT_DATA`; if at least one
-required series exists but required sources or observations are incomplete or
-invalid, the profile is `PARTIAL`. Optional-source gaps remain visible on their
-own series and in source diagnostics without changing the global profile status.
+P4 must not query the repository to fill gaps. Adaptive observations satisfy both
+`effective_at <= endpoint.effective_at` and `availability_at <= evaluation_as_of`.
+An old market observation collected after the endpoint remains eligible when it
+was available to the evaluation. Checkpoint projections preserve the selected
+snapshot's effective time. A missing endpoint or a single observation blocks
+movement metrics instead of creating a zero movement.
 
-P4 currently treats Pinnacle Sports (bookie ID 302) and bet365 (ID 3) as
-required sources. Betfair Exchange (ID 4) is optional: its raw back/lay series
-and derived comparisons are retained, and an incomplete Betfair price series
-keeps its own `PARTIAL` status. Betfair does not gate the global profile or
-view status. The serialized `SUMMARY.SOURCE_STATUS` reports `ACTIVE`,
-`PARTIAL`, `MISSING`, or `NOT_PRESENT` per supported bookmaker; `MARKET.SOURCE_ROLE`
-identifies each series as `REQUIRED`, `OPTIONAL`, or `DERIVED`. Per-period
-`PERIODS.*.status` also measures required-source completeness;
-`PERIODS.*.all_sources_status` reports completeness across required and optional
-series, with separate partial-series counts for each role.
+P2–P5 use `EvaluationResult` schema 4 and `market-evaluation-v1`:
 
-Required-source status is explicit: no required price series means
-`INSUFFICIENT_DATA`; with required price series present, a missing required
-source, a required-source issue, or an incomplete required price series means
-`PARTIAL`; otherwise the profile is `ACTIVE`. Regular-bookmaker trajectories
-remain independent. The representative bookmaker edge requires both Pinnacle
-and bet365; Betfair representative and book/exchange comparisons require the
-relevant Betfair back/lay and bookmaker series to be present at matching
-checkpoints.
+* `ACTIVE`: at least one signal is `COMPUTED`, including a genuine neutral value;
+* `INSUFFICIENT_DATA`: no computed signal and no execution error;
+* `ERROR`: no computed signal and at least one error;
+* `SKIPPED`: disabled by configuration.
+
+No bookmaker is mandatory for global success. Coverage is independent of this
+status and describes bookmaker/family/period/line/exchange-side combinations.
+Missing bet365 AH history or Betfair data does not downgrade another calculated
+signal. Individual P4 series retain observation counts, missing checkpoints,
+`INSUFFICIENT_DATA` when movement cannot be calculated and null movement values.
+A historical contract with an observed replacement endpoint is diagnosed as
+`CONTRACT_ENDED`; an absent endpoint alone does not prove a line transition.
+`SOURCE_ROLE` describes `REGULAR`, `EXCHANGE` or `DERIVED`, not requiredness.
+
+Regular-bookmaker trajectories remain independent. A representative edge needs
+both Pinnacle and bet365; book/exchange comparisons additionally need their
+matching Betfair inputs. Derived signals inherit contract references from their
+constituent series. No global fallback fabricates a missing dependency.
+
+**Upstream trajectory contract:** P4 analyses the history supplied by
+`OddsTrajectoryContext`. Under the current OddspAPI ingestion, `/odds` selects the
+current principal line and `/historical-odds` reconstructs the cached outcomes of
+that selected contract. The query admits quotes with `main_line IS TRUE`.
+Consequently, P4 must not assume it received the historical succession of all
+principal lines. No observed line transition does not prove that the real market
+line never changed. Acquisition details belong to the
+[ingestion documentation](../providers/pre_start_odds_ingestion.md).
+
+With `debug_mode=True`, P4 logs the nominal/evaluation/checkpoint boundaries,
+source and market, individual endpoints, observation counts, missing checkpoints
+and movement availability. Logging reads the completed result and does not
+select or recalculate odds. The pipeline adds the common execution summary.
 
 ### P5: exact-price memory input
 
-P5 receives the same full `OddsTrajectoryContext` and shared
-`TargetMinuteSelection` as P2–P4. Its own `extract_p5_market_snapshot` policy chooses
-the relevant Full Time 1X2/Home-Away prices and supported bookmakers. The
-processor does not create or pass a separate filtered context for P5.
+P5 uses the selected Full Time contracts and the common snapshot extractor.
+Pinnacle and bet365 each supply their own vector: 1X2 requires Home/Draw/Away;
+Home/Away requires Home/Away. Each independent memory calculation needs at least
+three eligible historical events. The injected `PriceMemoryReader` owns the SQL
+lookup; the pillar does not rebuild the current trajectory.
+
+Betfair BACK/LAY prices, sizes and quote/snapshot provenance are retained in
+`inputs` with `role=DIAGNOSTIC`. Entries in `diagnostics` with
+`kind=exchange_exposure` reference those inputs, preserve incomplete sides and
+state `participates_in_score=false`. They create no memory signal and cannot
+make P5 successful. SofaScore is not a source for new P5 calculations.
 
 ---
 
-## 6. Typed P4 extraction output
+## 6. Typed temporal inputs and output references
 
-Defined in [`modules/pillars/pillar_4/models.py`](../../modules/pillars/pillar_4/models.py).
-These are P4's analytical inputs after the shared context has been normalized;
-they are not a replacement for `OddsTrajectoryContext`.
+[`trajectory_sampling.py`](../../modules/pillars/trajectory_sampling.py) defines:
 
-### `P4Point`
+* `TrajectoryPoint`: value, effective and recorded collection time, source
+  timestamp, quote/snapshot identity and optional size/limit. A projection adds
+  its target, distance and observation kind without changing effective time.
+* `TrajectoryPointValue`: a derived value sharing its original point's provenance.
+* `TrajectorySample`: ordered points, projected checkpoints, adaptive points,
+  endpoint and invalid/excluded-observation diagnostics. `has_movement` requires
+  an endpoint and at least two observations in an available temporal view.
+* `TrajectorySamplingPolicy`: event start, evaluation boundary, selected target
+  and shared target windows. It is reused as a policy, without a global cache of
+  event data.
 
-```python
-@dataclass(frozen=True, slots=True)
-class P4Point:
-    point_id: str
-    value: Decimal
-    effective_at: datetime
-    availability_at: datetime
-    minutes_before_start: Decimal
-    snapshot_id: int | None = None
-    quote_id: int | None = None
-    collected_at: datetime | None = None
-    source_collected_at: datetime | None = None
-    source_limit: Decimal | None = None
-    exchange_size: Decimal | None = None
-    observation_kind: str = "PERSISTED_SNAPSHOT"
-    target_minute: int | None = None
-    distance_from_target_minutes: Decimal | None = None
-```
+[`pillar_4/models.py`](../../modules/pillars/pillar_4/models.py) defines the
+P4-specific analytical inputs:
 
-`effective_at` describes the provider timeline for a raw observation, clamped
-to `collected_at` when the provider time is later; projected checkpoints use
-the selected snapshot's `collected_at`. `availability_at` is the same shared
-timestamp used for cutoff checks. For current snapshots this prevents a late
-quote from entering an earlier evaluation; reconstructed historical moments
-retain the timestamp assigned by their persistence contract.
+* `P4SeriesInput`: market/bookmaker/outcome identity, view and value type, point
+  references, expected/missing checkpoints, constituent series and endpoint flag.
+* `P4ExtractionResult`: series plus boundary and input diagnostics. `usable`
+  means there are series to inspect; it does not certify calculable movement.
 
-### `P4SeriesInput`
-
-`P4SeriesInput` carries the series identity, market/bookmaker provenance, the
-ordered `points`, expected and missing target minutes, diagnostics, and whether
-the operative endpoint is present. Its important fields are:
-
-```python
-@dataclass(frozen=True, slots=True)
-class P4SeriesInput:
-    series_id: str
-    base_series_id: str
-    domain: str
-    view: str                 # ADAPTIVE_VIEW or CHECKPOINT_VIEW
-    value_type: str
-    market_id: int | None
-    market_group: str
-    market_period: str
-    market_name: str
-    line_value: str | None
-    line_value_key: str
-    choice_name: str
-    choice_id: int | None
-    main_line: bool | None
-    bookie_id: int | None
-    bookie_name: str
-    source: str | None
-    exchange_side: str | None
-    exchange_level: int
-    quote_id: int | None
-    points: tuple[P4Point, ...]
-    expected_target_minutes: tuple[int, ...] = ()
-    missing_target_minutes: tuple[int, ...] = ()
-    diagnostics: tuple[str, ...] = ()
-    constituent_series_ids: tuple[str, ...] = ()
-    operative_endpoint_present: bool = True
-```
-
-### `P4ExtractionResult`
-
-```python
-@dataclass(frozen=True, slots=True)
-class P4ExtractionResult:
-    event_id: int
-    target_minute: int | None
-    operative_as_of: datetime | None
-    nominal_target_as_of: datetime | None = None
-    evaluation_as_of: datetime | None = None
-    adaptive_series: tuple[P4SeriesInput, ...] = ()
-    checkpoint_series: tuple[P4SeriesInput, ...] = ()
-    periods: dict[str, Any] = field(default_factory=dict)
-    missing_inputs: tuple[str, ...] = ()
-    missing_endpoint_details: tuple[dict[str, Any], ...] = ()
-    invalid_inputs: tuple[str, ...] = ()
-    ambiguous_inputs: tuple[str, ...] = ()
-    excluded_future_points: int = 0
-    source_series_seen: int = 0
-    endpoint_series_present: int = 0
-    observed_bookie_ids: tuple[int, ...] = ()
-    issue_bookie_ids: tuple[int, ...] = ()
-    reason: str | None = None
-```
-
-`usable` is true only when at least one operative endpoint is present and at
-least one adaptive or checkpoint series exists. The serialized P4 result keeps
-the normalized inputs in `raw` for auditability and exposes the derived signal
-profile separately.
+The canonical result stores `inputs`, `contracts`, `signals` and `analysis`.
+Points and series reference shared inputs instead of serializing a second raw
+profile. Signals retain their own `COMPUTED`, `BLOCKED` or `ERROR` state and
+contract references. The common `EvaluationResult` owns global status; there is
+no second P4 profile/view status aggregator.
 
 ---
 
@@ -618,12 +586,11 @@ as:
 * **missing**: the requested market, choice, line, target minute, or exchange
   size is absent;
 * **invalid**: a present value cannot satisfy the scalar contract (for example,
-  a non-positive price or negative exchange size); and
+  a non-finite price, price <= 1 or negative exchange size); and
 * **ambiguous**: more than one candidate matches a supposedly unique request.
 
-These classifications are part of the result payload and debug lineage. A
-consumer may apply its own completeness policy, but it must preserve the
-original classification and the selected target minute.
+These classifications are part of the result payload and debug lineage. Consumers preserve the original classification and the selected target minute.
+Global status and coverage follow the shared evaluation contract.
 
 The canonical flow is therefore:
 
@@ -636,7 +603,7 @@ repository --> dict[event_id, list[OddsTrajectoryPoint]]
       |
       +--> one event's rows --> OddsTrajectoryContext (local to its worker)
                                     |
-                                    +--> TargetMinuteSelection --> P2 / P3 / P4 / P5
+                                    +--> TargetMinuteSelection --> EventMarketEvaluation --> P2 / P3 / P4 / P5
 ```
 
 Any audit payload may retain raw observations and lineage. Pillars do not reload
