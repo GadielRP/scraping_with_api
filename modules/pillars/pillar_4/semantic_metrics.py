@@ -7,16 +7,18 @@ from datetime import timezone
 from decimal import Decimal
 from typing import Any, Callable, Iterable, Sequence
 
-from modules.pillars.pillar_2_side_market.metrics import (
+from modules.pillars.market_math import (
     absolute_gap,
     pair_mean,
     relative_spread,
     side_edge,
 )
-from modules.pillars.pillar_3_totals_market_context.metrics import ou_edge
+from modules.pillars.market_math import ou_edge
 
-from .models import P4Point, P4SeriesInput
-from .periods import EXCHANGE_BOOKIE_ID, REQUIRED_BOOKIE_IDS, normalize_token
+from .models import P4SeriesInput
+from modules.pillars.trajectory_sampling import TrajectoryPoint
+from modules.pillars.market_evaluation import PINNACLE, BET365
+from .periods import EXCHANGE_BOOKIE_ID, REGULAR_BOOKIE_IDS, normalize_token
 
 
 def _timestamp(value) -> float:
@@ -45,7 +47,7 @@ def _role(domain: str, choice_name: str) -> str | None:
     return None
 
 
-def _point_map(series: P4SeriesInput) -> dict[int, P4Point]:
+def _point_map(series: P4SeriesInput) -> dict[int, TrajectoryPoint]:
     return {
         int(point.target_minute): point
         for point in series.points
@@ -95,7 +97,7 @@ def _combine(
     operative = min(expected) if expected else (min(common) if common else None)
     if operative is None or operative not in common:
         return None
-    points: list[P4Point] = []
+    points: list[TrajectoryPoint] = []
     for target in common:
         left_point = left_points[target]
         right_point = right_points[target]
@@ -116,7 +118,7 @@ def _combine(
             if value is not None
         ]
         points.append(
-            P4Point(
+            TrajectoryPoint(
                 point_id=(
                     f"{_slug(value_type)}_TARGET_{target}_"
                     f"{left_point.point_id}_{right_point.point_id}"
@@ -151,15 +153,11 @@ def _combine(
         choice_name=choice_name,
         choice_id=None,
         main_line=(
-            True
-            if left.main_line is True and right.main_line is True
-            else None
+            True if left.main_line is True and right.main_line is True else None
         ),
         bookie_id=left.bookie_id if preserve_bookie_identity else bookie_id,
         bookie_name=(
-            left.bookie_name
-            if preserve_bookie_identity
-            else bookie_name or "DERIVED"
+            left.bookie_name if preserve_bookie_identity else bookie_name or "DERIVED"
         ),
         source=source,
         exchange_side=exchange_side,
@@ -207,9 +205,7 @@ def _edge_series(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput]:
             right,
             value_type=value_type,
             choice_name=value_type,
-            source_scope=(
-                f"BOOKIE_{left.bookie_id}_{left.exchange_side or 'SINGLE'}"
-            ),
+            source_scope=(f"BOOKIE_{left.bookie_id}_{left.exchange_side or 'SINGLE'}"),
             formula=side_edge if left.domain == "SIDE" else ou_edge,
             source=left.source,
             exchange_side=left.exchange_side,
@@ -237,8 +233,7 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
         books = {
             series.bookie_id: series
             for series in related
-            if series.bookie_id in REQUIRED_BOOKIE_IDS
-            and series.exchange_side is None
+            if series.bookie_id in REGULAR_BOOKIE_IDS and series.exchange_side is None
         }
         exchange = {
             normalize_token(series.exchange_side): series
@@ -247,10 +242,10 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
         }
         book_rep = None
         exchange_rep = None
-        if 302 in books and 3 in books:
+        if PINNACLE.id in books and BET365.id in books:
             book_rep = _combine(
-                books[302],
-                books[3],
+                books[PINNACLE.id],
+                books[BET365.id],
                 value_type="BOOK_REP_EDGE",
                 choice_name="BOOK_REP_EDGE",
                 source_scope="BOOKS_REPRESENTATIVE",
@@ -259,8 +254,8 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
                 preserve_bookie_identity=False,
             )
             book_gap = _combine(
-                books[302],
-                books[3],
+                books[PINNACLE.id],
+                books[BET365.id],
                 value_type="BOOK_INTERNAL_GAP",
                 choice_name="BOOK_INTERNAL_GAP",
                 source_scope="BOOKS",
@@ -277,7 +272,7 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
                 choice_name="EXCHANGE_REP_EDGE",
                 source_scope="BETFAIR_REPRESENTATIVE",
                 formula=pair_mean,
-                bookie_id=4,
+                bookie_id=EXCHANGE_BOOKIE_ID,
                 bookie_name="Betfair",
                 preserve_bookie_identity=False,
                 source="derived",
@@ -290,13 +285,15 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput
                 choice_name="EXCHANGE_INTERNAL_GAP",
                 source_scope="BETFAIR",
                 formula=absolute_gap,
-                bookie_id=4,
+                bookie_id=EXCHANGE_BOOKIE_ID,
                 bookie_name="Betfair",
                 preserve_bookie_identity=False,
                 source="derived",
                 exchange_side="back_lay_gap",
             )
-            result.extend(item for item in (exchange_rep, exchange_gap) if item is not None)
+            result.extend(
+                item for item in (exchange_rep, exchange_gap) if item is not None
+            )
         if book_rep is not None and exchange_rep is not None:
             cross_gap = _combine(
                 book_rep,
@@ -328,9 +325,7 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInp
             series.line_value_key,
             normalize_token(series.choice_name),
         )
-        groups.setdefault(key, {"back": [], "lay": []})[
-            side
-        ].append(series)
+        groups.setdefault(key, {"back": [], "lay": []})[side].append(series)
     result: list[P4SeriesInput] = []
     for candidates in groups.values():
         if len(candidates.get("back", [])) != 1 or len(candidates.get("lay", [])) != 1:
@@ -343,7 +338,7 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInp
             choice_name=f"{back.choice_name}_BACK_LAY_RELATIVE_SPREAD",
             source_scope=f"BETFAIR_{back.choice_name}",
             formula=relative_spread,
-            bookie_id=4,
+            bookie_id=EXCHANGE_BOOKIE_ID,
             bookie_name="Betfair",
             source="derived",
             exchange_side="back_lay",

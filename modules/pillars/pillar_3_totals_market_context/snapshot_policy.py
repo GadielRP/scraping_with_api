@@ -35,9 +35,11 @@ from .periods import (
 )
 
 
-PINNACLE_BOOKIE_ID = 302
-BET365_BOOKIE_ID = 3
-BETFAIR_EXCHANGE_BOOKIE_ID = 4
+from modules.pillars.market_evaluation import PINNACLE, BET365, BETFAIR
+
+PINNACLE_BOOKIE_ID = PINNACLE.id
+BET365_BOOKIE_ID = BET365.id
+BETFAIR_EXCHANGE_BOOKIE_ID = BETFAIR.id
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,12 +115,15 @@ def _candidate_diagnostics(
     }
 
 
-def _book_snapshot(candidate: MarketCandidate) -> TotalsBookSnapshot:
+def _book_snapshot(
+    candidate: MarketCandidate, target_minute: int
+) -> TotalsBookSnapshot:
     return TotalsBookSnapshot(
         market_period=candidate.market_period,
         line=candidate.line,
         over=candidate.choices.get("over"),
         under=candidate.choices.get("under"),
+        line_trace=candidate.contract_trace(target_minute),
     )
 
 
@@ -127,9 +132,11 @@ def _select_book_candidate(
 ) -> _BookSelection:
     selection = select_market_candidate(extraction, request)
     return _BookSelection(
-        snapshot=None
-        if selection.candidate is None
-        else _book_snapshot(selection.candidate),
+        snapshot=(
+            None
+            if selection.candidate is None
+            else _book_snapshot(selection.candidate, extraction.target_minute)
+        ),
         missing=selection.missing,
         invalid=selection.invalid,
         ambiguous=selection.ambiguous,
@@ -208,13 +215,6 @@ def _extract_optional_exchange_ou(
     missing = set(back.missing | lay.missing)
     invalid = set(back.invalid | lay.invalid)
     ambiguous = set(back.ambiguous | lay.ambiguous)
-    if ambiguous:
-        return None, PeriodDiagnostics.from_gate(
-            complete=False,
-            missing_inputs=missing,
-            invalid_inputs=invalid,
-            ambiguous_inputs=ambiguous,
-        )
     snapshot = TotalsExchangeSnapshot(
         back=back.snapshot,
         lay=lay.snapshot,
@@ -224,6 +224,7 @@ def _extract_optional_exchange_ou(
             complete=False,
             missing_inputs=missing,
             invalid_inputs=invalid,
+            ambiguous_inputs=ambiguous,
         )
     complete = (
         snapshot.back is not None
@@ -238,6 +239,7 @@ def _extract_optional_exchange_ou(
         complete=complete,
         missing_inputs=missing,
         invalid_inputs=invalid,
+        ambiguous_inputs=ambiguous,
     )
 
 
@@ -246,7 +248,7 @@ def _extract_period(
     *,
     target_minute: int,
     period_scope: TotalsPeriodScope,
-) -> tuple[P3PeriodSnapshot | None, PeriodDiagnostics, str | None, dict[str, object]]:
+) -> tuple[P3PeriodSnapshot | None, PeriodDiagnostics, dict[str, object]]:
     pinnacle = _extract_book(
         context,
         target_minute=target_minute,
@@ -299,8 +301,7 @@ def _extract_period(
             for name, selection in (("pinnacle", pinnacle), ("bet365", bet365))
         }
     )
-    reason = None if period_diagnostics.usable else "period_completeness_gate_failed"
-    return snapshot, period_diagnostics, reason, diagnostics
+    return snapshot, period_diagnostics, diagnostics
 
 
 def extract_p3_market_snapshot(
@@ -342,10 +343,10 @@ def extract_p3_market_snapshot(
         )
         for scope in P3_TOTALS_PERIOD_SCOPES
     }
-    full_time_snapshot, full_time_diagnostics, full_time_reason, full_time_extra = (
-        extracted[FULL_TIME_TOTALS_SCOPE.key]
-    )
-    first_half_snapshot, first_half_diagnostics, _, first_half_extra = extracted[
+    full_time_snapshot, full_time_diagnostics, full_time_extra = extracted[
+        FULL_TIME_TOTALS_SCOPE.key
+    ]
+    first_half_snapshot, first_half_diagnostics, first_half_extra = extracted[
         FIRST_HALF_TOTALS_SCOPE.key
     ]
 
@@ -363,7 +364,7 @@ def extract_p3_market_snapshot(
     first_half_diagnostics = with_exchange(
         first_half_diagnostics, exchange_ou_1h_diagnostics
     )
-    if full_time_snapshot is None and full_time_diagnostics.usable:
+    if full_time_snapshot is None:
         full_time_snapshot = P3PeriodSnapshot(None, FULL_TIME_TOTALS_SCOPE, None, None)
 
     return P3ExtractionResult(
@@ -376,11 +377,7 @@ def extract_p3_market_snapshot(
         exchange_ou=exchange_ou_diagnostics,
         exchange_ou_1h_snapshot=exchange_ou_1h_snapshot,
         exchange_ou_1h=exchange_ou_1h_diagnostics,
-        abort_reason=(
-            None
-            if full_time_diagnostics.usable
-            else full_time_reason or "full_time_completeness_gate_failed"
-        ),
+        abort_reason=None,
         extraction_diagnostics={
             "target_selection": target_selection.diagnostics,
             FULL_TIME_TOTALS_SCOPE.key: full_time_extra,

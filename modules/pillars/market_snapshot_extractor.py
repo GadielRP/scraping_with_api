@@ -39,12 +39,19 @@ class QuoteTrace:
     exchange_side: str | None
     exchange_level: int
     choice_name: str
+    canonical_market_key: str | None = None
+    market_type_id: int | None = None
+    is_live: bool = False
+    market_id: int | None = None
+    source_collected_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "target_minute": self.target_minute,
             "snapshot_id": self.snapshot_id,
-            "collected_at": self.collected_at.isoformat() if self.collected_at else None,
+            "collected_at": (
+                self.collected_at.isoformat() if self.collected_at else None
+            ),
             "changed_at": self.changed_at.isoformat() if self.changed_at else None,
             "minutes_before_start": self.minutes_before_start,
             "quote_id": self.quote_id,
@@ -58,6 +65,15 @@ class QuoteTrace:
             "exchange_side": self.exchange_side,
             "exchange_level": self.exchange_level,
             "choice_name": self.choice_name,
+            "canonical_market_key": self.canonical_market_key,
+            "market_type_id": self.market_type_id,
+            "is_live": self.is_live,
+            "market_id": self.market_id,
+            "source_collected_at": (
+                self.source_collected_at.isoformat()
+                if self.source_collected_at
+                else None
+            ),
         }
 
 
@@ -100,6 +116,42 @@ class MarketCandidate:
     line: Decimal | None
     choices: dict[str, QuotePoint | None]
 
+    def contract_trace(self, target_minute: int) -> dict[str, Any]:
+        """Line provenance is usable independently from optional outcome prices."""
+        line, book = self.market_line, self.bookie
+        meta = next(
+            (
+                choice.meta_by_minute[target_minute]
+                for choice in book.choices.values()
+                if target_minute in choice.meta_by_minute
+            ),
+            None,
+        )
+        return {
+            "target_minute": target_minute,
+            "market_group": line.market_group,
+            "market_period": line.market_period,
+            "market_name": line.market_name,
+            "line_value": line.line_value,
+            "canonical_market_key": line.canonical_market_key,
+            "market_type_id": line.market_type_id,
+            "is_live": line.is_live,
+            "market_id": book.market_id or line.market_id,
+            "bookie_id": book.bookie_id,
+            "bookie_name": book.bookie_name,
+            "source": book.source,
+            "exchange_side": book.exchange_side,
+            "exchange_level": book.exchange_level,
+            "snapshot_id": getattr(meta, "snapshot_id", None),
+            "quote_id": getattr(meta, "quote_id", None),
+            "collected_at": (
+                meta.collected_at.isoformat() if meta and meta.collected_at else None
+            ),
+            "source_collected_at": (
+                meta.changed_at.isoformat() if meta and meta.changed_at else None
+            ),
+        }
+
     @property
     def market_period(self) -> str:
         return self.market_line.market_period
@@ -107,7 +159,9 @@ class MarketCandidate:
     def is_complete(self, request: MarketSnapshotRequest) -> bool:
         if request.line_input_name is not None and self.line is None:
             return False
-        return all(self.choices.get(choice.key) is not None for choice in request.choices)
+        return all(
+            self.choices.get(choice.key) is not None for choice in request.choices
+        )
 
 
 @dataclass(frozen=True)
@@ -134,8 +188,14 @@ def _decimal(value: object) -> Decimal | None:
     return result if result.is_finite() else None
 
 
-def _identity_key(identity: MarketIdentity | MarketLineOddsTrajectory) -> tuple[str, str, str]:
-    return (_normalize(identity.market_group), _normalize(identity.market_period), _normalize(identity.market_name))
+def _identity_key(
+    identity: MarketIdentity | MarketLineOddsTrajectory,
+) -> tuple[str, str, str]:
+    return (
+        _normalize(identity.market_group),
+        _normalize(identity.market_period),
+        _normalize(identity.market_name),
+    )
 
 
 def _iter_market_lines(
@@ -154,8 +214,8 @@ def _matching_choices(
     expected = _normalize(choice_name)
     return [
         choice
-        for current_name, choice in bookie.choices.items()
-        if _normalize(current_name) == expected
+        for choice in bookie.choices.values()
+        if _normalize(choice.choice_name) == expected and choice.main_line is not False
     ]
 
 
@@ -189,12 +249,17 @@ def _read_projected_quote(
             missing.add(request.exchange_size_input_name)
         return None
     odds_price = _decimal(choice.odds_values[target_minute])
-    if odds_price is None or odds_price <= 0:
+    if odds_price is None or odds_price <= 1:
         invalid.add(request.input_name)
         return None
 
     meta = choice.meta_by_minute.get(target_minute)
     exchange_size = _decimal(getattr(meta, "exchange_size", None))
+    if exchange_size is not None and exchange_size < 0:
+        invalid.add(
+            request.exchange_size_input_name or request.input_name + ":exchange_size"
+        )
+        exchange_size = None
     if request.exchange_size_input_name:
         if exchange_size is None:
             missing.add(request.exchange_size_input_name)
@@ -223,6 +288,11 @@ def _read_projected_quote(
             exchange_side=bookie.exchange_side,
             exchange_level=bookie.exchange_level,
             choice_name=choice.choice_name,
+            canonical_market_key=market_line.canonical_market_key,
+            market_type_id=market_line.market_type_id,
+            is_live=market_line.is_live,
+            market_id=bookie.market_id or market_line.market_id,
+            source_collected_at=getattr(meta, "changed_at", None),
         ),
     )
 
@@ -242,17 +312,43 @@ def extract_market_snapshot(
 
     # Normalize the small request vocabulary once, instead of once per line.
     identities = {_identity_key(identity) for identity in request.identities}
-    for market_line in _iter_market_lines(context):
-        if _identity_key(market_line) not in identities:
+    pairs = {
+        (_normalize(i.market_group), _normalize(i.market_period))
+        for i in request.identities
+    }
+    lines = (
+        (line for pair in pairs for line in context.market_index.get(pair, ()))
+        if context.market_index
+        else _iter_market_lines(context)
+    )
+    for market_line in lines:
+        if context.market_index:
+            if (
+                _normalize(market_line.market_group),
+                _normalize(market_line.market_period),
+            ) not in pairs:
+                continue
+        elif _identity_key(market_line) not in identities:
             continue
         matching_bookies = [
             bookie
             for bookie in market_line.bookies.values()
             if bookie.bookie_id == request.bookie_id
             and bookie.exchange_side == request.exchange_side
-            and bookie.exchange_level == request.exchange_level
+            and (
+                bool(context.market_index)
+                or bookie.exchange_level == request.exchange_level
+            )
         ]
-        if len(matching_bookies) > 1:
+        # Exchange depth belongs to an observation, not to the contract. The
+        # provider may expose the best level at different depths per outcome.
+        sources = {bookie.source for bookie in matching_bookies}
+        levels = [bookie.exchange_level for bookie in matching_bookies]
+        if len(matching_bookies) > 1 and (
+            not context.market_index
+            or len(sources) > 1
+            or len(set(levels)) != len(levels)
+        ):
             affected = {choice.input_name for choice in request.choices}
             affected.update(
                 choice.exchange_size_input_name
@@ -270,8 +366,7 @@ def extract_market_snapshot(
                     "line_value": market_line.line_value,
                     "bookie_id": request.bookie_id,
                     "sources": sorted(
-                        str(bookie.source or "unknown")
-                        for bookie in matching_bookies
+                        str(bookie.source or "unknown") for bookie in matching_bookies
                     ),
                 }
             )
@@ -279,12 +374,15 @@ def extract_market_snapshot(
         if not matching_bookies:
             continue
 
-        bookie = matching_bookies[0]
+        bookie = min(matching_bookies, key=lambda item: item.exchange_level)
         line = None
         if request.line_input_name:
             line = _decimal(market_line.line_value)
             if line is None:
-                if market_line.line_value is None or not str(market_line.line_value).strip():
+                if (
+                    market_line.line_value is None
+                    or not str(market_line.line_value).strip()
+                ):
                     missing.add(request.line_input_name)
                 else:
                     invalid.add(request.line_input_name)
@@ -292,7 +390,20 @@ def extract_market_snapshot(
         points = {
             choice_request.key: _read_projected_quote(
                 market_line=market_line,
-                bookie=bookie,
+                bookie=min(
+                    (
+                        item
+                        for item in matching_bookies
+                        if any(
+                            target_minute in choice.odds_values
+                            for choice in _matching_choices(
+                                item, choice_request.choice_name
+                            )
+                        )
+                    ),
+                    key=lambda item: item.exchange_level,
+                    default=bookie,
+                ),
                 request=choice_request,
                 target_minute=target_minute,
                 missing=missing,

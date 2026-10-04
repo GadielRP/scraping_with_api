@@ -29,17 +29,31 @@ def _series_result(series: P4SeriesInput) -> P4SeriesResult:
             "ACCELERATION_RAW": None,
             "DECELERATION_RAW": None,
         }
-    if not series.operative_endpoint_present:
+    if (
+        not series.operative_endpoint_present
+        and "LINE_CONTRACT_ENDED" in series.diagnostics
+    ):
         status = "CONTRACT_ENDED"
-    elif len(series.points) < 2 or gap_present:
-        status = "PARTIAL"
+    elif not series.operative_endpoint_present or len(series.points) < 2:
+        status = "INSUFFICIENT_DATA"
     else:
         status = "ACTIVE"
+    if status != "ACTIVE":
+        # Keep counts and observation identity, but expose no artificial movement.
+        features = {
+            key: (
+                ([] if isinstance(value, list) else None)
+                if key.endswith("_RAW")
+                else value
+            )
+            for key, value in features.items()
+        }
+        signals = {key: None for key in signals}
     return P4SeriesResult(
         series_id=series.series_id,
         status=status,
         market=series.market_dict(),
-        points=tuple(point.to_dict() for point in series.points),
+        points=series.points,
         legs=tuple(legs),
         raw_temporal_features=features,
         structural_signals=signals,
@@ -66,16 +80,50 @@ def build_trajectory_features(
     *,
     apply_relations: bool,
 ) -> tuple[P4SeriesResult, ...]:
-    results = [_series_result(series) for series in series_inputs]
+    results = []
+    for series in series_inputs:
+        try:
+            results.append(_series_result(series))
+        except Exception as exc:
+            results.append(
+                P4SeriesResult(
+                    series_id=series.series_id,
+                    market=series.market_dict(),
+                    points=series.points,
+                    legs=(),
+                    raw_temporal_features={},
+                    structural_signals={},
+                    status="ERROR",
+                    traceability={
+                        "OPERATIVE_ENDPOINT_PRESENT": series.operative_endpoint_present,
+                        "OBSERVATION_COUNT": len(series.points),
+                        "MISSING_TARGET_MINUTES": list(series.missing_target_minutes),
+                        "ERROR_CLASS": type(exc).__name__,
+                    },
+                )
+            )
     if apply_relations:
-        payloads = [result.to_dict() for result in results]
+        # Relations need checkpoint values only; never serialize provenance here.
+        payloads = [
+            {
+                "SERIES_ID": result.series_id,
+                "MARKET": result.market,
+                "POINTS": [
+                    {"TARGET_MINUTE": point.target_minute, "VALUE": point.value}
+                    for point in result.points
+                ],
+            }
+            for result in results
+            if result.status != "ERROR"
+        ]
         relation_by_series = build_book_exchange_relation_changes(payloads)
         updated: list[P4SeriesResult] = []
         for result in results:
             signals = dict(result.structural_signals)
-            signals["BOOK_EXCHANGE_RELATION_CHANGE_RAW"] = relation_by_series.get(
-                result.series_id
-            )
+            if result.status == "ACTIVE":
+                signals["BOOK_EXCHANGE_RELATION_CHANGE_RAW"] = relation_by_series.get(
+                    result.series_id
+                )
             updated.append(
                 P4SeriesResult(
                     series_id=result.series_id,

@@ -1,4 +1,4 @@
-"""Pure, deterministic P5 v3.0 scoring functions."""
+"""Pure scoring formulas preserved by the P5 v4 execution contract."""
 
 from __future__ import annotations
 
@@ -7,9 +7,7 @@ from decimal import Decimal
 
 from .calculation_models import (
     BookmakerMemoryProfile,
-    MemoryQueryKey,
     MemorySample,
-    historical_match_to_dict,
 )
 
 MIN_SAMPLE_SIZE = 3
@@ -73,82 +71,6 @@ def profile_strength(score: Decimal) -> str:
     return "STRONG"
 
 
-def _profile_base(
-    *,
-    bookmaker: str,
-    bookie_id: int,
-    target_minute: int | None,
-    key: MemoryQueryKey | None,
-    p5_status: str,
-    memory_status: str,
-    reason: str | None,
-    diagnostics: dict | None = None,
-) -> dict:
-    return {
-        "bookmaker": bookmaker,
-        "bookie_id": bookie_id,
-        "p5_status": p5_status,
-        "p5_valid": False,
-        "p5_direction": "NONE",
-        "p5": ZERO,
-        "p5_strength": "NONE",
-        "market_group": key.market_group if key else None,
-        "market_period": key.market_period if key else None,
-        "market_shape": key.market_shape if key else None,
-        "target_minute": target_minute,
-        "current_price_vector": key.price_vector() if key else None,
-        "memory_status": memory_status,
-        "reason": reason,
-        "diagnostics": diagnostics or {},
-    }
-
-
-def not_eligible_profile(
-    *,
-    bookmaker: str,
-    bookie_id: int,
-    target_minute: int | None,
-    reason: str,
-    key: MemoryQueryKey | None = None,
-    diagnostics: dict | None = None,
-) -> BookmakerMemoryProfile:
-    return BookmakerMemoryProfile(
-        **_profile_base(
-            bookmaker=bookmaker,
-            bookie_id=bookie_id,
-            target_minute=target_minute,
-            key=key,
-            p5_status="INSUFFICIENT_DATA",
-            memory_status="NOT_ELIGIBLE",
-            reason=reason,
-            diagnostics=diagnostics,
-        )
-    )
-
-
-def error_profile(
-    *,
-    bookmaker: str,
-    bookie_id: int,
-    target_minute: int | None,
-    reason: str,
-    key: MemoryQueryKey | None = None,
-    diagnostics: dict | None = None,
-) -> BookmakerMemoryProfile:
-    return BookmakerMemoryProfile(
-        **_profile_base(
-            bookmaker=bookmaker,
-            bookie_id=bookie_id,
-            target_minute=target_minute,
-            key=key,
-            p5_status="ERROR",
-            memory_status="ERROR",
-            reason=reason,
-            diagnostics=diagnostics,
-        )
-    )
-
-
 def calculate_memory_profile(
     *,
     bookmaker: str,
@@ -157,8 +79,6 @@ def calculate_memory_profile(
     debug_mode: bool = False,
 ) -> BookmakerMemoryProfile:
     """Calculate one independent bookmaker profile from one complete sample."""
-    if sample.sample_size != len(sample.historical_matches):
-        raise ValueError("sample_size does not match historical_matches")
     if min(sample.wins_home, sample.wins_draw, sample.wins_away) < 0:
         raise ValueError("sample outcome counts cannot be negative")
 
@@ -181,9 +101,6 @@ def calculate_memory_profile(
             sample.key.market_shape,
         )
 
-    history = tuple(
-        historical_match_to_dict(match) for match in sample.historical_matches
-    )
     common = {
         "bookmaker": bookmaker,
         "bookie_id": sample.key.bookie_id,
@@ -196,9 +113,9 @@ def calculate_memory_profile(
         "wins_home": sample.wins_home,
         "wins_draw": sample.wins_draw,
         "wins_away": sample.wins_away,
-        "historical_matches": history,
+        "sample_id": sample.sample_id,
         "diagnostics": {
-            "eligibility": list(sample.eligibility_diagnostics),
+            "exclusions": sample.exclusions,
             "query_key": sample.key.to_dict(),
         },
     }
@@ -215,7 +132,7 @@ def calculate_memory_profile(
             p5_status="INSUFFICIENT_DATA",
             p5_valid=False,
             p5_direction="NONE",
-            p5=ZERO,
+            p5=None,
             p5_strength="NONE",
             memory_status="INSUFFICIENT_DATA",
             reason="minimum_sample_size_not_met",
@@ -368,9 +285,7 @@ def calculate_memory_profile(
 __all__ = [
     "MIN_SAMPLE_SIZE",
     "calculate_memory_profile",
-    "error_profile",
     "msri_signal",
-    "not_eligible_profile",
     "profile_strength",
     "sample_weight",
 ]

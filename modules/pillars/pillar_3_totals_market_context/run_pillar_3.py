@@ -1,250 +1,46 @@
-"""Thin orchestrator for the Pillar 3 Over/Under Signal Profile."""
+"""Composition boundary for P3's independent market readings."""
 
-from __future__ import annotations
-
-import logging
-from typing import Any
-
-from modules.pillars.context import EventContext, EventIdentity
-from modules.pillars.market_audit import build_raw_audit, json_inputs
-from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
-from modules.pillars.trajectory_selection import TargetMinuteSelection
-from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
-
-from .periods import (
-    EXCHANGE_OU_1H_LINE_INPUT_NAME,
-    EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
-    EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
-    EXCHANGE_OU_LINE_INPUT_NAME,
-    EXCHANGE_OU_ODDS_INPUT_NAMES,
-    EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
-    P3_TOTALS_PERIOD_SCOPES,
-    resolve_pillar_status,
-)
+from modules.pillars.market_evaluation import prepare_event_markets
+from modules.pillars.profile_evaluation import evaluate_snapshot_profile
 from .signal_engine import ENGINE_VERSION, build_p3_signal_profile
 from .snapshot_policy import extract_p3_market_snapshot
 
-
-logger = logging.getLogger(__name__)
-
-
-def _empty_inputs() -> dict[str, float | None]:
-    values = {
-        name: None
-        for scope in P3_TOTALS_PERIOD_SCOPES
-        for name in scope.input_names()
-    }
-    values.update(
-        {
-            name: None
-            for name in (
-                EXCHANGE_OU_LINE_INPUT_NAME,
-                *EXCHANGE_OU_ODDS_INPUT_NAMES,
-                *EXCHANGE_OU_SIZE_TRACE_INPUT_NAMES,
-            )
-        }
+ANALYTICAL_FIELDS = frozenset(
+    (
+        "EDGE",
+        "LINE_DIFF_RAW",
+        "LINE_GAP",
+        "RELATION",
+        "GAP",
+        "FT_1H_OU_RELATION",
+        "FT_1H_OU_GAP",
+        "BACK_LAY_RELATION",
+        "EXCHANGE_INTERNAL_GAP",
     )
-    values.update({
-        name: None
-        for name in (
-            EXCHANGE_OU_1H_LINE_INPUT_NAME,
-            *EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
-            *EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
-        )
-    })
-    return values
-
-
-def _log_signal_profile(profile: dict[str, Any]) -> None:
-    for period in ("FT", "1H"):
-        block = profile.get(period)
-        if not isinstance(block, dict):
-            logger.info("P3 SIGNAL | %s | value=None", period)
-            continue
-        for section, values in block.items():
-            if isinstance(values, dict):
-                for field, value in values.items():
-                    logger.info(
-                        "P3 SIGNAL | %s.%s | field=%s | value=%s",
-                        period,
-                        section,
-                        field,
-                        value,
-                    )
-            else:
-                logger.info(
-                    "P3 SIGNAL | %s | field=%s | value=%s",
-                    period,
-                    section,
-                    values,
-                )
-    ft_1h = profile.get("FT_1H")
-    if not isinstance(ft_1h, dict):
-        logger.info("P3 SIGNAL | FT_1H | value=None")
-        return
-    for field, value in ft_1h.items():
-        if isinstance(value, dict):
-            for nested_field, nested_value in value.items():
-                logger.info(
-                    "P3 SIGNAL | FT_1H | field=%s.%s | value=%s",
-                    field,
-                    nested_field,
-                    nested_value,
-                )
-        else:
-            logger.info(
-                "P3 SIGNAL | FT_1H | field=%s | value=%s",
-                field,
-                value,
-            )
+)
 
 
 def calculate_pillar_3(
-    event_context: EventIdentity | EventContext,
-    odds_trajectory_context: OddsTrajectoryContext,
+    event_context,
+    odds_trajectory_context,
     *,
-    target_selection: TargetMinuteSelection,
-    debug_mode: bool = False,
-) -> dict[str, Any]:
-    """Return the structural P3 profile for one pipeline-selected minute.
-
-    The returned dict is the mining producer output. The pipeline persists it
-    through ``P3MiningAdapter`` immediately after this function returns.
-    """
-    if odds_trajectory_context is None:
-        raise ValueError("odds_trajectory_context is required for Pillar 3")
-    extraction = extract_p3_market_snapshot(
-        event_context.event_id,
-        odds_trajectory_context,
-        target_selection,
+    target_selection,
+    debug_mode=False,
+    market_evaluation=None
+):
+    evaluation = market_evaluation or prepare_event_markets(
+        odds_trajectory_context, target_selection, event_context
     )
-    periods = extraction.period_diagnostics()
-    log_extraction_diagnostics(
-        logger, pillar="P3", event_id=event_context.event_id,
-        target_minute=extraction.target_minute, periods=periods,
-        full_time_requirement="any complete bookie: Over/Under line + both prices",
+    return evaluate_snapshot_profile(
+        event_context,
+        evaluation,
+        pillar=3,
+        engine_version=ENGINE_VERSION,
+        extract=extract_p3_market_snapshot,
+        build=build_p3_signal_profile,
+        metric_fields=ANALYTICAL_FIELDS,
         debug_mode=debug_mode,
     )
-    if debug_mode:
-        logger.info(
-            "P3 DEBUG | extraction | event_id=%s | target_minute=%s | abort_reason=%s",
-            event_context.event_id,
-            extraction.target_minute,
-            extraction.abort_reason,
-        )
-
-    base = {
-        "pillar_id": "pillar_3_totals_market_context",
-        "pillar_name": "Over/Under Market Signal Profile",
-        "engine_version": ENGINE_VERSION,
-        "event_id": event_context.event_id,
-        "participants": event_context.participants_label,
-        "P3_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": periods,
-        "MISSING_INPUTS": list(extraction.missing_inputs),
-        "INVALID_INPUTS": list(extraction.invalid_inputs),
-        "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
-    }
-
-    snapshot = extraction.snapshot
-    if snapshot is None:
-        inputs = _empty_inputs()
-        traces: dict[str, dict[str, Any]] = {}
-        for period_snapshot in (
-            extraction.full_time_snapshot,
-            extraction.first_half_snapshot,
-        ):
-            if period_snapshot is not None:
-                inputs.update(json_inputs(period_snapshot.input_values()))
-                traces.update(period_snapshot.input_trace())
-        if extraction.exchange_ou_snapshot is not None:
-            inputs.update(json_inputs(extraction.exchange_ou_snapshot.input_values()))
-            traces.update(extraction.exchange_ou_snapshot.input_trace())
-        if extraction.exchange_ou_1h_snapshot is not None:
-            inputs.update(json_inputs(extraction.exchange_ou_1h_snapshot.input_values(
-                line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
-                odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
-                size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
-            )))
-            traces.update(extraction.exchange_ou_1h_snapshot.input_trace(
-                line_name=EXCHANGE_OU_1H_LINE_INPUT_NAME,
-                odds_names=EXCHANGE_OU_1H_ODDS_INPUT_NAMES,
-                size_names=EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES,
-            ))
-        raw = build_raw_audit(
-            odds_context=odds_trajectory_context,
-            periods=periods,
-            inputs=inputs,
-            input_trace=traces,
-            extraction_diagnostics=extraction.extraction_diagnostics,
-            reason=extraction.abort_reason or "full_time_completeness_gate_failed",
-        )
-        logger.info(
-            "P3 signal profile unavailable for event_id=%s target_minute=%s reason=%s required_full_time_status=%s",
-            event_context.event_id,
-            extraction.target_minute,
-            raw.get("reason"),
-            extraction.full_time.status,
-        )
-        return {
-            **base,
-            "P3_STATUS": "INSUFFICIENT_DATA",
-            "status": "INSUFFICIENT_DATA",
-            "P3_SIGNAL_PROFILE": None,
-            "modules": [],
-            "raw": raw,
-        }
-
-    if debug_mode:
-        log_snapshot_inputs(logger, snapshot, pillar="P3")
-    profile_dto = build_p3_signal_profile(snapshot, debug_mode=debug_mode)
-    profile = profile_dto.to_dict()
-    optional_complete = extraction.first_half.status == "COMPLETE"
-    status = resolve_pillar_status(
-        required_complete=extraction.full_time.status == "COMPLETE",
-        required_usable=extraction.full_time.usable,
-        optional_complete=optional_complete,
-    )
-    raw = build_raw_audit(
-        odds_context=odds_trajectory_context,
-        periods=periods,
-        inputs=json_inputs(snapshot.input_values()),
-        input_trace=snapshot.input_trace(),
-        extraction_diagnostics=extraction.extraction_diagnostics,
-        reason=("full_time_bookies_incomplete" if extraction.full_time.status != "COMPLETE"
-                else None if optional_complete else "first_half_incomplete"),
-    )
-    module = {
-        "pillar_id": "pillar_3_totals_market_context",
-        "module_id": "p3_signal_engine",
-        "module_name": "Over/Under Market Signal Engine",
-        "engine_version": ENGINE_VERSION,
-        "P3_STATUS": status,
-        "status": status,
-        "P3_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": periods,
-        "P3_SIGNAL_PROFILE": profile,
-        "raw": raw,
-    }
-    if debug_mode:
-        _log_signal_profile(profile)
-    logger.info(
-        "P3 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ou_ft=%s betfair_ou_1h=%s",
-        event_context.event_id,
-        extraction.target_minute,
-        status,
-        extraction.first_half.status,
-        extraction.exchange_ou.status,
-        extraction.exchange_ou_1h.status,
-    )
-    return {
-        **base,
-        "P3_STATUS": status,
-        "status": status,
-        "P3_SIGNAL_PROFILE": profile,
-        "modules": [module],
-        "raw": raw,
-    }
 
 
 __all__ = ["ENGINE_VERSION", "calculate_pillar_3"]

@@ -7,14 +7,6 @@ from dataclasses import dataclass
 
 from modules.pillars.market_snapshot_extractor import MarketIdentity
 
-
-from modules.pillars.market_coverage import (
-    PERIOD_STATUS_COMPLETE, PERIOD_STATUS_PARTIAL, PERIOD_STATUS_AMBIGUOUS,
-    PERIOD_STATUS_INVALID, PERIOD_STATUS_INCOMPLETE,
-    resolve_period_status, resolve_pillar_status,
-)
-
-
 EXCHANGE_OU_LINE_INPUT_NAME = "BF_OU_FULL_TIME_LINE"
 EXCHANGE_OU_ODDS_INPUT_NAMES = (
     "BF_OU_BACK_OVER_FULL_TIME_ODDS_PRICE",
@@ -60,7 +52,6 @@ class TotalsPeriodScope:
     key: str
     display_name: str
     metric_token: str
-    required: bool
     identities: tuple[MarketIdentity, ...]
     pinnacle: TotalsBookInputSpec
     bet365: TotalsBookInputSpec
@@ -81,7 +72,6 @@ FULL_TIME_TOTALS_SCOPE = TotalsPeriodScope(
     key="full_time",
     display_name="Full Time",
     metric_token="FULL_TIME",
-    required=True,
     identities=(
         MarketIdentity("Over/Under", "Full Time", "Over/Under Full Time"),
         MarketIdentity(
@@ -106,10 +96,7 @@ FIRST_HALF_TOTALS_SCOPE = TotalsPeriodScope(
     key="first_half",
     display_name="First Half",
     metric_token="FIRST_HALF",
-    required=False,
-    identities=(
-        MarketIdentity("Over/Under", "1st Half", "Over/Under 1st Half"),
-    ),
+    identities=(MarketIdentity("Over/Under", "1st Half", "Over/Under 1st Half"),),
     pinnacle=TotalsBookInputSpec(
         line="PIN_1H_OU_LINE",
         over="PIN_1H_OVER_ODDS",
@@ -138,13 +125,6 @@ __all__ = [
     "EXCHANGE_OU_1H_SIZE_TRACE_INPUT_NAMES",
     "FULL_TIME_TOTALS_SCOPE",
     "P3_TOTALS_PERIOD_SCOPES",
-    "PERIOD_STATUS_AMBIGUOUS",
-    "PERIOD_STATUS_COMPLETE",
-    "PERIOD_STATUS_PARTIAL",
-    "PERIOD_STATUS_INCOMPLETE",
-    "PERIOD_STATUS_INVALID",
     "TotalsBookInputSpec",
     "TotalsPeriodScope",
-    "resolve_period_status",
-    "resolve_pillar_status",
 ]

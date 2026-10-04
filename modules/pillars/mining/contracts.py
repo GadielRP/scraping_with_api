@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Iterator
 
 from shared.temporal import utc_now
 
@@ -84,6 +85,33 @@ class PillarMiningRun:
     calculated_at: datetime = field(default_factory=utc_now)
 
 
+def iter_unit_layers(
+    units: tuple[PillarMiningUnit, ...],
+) -> Iterator[list[PillarMiningUnit]]:
+    """Visit parents before children in O(units + links), retaining sibling order."""
+    by_key = {}
+    children = defaultdict(list)
+    for unit in units:
+        if unit.unit_key in by_key:
+            raise ValueError(f"duplicate mining unit key: {unit.unit_key!r}")
+        by_key[unit.unit_key] = unit
+        children[unit.parent_unit_key].append(unit)
+    for unit in units:
+        parent = unit.parent_unit_key
+        if parent == unit.unit_key:
+            raise ValueError(f"unit {unit.unit_key!r} cannot parent itself")
+        if parent is not None and parent not in by_key:
+            raise ValueError(f"unknown parent {parent!r} for {unit.unit_key!r}")
+    layer = children.pop(None, [])
+    visited = 0
+    while layer:
+        visited += len(layer)
+        yield layer
+        layer = [child for unit in layer for child in children.pop(unit.unit_key, ())]
+    if visited != len(units):
+        raise ValueError("cycle detected in mining unit graph")
+
+
 def validate_mining_run(run: PillarMiningRun) -> None:
     """Reject malformed graphs before they reach persistence infrastructure."""
 
@@ -104,18 +132,14 @@ def validate_mining_run(run: PillarMiningRun) -> None:
     if run.canonical_status not in CANONICAL_STATUSES:
         raise ValueError(f"unsupported canonical status: {run.canonical_status!r}")
 
-    units_by_key: dict[str, PillarMiningUnit] = {}
     for unit in run.units:
         if not unit.unit_type.strip() or not unit.unit_key.strip():
             raise ValueError("unit_type and unit_key must not be empty")
-        if unit.unit_key in units_by_key:
-            raise ValueError(f"duplicate mining unit key: {unit.unit_key!r}")
         if unit.canonical_status not in CANONICAL_STATUSES:
             raise ValueError(
                 f"unsupported canonical status for {unit.unit_key!r}: "
                 f"{unit.canonical_status!r}"
             )
-        units_by_key[unit.unit_key] = unit
 
         metric_names: set[str] = set()
         for metric in unit.metrics:
@@ -138,20 +162,5 @@ def validate_mining_run(run: PillarMiningRun) -> None:
             if metric.value_type == "text" and not isinstance(metric.value, str):
                 raise TypeError(f"text metric {metric.name!r} must use str")
 
-    for unit in run.units:
-        if unit.parent_unit_key is not None:
-            if unit.parent_unit_key == unit.unit_key:
-                raise ValueError(f"unit {unit.unit_key!r} cannot parent itself")
-            if unit.parent_unit_key not in units_by_key:
-                raise ValueError(
-                    f"unknown parent {unit.parent_unit_key!r} for {unit.unit_key!r}"
-                )
-
-    for unit in run.units:
-        visited = {unit.unit_key}
-        parent_key = unit.parent_unit_key
-        while parent_key is not None:
-            if parent_key in visited:
-                raise ValueError(f"cycle detected at mining unit {parent_key!r}")
-            visited.add(parent_key)
-            parent_key = units_by_key[parent_key].parent_unit_key
+    for _ in iter_unit_layers(run.units):
+        pass

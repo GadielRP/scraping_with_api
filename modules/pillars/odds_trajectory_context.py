@@ -284,6 +284,7 @@ class BookieOddsTrajectory:
     exchange_side: Optional[str] = None
     exchange_level: int = 0
     choices: Dict[str, ChoiceOddsTrajectory] = field(default_factory=dict)
+    market_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -294,6 +295,9 @@ class MarketLineOddsTrajectory:
     market_period: str
     line_value: Optional[str]
     bookies: Dict[str, BookieOddsTrajectory] = field(default_factory=dict)
+    canonical_market_key: Optional[str] = None
+    market_type_id: Optional[int] = None
+    is_live: bool = False
 
 
 @dataclass(frozen=True)
@@ -305,6 +309,7 @@ class OddsTrajectoryContext:
     missing_target_minutes: List[int]
     markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = field(default_factory=dict)
     evaluation_as_of: Optional[datetime] = None
+    market_index: dict = field(default_factory=dict, repr=False, compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a compact exchange-aware representation of this context."""
@@ -371,8 +376,6 @@ class OddsTrajectoryContext:
         return _build_filtered_context(self, filtered_markets)
 
 
-
-
 def _filter_market_tree(
     source_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
     *,
@@ -410,6 +413,9 @@ def _filter_market_tree(
                         market_period=market_line.market_period,
                         line_value=market_line.line_value,
                         bookies=filtered_bookies,
+                        canonical_market_key=market_line.canonical_market_key,
+                        market_type_id=market_line.market_type_id,
+                        is_live=market_line.is_live,
                     )
 
                 if filtered_line_values:
@@ -432,6 +438,7 @@ def _copy_bookie_trajectory(bookie: BookieOddsTrajectory) -> BookieOddsTrajector
         source=bookie.source,
         exchange_side=bookie.exchange_side,
         exchange_level=bookie.exchange_level,
+        market_id=bookie.market_id,
         choices={
             name: ChoiceOddsTrajectory(
                 choice_name=choice.choice_name,
@@ -591,11 +598,21 @@ def _get_market_line_container(
     market_name: str,
     line_value_key: str,
     market_id: Optional[int],
+    canonical_market_key: Optional[str] = None,
+    market_type_id: Optional[int] = None,
+    is_live: bool = False,
 ) -> MarketLineOddsTrajectory:
     market_groups = markets.setdefault(market_group, {})
     market_periods = market_groups.setdefault(market_period, {})
     market_names = market_periods.setdefault(market_name, {})
-    market_line = market_names.get(line_value_key)
+    container_key = line_value_key
+    existing = market_names.get(container_key)
+    if existing is not None and (
+        existing.canonical_market_key != canonical_market_key
+        or existing.is_live != is_live
+    ):
+        container_key = f"{line_value_key}:{canonical_market_key}:{is_live}"
+    market_line = market_names.get(container_key)
     if market_line is None:
         market_line = MarketLineOddsTrajectory(
             market_id=None,
@@ -603,8 +620,11 @@ def _get_market_line_container(
             market_group=market_group,
             market_period=market_period,
             line_value=None if line_value_key == "__default__" else line_value_key,
+            canonical_market_key=canonical_market_key,
+            market_type_id=market_type_id,
+            is_live=is_live,
         )
-        market_names[line_value_key] = market_line
+        market_names[container_key] = market_line
     elif market_line.market_id is None and market_id is not None:
         market_line = MarketLineOddsTrajectory(
             market_id=market_id,
@@ -613,8 +633,11 @@ def _get_market_line_container(
             market_period=market_line.market_period,
             line_value=market_line.line_value,
             bookies=market_line.bookies,
+            canonical_market_key=market_line.canonical_market_key,
+            market_type_id=market_line.market_type_id,
+            is_live=market_line.is_live,
         )
-        market_names[line_value_key] = market_line
+        market_names[container_key] = market_line
     return market_line
 
 
@@ -626,7 +649,11 @@ def _get_bookie_container(
     source: Optional[str],
     exchange_side: Optional[str],
     exchange_level: int,
+    market_id: Optional[int] = None,
 ) -> BookieOddsTrajectory:
+    existing = market_line.bookies.get(bookie_key)
+    if existing is not None and existing.market_id != market_id:
+        bookie_key = f"{bookie_key}:market:{market_id}"
     bookie = market_line.bookies.get(bookie_key)
     if bookie is None:
         bookie = BookieOddsTrajectory(
@@ -635,6 +662,7 @@ def _get_bookie_container(
             source=source,
             exchange_side=exchange_side,
             exchange_level=exchange_level,
+            market_id=market_id,
         )
         market_line.bookies[bookie_key] = bookie
     elif bookie.bookie_id is None and bookie_id is not None:
@@ -645,6 +673,7 @@ def _get_bookie_container(
             exchange_side=bookie.exchange_side,
             exchange_level=bookie.exchange_level,
             choices=bookie.choices,
+            market_id=bookie.market_id,
         )
         market_line.bookies[bookie_key] = bookie
     return bookie
@@ -796,6 +825,9 @@ def build_odds_trajectory_context(
             market_name=market_name,
             line_value_key=line_value_key,
             market_id=_coerce_int(_row_val(row, "market_id")),
+            canonical_market_key=_coerce_text(_row_val(row, "canonical_market_key")),
+            market_type_id=_coerce_int(_row_val(row, "market_type_id")),
+            is_live=bool(_coerce_bool(_row_val(row, "is_live", False))),
         )
         bookie = _get_bookie_container(
             market_line,
@@ -805,6 +837,7 @@ def build_odds_trajectory_context(
             source=source,
             exchange_side=exchange_side,
             exchange_level=exchange_level,
+            market_id=_coerce_int(_row_val(row, "market_id")),
         )
         choice = _get_choice_container(
             bookie,

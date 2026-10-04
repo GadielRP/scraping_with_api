@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from .metrics import absolute_gap, ou_edge, pair_mean
+from modules.pillars.market_math import absolute_gap, ou_edge, pair_mean
 from .models import (
     P3MarketSnapshot,
     P3PeriodSnapshot,
@@ -26,8 +26,7 @@ from .signal_models import (
     RepresentativeSignal,
 )
 
-
-ENGINE_VERSION = "p3-signal-profile-v2"
+ENGINE_VERSION = "p3-signal-profile-v3"
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ def _build_book_reading(
     _log_assignment(f"{label}.OVER_ODDS", over_odds, debug_mode=debug_mode)
     _log_assignment(f"{label}.UNDER_ODDS", under_odds, debug_mode=debug_mode)
 
-    edge = _edge_if_available(over_odds, under_odds) if snapshot is not None and snapshot.is_complete() else None
+    edge = _edge_if_available(over_odds, under_odds)
     reading_direction = direction(edge) if edge is not None else None
     substitution = (
         "unavailable because OVER_ODDS or UNDER_ODDS is None"
@@ -187,7 +186,8 @@ def _build_period_signal(
         debug_mode=debug_mode,
     )
     comparable = (
-        snapshot.pinnacle is not None and snapshot.bet365 is not None
+        snapshot.pinnacle is not None
+        and snapshot.bet365 is not None
         and snapshot.pinnacle.market_period == snapshot.bet365.market_period
         and pinnacle.line is not None
         and bet365.line is not None
@@ -287,14 +287,16 @@ def _build_exchange_ou_reading(
     _log_assignment(f"{label}.UNDER_ODDS", under_odds, debug_mode=debug_mode)
     _log_assignment(f"{label}.OVER_SIZE", over_size, debug_mode=debug_mode)
     _log_assignment(f"{label}.UNDER_SIZE", under_size, debug_mode=debug_mode)
-    edge = _edge_if_available(over_odds, under_odds) if snapshot is not None and snapshot.is_complete() else None
+    edge = _edge_if_available(over_odds, under_odds)
     reading_direction = direction(edge) if edge is not None else None
     _log_formula(
         f"{label}.EDGE",
         "((1 / OVER_ODDS) - (1 / UNDER_ODDS)) / ((1 / OVER_ODDS) + (1 / UNDER_ODDS))",
-        "unavailable because OVER_ODDS or UNDER_ODDS is None"
-        if edge is None
-        else f"((1 / {_fmt(over_odds)}) - (1 / {_fmt(under_odds)})) / ((1 / {_fmt(over_odds)}) + (1 / {_fmt(under_odds)}))",
+        (
+            "unavailable because OVER_ODDS or UNDER_ODDS is None"
+            if edge is None
+            else f"((1 / {_fmt(over_odds)}) - (1 / {_fmt(under_odds)})) / ((1 / {_fmt(over_odds)}) + (1 / {_fmt(under_odds)}))"
+        ),
         edge,
         debug_mode=debug_mode,
     )
@@ -348,22 +350,29 @@ def _build_exchange_ou_signal(
     internal_gap = absolute_gap(back.edge, lay.edge) if comparable else None
     back_lay_relation = relation(back.direction, lay.direction) if comparable else None
     representative_edge = pair_mean(back.edge, lay.edge) if comparable else None
-    representative_direction = direction(representative_edge) if representative_edge is not None else None
+    representative_direction = (
+        direction(representative_edge) if representative_edge is not None else None
+    )
     _log_assignment(f"{prefix}.LINE", snapshot.line, debug_mode=debug_mode)
     if debug_mode:
         logger.info(
             "P3 FORMULA | %s.COMPARABLE | same_line=%s both_edges=%s -> %s",
             prefix,
             snapshot.lines_match,
-            back is not None and back.edge is not None and lay is not None and lay.edge is not None,
+            back is not None
+            and back.edge is not None
+            and lay is not None
+            and lay.edge is not None,
             comparable,
         )
     _log_formula(
         f"{prefix}.EXCHANGE_INTERNAL_GAP",
         "abs(BACK_EDGE - LAY_EDGE)",
-        "unavailable because matching complete BACK/LAY contracts are required"
-        if internal_gap is None
-        else f"abs({_fmt(back.edge)} - {_fmt(lay.edge)})",
+        (
+            "unavailable because matching complete BACK/LAY contracts are required"
+            if internal_gap is None
+            else f"abs({_fmt(back.edge)} - {_fmt(lay.edge)})"
+        ),
         internal_gap,
         debug_mode=debug_mode,
     )
@@ -377,9 +386,11 @@ def _build_exchange_ou_signal(
     _log_formula(
         f"{prefix}.REPRESENTATIVE.EDGE",
         "(BACK_EDGE + LAY_EDGE) / 2",
-        "unavailable because matching complete BACK/LAY contracts are required"
-        if representative_edge is None
-        else f"({_fmt(back.edge)} + {_fmt(lay.edge)}) / 2",
+        (
+            "unavailable because matching complete BACK/LAY contracts are required"
+            if representative_edge is None
+            else f"({_fmt(back.edge)} + {_fmt(lay.edge)}) / 2"
+        ),
         representative_edge,
         debug_mode=debug_mode,
     )
@@ -422,7 +433,9 @@ def _build_book_exchange_ou_signal(
         else None
     )
     line_diff_raw = (
-        None if books_line is None or exchange_ou.line is None else books_line - exchange_ou.line
+        None
+        if books_line is None or exchange_ou.line is None
+        else books_line - exchange_ou.line
     )
     line_gap = abs(line_diff_raw) if line_diff_raw is not None else None
     comparable = (
@@ -438,34 +451,42 @@ def _build_book_exchange_ou_signal(
         else None
     )
     comparison = (
-        relation(full_time.representative.direction, exchange_ou.representative.direction)
+        relation(
+            full_time.representative.direction, exchange_ou.representative.direction
+        )
         if comparable
         else None
     )
     _log_formula(
         f"{prefix}.LINE_DIFF_RAW",
         "BOOK_OU_LINE - BETFAIR_OU_LINE",
-        "unavailable because one unique bookmaker line and the Betfair line are required"
-        if line_diff_raw is None
-        else f"{_fmt(books_line)} - {_fmt(exchange_ou.line)}",
+        (
+            "unavailable because one unique bookmaker line and the Betfair line are required"
+            if line_diff_raw is None
+            else f"{_fmt(books_line)} - {_fmt(exchange_ou.line)}"
+        ),
         line_diff_raw,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{prefix}.LINE_GAP",
         "abs(LINE_DIFF_RAW)",
-        "unavailable because LINE_DIFF_RAW is unavailable"
-        if line_gap is None
-        else f"abs({_fmt(line_diff_raw)})",
+        (
+            "unavailable because LINE_DIFF_RAW is unavailable"
+            if line_gap is None
+            else f"abs({_fmt(line_diff_raw)})"
+        ),
         line_gap,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{prefix}.GAP",
         "abs(BOOK_OU_REP_EDGE - BETFAIR_OU_REP_EDGE)",
-        "unavailable because same-line representatives are required"
-        if gap is None
-        else f"abs({_fmt(full_time.representative.edge)} - {_fmt(exchange_ou.representative.edge)})",
+        (
+            "unavailable because same-line representatives are required"
+            if gap is None
+            else f"abs({_fmt(full_time.representative.edge)} - {_fmt(exchange_ou.representative.edge)})"
+        ),
         gap,
         debug_mode=debug_mode,
     )

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventContext, EventIdentity
 
 from .contracts import validate_mining_run
 from .ports import PillarMiningAdapter, PillarMiningWriter
-
 
 class PillarMiningService:
     VALID_STATUS_MODES = frozenset({"all", "successful_only"})
@@ -32,11 +31,17 @@ class PillarMiningService:
         self._enabled = bool(enabled)
         self._status_mode = normalized_mode
 
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
     def persist(
         self,
         pillar_id: str,
-        event_context: EventContext,
+        event_context: EventContext | EventIdentity,
         result: dict[str, Any],
+        *,
+        session=None,
     ) -> bool:
         if not self._enabled:
             return False
@@ -51,5 +56,8 @@ class PillarMiningService:
         if self._status_mode == "successful_only" and run.canonical_status != "SUCCESS":
             return False
 
-        self._writer.replace_run(run)
+        if session is None:
+            self._writer.replace_run(run)
+        else:
+            self._writer.replace_run(run, session=session)
         return True

@@ -45,27 +45,8 @@ class ThreeWayMarketSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class AsianHandicapSnapshot(TwoWayMarketSnapshot):
-    home_line: Decimal
-
-    def is_complete(self) -> bool:
-        return (
-            self.home is not None
-            and self.away is not None
-            and self.home_line is not None
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class HandicapSnapshot(AsianHandicapSnapshot):
-    """Specific snapshot contract for standard/run line Handicap markets."""
-
-    pass
-
-
-@dataclass(frozen=True, slots=True)
 class PartialTwoWayMarketSnapshot:
-    """One bookmaker branch that may retain only one side of a 1H market."""
+    """One bookmaker branch that may retain the available sides of a recognized contract."""
 
     home: QuotePoint | None
     away: QuotePoint | None
@@ -80,6 +61,7 @@ class PartialTwoWayMarketSnapshot:
 @dataclass(frozen=True, slots=True)
 class PartialAsianHandicapSnapshot(PartialTwoWayMarketSnapshot):
     home_line: Decimal | None
+    line_trace: dict[str, Any] | None = None
 
     def is_complete(self) -> bool:
         return (
@@ -205,16 +187,15 @@ class ExchangeSnapshot:
 class P2FullTimeSnapshot:
     """Independent Full Time bookie blocks, including unavailable branches."""
 
-    pinnacle_1x2: TwoWayMarketSnapshot | None
-    bet365_1x2: TwoWayMarketSnapshot | None
-    pinnacle_ah: AsianHandicapSnapshot | None
-    bet365_ah: AsianHandicapSnapshot | None
-    pinnacle_handicap: HandicapSnapshot | None
-    bet365_handicap: HandicapSnapshot | None
+    pinnacle_1x2: PartialTwoWayMarketSnapshot | None
+    bet365_1x2: PartialTwoWayMarketSnapshot | None
+    pinnacle_ah: PartialAsianHandicapSnapshot | None
+    bet365_ah: PartialAsianHandicapSnapshot | None
+    pinnacle_handicap: PartialHandicapSnapshot | None
+    bet365_handicap: PartialHandicapSnapshot | None
     betfair_1x2: ExchangeSnapshot | None
     betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None
     betfair_handicap: PartialAsianHandicapExchangeSnapshot | None = None
-    spread_market_type: str = "asian_handicap"
 
     def input_values(self) -> dict[str, Decimal | None]:
         values, _ = _side_inputs(self, FULL_TIME_SIDE_SCOPE, include_trace=False)
@@ -237,17 +218,6 @@ class P2FirstHalfSnapshot:
     bet365_handicap: PartialHandicapSnapshot | None
     betfair_ah: PartialAsianHandicapExchangeSnapshot | None = None
     betfair_handicap: PartialAsianHandicapExchangeSnapshot | None = None
-    spread_market_type: str = "asian_handicap"
-
-    def is_complete(self) -> bool:
-        return all(
-            side_bookie_complete(
-                getattr(self, f"{book}_1x2"),
-                getattr(self, f"{book}_ah"),
-                getattr(self, f"{book}_handicap"),
-            )
-            for book in ("pinnacle", "bet365")
-        )
 
     def has_any_input(self) -> bool:
         return any(
@@ -271,21 +241,6 @@ class P2FirstHalfSnapshot:
     def input_trace(self) -> dict[str, dict[str, Any]]:
         _, traces = _side_inputs(self, FIRST_HALF_SIDE_SCOPE, include_trace=True)
         return traces
-
-
-def side_bookie_complete(
-    one_x_two: TwoWayMarketSnapshot | PartialTwoWayMarketSnapshot | None,
-    asian_handicap: AsianHandicapSnapshot | PartialAsianHandicapSnapshot | None,
-    handicap: HandicapSnapshot | PartialHandicapSnapshot | None,
-) -> bool:
-    return (
-        one_x_two is not None
-        and one_x_two.is_complete()
-        and any(
-            branch is not None and branch.is_complete()
-            for branch in (asian_handicap, handicap)
-        )
-    )
 
 
 def _side_inputs(
@@ -323,6 +278,8 @@ def _side_inputs(
             line_name = getattr(spec, f"{book}_line")
             if line_name is not None:
                 assign(line_name, branch.home or branch.away, branch.home_line)
+                if include_trace and branch.line_trace:
+                    traces[line_name] = branch.line_trace
     if scope.includes_exchange and snapshot.betfair_1x2 is not None:
         for side in ("back", "lay"):
             branch = getattr(snapshot.betfair_1x2, side)
@@ -385,7 +342,7 @@ def _side_inputs(
 
 @dataclass(frozen=True, slots=True)
 class P2MarketSnapshot:
-    """Canonical P2 snapshot: Full Time is required, First Half is optional."""
+    """Independent market readings, with empty FT fields when FT is unavailable."""
 
     target_minute: int
     full_time: P2FullTimeSnapshot
@@ -440,11 +397,7 @@ class P2ExtractionResult:
 
     @property
     def snapshot(self) -> P2MarketSnapshot | None:
-        if (
-            self.target_minute is None
-            or self.full_time_snapshot is None
-            or not self.full_time.usable
-        ):
+        if self.target_minute is None or self.full_time_snapshot is None:
             return None
         return P2MarketSnapshot(
             target_minute=self.target_minute,

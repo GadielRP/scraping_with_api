@@ -1,261 +1,64 @@
-"""Thin orchestrator for the Pillar 2 Side Market Signal Profile."""
+"""Composition boundary for P2's independent market readings."""
 
-from __future__ import annotations
-
-import logging
-from typing import Any
-
-from modules.pillars.context import EventContext, EventIdentity
-from modules.pillars.market_audit import build_raw_audit, json_inputs
-from modules.pillars.extraction_logging import log_extraction_diagnostics, log_snapshot_inputs
-from modules.pillars.trajectory_selection import TargetMinuteSelection
-from modules.pillars.odds_trajectory_context import OddsTrajectoryContext
-
-from .periods import (
-    EXCHANGE_AH_1H_LINE_INPUT_NAME,
-    EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
-    EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
-    EXCHANGE_HANDICAP_LINE_INPUT_NAME,
-    EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
-    EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
-    EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
-    EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
-    EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
-    P2_SIDE_PERIOD_SCOPES,
-    resolve_pillar_status,
-)
+from modules.pillars.market_evaluation import prepare_event_markets
+from modules.pillars.profile_evaluation import evaluate_snapshot_profile
 from .signal_engine import ENGINE_VERSION, build_p2_signal_profile
 from .snapshot_policy import extract_p2_market_snapshot
 
-
-logger = logging.getLogger(__name__)
-
-
-def _empty_inputs() -> dict[str, float | None]:
-    values = {
-        name: None
-        for scope in P2_SIDE_PERIOD_SCOPES
-        for name in scope.input_names()
-    }
-    values.update({
-        name: None
-        for name in (
-            EXCHANGE_AH_1H_LINE_INPUT_NAME,
-            *EXCHANGE_AH_1H_ODDS_INPUT_NAMES,
-            *EXCHANGE_AH_1H_SIZE_TRACE_INPUT_NAMES,
-            EXCHANGE_HANDICAP_1H_LINE_INPUT_NAME,
-            *EXCHANGE_HANDICAP_1H_ODDS_INPUT_NAMES,
-            *EXCHANGE_HANDICAP_1H_SIZE_TRACE_INPUT_NAMES,
-        )
-    })
-    return values
-
-
-def _log_signal_profile(profile: dict[str, Any]) -> None:
-    def log_block(block_name: str, block: dict[str, Any] | None) -> None:
-        logger.info("P2 SIGNAL | %s | begin", block_name)
-        if block is None:
-            logger.info(
-                "P2 SIGNAL | %s | unavailable because required dependencies are incomplete",
-                block_name,
-            )
-            return
-        for field_name, value in block.items():
-            if isinstance(value, dict):
-                for nested_name, nested_value in value.items():
-                    logger.info(
-                        "P2 SIGNAL | %s | field=%s.%s | value=%s",
-                        block_name,
-                        field_name,
-                        nested_name,
-                        nested_value,
-                    )
-            else:
-                logger.info(
-                    "P2 SIGNAL | %s | field=%s | value=%s",
-                    block_name,
-                    field_name,
-                    value,
-                )
-
-    log_block("FT 1X2", profile["FT"]["1X2"])
-    for family in ("AH", "HANDICAP"):
-        if family in profile["FT"]:
-            log_block(f"FT {family}", profile["FT"][family])
-    log_block("FT CROSS MARKET", profile["FT"]["CROSS_MARKET"])
-    if profile["1H"] is not None:
-        log_block("1H 1X2", profile["1H"]["1X2"])
-        for family in ("AH", "HANDICAP"):
-            if family in profile["1H"]:
-                log_block(f"1H {family}", profile["1H"][family])
-        log_block("1H CROSS MARKET", profile["1H"]["CROSS_MARKET"])
-        log_block("FT_1H", profile["FT_1H"])
-    log_block("EXCHANGE", profile["EXCHANGE"])
-    log_block("BOOK_EXCHANGE", profile["BOOK_EXCHANGE"])
-    log_block("BETFAIR_FT_AH", profile.get("BETFAIR_FT_AH"))
-    log_block("BOOK_EXCHANGE_AH", profile.get("BOOK_EXCHANGE_AH"))
-    log_block("BETFAIR_1H_AH", profile.get("BETFAIR_1H_AH"))
-    log_block("BOOK_EXCHANGE_1H_AH", profile.get("BOOK_EXCHANGE_1H_AH"))
-    log_block("BETFAIR_FT_HANDICAP", profile.get("BETFAIR_FT_HANDICAP"))
-    log_block("BOOK_EXCHANGE_HANDICAP", profile.get("BOOK_EXCHANGE_HANDICAP"))
-    log_block("BETFAIR_1H_HANDICAP", profile.get("BETFAIR_1H_HANDICAP"))
-    log_block("BOOK_EXCHANGE_1H_HANDICAP", profile.get("BOOK_EXCHANGE_1H_HANDICAP"))
+ANALYTICAL_FIELDS = frozenset(
+    (
+        "PIN_EDGE",
+        "B365_EDGE",
+        "BOOK_RELATION",
+        "BOOK_GAP",
+        "REP_EDGE",
+        "LINE_GAP",
+        "PRICE_GAP",
+        "FT_1X2_HANDICAP_RELATION",
+        "FT_HANDICAP_CROSS_MARKET_GAP",
+        "1H_1X2_HANDICAP_RELATION",
+        "1H_HANDICAP_CROSS_MARKET_GAP",
+        "FT_1X2_AH_RELATION",
+        "FT_CROSS_MARKET_GAP",
+        "1H_1X2_AH_RELATION",
+        "1H_CROSS_MARKET_GAP",
+        "FT_1H_1X2_RELATION",
+        "FT_1H_1X2_GAP",
+        "BACK_EDGE",
+        "LAY_EDGE",
+        "BACK_LAY_RELATION",
+        "EXCHANGE_INTERNAL_GAP",
+        "HOME_SPREAD",
+        "AWAY_SPREAD",
+        "SIDE_SPREAD",
+        "RELATION",
+        "GAP",
+        "LINE_DIFF_RAW",
+    )
+)
 
 
 def calculate_pillar_2(
-    event_context: EventIdentity | EventContext,
-    odds_trajectory_context: OddsTrajectoryContext,
+    event_context,
+    odds_trajectory_context,
     *,
-    target_selection: TargetMinuteSelection,
-    debug_mode: bool = False,
-) -> dict[str, Any]:
-    """Extract one canonical minute and return its structural signal profile.
-
-    The returned dict is the mining producer output. The pipeline persists it
-    through ``P2MiningAdapter`` immediately after this function returns.
-    """
-    if odds_trajectory_context is None:
-        raise ValueError("odds_trajectory_context is required for Pillar 2")
-    extraction = extract_p2_market_snapshot(
-        event_context.event_id,
-        odds_trajectory_context,
-        target_selection,
+    target_selection,
+    debug_mode=False,
+    market_evaluation=None
+):
+    evaluation = market_evaluation or prepare_event_markets(
+        odds_trajectory_context, target_selection, event_context
     )
-    periods = extraction.period_diagnostics()
-    log_extraction_diagnostics(
-        logger, pillar="P2", event_id=event_context.event_id,
-        target_minute=extraction.target_minute, periods=periods,
-        full_time_requirement="any complete bookie: 1x2 + (AH OR Handicap), or exchange BACK/LAY",
+    return evaluate_snapshot_profile(
+        event_context,
+        evaluation,
+        pillar=2,
+        engine_version=ENGINE_VERSION,
+        extract=extract_p2_market_snapshot,
+        build=build_p2_signal_profile,
+        metric_fields=ANALYTICAL_FIELDS,
         debug_mode=debug_mode,
     )
-    if debug_mode:
-        logger.info(
-            "P2 DEBUG | extraction | event_id=%s | target_minute=%s",
-            event_context.event_id,
-            extraction.target_minute,
-        )
-        logger.info(
-            "P2 DEBUG | extraction | abort_reason=%s",
-            extraction.abort_reason,
-        )
-    base = {
-        "pillar_id": "pillar_2_side_market",
-        "pillar_name": "Side Market Signal Profile",
-        "engine_version": ENGINE_VERSION,
-        "event_id": event_context.event_id,
-        "participants": event_context.participants_label,
-        "P2_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": periods,
-        "MISSING_INPUTS": list(extraction.missing_inputs),
-        "INVALID_INPUTS": list(extraction.invalid_inputs),
-        "AMBIGUOUS_INPUTS": list(extraction.ambiguous_inputs),
-    }
-
-    snapshot = extraction.snapshot
-    if snapshot is None:
-        inputs = _empty_inputs()
-        traces: dict[str, dict[str, Any]] = {}
-        if extraction.full_time_snapshot is not None:
-            inputs.update(json_inputs(extraction.full_time_snapshot.input_values()))
-            traces.update(extraction.full_time_snapshot.input_trace())
-        if extraction.first_half_snapshot is not None:
-            inputs.update(json_inputs(extraction.first_half_snapshot.input_values()))
-            traces.update(extraction.first_half_snapshot.input_trace())
-        if extraction.exchange_ah_snapshot is not None:
-            optional = extraction.exchange_ah_snapshot
-            inputs.update(json_inputs(optional.input_values()))
-            traces.update(optional.input_trace())
-        if extraction.exchange_handicap_snapshot is not None:
-            optional = extraction.exchange_handicap_snapshot
-            optional_inputs = optional.input_values(
-                line_name=EXCHANGE_HANDICAP_LINE_INPUT_NAME,
-                odds_names=EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
-                size_names=EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
-            )
-            inputs.update(json_inputs(optional_inputs))
-            optional_traces = optional.input_trace(
-                line_name=EXCHANGE_HANDICAP_LINE_INPUT_NAME,
-                odds_names=EXCHANGE_HANDICAP_ODDS_INPUT_NAMES,
-                size_names=EXCHANGE_HANDICAP_SIZE_TRACE_INPUT_NAMES,
-            )
-            traces.update(optional_traces)
-
-        raw = build_raw_audit(
-            odds_context=odds_trajectory_context,
-            extraction_diagnostics=extraction.extraction_diagnostics,
-            periods=periods,
-            inputs=inputs,
-            input_trace=traces,
-            reason=extraction.abort_reason or "full_time_completeness_gate_failed",
-        )
-        logger.info(
-            "P2 signal profile unavailable for event_id=%s target_minute=%s reason=%s required_full_time_status=%s",
-            event_context.event_id,
-            extraction.target_minute,
-            raw.get("reason"),
-            extraction.full_time.status,
-        )
-        return {
-            **base,
-            "P2_STATUS": "INSUFFICIENT_DATA",
-            "status": "INSUFFICIENT_DATA",
-            "P2_SIGNAL_PROFILE": None,
-            "modules": [],
-            "raw": raw,
-        }
-
-    if debug_mode:
-        log_snapshot_inputs(logger, snapshot, pillar="P2")
-    profile_dto = build_p2_signal_profile(snapshot, debug_mode=debug_mode)
-    profile = profile_dto.to_dict()
-    optional_complete = extraction.first_half.status == "COMPLETE"
-    status = resolve_pillar_status(
-        required_complete=extraction.full_time.status == "COMPLETE",
-        required_usable=extraction.full_time.usable,
-        optional_complete=optional_complete,
-    )
-    raw = build_raw_audit(
-        odds_context=odds_trajectory_context,
-        extraction_diagnostics=extraction.extraction_diagnostics,
-        periods=periods,
-        inputs=json_inputs(snapshot.input_values()),
-        input_trace=snapshot.input_trace(),
-        reason=("full_time_bookies_incomplete" if extraction.full_time.status != "COMPLETE"
-                else None if optional_complete else "first_half_incomplete"),
-    )
-    module = {
-        "pillar_id": "pillar_2_side_market",
-        "module_id": "p2_signal_engine",
-        "module_name": "Side Market Signal Engine",
-        "engine_version": ENGINE_VERSION,
-        "P2_STATUS": status,
-        "status": status,
-        "P2_TARGET_MINUTE": extraction.target_minute,
-        "PERIODS": periods,
-        "P2_SIGNAL_PROFILE": profile,
-        "raw": raw,
-    }
-    if debug_mode:
-        _log_signal_profile(profile)
-    logger.info(
-        "P2 signal profile calculated for event_id=%s target_minute=%s status=%s first_half=%s betfair_ah_ft=%s betfair_ah_1h=%s betfair_handicap_ft=%s betfair_handicap_1h=%s",
-        event_context.event_id,
-        extraction.target_minute,
-        status,
-        extraction.first_half.status,
-        extraction.exchange_ah.status,
-        extraction.exchange_ah_1h.status,
-        extraction.exchange_handicap.status,
-        extraction.exchange_handicap_1h.status,
-    )
-    return {
-        **base,
-        "P2_STATUS": status,
-        "status": status,
-        "P2_SIGNAL_PROFILE": profile,
-        "modules": [module],
-        "raw": raw,
-    }
 
 
 __all__ = ["ENGINE_VERSION", "calculate_pillar_2"]

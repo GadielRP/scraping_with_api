@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
-
 PERIOD_STATUS_COMPLETE = "COMPLETE"
 PERIOD_STATUS_PARTIAL = "PARTIAL"
 PERIOD_STATUS_AMBIGUOUS = "AMBIGUOUS"
@@ -27,18 +26,6 @@ def resolve_period_status(
     if any(invalid_inputs):
         return PERIOD_STATUS_INVALID
     return PERIOD_STATUS_INCOMPLETE
-
-
-def resolve_pillar_status(
-    *,
-    required_complete: bool,
-    optional_complete: bool,
-    required_usable: bool | None = None,
-) -> str:
-    usable = required_complete if required_usable is None else required_usable
-    if not usable:
-        return "INSUFFICIENT_DATA"
-    return "ACTIVE" if required_complete and optional_complete else "PARTIAL"
 
 
 @dataclass(frozen=True, slots=True)

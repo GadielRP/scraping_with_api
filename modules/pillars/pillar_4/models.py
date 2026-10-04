@@ -2,58 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from .periods import bookmaker_role
-
-
-def _number(value: Decimal | None) -> float | None:
-    return None if value is None else float(value)
-
-
-def _timestamp(value: datetime | None) -> str | None:
-    return None if value is None else value.isoformat()
-
-
-@dataclass(frozen=True, slots=True)
-class P4Point:
-    point_id: str
-    value: Decimal
-    effective_at: datetime
-    availability_at: datetime
-    minutes_before_start: Decimal
-    snapshot_id: int | None = None
-    quote_id: int | None = None
-    collected_at: datetime | None = None
-    source_collected_at: datetime | None = None
-    source_limit: Decimal | None = None
-    exchange_size: Decimal | None = None
-    observation_kind: str = "PERSISTED_SNAPSHOT"
-    target_minute: int | None = None
-    distance_from_target_minutes: Decimal | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "POINT_ID": self.point_id,
-            "VALUE": _number(self.value),
-            "EFFECTIVE_AT": _timestamp(self.effective_at),
-            "AVAILABILITY_AT": _timestamp(self.availability_at),
-            "MINUTES_BEFORE_START": _number(self.minutes_before_start),
-            "SNAPSHOT_ID": self.snapshot_id,
-            "QUOTE_ID": self.quote_id,
-            "COLLECTED_AT": _timestamp(self.collected_at),
-            "SOURCE_COLLECTED_AT": _timestamp(self.source_collected_at),
-            "SOURCE_LIMIT": _number(self.source_limit),
-            "EXCHANGE_SIZE": _number(self.exchange_size),
-            "OBSERVATION_KIND": self.observation_kind,
-            "TARGET_MINUTE": self.target_minute,
-            "DISTANCE_FROM_TARGET_MINUTES": _number(
-                self.distance_from_target_minutes
-            ),
-        }
+from modules.pillars.trajectory_sampling import TrajectoryPoint, TrajectoryPointValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +32,7 @@ class P4SeriesInput:
     exchange_side: str | None
     exchange_level: int
     quote_id: int | None
-    points: tuple[P4Point, ...]
+    points: tuple[TrajectoryPoint | TrajectoryPointValue, ...]
     expected_target_minutes: tuple[int, ...] = ()
     missing_target_minutes: tuple[int, ...] = ()
     diagnostics: tuple[str, ...] = ()
@@ -118,7 +72,6 @@ class P4ExtractionResult:
     evaluation_as_of: datetime | None = None
     adaptive_series: tuple[P4SeriesInput, ...] = ()
     checkpoint_series: tuple[P4SeriesInput, ...] = ()
-    periods: dict[str, Any] = field(default_factory=dict)
     missing_inputs: tuple[str, ...] = ()
     missing_endpoint_details: tuple[dict[str, Any], ...] = ()
     invalid_inputs: tuple[str, ...] = ()
@@ -126,15 +79,11 @@ class P4ExtractionResult:
     excluded_future_points: int = 0
     source_series_seen: int = 0
     endpoint_series_present: int = 0
-    observed_bookie_ids: tuple[int, ...] = ()
-    issue_bookie_ids: tuple[int, ...] = ()
     reason: str | None = None
 
     @property
     def usable(self) -> bool:
-        return self.endpoint_series_present > 0 and bool(
-            self.adaptive_series or self.checkpoint_series
-        )
+        return bool(self.adaptive_series or self.checkpoint_series)
 
 
-__all__ = ["P4ExtractionResult", "P4Point", "P4SeriesInput"]
+__all__ = ["P4ExtractionResult", "P4SeriesInput"]

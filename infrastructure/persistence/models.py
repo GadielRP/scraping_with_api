@@ -363,6 +363,49 @@ class PillarMiningRun(Base):
     )
 
 
+class P5MemorySample(Base):
+    """Frozen population owned by one persisted P5 execution."""
+
+    __tablename__ = "p5_memory_samples"
+    sample_id = Column(String(36), primary_key=True)
+    run_id = Column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        ForeignKey("pillar_mining_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    query = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    cutoff = Column(UTCDateTime(), nullable=False)
+    policy_version = Column(String(80), nullable=False)
+    sample_size = Column(Integer, nullable=False)
+    wins_home = Column(Integer, nullable=False)
+    wins_draw = Column(Integer, nullable=False)
+    wins_away = Column(Integer, nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class P5MemorySampleMember(Base):
+    __tablename__ = "p5_memory_sample_members"
+    sample_id = Column(
+        String(36),
+        ForeignKey("p5_memory_samples.sample_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    event_id = Column(Integer, primary_key=True)
+    starts_at = Column(UTCDateTime(), nullable=False)
+    competition_id = Column(Integer)
+    season_id = Column(Integer)
+    country = Column(Text)
+    odds_home = Column(Numeric(8, 3), nullable=False)
+    odds_draw = Column(Numeric(8, 3))
+    odds_away = Column(Numeric(8, 3), nullable=False)
+    home_score = Column(Integer, nullable=False)
+    away_score = Column(Integer, nullable=False)
+    winner_side = Column(String(30), nullable=False)
+    outcome = Column(String(10), nullable=False)
+    last_sync_at = Column(UTCDateTime())
+    __table_args__ = (Index("ix_p5_sample_page", "sample_id", "starts_at", "event_id"),)
+
+
 class PillarMiningUnit(Base):
     """Hierarchical and independently evaluable node within a mining run."""
 
@@ -452,6 +495,9 @@ class PillarMiningUnit(Base):
             'run_id', 'unit_key', name='uq_pillar_mining_unit_identity'
         ),
         Index('idx_pillar_mining_unit_run_parent', 'run_id', 'parent_unit_id'),
+        # FK cascades search by parent alone; (run_id, parent_unit_id) cannot
+        # efficiently serve that lookup when replacing a complete hierarchy.
+        Index('idx_pillar_mining_unit_parent', 'parent_unit_id'),
         Index(
             'idx_pillar_mining_unit_type_status',
             'unit_type',

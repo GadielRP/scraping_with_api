@@ -83,7 +83,7 @@ class PeriodSignal:
     asian_handicap: AsianHandicapSignal | None
     cross_market: CrossMarketSignal
     handicap: AsianHandicapSignal | None = None
-    selected_spread: AsianHandicapSignal | None = None
+    cross_market_handicap: CrossMarketSignal | None = None
 
     def to_dict(self, *, relation_key: str, gap_key: str) -> dict[str, Any]:
         result = {
@@ -97,22 +97,27 @@ class PeriodSignal:
             relation_key=relation_key,
             gap_key=gap_key,
         )
+        if self.cross_market_handicap is not None:
+            result["CROSS_MARKET_HANDICAP"] = self.cross_market_handicap.to_dict(
+                relation_key=relation_key.replace("_AH_", "_HANDICAP_"),
+                gap_key=gap_key.replace("_CROSS_", "_HANDICAP_CROSS_"),
+            )
         return result
 
 
 @dataclass(frozen=True, slots=True)
 class ExchangeSignal:
-    back_edge: Decimal
-    back_direction: Direction
-    lay_edge: Decimal
-    lay_direction: Direction
-    back_lay_relation: Relation
-    exchange_internal_gap: Decimal
-    rep_edge: Decimal
-    direction: Direction
-    home_spread: Decimal
-    away_spread: Decimal
-    side_spread: Decimal
+    back_edge: Decimal | None
+    back_direction: Direction | None
+    lay_edge: Decimal | None
+    lay_direction: Direction | None
+    back_lay_relation: Relation | None
+    exchange_internal_gap: Decimal | None
+    rep_edge: Decimal | None
+    direction: Direction | None
+    home_spread: Decimal | None
+    away_spread: Decimal | None
+    side_spread: Decimal | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -179,10 +184,18 @@ class AsianHandicapExchangeSignal:
     def to_dict(self) -> dict[str, Any]:
         return {
             "LINE": _number(self.line),
-            "BACK_HOME_ODDS": None if self.back is None else _number(self.back.home_odds),
-            "BACK_AWAY_ODDS": None if self.back is None else _number(self.back.away_odds),
-            "BACK_HOME_SIZE": None if self.back is None else _number(self.back.home_size),
-            "BACK_AWAY_SIZE": None if self.back is None else _number(self.back.away_size),
+            "BACK_HOME_ODDS": (
+                None if self.back is None else _number(self.back.home_odds)
+            ),
+            "BACK_AWAY_ODDS": (
+                None if self.back is None else _number(self.back.away_odds)
+            ),
+            "BACK_HOME_SIZE": (
+                None if self.back is None else _number(self.back.home_size)
+            ),
+            "BACK_AWAY_SIZE": (
+                None if self.back is None else _number(self.back.away_size)
+            ),
             "BACK_EDGE": None if self.back is None else _number(self.back.edge),
             "BACK_DIRECTION": None if self.back is None else self.back.direction,
             "LAY_HOME_ODDS": None if self.lay is None else _number(self.lay.home_odds),
@@ -249,32 +262,40 @@ class P2SignalProfile:
     book_exchange_handicap_1h: AsianHandicapBookExchangeSignal | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        ft_handicap = self.full_time.selected_spread is self.full_time.handicap and self.full_time.handicap is not None
-        first_half_handicap = (
-            self.first_half is not None
-            and self.first_half.selected_spread is self.first_half.handicap
-            and self.first_half.handicap is not None
-        )
         result = {
             "FT": self.full_time.to_dict(
-                relation_key="FT_1X2_HANDICAP_RELATION" if ft_handicap else "FT_1X2_AH_RELATION",
-                gap_key="FT_HANDICAP_CROSS_MARKET_GAP" if ft_handicap else "FT_CROSS_MARKET_GAP",
+                relation_key="FT_1X2_AH_RELATION",
+                gap_key="FT_CROSS_MARKET_GAP",
             ),
             "1H": (
                 None
                 if self.first_half is None
                 else self.first_half.to_dict(
-                    relation_key="1H_1X2_HANDICAP_RELATION" if first_half_handicap else "1H_1X2_AH_RELATION",
-                    gap_key="1H_HANDICAP_CROSS_MARKET_GAP" if first_half_handicap else "1H_CROSS_MARKET_GAP",
+                    relation_key="1H_1X2_AH_RELATION",
+                    gap_key="1H_CROSS_MARKET_GAP",
                 )
             ),
             "FT_1H": None if self.ft_1h is None else self.ft_1h.to_dict(),
             "EXCHANGE": None if self.exchange is None else self.exchange.to_dict(),
-            "BOOK_EXCHANGE": None if self.book_exchange is None else self.book_exchange.to_dict(),
-            "BETFAIR_FT_AH": None if self.exchange_ah is None else self.exchange_ah.to_dict(),
-            "BOOK_EXCHANGE_AH": None if self.book_exchange_ah is None else self.book_exchange_ah.to_dict(),
-            "BETFAIR_1H_AH": None if self.exchange_ah_1h is None else self.exchange_ah_1h.to_dict(),
-            "BOOK_EXCHANGE_1H_AH": None if self.book_exchange_ah_1h is None else self.book_exchange_ah_1h.to_dict(),
+            "BOOK_EXCHANGE": (
+                None if self.book_exchange is None else self.book_exchange.to_dict()
+            ),
+            "BETFAIR_FT_AH": (
+                None if self.exchange_ah is None else self.exchange_ah.to_dict()
+            ),
+            "BOOK_EXCHANGE_AH": (
+                None
+                if self.book_exchange_ah is None
+                else self.book_exchange_ah.to_dict()
+            ),
+            "BETFAIR_1H_AH": (
+                None if self.exchange_ah_1h is None else self.exchange_ah_1h.to_dict()
+            ),
+            "BOOK_EXCHANGE_1H_AH": (
+                None
+                if self.book_exchange_ah_1h is None
+                else self.book_exchange_ah_1h.to_dict()
+            ),
         }
         if self.exchange_handicap is not None:
             result["BETFAIR_FT_HANDICAP"] = self.exchange_handicap.to_dict()
@@ -283,7 +304,9 @@ class P2SignalProfile:
         if self.exchange_handicap_1h is not None:
             result["BETFAIR_1H_HANDICAP"] = self.exchange_handicap_1h.to_dict()
         if self.book_exchange_handicap_1h is not None:
-            result["BOOK_EXCHANGE_1H_HANDICAP"] = self.book_exchange_handicap_1h.to_dict()
+            result["BOOK_EXCHANGE_1H_HANDICAP"] = (
+                self.book_exchange_handicap_1h.to_dict()
+            )
         return result
 
 

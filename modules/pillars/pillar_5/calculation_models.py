@@ -3,15 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from infrastructure.persistence.repositories.pillar_5_price_memory_repository import (
-        HistoricalPriceMatch,
-    )
-
+from typing import Any, Literal
 
 MarketShape = Literal["TWO_WAY", "THREE_WAY"]
 
@@ -79,12 +72,12 @@ class MemorySample:
     """Complete eligible and de-duplicated historical population for one key."""
 
     key: MemoryQueryKey
-    historical_matches: tuple[HistoricalPriceMatch, ...]
     sample_size: int
     wins_home: int
     wins_draw: int
     wins_away: int
-    eligibility_diagnostics: tuple[dict[str, Any], ...] = ()
+    exclusions: dict[str, int] = field(default_factory=dict)
+    sample_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +89,7 @@ class BookmakerMemoryProfile:
     p5_status: str
     p5_valid: bool
     p5_direction: str
-    p5: Decimal
+    p5: Decimal | None
     p5_strength: str
     market_group: str | None
     market_period: str | None
@@ -120,7 +113,7 @@ class BookmakerMemoryProfile:
     msri_raw: Decimal | None = None
     msri_signal: Decimal | None = None
     sample_weight: Decimal | None = None
-    historical_matches: tuple[dict[str, Any], ...] = ()
+    sample_id: str | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -130,7 +123,7 @@ class BookmakerMemoryProfile:
             "P5_STATUS": self.p5_status,
             "P5_VALID": self.p5_valid,
             "P5_DIRECTION": self.p5_direction,
-            "P5": float(self.p5),
+            "P5": _json_number(self.p5),
             "P5_STRENGTH": self.p5_strength,
             "market_group": self.market_group,
             "market_period": self.market_period,
@@ -154,40 +147,9 @@ class BookmakerMemoryProfile:
             "MSRI_RAW": _json_number(self.msri_raw),
             "MSRI_SIGNAL": _json_number(self.msri_signal),
             "SAMPLE_WEIGHT": _json_number(self.sample_weight),
-            "PROFILE_DIRECTION": self.p5_direction,
-            "PROFILE_VALID": self.p5_valid,
-            "PROFILE_SCORE": float(self.p5),
-            "PROFILE_STRENGTH": self.p5_strength,
-            "historical_matches": list(self.historical_matches),
+            "sample_id": self.sample_id,
             "diagnostics": self.diagnostics,
         }
-
-
-def historical_match_to_dict(match: HistoricalPriceMatch) -> dict[str, Any]:
-    """Serialize one auditable historical observation without losing fields."""
-
-    def timestamp(value: datetime | None) -> str | None:
-        return value.isoformat() if value is not None else None
-
-    return {
-        "event_id": match.event_id,
-        "sport": match.sport,
-        "competition_id": match.competition_id,
-        "season_id": match.season_id,
-        "country": match.country,
-        "bookie_id": match.bookie_id,
-        "market_group": match.market_group,
-        "market_period": match.market_period,
-        "has_draw": match.has_draw,
-        "starts_at": timestamp(match.starts_at),
-        "odds_home": float(match.odds_home),
-        "odds_draw": _json_number(match.odds_draw),
-        "odds_away": float(match.odds_away),
-        "home_score": match.home_score,
-        "away_score": match.away_score,
-        "winner_side": match.winner_side,
-        "last_sync_at": timestamp(match.last_sync_at),
-    }
 
 
 __all__ = [
@@ -196,5 +158,4 @@ __all__ = [
     "MemoryQueryKey",
     "MemorySample",
     "PopulationFilters",
-    "historical_match_to_dict",
 ]

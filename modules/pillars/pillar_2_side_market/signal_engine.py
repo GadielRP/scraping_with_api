@@ -5,9 +5,13 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from .metrics import absolute_gap, pair_mean, relative_spread, side_edge
+from modules.pillars.market_math import (
+    absolute_gap,
+    pair_mean,
+    relative_spread,
+    side_edge,
+)
 from .models import (
-    AsianHandicapSnapshot,
     P2FirstHalfSnapshot,
     P2FullTimeSnapshot,
     P2MarketSnapshot,
@@ -31,8 +35,7 @@ from .signal_models import (
     PeriodSignal,
 )
 
-
-ENGINE_VERSION = "p2-signal-profile-v2"
+ENGINE_VERSION = "p2-signal-profile-v3"
 
 logger = logging.getLogger(__name__)
 
@@ -138,9 +141,12 @@ def _build_book_1x2_signal(
     pin_direction = direction(pin_edge) if pin_edge is not None else None
     b365_direction = direction(b365_edge) if b365_edge is not None else None
     comparable = (
-        pinnacle is not None and bet365 is not None
-        and pinnacle.home is not None and bet365.home is not None
+        pinnacle is not None
+        and bet365 is not None
+        and pinnacle.home is not None
+        and bet365.home is not None
         and pinnacle.home.trace.market_period == bet365.home.trace.market_period
+        and pinnacle.home.trace.market_group == bet365.home.trace.market_group
         and pin_edge is not None
         and b365_edge is not None
         and pin_direction is not None
@@ -178,8 +184,12 @@ def _build_book_1x2_signal(
         b365_edge,
         debug_mode=debug_mode,
     )
-    _log_direction(f"{label}.PIN_DIRECTION", pin_edge, pin_direction, debug_mode=debug_mode)
-    _log_direction(f"{label}.B365_DIRECTION", b365_edge, b365_direction, debug_mode=debug_mode)
+    _log_direction(
+        f"{label}.PIN_DIRECTION", pin_edge, pin_direction, debug_mode=debug_mode
+    )
+    _log_direction(
+        f"{label}.B365_DIRECTION", b365_edge, b365_direction, debug_mode=debug_mode
+    )
     _log_formula(
         f"{label}.BOOK_GAP",
         "abs(PIN_EDGE - B365_EDGE)",
@@ -187,7 +197,13 @@ def _build_book_1x2_signal(
         book_gap,
         debug_mode=debug_mode,
     )
-    _log_relation(f"{label}.BOOK_RELATION", pin_direction, b365_direction, book_relation, debug_mode=debug_mode)
+    _log_relation(
+        f"{label}.BOOK_RELATION",
+        pin_direction,
+        b365_direction,
+        book_relation,
+        debug_mode=debug_mode,
+    )
     _log_formula(
         f"{label}.REP_EDGE",
         "(PIN_EDGE + B365_EDGE) / 2",
@@ -195,7 +211,9 @@ def _build_book_1x2_signal(
         rep_edge,
         debug_mode=debug_mode,
     )
-    _log_direction(f"{label}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode)
+    _log_direction(
+        f"{label}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode
+    )
     return BookMarketSignal(
         pin_edge=pin_edge,
         pin_direction=pin_direction,
@@ -209,8 +227,8 @@ def _build_book_1x2_signal(
 
 
 def _build_ah_signal(
-    pinnacle: AsianHandicapSnapshot | PartialAsianHandicapSnapshot | None,
-    bet365: AsianHandicapSnapshot | PartialAsianHandicapSnapshot | None,
+    pinnacle: PartialAsianHandicapSnapshot | None,
+    bet365: PartialAsianHandicapSnapshot | None,
     *,
     label: str,
     debug_mode: bool,
@@ -234,16 +252,23 @@ def _build_ah_signal(
     same_line = pin_line is not None and b365_line is not None and pin_line == b365_line
     comparable = (
         same_line
-        and pinnacle is not None and bet365 is not None
-        and pinnacle.home is not None and bet365.home is not None
+        and pinnacle is not None
+        and bet365 is not None
+        and pinnacle.home is not None
+        and bet365.home is not None
         and pinnacle.home.trace.market_period == bet365.home.trace.market_period
+        and pinnacle.home.trace.market_group == bet365.home.trace.market_group
         and pin_edge is not None
         and b365_edge is not None
         and pin_direction is not None
         and b365_direction is not None
     )
     rep_edge = pair_mean(pin_edge, b365_edge) if comparable else None
-    line_gap = absolute_gap(pin_line, b365_line) if pin_line is not None and b365_line is not None else None
+    line_gap = (
+        absolute_gap(pin_line, b365_line)
+        if pin_line is not None and b365_line is not None
+        else None
+    )
     price_gap = absolute_gap(pin_edge, b365_edge) if comparable else None
     book_relation = relation(pin_direction, b365_direction) if comparable else None
     representative_direction = direction(rep_edge) if rep_edge is not None else None
@@ -269,8 +294,12 @@ def _build_ah_signal(
         b365_edge,
         debug_mode=debug_mode,
     )
-    _log_direction(f"{label}.PIN_DIRECTION", pin_edge, pin_direction, debug_mode=debug_mode)
-    _log_direction(f"{label}.B365_DIRECTION", b365_edge, b365_direction, debug_mode=debug_mode)
+    _log_direction(
+        f"{label}.PIN_DIRECTION", pin_edge, pin_direction, debug_mode=debug_mode
+    )
+    _log_direction(
+        f"{label}.B365_DIRECTION", b365_edge, b365_direction, debug_mode=debug_mode
+    )
     _log_formula(
         f"{label}.LINE_GAP",
         "abs(PIN_LINE - B365_LINE)",
@@ -287,7 +316,13 @@ def _build_ah_signal(
             comparable,
         )
     if comparable:
-        _log_relation(f"{label}.BOOK_RELATION", pin_direction, b365_direction, book_relation, debug_mode=debug_mode)
+        _log_relation(
+            f"{label}.BOOK_RELATION",
+            pin_direction,
+            b365_direction,
+            book_relation,
+            debug_mode=debug_mode,
+        )
         _log_formula(
             f"{label}.PRICE_GAP",
             "abs(PIN_EDGE - B365_EDGE)",
@@ -302,7 +337,12 @@ def _build_ah_signal(
             rep_edge,
             debug_mode=debug_mode,
         )
-        _log_direction(f"{label}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode)
+        _log_direction(
+            f"{label}.DIRECTION",
+            rep_edge,
+            representative_direction,
+            debug_mode=debug_mode,
+        )
     elif debug_mode:
         logger.info(
             "P2 FORMULA | %s | direct price comparison unavailable: equal non-null lines and both edges are required",
@@ -353,7 +393,13 @@ def _build_cross_market_signal(
         cross_gap,
         debug_mode=debug_mode,
     )
-    _log_relation(f"{label}.RELATION", one_x_two.direction, spread.direction, cross_relation, debug_mode=debug_mode)
+    _log_relation(
+        f"{label}.RELATION",
+        one_x_two.direction,
+        spread.direction,
+        cross_relation,
+        debug_mode=debug_mode,
+    )
     return CrossMarketSignal(
         relation=cross_relation,
         gap=cross_gap,
@@ -388,114 +434,77 @@ def _build_period_signal(
             label=f"{label}.HANDICAP",
             debug_mode=debug_mode,
         )
-    selected_spread = handicap if snapshot.spread_market_type == "handicap" else asian_handicap
-    if selected_spread is None:
-        selected_spread = handicap or asian_handicap
     return PeriodSignal(
         one_x_two=one_x_two,
         asian_handicap=asian_handicap,
         handicap=handicap,
-        selected_spread=selected_spread,
         cross_market=_build_cross_market_signal(
             one_x_two,
-            selected_spread,
+            asian_handicap,
             label=f"{label}.CROSS_MARKET",
-            spread_label="HANDICAP" if selected_spread is handicap and handicap is not None else "AH",
+            spread_label="AH",
+            debug_mode=debug_mode,
+        ),
+        cross_market_handicap=_build_cross_market_signal(
+            one_x_two,
+            handicap,
+            label=f"{label}.CROSS_MARKET_HANDICAP",
+            spread_label="HANDICAP",
             debug_mode=debug_mode,
         ),
     )
 
 
-def _build_exchange_signal(snapshot: P2FullTimeSnapshot, *, debug_mode: bool) -> ExchangeSignal | None:
+def _build_exchange_signal(
+    snapshot: P2FullTimeSnapshot, *, debug_mode: bool
+) -> ExchangeSignal | None:
     if snapshot.betfair_1x2 is None:
         return None
-    back = snapshot.betfair_1x2.back
-    lay = snapshot.betfair_1x2.lay
-    if debug_mode:
-        logger.info("P2 FORMULA | FT.EXCHANGE | begin Betfair BACK/LAY calculation")
-        for name, value in (
-            ("BACK_HOME_PRICE", back.home.odds_price),
-            ("BACK_AWAY_PRICE", back.away.odds_price),
-            ("LAY_HOME_PRICE", lay.home.odds_price),
-            ("LAY_AWAY_PRICE", lay.away.odds_price),
-        ):
-            _log_assignment(f"FT.EXCHANGE.{name}", value, debug_mode=debug_mode)
-    back_edge = side_edge(back.home.odds_price, back.away.odds_price)
-    lay_edge = side_edge(lay.home.odds_price, lay.away.odds_price)
-    back_direction = direction(back_edge)
-    lay_direction = direction(lay_edge)
-    rep_edge = pair_mean(back_edge, lay_edge)
-    home_spread = relative_spread(back.home.odds_price, lay.home.odds_price)
-    away_spread = relative_spread(back.away.odds_price, lay.away.odds_price)
-    back_lay_relation = relation(back_direction, lay_direction)
-    exchange_internal_gap = absolute_gap(back_edge, lay_edge)
-    side_spread = pair_mean(home_spread, away_spread)
-    _log_formula(
-        "FT.EXCHANGE.BACK_EDGE",
-        "side_edge(BACK_HOME_PRICE, BACK_AWAY_PRICE)",
-        f"side_edge({_fmt(back.home.odds_price)}, {_fmt(back.away.odds_price)})",
+    back, lay = snapshot.betfair_1x2.back, snapshot.betfair_1x2.lay
+    back_edge = (
+        None if back is None else side_edge(back.home.odds_price, back.away.odds_price)
+    )
+    lay_edge = (
+        None if lay is None else side_edge(lay.home.odds_price, lay.away.odds_price)
+    )
+    back_direction = None if back_edge is None else direction(back_edge)
+    lay_direction = None if lay_edge is None else direction(lay_edge)
+    comparable = (
+        back is not None
+        and lay is not None
+        and back.home.trace.market_period == lay.home.trace.market_period
+        and back.home.trace.market_group == lay.home.trace.market_group
+    )
+    rep = pair_mean(back_edge, lay_edge) if comparable else None
+    home_spread = (
+        relative_spread(back.home.odds_price, lay.home.odds_price)
+        if comparable
+        else None
+    )
+    away_spread = (
+        relative_spread(back.away.odds_price, lay.away.odds_price)
+        if comparable
+        else None
+    )
+    result = ExchangeSignal(
         back_edge,
-        debug_mode=debug_mode,
-    )
-    _log_formula(
-        "FT.EXCHANGE.LAY_EDGE",
-        "side_edge(LAY_HOME_PRICE, LAY_AWAY_PRICE)",
-        f"side_edge({_fmt(lay.home.odds_price)}, {_fmt(lay.away.odds_price)})",
+        back_direction,
         lay_edge,
-        debug_mode=debug_mode,
-    )
-    _log_direction("FT.EXCHANGE.BACK_DIRECTION", back_edge, back_direction, debug_mode=debug_mode)
-    _log_direction("FT.EXCHANGE.LAY_DIRECTION", lay_edge, lay_direction, debug_mode=debug_mode)
-    _log_relation("FT.EXCHANGE.BACK_LAY_RELATION", back_direction, lay_direction, back_lay_relation, debug_mode=debug_mode)
-    _log_formula(
-        "FT.EXCHANGE.INTERNAL_GAP",
-        "abs(BACK_EDGE - LAY_EDGE)",
-        f"abs({_fmt(back_edge)} - {_fmt(lay_edge)})",
-        exchange_internal_gap,
-        debug_mode=debug_mode,
-    )
-    _log_formula(
-        "FT.EXCHANGE.REP_EDGE",
-        "(BACK_EDGE + LAY_EDGE) / 2",
-        f"({_fmt(back_edge)} + {_fmt(lay_edge)}) / 2",
-        rep_edge,
-        debug_mode=debug_mode,
-    )
-    _log_direction("FT.EXCHANGE.DIRECTION", rep_edge, direction(rep_edge), debug_mode=debug_mode)
-    _log_formula(
-        "FT.EXCHANGE.HOME_SPREAD",
-        "(HOME_LAY - HOME_BACK) / ((HOME_LAY + HOME_BACK) / 2)",
-        f"({_fmt(lay.home.odds_price)} - {_fmt(back.home.odds_price)}) / (({_fmt(lay.home.odds_price)} + {_fmt(back.home.odds_price)}) / 2)",
+        lay_direction,
+        relation(back_direction, lay_direction) if comparable else None,
+        absolute_gap(back_edge, lay_edge) if comparable else None,
+        rep,
+        direction(rep) if rep is not None else None,
         home_spread,
-        debug_mode=debug_mode,
-    )
-    _log_formula(
-        "FT.EXCHANGE.AWAY_SPREAD",
-        "(AWAY_LAY - AWAY_BACK) / ((AWAY_LAY + AWAY_BACK) / 2)",
-        f"({_fmt(lay.away.odds_price)} - {_fmt(back.away.odds_price)}) / (({_fmt(lay.away.odds_price)} + {_fmt(back.away.odds_price)}) / 2)",
         away_spread,
-        debug_mode=debug_mode,
+        pair_mean(home_spread, away_spread) if comparable else None,
     )
-    _log_formula(
-        "FT.EXCHANGE.SIDE_SPREAD",
-        "(HOME_SPREAD + AWAY_SPREAD) / 2",
-        f"({_fmt(home_spread)} + {_fmt(away_spread)}) / 2",
-        side_spread,
-        debug_mode=debug_mode,
-    )
-    return ExchangeSignal(
-        back_edge=back_edge,
-        back_direction=back_direction,
-        lay_edge=lay_edge,
-        lay_direction=lay_direction,
-        back_lay_relation=back_lay_relation,
-        exchange_internal_gap=exchange_internal_gap,
-        rep_edge=rep_edge,
-        direction=direction(rep_edge),
-        home_spread=home_spread,
-        away_spread=away_spread,
-        side_spread=side_spread,
-    )
+    if debug_mode:
+        logger.info(
+            "P2 FORMULA | FT.EXCHANGE | side_edge; pair_mean; relative_spread | result=%s",
+            result.to_dict(),
+        )
+    return result
 
 
 def _build_exchange_ah_reading(
@@ -521,9 +530,11 @@ def _build_exchange_ah_reading(
     _log_formula(
         f"{label}.EDGE",
         "(1 / HOME_ODDS - 1 / AWAY_ODDS) / ((1 / HOME_ODDS) + (1 / AWAY_ODDS))",
-        "unavailable because both HOME_ODDS and AWAY_ODDS are required"
-        if edge is None
-        else f"(1 / {_fmt(home)} - 1 / {_fmt(away)}) / ((1 / {_fmt(home)}) + (1 / {_fmt(away)}))",
+        (
+            "unavailable because both HOME_ODDS and AWAY_ODDS are required"
+            if edge is None
+            else f"(1 / {_fmt(home)} - 1 / {_fmt(away)}) / ((1 / {_fmt(home)}) + (1 / {_fmt(away)}))"
+        ),
         edge,
         debug_mode=debug_mode,
     )
@@ -551,8 +562,12 @@ def _build_exchange_ah_signal(
             logger.info("P2 FORMULA | %s | unavailable: market not present", prefix)
         return None
     line = snapshot.line
-    back = _build_exchange_ah_reading(snapshot.back, label=f"{prefix}.BACK", debug_mode=debug_mode)
-    lay = _build_exchange_ah_reading(snapshot.lay, label=f"{prefix}.LAY", debug_mode=debug_mode)
+    back = _build_exchange_ah_reading(
+        snapshot.back, label=f"{prefix}.BACK", debug_mode=debug_mode
+    )
+    lay = _build_exchange_ah_reading(
+        snapshot.lay, label=f"{prefix}.LAY", debug_mode=debug_mode
+    )
     back_edge = None if back is None else back.edge
     lay_edge = None if lay is None else lay.edge
     back_direction = None if back is None else back.direction
@@ -597,7 +612,9 @@ def _build_exchange_ah_signal(
         rep_edge,
         debug_mode=debug_mode,
     )
-    _log_direction(f"{prefix}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode)
+    _log_direction(
+        f"{prefix}.DIRECTION", rep_edge, representative_direction, debug_mode=debug_mode
+    )
     return AsianHandicapExchangeSignal(
         line=line,
         back=back,
@@ -623,7 +640,16 @@ def _build_book_exchange_ah_signal(
         if debug_mode:
             logger.info("P2 FORMULA | %s | unavailable: exchange spread absent", prefix)
         return None
-    if full_time is None or full_time.selected_spread is None:
+    spread = (
+        None
+        if full_time is None
+        else (
+            full_time.handicap
+            if expected_spread_type == "handicap"
+            else full_time.asian_handicap
+        )
+    )
+    if spread is None:
         return AsianHandicapBookExchangeSignal(
             line_diff_raw=None,
             line_gap=None,
@@ -631,24 +657,18 @@ def _build_book_exchange_ah_signal(
             gap=None,
         )
 
-    if (
-        expected_spread_type != "handicap"
-        and full_time.handicap is not None
-        and full_time.selected_spread is full_time.handicap
-    ) or (
-        expected_spread_type == "handicap"
-        and full_time.selected_spread is not full_time.handicap
-    ):
-        return None
-    spread = full_time.selected_spread
     pin_line = spread.pin_line
     b365_line = spread.b365_line
 
     books_line = pin_line if pin_line is not None and pin_line == b365_line else None
     line_diff_raw = (
-        None if books_line is None or exchange_ah.line is None else books_line - exchange_ah.line
+        None
+        if books_line is None or exchange_ah.line is None
+        else books_line - exchange_ah.line
     )
-    line_gap = absolute_gap(line_diff_raw, Decimal(0)) if line_diff_raw is not None else None
+    line_gap = (
+        absolute_gap(line_diff_raw, Decimal(0)) if line_diff_raw is not None else None
+    )
     comparable = (
         line_diff_raw == Decimal(0)
         and spread.rep_edge is not None
@@ -656,42 +676,42 @@ def _build_book_exchange_ah_signal(
         and exchange_ah.rep_edge is not None
         and exchange_ah.direction is not None
     )
-    gap = (
-        absolute_gap(spread.rep_edge, exchange_ah.rep_edge)
-        if comparable
-        else None
-    )
+    gap = absolute_gap(spread.rep_edge, exchange_ah.rep_edge) if comparable else None
     comparison = (
-        relation(spread.direction, exchange_ah.direction)
-        if comparable
-        else None
+        relation(spread.direction, exchange_ah.direction) if comparable else None
     )
     _log_assignment(f"{prefix}.BOOK_LINE", books_line, debug_mode=debug_mode)
     _log_assignment(f"{prefix}.BETFAIR_LINE", exchange_ah.line, debug_mode=debug_mode)
     _log_formula(
         f"{prefix}.LINE_DIFF_RAW",
         f"BOOK_{spread_label}_LINE - BETFAIR_{spread_label}_LINE",
-        "unavailable because both representative lines are required"
-        if line_diff_raw is None
-        else f"{_fmt(books_line)} - {_fmt(exchange_ah.line)}",
+        (
+            "unavailable because both representative lines are required"
+            if line_diff_raw is None
+            else f"{_fmt(books_line)} - {_fmt(exchange_ah.line)}"
+        ),
         line_diff_raw,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{prefix}.LINE_GAP",
         "abs(LINE_DIFF_RAW)",
-        "unavailable because LINE_DIFF_RAW is unavailable"
-        if line_gap is None
-        else f"abs({_fmt(line_diff_raw)})",
+        (
+            "unavailable because LINE_DIFF_RAW is unavailable"
+            if line_gap is None
+            else f"abs({_fmt(line_diff_raw)})"
+        ),
         line_gap,
         debug_mode=debug_mode,
     )
     _log_formula(
         f"{prefix}.GAP",
         f"abs(BOOK_{spread_label}_REP_EDGE - BETFAIR_{spread_label}_REP_EDGE)",
-        "unavailable because same-line representatives are required"
-        if gap is None
-        else f"abs({_fmt(spread.rep_edge)} - {_fmt(exchange_ah.rep_edge)})",
+        (
+            "unavailable because same-line representatives are required"
+            if gap is None
+            else f"abs({_fmt(spread.rep_edge)} - {_fmt(exchange_ah.rep_edge)})"
+        ),
         gap,
         debug_mode=debug_mode,
     )
@@ -716,7 +736,12 @@ def _build_book_exchange_signal(
     *,
     debug_mode: bool,
 ) -> BookExchangeSignal | None:
-    if exchange is None or full_time.one_x_two.rep_edge is None or full_time.one_x_two.direction is None:
+    if (
+        exchange is None
+        or exchange.rep_edge is None
+        or full_time.one_x_two.rep_edge is None
+        or full_time.one_x_two.direction is None
+    ):
         return None
     gap = absolute_gap(full_time.one_x_two.rep_edge, exchange.rep_edge)
     book_exchange_relation = relation(full_time.one_x_two.direction, exchange.direction)
@@ -760,7 +785,9 @@ def _build_ft_1h_signal(
             )
         return None
     gap = absolute_gap(full_time.one_x_two.rep_edge, first_half.one_x_two.rep_edge)
-    ft_1h_relation = relation(full_time.one_x_two.direction, first_half.one_x_two.direction)
+    ft_1h_relation = relation(
+        full_time.one_x_two.direction, first_half.one_x_two.direction
+    )
     _log_formula(
         "FT_1H.1X2_GAP",
         "abs(FT_1X2_REP_EDGE - 1H_1X2_REP_EDGE)",
@@ -790,7 +817,10 @@ def build_p2_signal_profile(
 ) -> P2SignalProfile:
     """Build structural signals without status, extraction, or persistence concerns."""
     if debug_mode:
-        logger.info("P2 FORMULA | engine | begin profile build target_minute=%s", snapshot.target_minute)
+        logger.info(
+            "P2 FORMULA | engine | begin profile build target_minute=%s",
+            snapshot.target_minute,
+        )
     full_time = _build_period_signal(
         snapshot.full_time,
         label="FT",
@@ -806,10 +836,14 @@ def build_p2_signal_profile(
         )
     )
     exchange = _build_exchange_signal(snapshot.full_time, debug_mode=debug_mode)
-    ft_1h = None if first_half is None else _build_ft_1h_signal(
-        full_time,
-        first_half,
-        debug_mode=debug_mode,
+    ft_1h = (
+        None
+        if first_half is None
+        else _build_ft_1h_signal(
+            full_time,
+            first_half,
+            debug_mode=debug_mode,
+        )
     )
     book_exchange = _build_book_exchange_signal(
         full_time,

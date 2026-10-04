@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any
 
-from infrastructure.persistence.repositories.pillar_5_price_memory_repository import (
-    HistoricalPriceMatch,
-    Pillar5PriceMemoryRepository,
-)
 from modules.pillars.context import EventContext, EventIdentity
 from shared.temporal import as_utc
 
 from .calculation_models import MemoryQueryKey, MemorySample, PopulationFilters
 from .models import ThreeWayMarketSnapshot
+from .ports import PriceMemoryReader
 
 ODDS_QUANTUM = Decimal("0.001")
-logger = logging.getLogger(__name__)
 
 
 def canonical_price(value: object) -> Decimal:
@@ -84,141 +78,18 @@ def build_memory_query_key(
     )
 
 
-def _row_matches_key(row: HistoricalPriceMatch, key: MemoryQueryKey) -> bool:
-    try:
-        draw = canonical_price(row.odds_draw) if row.odds_draw is not None else None
-        return (
-            row.sport == key.sport
-            and row.bookie_id == key.bookie_id
-            and row.market_group == key.market_group
-            and row.market_period == key.market_period
-            and row.has_draw == key.has_draw
-            and canonical_price(row.odds_home) == key.odds_home
-            and draw == key.odds_draw
-            and canonical_price(row.odds_away) == key.odds_away
-        )
-    except ValueError:
-        return False
-
-
-def _eligible_winner(value: object, *, has_draw: bool) -> str | None:
-    normalized = str(value or "").strip().upper()
-    if normalized in {"1", "HOME"}:
-        return "HOME"
-    if normalized in {"2", "AWAY"}:
-        return "AWAY"
-    if has_draw and normalized in {"X", "DRAW"}:
-        return "DRAW"
-    return None
-
-
 def build_memory_sample(
-    repository: Pillar5PriceMemoryRepository,
+    repository: PriceMemoryReader,
     *,
     key: MemoryQueryKey,
     current_event_id: int,
     current_starts_at: datetime,
     population_filters: PopulationFilters,
-    debug_mode: bool = False,
+    debug_mode=False,
 ) -> MemorySample:
-    """Load, validate, and de-duplicate the full exact-match population."""
-    cutoff = as_utc(current_starts_at)
-    logger.info(
-        "P5 MEMORY | query begin event_id=%s bookie_id=%s sport=%s market=%s/%s shape=%s filters=%s cutoff=%s",
-        current_event_id,
-        key.bookie_id,
-        key.sport,
-        key.market_group,
-        key.market_period,
-        key.market_shape,
-        population_filters.to_dict(),
-        cutoff.isoformat(),
-    )
-    if debug_mode:
-        logger.info(
-            "P5 DEBUG | memory query key event_id=%s value=%s",
-            current_event_id,
-            key.to_dict(),
-        )
-    rows = repository.find_exact_matches(
-        sport=key.sport,
-        bookie_id=key.bookie_id,
-        market_group=key.market_group,
-        market_period=key.market_period,
-        odds_home=key.odds_home,
-        odds_draw=key.odds_draw,
-        odds_away=key.odds_away,
-        has_draw=key.has_draw,
-        competition_id=population_filters.competition_id,
-        season_id=population_filters.season_id,
-        country=population_filters.country,
-        current_event_id=current_event_id,
-        current_starts_at=cutoff,
-        limit=None,
-    )
-
-    eligible: list[HistoricalPriceMatch] = []
-    diagnostics: list[dict[str, Any]] = []
-    seen_event_ids: set[int] = set()
-    counts = {"HOME": 0, "DRAW": 0, "AWAY": 0}
-    excluded: dict[str, int] = {}
-
-    for row in rows:
-        reason: str | None = None
-        row_start = as_utc(row.starts_at)
-        if row.event_id == current_event_id:
-            reason = "current_event_excluded"
-        elif row_start >= cutoff:
-            reason = "non_causal_event_excluded"
-        elif row.event_id in seen_event_ids:
-            reason = "duplicate_event_excluded"
-        elif not _row_matches_key(row, key):
-            reason = "query_key_mismatch_excluded"
-
-        winner = _eligible_winner(row.winner_side, has_draw=key.has_draw)
-        if reason is None and winner is None:
-            reason = "invalid_or_incompatible_result_excluded"
-
-        if reason is not None:
-            diagnostics.append({"event_id": row.event_id, "reason": reason})
-            excluded[reason] = excluded.get(reason, 0) + 1
-            continue
-
-        seen_event_ids.add(row.event_id)
-        eligible.append(row)
-        counts[winner] += 1
-
-    sample = MemorySample(
+    return repository.summarize(
         key=key,
-        historical_matches=tuple(eligible),
-        sample_size=len(eligible),
-        wins_home=counts["HOME"],
-        wins_draw=counts["DRAW"],
-        wins_away=counts["AWAY"],
-        eligibility_diagnostics=tuple(diagnostics),
+        current_event_id=current_event_id,
+        current_starts_at=as_utc(current_starts_at),
+        population_filters=population_filters,
     )
-    logger.info(
-        "P5 MEMORY | query done event_id=%s bookie_id=%s fetched=%s eligible=%s excluded=%s outcomes=%s",
-        current_event_id,
-        key.bookie_id,
-        len(rows),
-        sample.sample_size,
-        sum(excluded.values()),
-        counts,
-    )
-    if debug_mode:
-        logger.info(
-            "P5 DEBUG | memory eligibility event_id=%s bookie_id=%s exclusions_by_reason=%s",
-            current_event_id,
-            key.bookie_id,
-            excluded,
-        )
-    return sample
-
-
-__all__ = [
-    "ODDS_QUANTUM",
-    "build_memory_query_key",
-    "build_memory_sample",
-    "canonical_price",
-]

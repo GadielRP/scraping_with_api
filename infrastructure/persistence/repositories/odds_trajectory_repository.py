@@ -50,11 +50,15 @@ class OddsTrajectoryPoint:
     main_line: Optional[bool] = None
     source_limit: Optional[Decimal] = None
     exchange_size: Optional[Decimal] = None
+    market_type_id: Optional[int] = None
+    is_live: bool = False
 
     def to_dict(self) -> Dict:
         return {
             "event_id": self.event_id,
             "market_id": self.market_id,
+            "market_type_id": self.market_type_id,
+            "is_live": self.is_live,
             "canonical_market_key": self.canonical_market_key,
             "market_family": self.market_family,
             "market_display_order": self.market_display_order,
@@ -91,6 +95,8 @@ class OddsTrajectoryRepository:
         return OddsTrajectoryPoint(
             event_id=data["event_id"],
             market_id=data.get("market_id"),
+            market_type_id=data.get("market_type_id"),
+            is_live=bool(data.get("is_live", False)),
             canonical_market_key=data.get("canonical_market_key"),
             market_family=data.get("market_family"),
             market_display_order=data.get("market_display_order"),
@@ -116,9 +122,7 @@ class OddsTrajectoryRepository:
             source_collected_at=data.get("source_collected_at"),
             collected_at=data.get("collected_at"),
             observed_minutes_before_start=data.get("observed_minutes_before_start"),
-            trajectory_minutes_before_start=data.get(
-                "trajectory_minutes_before_start"
-            ),
+            trajectory_minutes_before_start=data.get("trajectory_minutes_before_start"),
         )
 
     @staticmethod

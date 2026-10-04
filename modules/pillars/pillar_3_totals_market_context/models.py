@@ -28,9 +28,12 @@ class TotalsBookSnapshot:
     line: Decimal | None
     over: QuotePoint | None
     under: QuotePoint | None
+    line_trace: dict[str, Any] | None = None
 
     def is_complete(self) -> bool:
-        return self.line is not None and self.over is not None and self.under is not None
+        return (
+            self.line is not None and self.over is not None and self.under is not None
+        )
 
     def has_any_input(self) -> bool:
         return self.line is not None or self.over is not None or self.under is not None
@@ -49,11 +52,14 @@ class TotalsBookSnapshot:
             spec.over: self.over,
             spec.under: self.under,
         }
-        return {
+        traces = {
             name: point.trace.to_dict()
             for name, point in points.items()
             if point is not None
         }
+        if self.line_trace is not None:
+            traces[spec.line] = self.line_trace
+        return traces
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +87,10 @@ class TotalsExchangeSnapshot:
         )
 
     def has_any_input(self) -> bool:
-        return any(branch is not None and branch.has_any_input() for branch in (self.back, self.lay))
+        return any(
+            branch is not None and branch.has_any_input()
+            for branch in (self.back, self.lay)
+        )
 
     def input_values(
         self,
@@ -127,10 +136,21 @@ class TotalsExchangeSnapshot:
             size_names[2]: None if self.lay is None else self.lay.over,
             size_names[3]: None if self.lay is None else self.lay.under,
         }
-        line_point = next((point for point in points.values() if point is not None), None)
+        line_point = next(
+            (point for point in points.values() if point is not None), None
+        )
         if line_point is not None:
             points[line_name] = line_point
-        return {name: point.trace.to_dict() for name, point in points.items() if point is not None}
+        traces = {
+            name: point.trace.to_dict()
+            for name, point in points.items()
+            if point is not None
+        }
+        branch = next((b for b in (self.back, self.lay) if b and b.line_trace), None)
+        if branch is not None:
+            traces[line_name] = branch.line_trace
+        return traces
+
 
 @dataclass(frozen=True, slots=True)
 class P3PeriodSnapshot:
@@ -138,17 +158,6 @@ class P3PeriodSnapshot:
     period_scope: TotalsPeriodScope
     pinnacle: TotalsBookSnapshot | None
     bet365: TotalsBookSnapshot | None
-
-    def is_complete(self) -> bool:
-        return (
-            self.pinnacle is not None
-            and self.pinnacle.is_complete()
-            and self.bet365 is not None
-            and self.bet365.is_complete()
-        )
-
-    def is_usable(self) -> bool:
-        return any(book is not None and book.is_complete() for book in (self.pinnacle, self.bet365))
 
     def has_any_input(self) -> bool:
         return any(
@@ -212,7 +221,9 @@ class P3MarketSnapshot:
             }
         )
         if self.first_half is None:
-            values.update({name: None for name in FIRST_HALF_TOTALS_SCOPE.input_names()})
+            values.update(
+                {name: None for name in FIRST_HALF_TOTALS_SCOPE.input_names()}
+            )
         else:
             values.update(self.first_half.input_values())
         return values
@@ -250,11 +261,7 @@ class P3ExtractionResult:
 
     @property
     def snapshot(self) -> P3MarketSnapshot | None:
-        if (
-            self.target_minute is None
-            or self.full_time_snapshot is None
-            or not self.full_time.usable
-        ):
+        if self.target_minute is None or self.full_time_snapshot is None:
             return None
         return P3MarketSnapshot(
             target_minute=self.target_minute,
@@ -275,19 +282,40 @@ class P3ExtractionResult:
     @property
     def missing_inputs(self) -> tuple[str, ...]:
         return tuple(
-            sorted(set(self.full_time.missing_inputs + self.first_half.missing_inputs + self.exchange_ou.missing_inputs + self.exchange_ou_1h.missing_inputs))
+            sorted(
+                set(
+                    self.full_time.missing_inputs
+                    + self.first_half.missing_inputs
+                    + self.exchange_ou.missing_inputs
+                    + self.exchange_ou_1h.missing_inputs
+                )
+            )
         )
 
     @property
     def invalid_inputs(self) -> tuple[str, ...]:
         return tuple(
-            sorted(set(self.full_time.invalid_inputs + self.first_half.invalid_inputs + self.exchange_ou.invalid_inputs + self.exchange_ou_1h.invalid_inputs))
+            sorted(
+                set(
+                    self.full_time.invalid_inputs
+                    + self.first_half.invalid_inputs
+                    + self.exchange_ou.invalid_inputs
+                    + self.exchange_ou_1h.invalid_inputs
+                )
+            )
         )
 
     @property
     def ambiguous_inputs(self) -> tuple[str, ...]:
         return tuple(
-            sorted(set(self.full_time.ambiguous_inputs + self.first_half.ambiguous_inputs + self.exchange_ou.ambiguous_inputs + self.exchange_ou_1h.ambiguous_inputs))
+            sorted(
+                set(
+                    self.full_time.ambiguous_inputs
+                    + self.first_half.ambiguous_inputs
+                    + self.exchange_ou.ambiguous_inputs
+                    + self.exchange_ou_1h.ambiguous_inputs
+                )
+            )
         )
 
 

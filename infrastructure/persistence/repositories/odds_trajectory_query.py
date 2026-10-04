@@ -13,8 +13,7 @@ from sqlalchemy.sql.elements import TextClause
 
 def build_pre_start_trajectory_query() -> TextClause:
     """Build the event-scoped statement for complete eligible quote histories."""
-    return text(
-        """
+    return text("""
         WITH requested_events AS (
             SELECT
                 e.id AS event_id,
@@ -132,6 +131,7 @@ def build_pre_start_trajectory_query() -> TextClause:
                 source_mapped.event_id,
                 source_mapped.starts_at,
                 source_mapped.market_id,
+                source_mapped.market_type_id,
                 source_mapped.canonical_market_key,
                 source_mapped.market_family,
                 source_mapped.market_display_order,
@@ -164,6 +164,8 @@ def build_pre_start_trajectory_query() -> TextClause:
         SELECT
             canonical.event_id,
             canonical.market_id,
+            canonical.market_type_id,
+            false AS is_live,
             canonical.canonical_market_key,
             canonical.market_family,
             canonical.market_display_order,
@@ -228,8 +230,7 @@ def build_pre_start_trajectory_query() -> TextClause:
             snapshots.snapshot_id,
             canonical.choice_display_order NULLS LAST,
             canonical.choice_name
-        """
-    ).bindparams(bindparam("event_ids", expanding=True, type_=Integer))
+        """).bindparams(bindparam("event_ids", expanding=True, type_=Integer))
 
 
 __all__ = ["build_pre_start_trajectory_query"]

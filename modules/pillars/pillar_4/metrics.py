@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Sequence
 
-from .models import P4Point
+from modules.pillars.trajectory_sampling import TrajectoryPoint
 
 
 ZERO = Decimal("0")
@@ -43,7 +43,7 @@ def _path_pattern(deltas: Sequence[Decimal]) -> str:
 
 
 def build_legs(
-    points: Sequence[P4Point],
+    points: Sequence[TrajectoryPoint],
     *,
     expected_target_minutes: Sequence[int] = (),
 ) -> list[dict[str, Any]]:
@@ -299,7 +299,7 @@ def _velocity_changes(
     )
 
 
-def _window_name(end_point: P4Point, operative_target: int) -> str | None:
+def _window_name(end_point: TrajectoryPoint, operative_target: int) -> str | None:
     position = (
         Decimal(end_point.target_minute)
         if end_point.target_minute is not None
@@ -381,7 +381,7 @@ def _window_features(
 
 
 def build_temporal_features(
-    points: Sequence[P4Point],
+    points: Sequence[TrajectoryPoint],
     *,
     gap_present: bool = False,
     expected_target_minutes: Sequence[int] = (),

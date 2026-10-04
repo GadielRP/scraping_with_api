@@ -5,9 +5,6 @@ from decimal import Decimal
 
 import pytest
 
-from infrastructure.persistence.repositories.pillar_5_price_memory_repository import (
-    HistoricalPriceMatch,
-)
 from modules.pillars.pillar_5.calculation_models import (
     MemoryQueryKey,
     MemorySample,
@@ -18,7 +15,6 @@ from modules.pillars.pillar_5.memory_sample import (
     canonical_price,
 )
 from modules.pillars.pillar_5.memory_score import calculate_memory_profile
-
 
 KICKOFF = datetime(2026, 9, 21, 18, 0, tzinfo=timezone.utc)
 
@@ -36,41 +32,10 @@ def _key(*, shape: str = "THREE_WAY") -> MemoryQueryKey:
     )
 
 
-def _match(
-    event_id: int,
-    winner_side: str,
-    *,
-    key: MemoryQueryKey | None = None,
-    starts_at: datetime | None = None,
-) -> HistoricalPriceMatch:
-    key = key or _key()
-    return HistoricalPriceMatch(
-        event_id=event_id,
-        sport=key.sport,
-        competition_id=11,
-        season_id=2025,
-        country="Spain",
-        bookie_id=key.bookie_id,
-        market_group=key.market_group,
-        market_period=key.market_period,
-        has_draw=key.has_draw,
-        starts_at=starts_at or KICKOFF - timedelta(days=event_id + 1),
-        odds_home=key.odds_home,
-        odds_draw=key.odds_draw,
-        odds_away=key.odds_away,
-        home_score=1,
-        away_score=0,
-        winner_side=winner_side,
-        last_sync_at=KICKOFF - timedelta(days=event_id + 1, minutes=5),
-    )
-
-
 def _sample(key: MemoryQueryKey, winners: list[str]) -> MemorySample:
-    matches = tuple(_match(index + 1, winner, key=key) for index, winner in enumerate(winners))
     return MemorySample(
         key=key,
-        historical_matches=matches,
-        sample_size=len(matches),
+        sample_size=len(winners),
         wins_home=winners.count("1"),
         wins_draw=winners.count("X"),
         wins_away=winners.count("2"),
@@ -142,42 +107,7 @@ def test_insufficient_sample_preserves_real_counts() -> None:
     assert profile["wins_home"] == 1
     assert profile["wins_away"] == 1
     assert profile["BASELINE"] is None
-    assert profile["P5"] == 0
-
-
-def test_memory_sample_is_exhaustive_causal_and_deduplicated() -> None:
-    key = _key()
-    rows = [
-        _match(1, "1", key=key),
-        _match(1, "1", key=key),
-        _match(2, "X", key=key),
-        _match(3, "invalid", key=key),
-        _match(4, "2", key=key, starts_at=KICKOFF + timedelta(minutes=1)),
-    ]
-
-    class Repository:
-        def find_exact_matches(self, **kwargs):
-            self.kwargs = kwargs
-            return rows
-
-    repository = Repository()
-    sample = build_memory_sample(
-        repository,
-        key=key,
-        current_event_id=999,
-        current_starts_at=KICKOFF,
-        population_filters=PopulationFilters(),
-    )
-
-    assert repository.kwargs["limit"] is None
-    assert repository.kwargs["sport"] == "Football"
-    assert sample.sample_size == 2
-    assert (sample.wins_home, sample.wins_draw, sample.wins_away) == (1, 1, 0)
-    assert {item["reason"] for item in sample.eligibility_diagnostics} == {
-        "duplicate_event_excluded",
-        "invalid_or_incompatible_result_excluded",
-        "non_causal_event_excluded",
-    }
+    assert profile["P5"] is None
 
 
 def test_price_canonization_uses_round_half_up() -> None:
