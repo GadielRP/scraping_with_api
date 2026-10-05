@@ -40,17 +40,17 @@ def check_and_update_starting_time(
     startTimeStamp: int,
     send_alert: bool = False,
     current_starting_time: Optional[datetime] = None,
-) -> bool:
+) -> bool | None:
     """
     Compare the stored starting time with the API timestamp and update the DB if needed.
-    Returns True when the current and new timestamps match, False otherwise.
+    Return True if unchanged, False after a committed change, None on failure.
     """
     try:
         if current_starting_time is None:
             event = EventRepository.get_event_by_id(event_id)
             if not event:
                 logger.warning(f"Event {event_id} not found in database for timing check")
-                return False
+                return None
             current_starting_time = event.starts_at
 
         new_starting_time = convert_timestamp_to_datetime(startTimeStamp)
@@ -64,14 +64,17 @@ def check_and_update_starting_time(
         if EventRepository.batch_update_starting_times([(event_id, new_starting_time)]) > 0:
             logger.info(f"✅ Successfully updated starting time for event {event_id}")
             if send_alert:
-                send_time_correction_message(pre_start_notifier, event_id, current_starting_time, new_starting_time)
+                try:
+                    send_time_correction_message(pre_start_notifier, event_id, current_starting_time, new_starting_time)
+                except Exception:
+                    logger.exception("Starting time updated but correction alert failed event_id=%s", event_id)
             return False
 
         logger.error(f"Failed to update starting time for event {event_id}")
-        return False
+        return None
     except Exception as exc:
         logger.error(f"Error in check_and_update_starting_time for event {event_id}: {exc}")
-        return False
+        return None
 
 
 def check_recently_started_events_for_timestamp_corrections(events_started_recently: List[Dict]) -> Set[int]:
@@ -81,13 +84,13 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
     finishes (result upserted in batch) and cancellations (deleted in batch).
     Both DB operations are deferred and executed once after all workers finish.
     """
-    modified_event_ids: Set[int] = set()
+    corrected_event_ids: Set[int] = set()
     try:
         if not events_started_recently:
-            return modified_event_ids
+            return corrected_event_ids
 
         checked_count = 0
-        corrected_count = 0
+        failed_count = 0
         # Accumulated in-memory; flushed to DB in batch after workers finish.
         results_to_upsert: list[tuple[int, dict]] = []
         event_ids_to_delete = DeletionBatch(origin="timestamp_corrections")
@@ -95,8 +98,8 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
         def _process_single_recently_started(event_data: Dict) -> dict:
             result = {
                 "checked": False,
-                "corrected": False,
-                "modified_event_id": None,
+                "failed": False,
+                "corrected_event_id": None,
                 "upsert": None,       # (canonical_event_id, result_data) | None
                 "delete_id": None,    # canonical_event_id | None
             }
@@ -139,12 +142,10 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                     also_parse_result=True,
                 )
 
-                result["checked"] = True
-                if timing_result is None:
-                    return result
-                if not timing_result:
-                    result["corrected"] = True
-                result["modified_event_id"] = event_id
+                result["checked"] = timing_result is not None
+                result["failed"] = timing_result is None
+                if timing_result is False:
+                    result["corrected_event_id"] = event_id
 
                 # --- Status evaluation from the same response ---
                 if parsed is not None:
@@ -168,6 +169,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
             except WorkDeferred:
                 raise
             except Exception as exc:
+                result["failed"] = True
                 logger.error(
                     "Error checking recently started event %s: %s",
                     event_data.get("id", "unknown"),
@@ -179,22 +181,21 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
         for res in bounded_results(_process_single_recently_started, events_started_recently, max_workers):
             if res["checked"]:
                 checked_count += 1
-            if res["corrected"]:
-                corrected_count += 1
-            if res["modified_event_id"]:
-                modified_event_ids.add(res["modified_event_id"])
+            if res["failed"]:
+                failed_count += 1
+            if res["corrected_event_id"] is not None:
+                corrected_event_ids.add(res["corrected_event_id"])
             if res["upsert"] is not None:
                 results_to_upsert.append(res["upsert"])
             if res["delete_id"] is not None:
                 event_ids_to_delete.record(res["delete_id"], res["source_event_id"], res["parsed"])
 
-        if modified_event_ids:
-            logger.info("🔄 Timestamp correction detected for %s event(s)", len(modified_event_ids))
-        if checked_count > 0:
+        if checked_count or failed_count:
             logger.info(
-                "📊 Timestamp correction check completed: %s events checked, %s timestamps corrected",
+                "Timestamp correction summary: events_checked=%s timestamps_corrected=%s timing_failed=%s",
                 checked_count,
-                corrected_count,
+                len(corrected_event_ids),
+                failed_count,
             )
 
         # --- Batch DB flush ---
@@ -230,9 +231,9 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 failed_deletes,
             )
 
-        return modified_event_ids
+        return corrected_event_ids
     except WorkDeferred:
         raise
     except Exception as exc:
         logger.error("Error in timestamp correction checks: %s", exc)
-        return modified_event_ids
+        return corrected_event_ids

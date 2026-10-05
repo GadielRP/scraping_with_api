@@ -22,6 +22,8 @@
 !config/odds_read_priority.json
 !docs/**
 !docs/
+!tests/**
+!tests/
 
 **/__pycache__/
 **/*.py[cod]

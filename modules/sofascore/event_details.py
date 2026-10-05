@@ -13,7 +13,7 @@ from modules.observations.sofascore_extractor import extract_observations_from_s
 
 from .event_normalizer import normalize_event_payload
 from .exceptions import SofaScoreNotFoundException, SofaScoreRateLimitException
-from .results_parser import parse_event_result
+from .results_parser import ParsedEventResult, parse_event_result
 from modules.events.discards.contracts import DeletionBatch
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 EventResultsResponse = (
     Dict
     | List[Dict]
-    | tuple[Optional[bool], Optional[Dict]]
+    | tuple[Optional[bool], Dict | ParsedEventResult | None]
     | bool
     | None
 )
@@ -266,7 +266,7 @@ def get_event_results(
     )
 
     def _empty_response() -> EventResultsResponse:
-        return (None, None) if return_snapshot else None
+        return (None, None) if return_snapshot or (update_time and also_parse_result) else None
 
     try:
         if update_court_type:
@@ -328,34 +328,28 @@ def get_event_results(
             logger.info("🔎 Checking and updating starting time for event %s", event_id)
             event_data = response.get("event", {})
             start_timestamp = event_data.get("startTimestamp")
-            if start_timestamp is None:
-                logger.warning("No startTimestamp found in API response for event %s", event_id)
-                if return_snapshot:
-                    return None, None
-                return None
-
             timing_event_id = canonical_event_id
-            if timing_event_id is None:
+            if start_timestamp is not None and timing_event_id is None:
                 timing_event_id = EventSourceMappingRepository.get_event_id_by_source(
                     "sofascore",
                     str(event_id),
                 )
 
-            if timing_event_id is None:
+            timing_result = None
+            if start_timestamp is None:
+                logger.warning("No startTimestamp found in API response for event %s", event_id)
+            elif timing_event_id is None:
                 logger.warning(
                     "Skipping time update: canonical event ID was not resolved for SofaScore event %s",
                     event_id,
                 )
-                if return_snapshot:
-                    return None, _extract_metadata_snapshot(response)
-                return None
-
-            timing_result = client.check_and_update_starting_time(
-                timing_event_id,
-                start_timestamp,
-                send_alert=True,
-                current_starting_time=current_start_time,
-            )
+            else:
+                timing_result = client.check_and_update_starting_time(
+                    timing_event_id,
+                    start_timestamp,
+                    send_alert=True,
+                    current_starting_time=current_start_time,
+                )
 
             if also_parse_result:
                 parsed = parse_event_result(response)

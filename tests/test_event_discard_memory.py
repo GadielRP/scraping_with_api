@@ -30,7 +30,7 @@ def database(tmp_path, monkeypatch):
     Base.metadata.create_all(db.engine)
     monkeypatch.setattr(repository_module, "db_manager", db)
     monkeypatch.setattr(Config, "EVENT_DISCARD_MEMORY_ENABLED", True)
-    monkeypatch.setattr(Config, "EVENT_DISCARD_MEMORY_KINDS", ["canceled"])
+    monkeypatch.setattr(Config, "EVENT_DISCARD_MEMORY_KINDS", ["canceled", "finished_empty_score", "not_found"])
     monkeypatch.setattr(Config, "EVENT_WRITE_BATCH_SIZE", 100)
     yield db
     Base.metadata.drop_all(db.engine)
@@ -342,6 +342,43 @@ def test_results_collector_keeps_raw_evidence(database):
     assert batch.evidence[obj.id].reason == "canceled_or_postponed"
     assert EventRepository.batch_delete_events(batch) == 1
     assert EventRepository.upsert_event(payload(1400)) is None
+
+
+@pytest.mark.parametrize("kind", ["finished_empty_score", "not_found"])
+def test_extended_memory_policy_blocks_recreation(database, caplog, kind):
+    from types import SimpleNamespace
+    from modules.sofascore.event_details import get_event_results
+    from modules.sofascore.exceptions import SofaScoreNotFoundException
+
+    obj = EventRepository.upsert_event(payload(1401))
+    response = {"event": {
+        "id": 1401, "status": {"code": 100, "type": "finished", "description": "Ended"},
+        "homeScore": {}, "awayScore": {},
+    }}
+
+    def request_json(_):
+        if kind == "not_found":
+            raise SofaScoreNotFoundException("event endpoint not found")
+        return response
+
+    batch = DeletionBatch(origin="midnight-test")
+    get_event_results(
+        SimpleNamespace(request_json=request_json), 1401,
+        canonical_event_id=obj.id, deferred_deletion_event_ids=batch, update_event_info=False,
+    )
+    caplog.set_level("INFO")
+    assert EventRepository.batch_delete_events(batch) == 1
+    assert EventRepository.upsert_event(payload(1401)) is None
+    with database.get_session() as session:
+        row = session.get(EventDiscardMemory, ("sofascore", "1401"))
+        assert row.parser_kind == kind
+        assert row.deletion_reason == ("event_endpoint_not_found" if kind == "not_found" else kind)
+        if kind == "not_found":
+            assert row.snapshot == {}
+        else:
+            assert row.snapshot["status"] == response["event"]["status"]
+            assert row.snapshot["homeScore"] == row.snapshot["awayScore"] == {}
+    assert "memory_eligible=1 memory_inserted=1 memory_existing=0 deleted_without_memory=0" in caplog.text
 
 
 def test_postgres_bad_row_isolated_after_rollback(database):

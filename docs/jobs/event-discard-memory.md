@@ -8,10 +8,12 @@ la clasificación de `results_parser`, la identidad del proveedor y su evidencia
 El repositorio registra la memoria y elimina el evento en la misma transacción.
 Un fallo revierte ambas operaciones. El parser sigue clasificando sin acceder a la DB.
 
-Por defecto se memoriza únicamente `canceled`. Esto incluye los estados que el
-parser ya clasifica así, como postponed y walkover. `not_started`,
-`finished_empty_score` y las respuestas 404 siguen sus reglas de eliminación
-anteriores, pero no generan memoria por defecto. Una lista de IDs sin evidencia
+Por defecto se memorizan `canceled`, `finished_empty_score` y `not_found`.
+`canceled` incluye postponed y walkover; `not_found` corresponde exclusivamente
+al 404 del endpoint `/event/{id}`, con motivo `event_endpoint_not_found` y snapshot
+vacío porque no hubo respuesta del evento. Los errores de red y los 404 de cuotas
+no generan esta evidencia. `not_started` sigue eliminándose según la política del
+consumidor, pero no genera memoria por defecto. Una lista de IDs sin evidencia
 es una eliminación administrativa: no se infiere que sus eventos sean canceled.
 
 La tabla `event_discard_memory` tiene clave `(source, source_event_id)` y no tiene
@@ -35,15 +37,16 @@ instantánea tipada y valida que los valores positivos y los kinds sean elegible
 | Variable | Valor por defecto | Función |
 | --- | --- | --- |
 | `EVENT_DISCARD_MEMORY_ENABLED` | `true` | Registrar y consultar la memoria |
-| `EVENT_DISCARD_MEMORY_KINDS` | `canceled` | CSV de kinds que se registran y bloquean |
+| `EVENT_DISCARD_MEMORY_KINDS` | `canceled,finished_empty_score,not_found` | CSV de kinds que se registran y bloquean |
 | `EVENT_DISCARD_MEMORY_RETENTION_DAYS` | `3` | Antigüedad mínima desde el descarte para limpiar |
 | `EVENT_DISCARD_MEMORY_CLEANUP_ENABLED` | `true` | Habilitar eliminación de filas de memoria |
 | `EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE` | `1000` | Máximo de filas eliminadas por ejecución |
 
 El tamaño de las transacciones de eventos se configura mediante `JobExecutionSettings.event_write_batch_size` en `infrastructure/settings/job_execution.py` (100 por defecto), sin override de entorno.
 
-También se pueden configurar `not_started` y `finished_empty_score` como kinds.
+También se puede configurar `not_started` como kind.
 No se admite `finished`: la memoria representa descartes, no resultados válidos.
+Un override existente en `.env` debe incluir los nuevos kinds para habilitarlos.
 
 La limpieza se ejecuta al comienzo de cada invocación de `run_daily_discovery_job`,
 antes de comprobar la ranura del día y si quedan deportes pendientes. Por eso
@@ -64,6 +67,14 @@ acotadas. Cada lote consulta mappings, eventos, participantes y descartes en
 conjunto, escribe referencias y eventos en grupo y confirma una sola vez.
 `upsert_event` delega al mismo camino para un solo elemento. El resultado distingue
 eventos persistidos, IDs descartados e IDs inválidos.
+
+En results collection, `stale_not_started` depende del estado de la respuesta y
+de `on_not_started="delete"`. No compara el `startTimestamp` de esa respuesta con
+la hora actual. La selección previa usa `starts_at` de la DB: límites del día
+local solicitado, o antigüedades por deporte de 2.5 a 4 horas en la colección
+general (3 horas por defecto). Un evento reprogramado al futuro por el proveedor
+puede seguir siendo seleccionado por su horario almacenado anterior; esta política
+de eliminación no cambia con la ampliación de memoria.
 
 Daily discovery filtra por alcance y memoria antes de normalizar. Procesa y
 consume los resultados por lote; las llamadas HTTP y la persistencia de cuotas

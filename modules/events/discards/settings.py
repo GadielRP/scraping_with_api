@@ -14,7 +14,7 @@ class DiscardSettings:
     cleanup_batch_size: int
 
     def __post_init__(self):
-        if not self.kinds <= {'canceled', 'not_started', 'finished_empty_score'}:
+        if not self.kinds <= {'canceled', 'not_started', 'finished_empty_score', 'not_found'}:
             raise ValueError('Discard memory only accepts kinds eligible for deletion')
         for name in ('retention_days', 'batch_size', 'cleanup_batch_size'):
             if getattr(self, name) <= 0:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import pytest
 
 from modules.sofascore import event_details
 from modules.sofascore.results_parser import (
@@ -104,6 +105,41 @@ def test_get_event_results_update_time_with_also_parse_result():
     assert timing_result is True
     assert parsed.is_canceled is True
     assert parsed.status_code == 91
+
+
+@pytest.mark.parametrize("response", [None, {}])
+def test_timing_and_parse_mode_returns_pair_on_empty_response(response):
+    client = SimpleNamespace(request_json=lambda *_: response)
+    assert event_details.get_event_results(
+        client, 123, update_time=True, update_event_info=False, also_parse_result=True
+    ) == (None, None)
+
+
+def test_timing_and_parse_mode_returns_pair_on_request_error():
+    def request_json(_):
+        raise RuntimeError("provider unavailable")
+
+    client = SimpleNamespace(request_json=request_json)
+    assert event_details.get_event_results(
+        client, 123, update_time=True, update_event_info=False, also_parse_result=True
+    ) == (None, None)
+
+
+@pytest.mark.parametrize("missing", ["timestamp", "mapping"])
+def test_result_classification_survives_unavailable_timing(monkeypatch, missing):
+    response = _load_walkover_doubles_response()
+    if missing == "timestamp":
+        response["event"].pop("startTimestamp")
+    else:
+        monkeypatch.setattr(
+            event_details.EventSourceMappingRepository, "get_event_id_by_source", lambda *_: None
+        )
+    client = SimpleNamespace(request_json=lambda *_: response)
+    timing_result, parsed = event_details.get_event_results(
+        client, 16782259, update_time=True, update_event_info=False, also_parse_result=True
+    )
+    assert timing_result is None
+    assert parsed.is_canceled
 
 
 def _create_finished_empty_score_response() -> dict:
