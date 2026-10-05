@@ -112,7 +112,7 @@ def test_oddsportal_retains_running_cycle_across_empty_and_busy_ticks(monkeypatc
     from types import SimpleNamespace
     from modules.jobs.pre_start_check_job.runtime import OddsPortalWorkerState
     from modules.jobs.pre_start_check_job import oddsportal_worker as browser_job
-    from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+    from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
     from shared.execution_context import WorkDeferred
 
     state = OddsPortalWorkerState()
@@ -131,7 +131,7 @@ def test_oddsportal_retains_running_cycle_across_empty_and_busy_ticks(monkeypatc
         assert browser_job.start_oddsportal_scrape_thread(runtime, [], {}, {}) is None
         assert state.active_thread is first
         with pytest.raises(WorkDeferred):
-            with reporting_exclusion.refresh():
+            with view_refresh_exclusion.refresh():
                 pytest.fail("Reporting must not overlap the background browser cycle")
         blocked_state = browser_job.create_oddsportal_scrape_state([{"event_id": 1}])
         assert browser_job.start_oddsportal_scrape_thread(runtime, [{}], blocked_state, {}) is None
@@ -140,7 +140,7 @@ def test_oddsportal_retains_running_cycle_across_empty_and_busy_ticks(monkeypatc
         release.set()
         first.join(timeout=2)
         assert not first.is_alive()
-        with reporting_exclusion.refresh():
+        with view_refresh_exclusion.refresh():
             pass
         second = state.launch(next_cycle.set)
         assert next_cycle.wait(2)
@@ -155,13 +155,128 @@ def test_oddsportal_retains_running_cycle_across_empty_and_busy_ticks(monkeypatc
 def test_execution_settings_are_configured_in_python_not_environment(monkeypatch):
     from infrastructure.settings.job_execution import JobExecutionSettings
 
-    monkeypatch.setenv("JOB_REPORTING_MIN_INTERVAL_SECONDS", "5")
-    monkeypatch.setenv("JOB_REPORTING_POLL_SECONDS", "1")
+    monkeypatch.setenv("JOB_VIEW_REFRESH_MIN_INTERVAL_SECONDS", "5")
+    monkeypatch.setenv("JOB_VIEW_REFRESH_POLL_SECONDS", "1")
     settings = JobExecutionSettings()
-    assert settings.reporting_min_interval_seconds == 1800
-    assert settings.reporting_poll_seconds == 60
-    with pytest.raises(ValueError, match="reporting_min_interval_seconds must be positive"):
-        JobExecutionSettings(reporting_min_interval_seconds=0)
+    assert settings.view_refresh_min_interval_seconds == 3600
+    assert settings.view_refresh_poll_seconds == 900
+    with pytest.raises(ValueError, match="view_refresh_min_interval_seconds must be positive"):
+        JobExecutionSettings(view_refresh_min_interval_seconds=0)
+
+
+@pytest.mark.parametrize("priority", [Priority.PRE_START, Priority.CLOSING])
+def test_view_refresh_yields_to_due_critical_tick_before_dispatch(monkeypatch, priority):
+    from infrastructure.scheduler.job_scheduler import JobScheduler
+    from infrastructure.scheduler.schedules import configure_calendar
+    from infrastructure.runtime.view_refresh_exclusion import ViewRefreshExclusion
+    from infrastructure.settings import Config
+    from infrastructure.settings.job_execution import JobExecutionSettings
+    from shared.execution_context import WorkDeferred
+
+    monkeypatch.setattr(Config, "ENABLE_PRE_START_T_MINUS_ONE_JOB", True)
+    scheduler = JobScheduler({})
+    configure_calendar(scheduler.clock, JobExecutionSettings())
+    job = scheduler.clock.get_jobs(priority)[0]
+    job.next_run = (utc_now() - timedelta(seconds=1)).astimezone().replace(tzinfo=None)
+    exclusion = ViewRefreshExclusion()
+    with pytest.raises(WorkDeferred):
+        with exclusion.refresh(critical_pending=scheduler.critical_work_pending):
+            pytest.fail("Reporting overtook an undispatched critical tick")
+    job.run()
+    with exclusion.refresh(critical_pending=scheduler.critical_work_pending):
+        pass
+
+
+def test_view_refresh_yields_to_admitted_pre_start_before_its_guard():
+    from infrastructure.scheduler.job_scheduler import JobScheduler
+    from infrastructure.runtime.view_refresh_exclusion import ViewRefreshExclusion
+    from shared.execution_context import WorkDeferred
+
+    worker = SerialExecutor("critical-admission-test", 2)
+    scheduler = JobScheduler({Priority.PRE_START: worker})
+    started, release = Event(), Event()
+    exclusion = ViewRefreshExclusion()
+
+    def before_guard():
+        started.set()
+        assert release.wait(5)
+
+    try:
+        scheduler.dispatch(request("pre_start", before_guard, Priority.PRE_START))
+        assert started.wait(2)
+        scheduler.dispatch(request("next", lambda: None, Priority.PRE_START))
+        with pytest.raises(WorkDeferred):
+            with exclusion.refresh(critical_pending=scheduler.critical_work_pending):
+                pytest.fail("Reporting overtook admitted critical work")
+    finally:
+        release.set()
+        scheduler.stop()
+    with exclusion.refresh(critical_pending=scheduler.critical_work_pending):
+        pass
+
+
+def test_coincident_view_refresh_runs_after_pre_start_even_if_dispatched_first():
+    from time import monotonic
+    from infrastructure.scheduler.job_scheduler import JobScheduler
+    from infrastructure.scheduler.schedules import configure_calendar
+    from infrastructure.runtime.view_refresh_exclusion import ViewRefreshExclusion
+    from infrastructure.settings.job_execution import JobExecutionSettings
+
+    maintenance = SerialExecutor("view-order-maintenance", 2)
+    critical = SerialExecutor("view-order-pre-start", 2)
+    scheduler = JobScheduler({Priority.MAINTENANCE: maintenance, Priority.PRE_START: critical})
+    exclusion = ViewRefreshExclusion()
+    entered, release, deferred, finished = Event(), Event(), Event(), Event()
+    seen = []
+
+    def pre_start():
+        with exclusion.pre_start():
+            seen.append("pre_start")
+            entered.set()
+            assert release.wait(5)
+
+    def view_refresh():
+        with exclusion.refresh(critical_pending=scheduler.critical_work_pending):
+            seen.append("view_refresh")
+            finished.set()
+
+    actions = {"pre_start": pre_start, "view_refresh": view_refresh}
+
+    def dispatch(name, scheduled_at, priority, closing):
+        scheduler.dispatch(JobRequest(name, actions[name], scheduled_at, priority))
+
+    def defer(request):
+        scheduler.defer(request)
+        deferred.set()
+
+    maintenance.on_deferred = defer
+    configure_calendar(scheduler.clock, JobExecutionSettings(), dispatch)
+    scheduler.clock.jobs[:] = [
+        job for job in scheduler.clock.jobs if job.job_func.args[1] in actions
+    ]
+    poll = next(job for job in scheduler.clock.jobs if job.job_func.args[1] == "view_refresh")
+    assert poll.interval == 900 and poll.unit == "seconds"
+    due = (utc_now() - timedelta(seconds=1)).astimezone().replace(tzinfo=None)
+    for name in actions:
+        next(job for job in scheduler.clock.jobs if job.job_func.args[1] == name).next_run = due
+    try:
+        scheduler.clock.run_pending()
+        assert entered.wait(2)
+        assert deferred.wait(2)
+        assert seen == ["pre_start"]
+        release.set()
+        with critical._condition:
+            assert critical._condition.wait_for(lambda: not critical.has_work, timeout=2)
+        # Advance only the existing retry clock; no extra poll is needed.
+        with scheduler._retry_lock:
+            request, _ = scheduler._retry["view_refresh"]
+            scheduler._retry[request.key] = (request, monotonic() - 1)
+        scheduler.start()
+        assert finished.wait(2)
+        assert seen == ["pre_start", "view_refresh"]
+    finally:
+        release.set()
+        scheduler.stop()
 
 
 def test_operation_registry_tracks_simultaneous_jobs():
@@ -194,7 +309,7 @@ def test_clock_preserves_expired_closing_occurrence(monkeypatch):
             "midnight",
             "daily",
             "fixtures",
-            "reporting",
+            "view_refresh",
             "league_cache",
             "account_usage",
             "pre_start",

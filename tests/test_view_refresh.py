@@ -1,3 +1,5 @@
+"""Durable materialized-view refresh, cooldown and critical-work exclusion."""
+
 from datetime import timedelta
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -119,7 +121,7 @@ def test_privileged_concurrent_refresh_function_and_allowlist(database, monkeypa
 def test_refresh_failure_does_not_rollback_successful_other_view(database, monkeypatch):
     from importlib import import_module
 
-    job = import_module("modules.jobs.reporting_refresh.run_reporting_refresh")
+    job = import_module("modules.jobs.view_refresh.run_view_refresh")
     monkeypatch.setattr(job, "db_manager", database)
 
     def refresh(_connection, name, _limits):
@@ -127,7 +129,7 @@ def test_refresh_failure_does_not_rollback_successful_other_view(database, monke
             raise RuntimeError("first view timed out")
 
     monkeypatch.setattr(job, "refresh_reporting_view", refresh)
-    summary = job.run_reporting_refresh(request=True)
+    summary = job.run_view_refresh(request=True)
     assert summary == {"refreshed": 1, "failed": 1, "busy": 0, "pending": 1}
     assert ReportingRefreshRepository.pending() == []
     with database.get_session() as session:
@@ -141,11 +143,11 @@ def test_refresh_failure_does_not_rollback_successful_other_view(database, monke
     assert len(ReportingRefreshRepository.pending(force=True)) == 2
 
 
-def test_reporting_defers_while_pre_start_job_is_active(database, monkeypatch):
+def test_view_refresh_defers_while_pre_start_job_is_active(database, monkeypatch):
     from importlib import import_module
     from shared.execution_context import WorkDeferred
 
-    reporting = import_module("modules.jobs.reporting_refresh.run_reporting_refresh")
+    reporting = import_module("modules.jobs.view_refresh.run_view_refresh")
     pre_start = import_module("modules.jobs.pre_start_check_job.run_pre_start_check_job")
     monkeypatch.setattr(reporting, "db_manager", database)
     monkeypatch.setattr(pre_start, "_tracked_competition_ids", lambda: None)
@@ -166,7 +168,7 @@ def test_reporting_defers_while_pre_start_job_is_active(database, monkeypatch):
         try:
             assert started.wait(2)
             with pytest.raises(WorkDeferred, match="pre-start work"):
-                reporting.run_reporting_refresh(force=True)
+                reporting.run_view_refresh(force=True)
             assert refreshed == []
             assert len(ReportingRefreshRepository.pending()) == 2
             with database.get_session() as session:
@@ -175,13 +177,50 @@ def test_reporting_defers_while_pre_start_job_is_active(database, monkeypatch):
             release.set()
         with pytest.raises(RuntimeError, match="stop test pre-start"):
             future.result(timeout=2)
-    assert reporting.run_reporting_refresh(force=True)["refreshed"] == 2
+    assert reporting.run_view_refresh(force=True)["refreshed"] == 2
+
+
+def test_view_refresh_defers_pending_tick_without_marking_view_failed(database, monkeypatch):
+    from importlib import import_module
+    from shared.execution_context import WorkDeferred
+
+    reporting = import_module("modules.jobs.view_refresh.run_view_refresh")
+    monkeypatch.setattr(reporting, "db_manager", database)
+    monkeypatch.setattr(reporting, "refresh_reporting_view", lambda *_: pytest.fail("Refresh overtook pre-start"))
+    with database.get_session() as session:
+        invalidate_reporting(session)
+    with pytest.raises(WorkDeferred):
+        reporting.run_view_refresh(critical_pending=lambda: True)
+    with database.get_session() as session:
+        assert all(row.attempts == row.completed_generation == 0 for row in session.query(ReportingRefreshState))
+    assert len(ReportingRefreshRepository.pending()) == 2
+
+
+def test_automatic_view_refresh_waits_one_hour_after_success(database, monkeypatch):
+    from importlib import import_module
+
+    job = import_module("modules.jobs.view_refresh.run_view_refresh")
+    monkeypatch.setattr(job, "db_manager", database)
+    monkeypatch.setattr(job, "refresh_reporting_view", lambda *_: None)
+    now = utc_now()
+    monkeypatch.setattr(job, "utc_now", lambda: now)
+    assert job.run_view_refresh(request=True)["refreshed"] == 2
+    with database.get_session() as session:
+        invalidate_reporting(session)
+        assert all(
+            state.next_attempt_at == now + timedelta(hours=1)
+            for state in session.query(ReportingRefreshState)
+        )
+    monkeypatch.setattr(repository, "utc_now", lambda: now + timedelta(seconds=3599))
+    assert ReportingRefreshRepository.pending() == []
+    monkeypatch.setattr(repository, "utc_now", lambda: now + timedelta(hours=1))
+    assert len(ReportingRefreshRepository.pending()) == 2
 
 
 def test_pre_start_waits_until_active_refresh_commits(database, monkeypatch):
     from importlib import import_module
 
-    reporting = import_module("modules.jobs.reporting_refresh.run_reporting_refresh")
+    reporting = import_module("modules.jobs.view_refresh.run_view_refresh")
     pre_start = import_module("modules.jobs.pre_start_check_job.run_pre_start_check_job")
     monkeypatch.setattr(reporting, "db_manager", database)
     monkeypatch.setattr(pre_start, "_tracked_competition_ids", lambda: None)
@@ -205,7 +244,7 @@ def test_pre_start_waits_until_active_refresh_commits(database, monkeypatch):
     with database.get_session() as session:
         session.add(ReportingRefreshState(view_name="mv_alert_events", requested_generation=1))
     with ThreadPoolExecutor(max_workers=2) as executor:
-        refresh_future = executor.submit(reporting.run_reporting_refresh)
+        refresh_future = executor.submit(reporting.run_view_refresh)
         try:
             assert refreshing.wait(2)
             pre_start_future = executor.submit(run_pre_start)
@@ -226,9 +265,9 @@ def test_midnight_only_collects_results_and_updates_predictions(monkeypatch):
     from importlib import import_module
 
     midnight = import_module("modules.jobs.midnight_sync_job.run_midnight_sync_job")
-    reporting = import_module("modules.jobs.reporting_refresh.run_reporting_refresh")
+    reporting = import_module("modules.jobs.view_refresh.run_view_refresh")
     calls = []
-    monkeypatch.setattr(reporting, "run_reporting_refresh", lambda **_: pytest.fail("Unexpected refresh"))
+    monkeypatch.setattr(reporting, "run_view_refresh", lambda **_: pytest.fail("Unexpected refresh"))
     monkeypatch.setattr(
         midnight, "run_results_collection",
         lambda target, **_: calls.append(("results", target)) or {"failed": 0},

@@ -27,6 +27,12 @@ class SerialExecutor:
         self._thread = Thread(target=self._run, name=name, daemon=True)
         self._thread.start()
 
+    @property
+    def has_work(self) -> bool:
+        """Include admitted work before the worker has entered its job action."""
+        with self._condition:
+            return self._active is not None or bool(self._queue)
+
     def submit(self, request):
         with self._condition:
             if self._closed:

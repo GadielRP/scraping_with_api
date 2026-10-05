@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 
 from infrastructure.settings import Config
-from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
 from infrastructure.persistence.advisory_lock import exclusive_slot
 from shared.temporal import as_utc, utc_now
 from modules.jobs.pre_start_check_job.oddsportal_worker import (
@@ -19,7 +19,7 @@ from modules.jobs.pre_start_check_job.run_pre_start_check_job import (
 logger = logging.getLogger(__name__)
 
 
-@reporting_exclusion.pre_start()
+@view_refresh_exclusion.pre_start()
 def run_t_minus_one_odds_job(
     runtime,
     scheduled_at: datetime,

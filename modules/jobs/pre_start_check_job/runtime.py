@@ -6,7 +6,7 @@ import logging
 from threading import Event, Lock, Thread, current_thread
 from time import monotonic
 from infrastructure.settings.job_execution import JobExecutionSettings
-from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
 from shared.execution_context import (
     ExecutionContext,
     Priority,
@@ -79,7 +79,7 @@ class OddsPortalWorkerState:
                     activity.__exit__(None, None, None)
 
         # Reserve before starting the thread; scraping can outlive its parent job.
-        activity = reporting_exclusion.pre_start()
+        activity = view_refresh_exclusion.pre_start()
         activity.__enter__()
         launched = False
         try:

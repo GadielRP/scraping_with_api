@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from infrastructure.settings import Config
-from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
 from shared.execution_context import check_execution_budget, WorkDeferred
 from shared.runtime_observability import observe_operation
 from modules.alerts.matchup_streak_analysis.standings_engine import (
@@ -139,13 +139,13 @@ def _maintain_recently_started_events(
         "⏱️ Starting recently-started timestamp corrections (%s candidates)",
         len(timestamp_candidates),
     )
-    modified_event_ids = check_recently_started_events_for_timestamp_corrections(
+    corrected_event_ids = check_recently_started_events_for_timestamp_corrections(
         timestamp_candidates
     )
-    if modified_event_ids:
+    if corrected_event_ids:
         logger.info(
             "Corrected %s recently-started event timestamps",
-            len(modified_event_ids),
+            len(corrected_event_ids),
         )
 
     if Config.INTRADAY_RESULT_FRESHNESS_TRACKED_COMPETITIONS_ONLY:
@@ -381,7 +381,7 @@ def run_pre_start_odds_moments(
     return event_plan
 
 
-@reporting_exclusion.pre_start()
+@view_refresh_exclusion.pre_start()
 def run_pre_start_check_job(runtime, global_debug_mode: bool = False) -> None:
     """Capture upcoming events first; spend only remaining budget on intraday work."""
     logger.info(
@@ -453,7 +453,7 @@ def run_pre_start_check_job(runtime, global_debug_mode: bool = False) -> None:
         check_execution_budget()
         with observe_operation('pre-start:in-game'):
             run_in_game_checks()
-        logger.info("✅ Pre-start check phases completed")
+        logger.info("🛎️ Pre-start check phases completed")
     except WorkDeferred:
         raise
     except Exception:

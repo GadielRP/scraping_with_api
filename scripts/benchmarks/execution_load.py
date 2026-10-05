@@ -53,7 +53,7 @@ def main():
     from modules.jobs.results_collection_job.run_results_collection_job import (
         run_results_collection,
     )
-    from modules.jobs.reporting_refresh.run_reporting_refresh import run_reporting_refresh
+    from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
     from infrastructure.scheduler.serial_executor import SerialExecutor
     from infrastructure.scheduler.contracts import JobRequest
     from shared.execution_context import Priority
@@ -242,7 +242,7 @@ def main():
                 "2026-10-03", ["football"], "PM", client=Provider()
             )
             outcomes["results"] = run_results_collection(date(2026, 10, 2))
-            outcomes["reporting"] = run_reporting_refresh(force=True)
+            outcomes["view_refresh"] = run_view_refresh(force=True)
         except Exception as exc:
             outcomes["error"] = repr(exc)
         finally:
@@ -300,7 +300,7 @@ def main():
         or outcomes["results"]["updated"] != args.events
     ):
         raise RuntimeError("Load did not persist the requested fixture")
-    if outcomes["reporting"]["failed"] or outcomes["max_dispatch_s"] >= 1:
+    if outcomes["view_refresh"]["failed"] or outcomes["max_dispatch_s"] >= 1:
         raise RuntimeError("Reporting or critical dispatch failed its load target")
 
 

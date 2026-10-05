@@ -48,6 +48,16 @@ class JobScheduler:
                 self._retry.pop(request.key, None)
         return status
 
+    def critical_work_pending(self) -> bool:
+        """Consult existing worker/calendar state; a due tick need not be admitted yet."""
+        for priority in (Priority.CLOSING, Priority.PRE_START):
+            executor = self.executors.get(priority)
+            if executor is not None and executor.has_work:
+                return True
+            if any(job.should_run for job in self.clock.get_jobs(priority)):
+                return True
+        return False
+
     def start(self):
         if self._thread and self._thread.is_alive():
             return

@@ -151,9 +151,9 @@ def _run_command(args):
     elif args.command == "events":
         show_events(args.limit)
     elif args.command == "refresh-alerts":
-        summary = ApplicationRuntime().run("reporting", force=True, request=True)
+        summary = ApplicationRuntime().run("view_refresh", force=True, request=True)
         if summary["failed"]:
-            raise RuntimeError(f"Reporting refresh incomplete: {summary}")
+            raise RuntimeError(f"View refresh incomplete: {summary}")
         logging.getLogger(__name__).info("Alert data refresh summary=%s", summary)
 
 

@@ -1,1 +1,0 @@
-"""Reporting recovery use case."""

@@ -14,7 +14,7 @@ def configure_calendar(clock, settings, on_due=None):
             on_due(name, job.next_run.astimezone(timezone.utc), priority, closing)
 
     def bind(job, name, priority=Priority.MAINTENANCE, closing=False):
-        job.do(trigger, job, name, priority, closing)
+        job.tag(priority).do(trigger, job, name, priority, closing)
 
     def daily(name, times):
         for time_str in times:
@@ -28,14 +28,14 @@ def configure_calendar(clock, settings, on_due=None):
         sorted(
             set(Config.DAILY_DISCOVERY_FIXED_TIMES)
             | {
-                f"{Config.DAILY_DISCOVERY_AM_OPEN_HOUR:02d}:00",
-                f"{Config.DAILY_DISCOVERY_PM_OPEN_HOUR:02d}:00",
+                f"{Config.DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR:02d}:00",
+                f"{Config.DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR:02d}:00",
             }
         ),
     )
     daily("fixtures", Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES)
     bind(clock.every(Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES).minutes, "daily")
-    bind(clock.every(settings.reporting_poll_seconds).seconds, "reporting")
+    bind(clock.every(settings.view_refresh_poll_seconds).seconds, "view_refresh")
     bind(clock.every(3).days.at("05:00", Config.TIMEZONE), "league_cache")
     bind(clock.every(Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS).hours, "account_usage")
     for minute in range(0, 60, Config.POLL_INTERVAL_MINUTES):

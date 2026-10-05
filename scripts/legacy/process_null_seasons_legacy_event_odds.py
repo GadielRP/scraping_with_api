@@ -20,7 +20,7 @@ logger = logging.getLogger("process_null_seasons")
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
-from modules.jobs.reporting_refresh.run_reporting_refresh import run_reporting_refresh
+from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
@@ -312,7 +312,7 @@ def main():
         logger.info("\n" + "=" * 80)
         logger.info("🔄 Refreshing alert materialized views...")
         try:
-            run_reporting_refresh(force=True, request=True)
+            run_view_refresh(force=True, request=True)
             logger.info("✅ Materialized views refreshed")
         except Exception as e:
             logger.error(f"Error refreshing materialized views: {e}")

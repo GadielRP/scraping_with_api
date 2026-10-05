@@ -77,7 +77,7 @@ Aplicación de SOLID: cada módulo tiene un motivo concreto de cambio; los casos
 | `infrastructure/persistence/transient/discovery_run_store.py` | Almacenamiento temporal en disco de IDs confirmados y calendario final por run; sin ORM ni payloads completos |
 | `modules/jobs/results_collection_job/contracts.py` | Selección temporal y outcomes del procesamiento, sin SQL |
 | `modules/jobs/results_collection_job/batch_processor.py` | Resolución de un lote y aplicación de escrituras existentes |
-| `modules/jobs/reporting_refresh/run_reporting_refresh.py` | Caso de uso de refresh y recuperación; independiente de daily |
+| `modules/jobs/view_refresh/run_view_refresh.py` | Caso de uso de refresh y recuperación; independiente de daily |
 | `infrastructure/persistence/repositories/reporting_refresh_repository.py` | Estado durable mínimo por vista: requested/completed generation, intentos y próximo intento |
 | `infrastructure/settings/job_execution.py` | Configuración tipada de límites/ejecución; defaults únicos, lectura centralizada del entorno |
 
@@ -261,7 +261,7 @@ Candidatos a esa única tarea posterior, sujetos a confirmar referencias y datos
 | ID | Candidato | Condición de retirada |
 |---|---|---|
 | EXEC-001 | `_build_event_data_with_legacy_fallback` y export de compatibilidad `NBA_SEASONS` | Backfill de datos normalizados completo y todos los consumidores migrados; no perder datos por retirar el fallback antes |
-| EXEC-002 | Etiquetas históricas AM/PM de DailyDiscoveryLog | Migración explícita de filas, configuración y referencias; nunca reinterpretar slots existentes silenciosamente |
+| EXEC-002 | Etiquetas históricas AM/PM de DailyDiscoveryLog | Cerrado por migración explícita a `current_utc_day` / `next_utc_day`; las filas históricas conservan su significado y los nombres AM/PM de variables de entorno siguen aceptándose como alias |
 | EXEC-003 | Funciones SQL antiguas de refresh/diagnóstico | Nuevos callers/grants desplegados y ausencia de scripts consumidores; retirada por nueva migración |
 | EXEC-004 | APIs singulares antiguas de repositorio aún usadas fuera del alcance | Migrar consumidores concretos y eliminar en una sola pasada; registrar la lista real, no estimada |
 

@@ -13,10 +13,10 @@ class JobExecutionSettings:
     json_item_max_bytes: int = 2 * 1024 * 1024
     json_max_depth: int = 128
     temporary_cache_kib: int = 2048
-    reporting_poll_seconds: int = 60
-    reporting_retry_seconds: int = 60
-    reporting_timeout_ms: int = 180000
-    reporting_min_interval_seconds: int = 1740
+    view_refresh_poll_seconds: int = 15 * 60
+    view_refresh_retry_seconds: int = 60
+    view_refresh_timeout_ms: int = 180000
+    view_refresh_min_interval_seconds: int = 60 * 60
     missing_odds_cooldown_seconds: int = 600
     missing_odds_capacity: int = 2048
     db_pool_size: int = 6

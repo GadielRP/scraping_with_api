@@ -1,4 +1,4 @@
-"""Keep reporting refreshes separate from pre-start work in this process."""
+"""Keep materialized-view refreshes separate from pre-start work in this process."""
 
 from contextlib import contextmanager
 from threading import Condition
@@ -6,7 +6,7 @@ from threading import Condition
 from shared.execution_context import WorkDeferred, check_execution_budget
 
 
-class ReportingExclusion:
+class ViewRefreshExclusion:
     def __init__(self):
         self._condition = Condition()
         self._pre_start = 0
@@ -30,10 +30,10 @@ class ReportingExclusion:
                 self._condition.notify_all()
 
     @contextmanager
-    def refresh(self):
+    def refresh(self, *, critical_pending=None):
         with self._condition:
-            if self._pre_start or self._refreshing:
-                raise WorkDeferred("Reporting refresh deferred: pre-start work or refresh active")
+            if self._pre_start or self._refreshing or (critical_pending and critical_pending()):
+                raise WorkDeferred("View refresh deferred: pre-start work or refresh active")
             self._refreshing = True
         try:
             yield
@@ -43,4 +43,4 @@ class ReportingExclusion:
                 self._condition.notify_all()
 
 
-reporting_exclusion = ReportingExclusion()
+view_refresh_exclusion = ViewRefreshExclusion()

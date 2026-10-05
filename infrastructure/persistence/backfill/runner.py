@@ -32,7 +32,7 @@ from infrastructure.persistence.backfill.checkpoint import (
 )
 from infrastructure.persistence.backfill.strategy import BackfillConflict, BackfillStrategy
 from infrastructure.persistence.database import db_manager
-from modules.jobs.reporting_refresh.run_reporting_refresh import run_reporting_refresh
+from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
 
 logger = logging.getLogger("backfill_runner")
 
@@ -540,7 +540,7 @@ class BackfillRunner:
             checkpoint["updated_at"] = utc_iso_now()
             write_json_atomic(self.checkpoint_path, checkpoint)
             if checkpoint["status"] == "COMPLETED" and self.refresh_views:
-                run_reporting_refresh(force=True, request=True)
+                run_view_refresh(force=True, request=True)
                 logger.info("Reporting materialized views refreshed")
             return 0
         finally:

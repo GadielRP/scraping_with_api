@@ -25,7 +25,7 @@ class ApplicationRuntime:
         from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
         from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
         from modules.jobs.midnight_sync_job import run_midnight_sync_job
-        from modules.jobs.reporting_refresh.run_reporting_refresh import run_reporting_refresh
+        from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
         from modules.jobs.results_collection_job import run_results_collection
 
         self.jobs = dict(
@@ -36,7 +36,7 @@ class ApplicationRuntime:
             results=run_results_collection,
             results_all=run_results_collection,
             results_date=run_results_collection,
-            reporting=run_reporting_refresh,
+            view_refresh=run_view_refresh,
             fixtures=self.fixtures.run,
             account_usage=self.fixtures.refresh_usage,
             league_cache=run_clean_league_cache_job,
@@ -77,7 +77,10 @@ class ApplicationRuntime:
         """Bind occurrence identity and deadline before submitting to the assigned worker."""
         from infrastructure.scheduler.contracts import JobRequest
         from shared.temporal import in_timezone
-        from modules.jobs.daily_discovery import resolve_daily_discovery_slot
+        from modules.jobs.daily_discovery import (
+            resolve_daily_discovery_slot,
+            resolve_daily_discovery_target_date,
+        )
 
         local = in_timezone(scheduled_at, Config.TIMEZONE)
         action = self.jobs[name]
@@ -92,7 +95,8 @@ class ApplicationRuntime:
             action, key = partial(action, target_date=target), f"midnight:{target}"
         elif name == "daily":
             slot = resolve_daily_discovery_slot(local)
-            action = partial(action, target_date=local.date().isoformat(), run_slot=slot)
+            target = resolve_daily_discovery_target_date(local, slot)
+            action = partial(action, target_date=target, run_slot=slot)
             key = f"daily:{local.date()}:{slot}"
         elif name == "fixtures":
             target = self.fixtures.target_date_for_slot(local)
@@ -133,6 +137,9 @@ class ApplicationRuntime:
             }
         )
         configure_calendar(self.scheduler.clock, self.settings, self.dispatch_scheduled)
+        self.jobs["view_refresh"] = partial(
+            self.jobs["view_refresh"], critical_pending=self.scheduler.critical_work_pending
+        )
         from infrastructure.persistence.transient.run_directory import clean_abandoned_runs
 
         self.scheduler.dispatch(

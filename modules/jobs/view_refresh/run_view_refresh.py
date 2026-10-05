@@ -1,4 +1,4 @@
-"""Recover pending generations independently of discovery's heartbeat."""
+"""Refresh pending materialized views independently of discovery's heartbeat."""
 
 from datetime import timedelta
 import logging
@@ -13,12 +13,12 @@ from infrastructure.settings.job_execution import JobExecutionSettings
 from shared.execution_context import WorkDeferred, check_execution_budget
 from shared.temporal import utc_now
 from infrastructure.runtime.resource_budget import check_maintenance_capacity
-from infrastructure.runtime.reporting_exclusion import reporting_exclusion
+from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
 
 logger = logging.getLogger(__name__)
 
 
-def run_reporting_refresh(*, force=False, request=False):
+def run_view_refresh(*, force=False, request=False, critical_pending=None):
     limits = JobExecutionSettings()
     if request:
         with db_manager.get_session() as session:
@@ -28,7 +28,7 @@ def run_reporting_refresh(*, force=False, request=False):
         check_execution_budget()
         check_maintenance_capacity()
         try:
-            with reporting_exclusion.refresh(), db_manager.get_session() as session:
+            with view_refresh_exclusion.refresh(critical_pending=critical_pending), db_manager.get_session() as session:
                 if (
                     session.get_bind().dialect.name == "postgresql"
                     and not session.execute(
@@ -46,20 +46,20 @@ def run_reporting_refresh(*, force=False, request=False):
                     session,
                     name,
                     generation,
-                    utc_now() + timedelta(seconds=limits.reporting_min_interval_seconds),
+                    utc_now() + timedelta(seconds=limits.view_refresh_min_interval_seconds),
                 )
             summary["refreshed"] += 1
         except WorkDeferred:
             raise
         except Exception as exc:
-            delay = min(limits.reporting_retry_seconds * 2 ** min(attempts, 8), 3600)
+            delay = min(limits.view_refresh_retry_seconds * 2 ** min(attempts, 8), 3600)
             ReportingRefreshRepository.failed(
                 name, attempts, exc, utc_now() + timedelta(seconds=delay)
             )
             logger.exception(
-                "Reporting refresh failed view=%s generation=%s retry_s=%s", name, generation, delay
+                "View refresh failed view=%s generation=%s retry_s=%s", name, generation, delay
             )
             summary["failed"] += 1
     summary["pending"] = len(ReportingRefreshRepository.pending(force=True))
-    logger.info("Reporting refresh summary: %s", summary)
+    logger.info("View refresh summary: %s", summary)
     return summary

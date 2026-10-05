@@ -48,4 +48,4 @@ Odds persistence currently operates per event after the event batch transaction.
 
 `collect_batch` fetches the authoritative event response, checks identity and classifies it through the existing results parser. It batches metadata writes, persists results/observations atomically and applies guarded deletion evidence. It does not fetch historical final odds. Partial confirmed work is retained when resource/deadline checks defer the remainder; re-running selects unresolved rows again.
 
-Relevant source writes invalidate reporting in their transaction. `reporting_refresh` coalesces pending generations and refreshes the two materialized views independently. Scheduler queues and the reporting generation table solve different responsibilities. See [results collection and execution](../jobs/results-collection.md).
+Relevant source writes invalidate reporting in their transaction. The `view_refresh` job coalesces pending generations and refreshes the two materialized views independently. Scheduler queues and the reporting generation table solve different responsibilities. See [results collection and execution](../jobs/results-collection.md).
