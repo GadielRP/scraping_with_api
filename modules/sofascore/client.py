@@ -37,6 +37,7 @@ from .discovery_feeds import (
     get_winning_odds_events,
 )
 from .event_details import (
+    EventResultsResponse,
     get_event_details,
     get_event_results,
     update_event_information_from_response,
@@ -635,12 +636,13 @@ class SofaScoreAPI:
                     else None
                 )
                 proxy_identity = request_state.proxy_identity
+                retrying = isinstance(exc, requests.exceptions.Timeout) and attempt < Config.MAX_RETRIES - 1
                 logger.error(
                     "SofaScore request failed before completion: endpoint=%s attempt=%s/%s "
                     "response_received=%s http_status=%s elapsed_ms=%s exception_type=%s "
                     "curl_code=%s curl_code_name=%s diagnosis=%s proxy_configured=%s "
                     "proxy_active=%s proxy_provider=%s proxy_mode=%s proxy_endpoint=%s "
-                    "proxy_generation=%s sticky_session_present=%s retrying=false error=%s",
+                    "proxy_generation=%s sticky_session_present=%s retrying=%s error=%s",
                     endpoint,
                     attempt + 1,
                     Config.MAX_RETRIES,
@@ -658,8 +660,12 @@ class SofaScoreAPI:
                     request_state.proxy_manager.endpoint,
                     proxy_identity.generation if proxy_identity else 0,
                     bool(proxy_identity and proxy_identity.session_token),
+                    str(retrying).lower(),
                     _safe_transport_error_message(exc),
                 )
+                if retrying:
+                    wait_interruptibly(min(5 * (2**attempt), 60))
+                    continue
                 break
 
         return None
@@ -813,7 +819,7 @@ class SofaScoreAPI:
         on_not_started: str = "ignore",
         also_parse_result: bool = False,
         log_result_diagnostics: bool = False,
-    ) -> Optional[Dict]:
+    ) -> EventResultsResponse:
         return get_event_results(
             self,
             event_id,
@@ -863,7 +869,7 @@ class SofaScoreAPI:
         startTimeStamp: int,
         send_alert: bool = False,
         current_starting_time: Optional[datetime] = None,
-    ) -> bool:
+    ) -> bool | None:
         from modules.jobs.pre_start_check_job.timestamp_corrections import (
             check_and_update_starting_time as _check,
         )
