@@ -9,6 +9,7 @@ import unicodedata
 
 from sqlalchemy.orm import Session
 
+from infrastructure.settings import Config
 from infrastructure.persistence.repositories.event_source_mapping_repository import (
     EventSourceMappingRepository,
 )
@@ -34,6 +35,37 @@ SECONDARY_PROVIDER_SOURCES = {
     "betgeniusId": "betgenius",
     "oddinId": "oddin",
 }
+
+
+def _configured_secondary_provider_sources() -> set[str]:
+    """Return the Oddspapi secondary sources enabled for event mappings."""
+    configured = {
+        str(source).strip().casefold()
+        for source in (Config.ODDSPAPI_EVENT_MAPPING_SOURCES or [])
+        if str(source).strip()
+    }
+    all_sources = {source.casefold() for source in SECONDARY_PROVIDER_SOURCES.values()}
+    core_sources = {"sofascore", ODDSPAPI_SOURCE}
+
+    if configured == {"all"}:
+        return all_sources
+    if configured == {"none"}:
+        return set()
+    if "all" in configured or "none" in configured:
+        raise ValueError(
+            "ODDSPAPI_EVENT_MAPPING_SOURCES must use 'all' or 'none' alone"
+        )
+
+    recognized_sources = all_sources | core_sources
+    unknown_sources = configured - recognized_sources
+    if unknown_sources:
+        raise ValueError(
+            "Unknown ODDSPAPI_EVENT_MAPPING_SOURCES value(s): "
+            + ", ".join(sorted(unknown_sources))
+            + ". Allowed: "
+            + ", ".join(sorted(recognized_sources))
+        )
+    return configured & all_sources
 
 
 @dataclass(frozen=True)
@@ -144,6 +176,7 @@ def persist_resolved_fixtures(
 
     mapping_rows: list[dict] = []
     persisted_sources: dict[str, list[str]] = {}
+    enabled_secondary_sources = _configured_secondary_provider_sources()
     for write in writes:
         fixture = write.fixture
         home_key, away_key = participant_keys_by_fixture[fixture.fixture_id]
@@ -177,6 +210,8 @@ def persist_resolved_fixtures(
 
         if write.include_secondary_mappings:
             for provider_key, source in SECONDARY_PROVIDER_SOURCES.items():
+                if source.casefold() not in enabled_secondary_sources:
+                    continue
                 provider_id = normalize_source_id(external_providers.get(provider_key))
                 if provider_id is None:
                     continue

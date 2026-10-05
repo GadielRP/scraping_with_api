@@ -420,6 +420,12 @@ class Config:
         'ODDSPAPI_DEFAULT_MARKET_KEYS',
         ['1x2_full_time', 'over_under_full_time', 'asian_handicap_full_time'],
     )
+    # Source allowlist for mappings copied from resolved OddsPapi fixtures.
+    # The core SofaScore/OddsPapi mappings remain independently managed.
+    ODDSPAPI_EVENT_MAPPING_SOURCES = _parse_env_list(
+        'ODDSPAPI_EVENT_MAPPING_SOURCES',
+        ['sofascore', 'oddspapi'],
+    )
     # Feature / capacity toggles for Oddspapi pre-start. Product defaults such as
     # exchange market keys, opening moments, and quote filters live in
     # modules/jobs/pre_start_check_job/providers/oddspapi/settings.py.

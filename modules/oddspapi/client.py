@@ -386,6 +386,7 @@ class OddsPapiClient:
             self._scheduler().complete(lease, outcome)
 
     def get_fixture(self, fixture_id: str, language: str | None = None) -> dict:
+        logger.info("✈️ Fetching oddspapi fixture for fixture_id: %s", fixture_id)
         return self._request("fixture", {"fixtureId": fixture_id, "language": language})
 
     def get_account(self) -> dict:
@@ -417,6 +418,7 @@ class OddsPapiClient:
             "hasOdds": has_odds,
             "bookmakers": self._comma_separated(bookmakers),
         }
+        logger.info("✈️ Fetching oddspapi fixtures with params: %s", params)
         return self._request("fixtures", params)
 
     def get_odds(
@@ -436,7 +438,7 @@ class OddsPapiClient:
             "language": language or Config.ODDSPAPI_DEFAULT_LANGUAGE,
             "verbosity": Config.ODDSPAPI_DEFAULT_VERBOSITY if verbosity is None else verbosity,
         }
-        logger.info("💰 Fetching oddspapi odds for fixture_id: %s", fixture_id)
+        logger.info("✈️💰 Fetching oddspapi odds for fixture_id: %s", fixture_id)
         return self._request("odds", params)
 
     def get_historical_odds(
@@ -480,6 +482,7 @@ class OddsPapiClient:
                 "active": active,
             },
         )
+        logger.info("✈️💰 Fetching oddspapi historical odds for fixture_id: %s", fixture_id)
         if not isinstance(payload, dict):
             raise OddsPapiError("OddsPapi /v4/historical-odds response must be an object")
         return payload
@@ -501,6 +504,7 @@ class OddsPapiClient:
             "language": language or Config.ODDSPAPI_DEFAULT_LANGUAGE,
             "verbosity": Config.ODDSPAPI_DEFAULT_VERBOSITY if verbosity is None else verbosity,
         }
+        logger.info("✈️💰 Fetching oddspapi odds by tournaments for tournament_ids: %s", tournament_ids)
         return self._request("odds-by-tournaments", params)
 
     def get_markets(self, language: str | None = None) -> list[dict]:
