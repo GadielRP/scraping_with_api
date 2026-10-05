@@ -10,7 +10,7 @@ from infrastructure.settings import Config
 class DailyDiscoveryRepository:
     @staticmethod
     def initialize_sports_for_slot(date_str, run_slot, sports):
-        if run_slot not in {"AM", "PM"}:
+        if run_slot not in {"current_utc_day", "next_utc_day"}:
             raise ValueError("Invalid discovery slot")
         if not sports:
             return

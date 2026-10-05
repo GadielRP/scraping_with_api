@@ -192,7 +192,9 @@ def _parse_x_requested_with_value(
 class Config:
     # Discard memory: cleanup owns expiry; disabled cleanup retains blocking rows.
     EVENT_DISCARD_MEMORY_ENABLED = os.getenv('EVENT_DISCARD_MEMORY_ENABLED', 'true').lower() == 'true'
-    EVENT_DISCARD_MEMORY_KINDS = _parse_env_list('EVENT_DISCARD_MEMORY_KINDS', ['canceled'])
+    EVENT_DISCARD_MEMORY_KINDS = _parse_env_list(
+        'EVENT_DISCARD_MEMORY_KINDS', ['canceled', 'finished_empty_score', 'not_found']
+    )
     EVENT_DISCARD_MEMORY_RETENTION_DAYS = int(os.getenv('EVENT_DISCARD_MEMORY_RETENTION_DAYS', '3'))
     EVENT_DISCARD_MEMORY_CLEANUP_ENABLED = os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_ENABLED', 'true').lower() == 'true'
     EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE = int(os.getenv('EVENT_DISCARD_MEMORY_CLEANUP_BATCH_SIZE', '1000'))
@@ -277,17 +279,26 @@ class Config:
             str(DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES),
         )
     )
-    # Legacy slot labels: PM opens in the morning, AM in the evening.
-    # Both request the current local calendar date; neither wraps past midnight.
-    DAILY_DISCOVERY_AM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '17'))
-    DAILY_DISCOVERY_PM_OPEN_HOUR = int(os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '8'))
+    # These thresholds are local wall-clock hours; their names describe the UTC
+    # calendar date queried. Old environment variable names remain supported.
+    DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR = int(
+        os.getenv(
+            'DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR',
+            os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '17'),
+        )
+    )
+    DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR = int(
+        os.getenv(
+            'DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR',
+            os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '8'),
+        )
+    )
 
     # Fixed trigger times for daily discovery. The interval-based heartbeat stays as a safety retry net;
     # these fixed times are the primary triggers and fire first in the vast majority of cases.
     DAILY_DISCOVERY_FIXED_TIMES = _parse_env_list('DAILY_DISCOVERY_FIXED_TIMES', ['17:10'])
-    DAILY_DISCOVERY_SLOTS = _parse_env_list('DAILY_DISCOVERY_SLOTS', ['AM', 'PM'])
     DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
-    # Runs at 17:47 MX — after the 17:10 daily discovery AM slot, and off the
+    # Runs at 17:47 MX — after the 17:10 next-UTC-day discovery slot, and off the
     # :45 pre-start tick so both jobs are not due in the same scheduler batch.
     ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
         'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',

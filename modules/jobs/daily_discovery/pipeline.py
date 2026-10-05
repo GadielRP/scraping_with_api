@@ -64,8 +64,8 @@ def persist_sport_odds(client, date, sport, store, batch_size):
 
 
 def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_client):
-    if run_slot not in {"AM", "PM"}:
-        raise ValueError("Daily discovery requires an explicit AM/PM slot")
+    if run_slot not in {"current_utc_day", "next_utc_day"}:
+        raise ValueError("Daily discovery requires an explicit UTC-date slot")
     limits = JobExecutionSettings()
     scope = load_tracked_source_competitions("sofascore")
     if scope is not None and not scope:
@@ -78,6 +78,7 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
             "events_updated",
             "events_discarded",
             "events_failed",
+            "sports_failed",
             "odds_inserted",
         ),
         0,
@@ -113,10 +114,10 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
                     raise
                 except Exception:
                     failed = True
-                    stats["events_failed"] += 1
                     logger.exception(
                         "Daily sport incomplete date=%s slot=%s sport=%s", date, run_slot, sport
                     )
+                stats["sports_failed"] += int(failed)
                 DailyDiscoveryRepository.update_sport_status(
                     date, run_slot, sport, "failed" if failed else "completed"
                 )

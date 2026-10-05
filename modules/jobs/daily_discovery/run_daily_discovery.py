@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta, timezone
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.settings import Config
@@ -20,23 +21,38 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
         now = now_in_timezone(Config.TIMEZONE)
 
     current_hour = now.hour
-    am_hour = Config.DAILY_DISCOVERY_AM_OPEN_HOUR
-    pm_hour = Config.DAILY_DISCOVERY_PM_OPEN_HOUR
+    next_utc_day_hour = Config.DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR
+    current_utc_day_hour = Config.DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR
 
-    # LEGACY(EXEC-002): preserve stored slot labels until an explicit data migration.
-    # Slot names are legacy labels: some deployments open PM before AM.
+    # Each configured local-time window identifies the UTC date it queries.
     # Neither window carries over from the previous local calendar day.
-    if am_hour > pm_hour:
-        if pm_hour <= current_hour < am_hour:
-            return "PM"
-        return "AM" if current_hour >= am_hour else None
+    if next_utc_day_hour > current_utc_day_hour:
+        if current_utc_day_hour <= current_hour < next_utc_day_hour:
+            return "current_utc_day"
+        return "next_utc_day" if current_hour >= next_utc_day_hour else None
     else:
-        # Standard case (am_hour < pm_hour, e.g. AM=5, PM=16)
-        if current_hour >= pm_hour:
-            return "PM"
-        if current_hour >= am_hour:
-            return "AM"
+        if current_hour >= current_utc_day_hour:
+            return "current_utc_day"
+        if current_hour >= next_utc_day_hour:
+            return "next_utc_day"
         return None
+
+
+def resolve_daily_discovery_target_date(now, run_slot: str | None) -> str | None:
+    """Return the UTC calendar date for a daily-discovery slot.
+
+    ``next_utc_day`` targets the next UTC date; ``current_utc_day`` targets
+    the current UTC date. ``now`` should be the scheduled occurrence when this
+    is called from the scheduler, so deferred work keeps its original date.
+    """
+    if run_slot is None:
+        return None
+    utc_date = now.astimezone(timezone.utc)
+    if run_slot == "next_utc_day":
+        utc_date += timedelta(days=1)
+    elif run_slot != "current_utc_day":
+        raise ValueError(f"Unsupported Daily Discovery slot: {run_slot}")
+    return utc_date.date().isoformat()
 
 
 def run_daily_discovery_job(*, target_date=None, run_slot=None) -> dict | None:
@@ -56,8 +72,7 @@ def run_daily_discovery_job(*, target_date=None, run_slot=None) -> dict | None:
         logger.info("No Daily Discovery slot is open yet. Skipping.")
         return
 
-    # Resolve both the slot and its target from the same local clock read.
-    today_str = target_date or now.date().isoformat()
+    today_str = target_date or resolve_daily_discovery_target_date(now, run_slot)
     logger.info(
         "Daily discovery target_date=%s slot=%s local_now=%s timezone=%s",
         today_str,

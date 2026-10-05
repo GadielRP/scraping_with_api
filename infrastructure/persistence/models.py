@@ -676,7 +676,7 @@ class DailyDiscoveryLog(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(String(10), nullable=False)  # 'YYYY-MM-DD'
-    run_slot = Column(String(20), nullable=False, default='AM')
+    run_slot = Column(String(20), nullable=False, default='next_utc_day')
     sport = Column(String(50), nullable=False)
     status = Column(String(20), nullable=False, default='pending')  # 'pending', 'completed', 'failed'
     attempts = Column(Integer, default=0)

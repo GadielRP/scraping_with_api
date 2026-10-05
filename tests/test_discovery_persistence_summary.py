@@ -19,7 +19,7 @@ def test_summary_keeps_unique_final_calendar_and_local_day(caplog):
             logging.getLogger(__name__),
             job="daily_discovery",
             requested_date="2026-10-02",
-            run_slot="PM",
+            run_slot="current_utc_day",
         )
     assert "event_date=2026-10-03 persisted_unique=1" in caplog.text
     assert "job=daily_discovery persisted_unique=1" in caplog.text

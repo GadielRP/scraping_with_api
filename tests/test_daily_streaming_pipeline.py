@@ -67,7 +67,7 @@ def database(tmp_path, monkeypatch):
         lambda _: None,
     )
     daily_discovery_repository.DailyDiscoveryRepository.initialize_sports_for_slot(
-        "2026-10-03", "PM", ["football"]
+        "2026-10-03", "current_utc_day", ["football"]
     )
     yield db
     Base.metadata.drop_all(db.engine)
@@ -75,9 +75,10 @@ def database(tmp_path, monkeypatch):
 
 
 def test_real_batches_persist_complete_source_and_mark_sport_complete(database):
-    stats = discover_events_for_date("2026-10-03", ["football"], "PM", client=Provider())
+    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider())
     assert stats["events_inserted"] == stats["events_persisted"] == 205
     assert stats["events_failed"] == 0
+    assert stats["sports_failed"] == 0
     with database.get_session() as session:
         assert session.query(Event).count() == 205
         assert session.query(DailyDiscoveryLog).one().status == "completed"
@@ -85,13 +86,32 @@ def test_real_batches_persist_complete_source_and_mark_sport_complete(database):
 
 def test_truncation_retains_commits_and_retry_is_idempotent(database):
     stats = discover_events_for_date(
-        "2026-10-03", ["football"], "PM", client=Provider(truncated=True)
+        "2026-10-03", ["football"], "current_utc_day", client=Provider(truncated=True)
     )
-    assert stats["events_failed"] == 1
+    assert stats["events_failed"] == 0
+    assert stats["sports_failed"] == 1
     with database.get_session() as session:
         assert session.query(Event).count() == 200
         assert session.query(DailyDiscoveryLog).one().status == "failed"
-    stats = discover_events_for_date("2026-10-03", ["football"], "PM", client=Provider())
+    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider())
     assert stats["events_inserted"] == 5
     assert stats["events_updated"] == 200
     assert stats["events_failed"] == 0
+    assert stats["sports_failed"] == 0
+
+
+def test_event_write_failures_have_separate_event_and_sport_counts(database, monkeypatch):
+    from types import SimpleNamespace
+
+    pipeline = import_module("modules.jobs.daily_discovery.pipeline")
+    monkeypatch.setattr(
+        pipeline, "persist_daily_events",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            persisted=0, inserted=0, updated=0, discarded=0, failed=2
+        ),
+    )
+    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider(count=2))
+    assert stats["events_failed"] == 2
+    assert stats["sports_failed"] == 1
+    with database.get_session() as session:
+        assert session.query(DailyDiscoveryLog).one().status == "failed"
