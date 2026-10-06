@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Competition
 from infrastructure.persistence.repositories.competition_repository import CompetitionRepository
-from infrastructure.settings import Config
-from modules.competition.discovery_scope import (
+from infrastructure.settings import discovery as settings
+from dataclasses import replace
+from modules.jobs.discovery.filters import (
     SourceCompetitionIds,
     is_tracked_source_event,
     load_tracked_source_competitions,
@@ -76,13 +77,13 @@ def test_canonical_competition_resolves_to_both_sofascore_ids_on_its_row():
 
 
 def test_disabled_competition_filter_skips_lookup_and_accepts_any_source_ids(monkeypatch):
-    monkeypatch.setattr(Config, "DISCOVERY_TRACKED_COMPETITIONS_ONLY", False)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, filters=replace(settings.SOFASCORE.filters, tracked_competitions_only=False)))
 
     def unexpected_database_lookup():
         raise AssertionError("disabled competition filtering should not query the database")
 
     monkeypatch.setattr(
-        "modules.competition.discovery_scope.db_manager.get_session",
+        "infrastructure.persistence.repositories.discovery_repository.db_manager.get_session",
         unexpected_database_lookup,
     )
 

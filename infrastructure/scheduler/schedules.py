@@ -2,6 +2,7 @@
 
 from datetime import timezone
 from infrastructure.settings import Config
+from infrastructure.settings import discovery as discovery_settings
 from shared.execution_context import Priority
 
 
@@ -20,21 +21,21 @@ def configure_calendar(clock, settings, on_due=None):
         for time_str in times:
             bind(clock.every().day.at(time_str, Config.TIMEZONE), name)
 
-    daily("discovery", Config.DISCOVERY_TIMES)
-    daily("discovery2", Config.DISCOVERY2_TIMES)
+    daily("discovery", discovery_settings.SOFASCORE.dropping_times)
+    daily("discovery2", discovery_settings.SOFASCORE.secondary_times)
     daily("midnight", ["04:00"])
     daily(
         "daily",
         sorted(
-            set(Config.DAILY_DISCOVERY_FIXED_TIMES)
+            set(discovery_settings.SOFASCORE.daily_fixed_times)
             | {
-                f"{Config.DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR:02d}:00",
-                f"{Config.DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR:02d}:00",
+                f"{discovery_settings.SOFASCORE.daily_next_utc_day_open_hour:02d}:00",
+                f"{discovery_settings.SOFASCORE.daily_current_utc_day_open_hour:02d}:00",
             }
         ),
     )
-    daily("fixtures", Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES)
-    bind(clock.every(Config.DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES).minutes, "daily")
+    daily("fixtures", discovery_settings.ODDSPAPI.scheduled_times)
+    bind(clock.every(discovery_settings.SOFASCORE.daily_check_interval_minutes).minutes, "daily")
     bind(clock.every(settings.view_refresh_poll_seconds).seconds, "view_refresh")
     bind(clock.every(3).days.at("05:00", Config.TIMEZONE), "league_cache")
     bind(clock.every(Config.ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS).hours, "account_usage")

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import logging
 
 from infrastructure.persistence.repositories import EventRepository
+from modules.jobs.discovery.filters import (
+    filter_sofascore_events, load_tracked_source_competitions, UNRESOLVED_SCOPE,
+)
 from shared.execution_context import WorkDeferred, check_execution_budget
 
 logger = logging.getLogger(__name__)
@@ -16,14 +19,19 @@ class DailyWriteSummary:
     updated: int = 0
     discarded: int = 0
     failed: int = 0
+    filtered: int = 0
 
 
-def persist_daily_events(client, events, run_store=None):
-    """The source owns sport/scope filtering; this boundary owns normalization and writes."""
+def persist_daily_events(client, events, run_store=None, *, tracked_competitions=UNRESOLVED_SCOPE):
+    """Revalidate admission before normalization and event writes."""
     check_execution_budget()
+    if tracked_competitions is UNRESOLVED_SCOPE:
+        tracked_competitions = load_tracked_source_competitions("sofascore")
     summary = DailyWriteSummary()
-    eligible = [raw for raw in events if raw.get("id")]
-    summary.failed = len(events) - len(eligible)
+    eligible = filter_sofascore_events(events, tracked_competitions)
+    summary.filtered = len(events) - len(eligible)
+    eligible = [raw for raw in eligible if raw.get("id")]
+    summary.failed = len(events) - summary.filtered - len(eligible)
     blocked = EventRepository.discarded_source_ids("sofascore", [raw["id"] for raw in eligible])
     if blocked:
         logger.info(

@@ -1,22 +1,23 @@
 from importlib import import_module
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from infrastructure.persistence.repositories.event_batch_writer import EventWriteResult
+from infrastructure.settings import discovery as settings
 from modules.jobs.discovery import persistence
 from modules.jobs.discovery.fetching import OddsFetchSummary
 from shared.execution_context import WorkDeferred
 
 
 def event(source_id):
-    return {"id": source_id, "sport": "Football"}
+    return {"id": source_id, "sport": "Football", "startTimestamp": 4_102_444_800}
 
 
 @pytest.fixture
 def writes(monkeypatch):
-    monkeypatch.setattr(persistence, "filter_supported_sofascore_events", lambda events: events)
     discarded = Mock(return_value=set())
     monkeypatch.setattr(persistence.EventRepository, "discarded_source_ids", discarded)
     writer = Mock(
@@ -101,9 +102,33 @@ def test_secondary_pause_closes_temporary_store_and_reaches_worker(monkeypatch):
         return store
 
     monkeypatch.setattr(job, "DiscoveryRunStore", create_store)
-    monkeypatch.setattr(job, "sofascore_sport_slugs", lambda: ["football"])
+    monkeypatch.setattr(job, "sofascore_discovery_sport_slugs", lambda: ["football"])
     monkeypatch.setattr(job, "load_tracked_source_competitions", lambda _: None)
     monkeypatch.setattr(job, "run_high_value_streaks", Mock(side_effect=WorkDeferred("budget")))
     with pytest.raises(WorkDeferred, match="budget"):
         job.run_discover_secondary_sources()
     assert len(directories) == 1 and not directories[0].exists()
+
+
+@pytest.mark.parametrize("require_odds", [True, False])
+def test_team_streaks_odds_requirement_can_be_disabled(monkeypatch, require_odds):
+    job = import_module("modules.jobs.discover_secondary_sources.run_discover_secondary_sources")
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, team_streaks_require_odds=require_odds))
+    monkeypatch.setattr(job, "sofascore_discovery_sport_slugs", lambda: ["football"])
+    monkeypatch.setattr(job, "load_tracked_source_competitions", lambda _: None)
+    monkeypatch.setattr(job, "run_high_value_streaks", lambda _: ([], []))
+    monkeypatch.setattr(job, "run_team_streaks", lambda _: [event(1)])
+    monkeypatch.setattr(job, "run_top_h2h", lambda _: [])
+    monkeypatch.setattr(job, "run_winning_odds", lambda _: ([], {}))
+    plain, odds_first = Mock(return_value=(1, 0)), Mock(return_value=(1, 0))
+    monkeypatch.setattr(job, "persist_events", plain)
+    monkeypatch.setattr(job, "fetch_and_persist_events_with_odds", odds_first)
+    monkeypatch.setattr(job, "persist_events_with_odds", Mock())
+    monkeypatch.setattr(job, "log_discovery_summary", Mock())
+    job.run_discover_secondary_sources()
+    if require_odds:
+        odds_first.assert_called_once()
+        assert all(call.args[1] != "team_streaks" for call in plain.call_args_list)
+    else:
+        odds_first.assert_not_called()
+        assert any(call.args[:2] == ([event(1)], "team_streaks") for call in plain.call_args_list)

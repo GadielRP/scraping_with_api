@@ -21,6 +21,7 @@ class DiscoveryRunStore:
             "CREATE TABLE sources (source_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL)"
         )
         self.db.execute("CREATE TABLE tournaments (sport TEXT, id INTEGER, PRIMARY KEY(sport,id))")
+        self.db.execute("CREATE TABLE seen_ids (namespace TEXT, id TEXT, PRIMARY KEY(namespace,id))")
         self.zone = ZoneInfo(Config.TIMEZONE)
 
     def record_mapping(self, mapping):
@@ -49,6 +50,15 @@ class DiscoveryRunStore:
             "INSERT OR IGNORE INTO tournaments VALUES (?,?)", (sport, tournament_id)
         )
         self.db.commit()
+        return cursor.rowcount == 1
+
+    def first_seen(self, namespace: str, source_id: str) -> bool:
+        """Deduplicate streamed provider IDs using disk instead of an unbounded set."""
+        cursor = self.db.execute(
+            "INSERT OR IGNORE INTO seen_ids VALUES (?,?)", (namespace, source_id)
+        )
+        # This state is temporary and read only by this connection. A commit
+        # per fixture would add disk work without providing useful durability.
         return cursor.rowcount == 1
 
     def source_members(self, source_ids):

@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import Dict, List, Tuple
 
-from modules.competition.discovery_scope import (
+from modules.jobs.discovery.filters import (
     is_tracked_source_event,
     load_tracked_source_competitions,
     source_competition_ids,
     UNRESOLVED_SCOPE,
+    sofascore_event_filter_reason,
 )
 from modules.sports.catalog import (
     canonical_sport_id,
@@ -81,8 +83,7 @@ def extract_events_from_high_value_streaks(
                 event = item.get("event")
                 if (
                     event
-                    and is_supported_sofascore_event(event)
-                    and is_tracked_source_event(event, tracked_competitions)
+                    and sofascore_event_filter_reason(event, tracked_competitions) is None
                 ):
                     events.append(event)
 
@@ -92,8 +93,7 @@ def extract_events_from_high_value_streaks(
                 event = item.get("event")
                 if (
                     event
-                    and is_supported_sofascore_event(event)
-                    and is_tracked_source_event(event, tracked_competitions)
+                    and sofascore_event_filter_reason(event, tracked_competitions) is None
                 ):
                     events_h2h.append(event)
 
@@ -144,6 +144,7 @@ def extract_events_and_odds_from_dropping_response(
     rejected_invalid_event_payload = 0
     normalization_errors = 0
     missing_required_fields = 0
+    rejected_policy = Counter()
 
     try:
         for event in response_events:
@@ -186,6 +187,10 @@ def extract_events_and_odds_from_dropping_response(
                         ids.source_unique_tournament_id,
                         reason,
                     )
+                    continue
+                reason = sofascore_event_filter_reason(event, tracked_competitions)
+                if reason:
+                    rejected_policy[reason] += 1
                     continue
                 event_data = normalize_event_payload(event, discovery_source)
                 event_payload = event_data.get("event", event_data)
@@ -260,6 +265,8 @@ def extract_events_and_odds_from_dropping_response(
             len(odds_map),
             odds_extraction,
         )
+
+        logger.info("Discovery feed admission source=%s rejected=%s", discovery_source, dict(rejected_policy))
 
         return events, odds_map
     except WorkDeferred:

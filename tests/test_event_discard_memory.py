@@ -312,7 +312,7 @@ def test_daily_discard_is_successful_skip_before_normalization(database, monkeyp
 
     result = persist_daily_events(
         SimpleNamespace(normalize_event_payload=unexpected),
-        [{"id": 1300, "sport": "Football"}],
+        [{"id": 1300, "sport": "Football", "startTimestamp": 4_102_444_800}],
     )
     assert result.discarded == 1 and result.persisted == 0 and result.failed == 0
 

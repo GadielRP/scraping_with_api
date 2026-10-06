@@ -6,7 +6,7 @@
 
 ### Provider date alignment
 
-The target is a UTC calendar date, not simply the local date: the evening `next_utc_day` occurrence targets the next UTC date, while the morning `current_utc_day` occurrence targets the current UTC date. The scheduler derives that date from the original scheduled occurrence, so queue delays do not move a run to a different provider day. Existing `DAILY_DISCOVERY_AM_OPEN_HOUR` and `DAILY_DISCOVERY_PM_OPEN_HOUR` environment variables remain accepted as aliases for the new `DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR` and `DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR` names.
+The target is a UTC calendar date, not simply the local date: the evening `next_utc_day` occurrence targets the next UTC date, while the morning `current_utc_day` occurrence targets the current UTC date. The scheduler derives that date from the original scheduled occurrence, so queue delays do not move a run to a different provider day. Configure opening hours and triggers through `SOFASCORE` in `infrastructure/settings/discovery.py`; discovery no longer reads environment aliases.
 
 This alignment is required by the scheduled Oddspapi Fixture Discovery run. That job fetches fixtures for a UTC date and maps each fixture to a canonical event that must already exist, either through its SofaScore source ID or through candidate matching against persisted events. Daily Discovery's evening `next_utc_day` pass therefore needs to persist the SofaScore events for the same UTC date before Fixture Discovery runs. If it queries the prior local date instead, the fixture can arrive while its canonical event is absent; fuzzy matching may then reject the wrong or low-confidence candidate, leaving no Oddspapi mapping for pre-start ingestion. This is why both jobs share a UTC target date and why the daily pass runs first.
 
@@ -20,15 +20,15 @@ The heartbeat cleans old progress rows, initializes missing `(date, run_slot, sp
 
 ## Bounded ingestion
 
-`event_source.py` yields eligible raw events from scheduled-tournament pages and tournament responses. Supported-sport and mapped-competition policies remain unchanged. Discovery still accepts past events as well as upcoming events.
+`event_source.py` yields eligible raw events from scheduled-tournament pages and tournament responses. Shared admission in `modules/jobs/discovery/filters.py` checks supported sports, optional tracked competition scope, explicit category/competition/sport exclusions and kickoff time. Tournament exclusions run before requesting their event lists. Event admission runs before normalization and is rechecked at persistence. By default only events at least ten minutes before kickoff are admitted. Set `SOFASCORE.filters.future_only=False` in `infrastructure/settings/discovery.py` to admit past events; all other switches remain independent.
 
-`modules/sofascore/streaming.py` reuses the authenticated HTTP client and writes the response to a disk-backed temporary file through libcurl's callback. It parses one JSON member at a time, validates the complete document and bounds response bytes, individual elements/tokens and nesting depth, including ignored fields. It never retains a full sport payload in `Response.content`, `all_events` or a Python odds dictionary.
+`infrastructure/network/json_document.py` owns the shared disk-backed document and bounded incremental parser. SofaScore's `open_scheduled_tournaments`, `open_scheduled_events` and `open_scheduled_odds` methods describe the requested endpoints; its `download_json` adapter writes through libcurl's callback using the same authentication and retries as ordinary JSON requests. Parsing one member at a time bounds response bytes, individual elements/tokens and nesting depth, including ignored fields. Exhausting the iterator validates the complete document. It never retains a full sport payload in `Response.content`, `all_events` or a Python odds dictionary. See [shared JSON documents](../providers/http-json-documents.md).
 
 `pipeline.py` groups events with `shared/batching.chunks`. The existing identity/discard-aware event batch writer performs persistence; `modules/jobs/daily_discovery/persistence.py` owns normalization and confirmed-write counters; the incremental source owns sport and competition filtering. There is no second event upsert implementation.
 
 Confirmed canonical IDs, source associations, final kickoff/sport metadata and tournament deduplication live in a temporary SQLite store with a bounded page cache. It accepts multiple source IDs for one canonical event. Calendar counts use SQL grouping and only confirmed writes. The store is closed at the end of the run. Startup removes abandoned discovery directories older than 24 hours only after acquiring their OS ownership lock; active runs are preserved.
 
-After event batches commit, a second streamed pass reads the sport's odds. Each small group looks up run membership and checks current canonical identity/kickoff in one short database read. Odds are persisted only for events more than ten minutes from kickoff. Odds ingestion failures remain visible in the sport's retry state.
+After event batches commit, a second streamed pass reads the sport's odds. Each small group looks up run membership and checks current canonical identity and the configured admission policy in one short database read. The temporal toggle and margin also apply to this odds pass. Odds ingestion failures remain visible in the sport's retry state.
 
 No HTTP call runs inside an event write transaction. A failed run can retain earlier committed batches; retry repeats that sport and safely updates existing events. Operation counters count writes; the calendar summary counts unique canonical events and cannot be added across runs to establish daily uniqueness.
 
@@ -44,6 +44,25 @@ SofaScore transport timeouts use the HTTP client's existing `Config.MAX_RETRIES`
 Daily, other discoveries, midnight and reporting execute serially on the maintenance channel. Pre-start and T−1 have their own channels. Cooperative cancellation/available-memory checks occur at unit boundaries; unfinished daily work retains its date/slot when deferred by the executor.
 
 Configure execution limits directly in `infrastructure/settings/job_execution.py`; there are no environment overrides. `event_read_batch_size` controls pipeline groups, `event_write_batch_size` controls database write chunks, `response_max_bytes` / `json_item_max_bytes` / `json_max_depth` control transport/parser limits and `temporary_cache_kib` controls SQLite's cache. Restart after editing. The default group/write size is 100, nesting depth is 128 and the cache is 2 MiB.
+
+Configure discovery policy, schedules and provider-specific defaults directly in
+`infrastructure/settings/discovery.py`. `SOFASCORE` and `ODDSPAPI` own separate
+`DiscoveryFilters` instances. Each offers `future_only`, `tracked_competitions_only`,
+`exclude_sports`, `exclude_categories` and `exclude_competitions` switches.
+Category pairs use canonical sport IDs and exact SofaScore category names;
+competition exclusions use SofaScore `uniqueTournament` IDs, including when
+checking canonical events for OddsPapi. Credentials and transport settings stay
+in `.env`; `SUPPORTED_SPORTS` remains a shared application constraint.
+`has_odds=false` and `NULL` are not admission filters. See the
+[investigation and plan](../analysis/discovery-filter-plan.md) for evidence and
+the estimated scope of the initial exclusions. Existing history is retained.
+
+Logs expose reason counts for raw source admission and persistence boundaries.
+`events_filtered` counts rejections at the daily persistence boundary;
+earlier calendar/source rejections are reported by `Daily source ... counts`.
+Rejections are not persistence failures and do not keep an otherwise successful
+sport retrying. Existing completed progress rows remain completed after a policy
+change; rerunning a date/slot requires the usual operational replay procedure.
 
 Direct `discover_events_for_date(date, sports, run_slot)` requires an explicit valid slot and initialized progress rows. It does not perform the heartbeat's cleanup/selection. `python main.py daily-discovery` invokes the heartbeat.
 

@@ -7,6 +7,7 @@ import logging
 import re
 import threading
 import time
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -15,8 +16,9 @@ from curl_cffi import requests
 from curl_cffi.const import CurlECode
 
 from infrastructure.network import ProxyIdentityManager
+from infrastructure.network.json_document import JsonDocument, open_json_document
 from infrastructure.settings import Config
-from modules.competition.discovery_scope import UNRESOLVED_SCOPE
+from modules.jobs.discovery.filters import UNRESOLVED_SCOPE
 from shared.shutdown import is_shutdown_requested
 from shared.execution_context import (
     current_priority,
@@ -58,12 +60,7 @@ from .exceptions import (
 )
 from .h2h import get_h2h_events_for_event
 from .results_parser import extract_results_from_response
-from .schedule_feeds import (
-    get_live_events_response_per_sport,
-    get_today_sport_events_odds_response,
-    get_today_sport_events_response,
-    get_unique_tournament_scheduled_events,
-)
+from .schedule_feeds import get_live_events_response_per_sport
 from .standings import get_standings_response, process_standings_response
 from .team_history import get_nearest_event_for_team, get_team_last_results_response
 from .winning_odds import get_winning_odds_response
@@ -385,10 +382,28 @@ class SofaScoreAPI:
         self,
         endpoint: str,
         params: Optional[Dict] = None,
-        *,
-        body_file=None,
     ) -> Optional[Dict]:
-        """Execute a JSON request while preserving structured HTTP exceptions."""
+        """Decode a response while preserving structured provider exceptions."""
+        response = self._request(endpoint, params=params)
+        if response is None:
+            return None
+        try:
+            return response.json()
+        except ValueError:
+            logger.exception("Invalid SofaScore JSON endpoint=%s", endpoint)
+            return None
+
+    def download_json(
+        self, endpoint: str, document: JsonDocument, params: Optional[Dict] = None
+    ) -> None:
+        """Download to a bounded document without constructing a Python payload."""
+        if self._request(endpoint, params=params, document=document) is None:
+            raise RuntimeError(f"Incomplete provider response: {endpoint}")
+
+    def _request(
+        self, endpoint: str, params: Optional[Dict] = None, *, document: JsonDocument | None = None
+    ) -> requests.Response | None:
+        """One HTTP/retry implementation for decoded and disk-backed responses."""
         url = f"{self.base_url}{endpoint}"
         headers = self._build_headers()
         x_requested_with_token = headers.get("X-Requested-With")
@@ -398,6 +413,7 @@ class SofaScoreAPI:
         for attempt in range(Config.MAX_RETRIES):
             request_started_at = None
             response = None
+            callback_error = None
             try:
                 if is_shutdown_requested():
                     raise KeyboardInterrupt()
@@ -407,13 +423,21 @@ class SofaScoreAPI:
                 if is_shutdown_requested():
                     raise KeyboardInterrupt()
 
-                logger.debug("Making request to: %s", url)
+                logger.info("✈️ SofaScore GET %s attempt=%s/%s", url, attempt + 1, Config.MAX_RETRIES)
                 request_started_at = time.perf_counter()
                 transfer_options = {}
-                if body_file is not None:
-                    body_file.seek(0)
-                    body_file.truncate()
-                    transfer_options["content_callback"] = body_file.write
+                if document is not None:
+                    document.reset()
+
+                    def write_chunk(data):
+                        nonlocal callback_error
+                        try:
+                            return document.write(data)
+                        except BaseException as exc:
+                            callback_error = exc
+                            return 0  # libcurl requires a short write to abort.
+
+                    transfer_options["content_callback"] = write_chunk
                 response = request_state.session.get(
                     url,
                     headers=headers,
@@ -421,18 +445,17 @@ class SofaScoreAPI:
                     timeout=request_timeout(30),
                     **transfer_options,
                 )
+                if callback_error is not None:
+                    raise callback_error
 
                 if response.status_code == 200:
                     self._proxy_error_streak = 0
                     self._record_successful_response()
-                    if body_file is not None:
-                        body_file.seek(0)
-                        return body_file
-                    return response.json()
+                    return response
 
-                if body_file is not None:
-                    body_file.seek(0)
-                    response.content = body_file.read(65536)
+                if document is not None:
+                    document.seek(0)
+                    response.content = document.read(65536)
                 if is_sofascore_challenge_response(response):
                     self._record_challenge_response(endpoint)
                     reason = get_challenge_reason(response)
@@ -626,6 +649,8 @@ class SofaScoreAPI:
             except (KeyboardInterrupt, WorkDeferred):
                 raise
             except Exception as exc:
+                if callback_error is not None:
+                    raise callback_error
                 if is_shutdown_requested():
                     logger.info("Shutdown requested while requesting %s", endpoint)
                     raise KeyboardInterrupt() from exc
@@ -784,13 +809,28 @@ class SofaScoreAPI:
         return get_h2h_events_for_event(self, custom_id)
 
     def get_today_sport_events_response(self, date: str, sport: str, page: int = 1):
-        return get_today_sport_events_response(self, date, sport, page)
+        return self.request_json_or_none(f"/sport/{sport}/scheduled-tournaments/{date}/page/{page}")
 
     def get_unique_tournament_scheduled_events(self, unique_tournament_id: int | str, date: str):
-        return get_unique_tournament_scheduled_events(self, unique_tournament_id, date)
+        return self.request_json_or_none(
+            f"/unique-tournament/{unique_tournament_id}/scheduled-events/{date}"
+        )
 
     def get_today_sport_events_odds_response(self, date: str, sport: str):
-        return get_today_sport_events_odds_response(self, date, sport)
+        return self.request_json_or_none(f"/sport/{sport}/odds/1/{date}")
+
+    def open_scheduled_tournaments(
+        self, date: str, sport: str, page: int = 1
+    ) -> AbstractContextManager[JsonDocument]:
+        return open_json_document(self, f"/sport/{sport}/scheduled-tournaments/{date}/page/{page}")
+
+    def open_scheduled_events(
+        self, unique_tournament_id: int | str, date: str
+    ) -> AbstractContextManager[JsonDocument]:
+        return open_json_document(self, f"/unique-tournament/{unique_tournament_id}/scheduled-events/{date}")
+
+    def open_scheduled_odds(self, date: str, sport: str) -> AbstractContextManager[JsonDocument]:
+        return open_json_document(self, f"/sport/{sport}/odds/1/{date}")
 
     def update_event_information_from_response(self, response: Dict) -> bool:
         return update_event_information_from_response(response)

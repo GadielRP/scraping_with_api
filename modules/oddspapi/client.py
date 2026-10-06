@@ -5,14 +5,17 @@ from __future__ import annotations
 from shared.execution_context import check_execution_budget, wait_interruptibly, request_timeout
 
 import logging
+import json
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any
+from typing import Iterator
 
 import requests
+from ijson.common import JSONError
 
 from infrastructure.settings import Config
+from infrastructure.network.json_document import JsonDocument, document_entries, open_json_document
 from modules.oddspapi.api_key_inventory import api_key_fingerprint
 from modules.oddspapi.api_key_scheduler import (
     ApiKeyLease,
@@ -144,43 +147,27 @@ class OddsPapiClient:
             lock.release()
 
     @staticmethod
-    def _retry_after_seconds(response) -> float | None:
-        header_value = getattr(response, "headers", {}).get("Retry-After")
+    def _error_metadata(headers, payload) -> tuple[str | None, float | None]:
+        """Decode error policy once without mutating the HTTP response internals."""
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if not isinstance(error, dict):
+            error = payload if isinstance(payload, dict) else {}
+        code = error.get("code") or error.get("errorCode")
+        error_code = str(code).strip().upper() if code else None
+        header_value = headers.get("Retry-After")
         try:
             if header_value is not None:
-                return max(float(header_value), 0.0)
+                return error_code, max(float(header_value), 0.0)
         except (TypeError, ValueError):
             pass
 
-        try:
-            body = response.json()
-        except (ValueError, TypeError, AttributeError):
-            return None
-        if not isinstance(body, dict):
-            return None
-
-        error = body.get("error") if isinstance(body.get("error"), dict) else body
-        retry_ms = error.get("retryMs") if isinstance(error, dict) else None
+        retry_ms = error.get("retryMs")
         try:
             if retry_ms is not None:
-                return max(float(retry_ms) / 1000.0, 0.0)
+                return error_code, max(float(retry_ms) / 1000.0, 0.0)
         except (TypeError, ValueError):
             pass
-        return None
-
-    @staticmethod
-    def _error_code(response) -> str | None:
-        try:
-            body = response.json()
-        except (ValueError, TypeError, AttributeError):
-            return None
-        if not isinstance(body, dict):
-            return None
-        error = body.get("error") if isinstance(body.get("error"), dict) else body
-        if not isinstance(error, dict):
-            return None
-        code = error.get("code") or error.get("errorCode")
-        return str(code).strip().upper() if code else None
+        return error_code, None
 
     def _execute_http_attempt(
         self,
@@ -189,33 +176,62 @@ class OddsPapiClient:
         url: str,
         base_request_params: dict,
         safe_params: dict,
+        document: JsonDocument | None = None,
     ):
         """Execute one physical request and always return its lease."""
         check_execution_budget()
         lease = self._acquire_lease(endpoint)
         outcome = RequestOutcome()
+        response = None
+        error_text = ""
+        error_payload = {}
         try:
             request_params = dict(base_request_params)
             request_params["apiKey"] = lease.api_key
-            logger.info(
-                "✈️ OddsPapi GET /v4/%s key_id=%s params=%s",
-                endpoint,
-                lease.key_id,
-                safe_params,
-            )
             if lease.wait_seconds > 0:
                 wait_interruptibly(lease.wait_seconds)
 
             # Do not add a proxies argument: trust_env=False is the single
             # source of truth for the proxy-free OddsPapi session.
             with self._endpoint_request_slot(endpoint, lease.api_key):
+                logger.info(
+                    "✈️ OddsPapi GET /v4/%s key_id=%s params=%s",
+                    endpoint, lease.key_id, safe_params,
+                )
+                if document is not None:
+                    document.reset()
                 response = self.session.get(
                     url,
                     params=request_params,
                     timeout=request_timeout(self.timeout),
+                    **({"stream": True} if document is not None else {}),
                 )
+                status_code = int(response.status_code)
+                outcome = RequestOutcome(status_code=status_code, response_received=True)
+                if document is not None:
+                    if 200 <= status_code < 300:
+                        for data in response.iter_content(chunk_size=65536):
+                            document.write(data)
+                    else:
+                        # Error metadata is small; cap it before decoding.
+                        preview = bytearray()
+                        for data in response.iter_content(chunk_size=65536):
+                            check_execution_budget()
+                            preview.extend(data[:65536 - len(preview)])
+                            if len(preview) == 65536:
+                                break
+                        error_text = preview.decode(response.encoding or "utf-8", errors="replace")
+                        try:
+                            error_payload = json.loads(preview)
+                        except ValueError:
+                            pass
+                elif not 200 <= status_code < 300:
+                    error_text = response.text
+                    try:
+                        error_payload = response.json()
+                    except ValueError:
+                        pass
 
-            status_code = int(response.status_code)
             # Successful odds payloads can be large. Decode them only once in
             # the normal return path; error metadata is relevant only for a
             # non-2xx response and those bodies are small.
@@ -223,8 +239,7 @@ class OddsPapiClient:
                 error_code = None
                 retry_after_seconds = None
             else:
-                error_code = self._error_code(response)
-                retry_after_seconds = self._retry_after_seconds(response)
+                error_code, retry_after_seconds = self._error_metadata(response.headers, error_payload)
             outcome = RequestOutcome(
                 status_code=status_code,
                 error_code=error_code,
@@ -237,6 +252,7 @@ class OddsPapiClient:
                 status_code,
                 error_code,
                 retry_after_seconds,
+                error_text,
             )
         except requests.RequestException:
             # Conservatively count network ambiguity for metered endpoints:
@@ -244,9 +260,38 @@ class OddsPapiClient:
             outcome = RequestOutcome(network_error=True)
             raise
         finally:
-            self._complete_lease(lease, outcome)
+            try:
+                if response is not None:
+                    response.close()
+            finally:
+                self._complete_lease(lease, outcome)
 
     def _request(self, endpoint: str, params: dict | None = None) -> dict | list:
+        """Decode a small response; the transport has a stable Response contract."""
+        response = self._request_response(endpoint, params)
+        try:
+            payload = response.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as exc:
+            raise OddsPapiError(
+                f"Invalid JSON from OddsPapi endpoint=/v4/{self._normalize_endpoint(endpoint)} "
+                f"status_code={response.status_code}"
+            ) from exc
+        if not isinstance(payload, (dict, list)):
+            raise OddsPapiError(
+                f"Invalid JSON payload type from OddsPapi endpoint=/v4/{self._normalize_endpoint(endpoint)}: "
+                f"{type(payload).__name__}"
+            )
+        return payload
+
+    def download_json(
+        self, endpoint: str, document: JsonDocument, params: dict | None = None
+    ) -> None:
+        """Download without decoding; keep quota/retry accounting in the transport."""
+        self._request_response(endpoint, params, document=document)
+
+    def _request_response(
+        self, endpoint: str, params: dict | None = None, *, document: JsonDocument | None = None
+    ) -> requests.Response:
         if not self._uses_dynamic_key and not str(self.api_key or "").strip():
             raise ValueError("ODDSPAPI_KEY is required to make an OddsPapi request")
 
@@ -283,11 +328,13 @@ class OddsPapiClient:
                     status_code,
                     error_code,
                     retry_after_seconds,
+                    error_text,
                 ) = self._execute_http_attempt(
                     endpoint=normalized_endpoint,
                     url=url,
                     base_request_params=base_request_params,
                     safe_params=safe_params,
+                    document=document,
                 )
             except requests.RequestException as exc:
                 transient_attempt += 1
@@ -341,8 +388,7 @@ class OddsPapiClient:
                 continue
 
             if status_code < 200 or status_code >= 300:
-                response_text = str(getattr(response, "text", "") or "").replace("\n", " ")[:500]
-                response_text = response_text.replace(str(lease.api_key), "***")
+                response_text = error_text.replace(str(lease.api_key), "***").replace("\n", " ")[:500]
                 raise OddsPapiHttpError(
                     status_code=status_code,
                     endpoint=f"/v4/{normalized_endpoint}",
@@ -350,20 +396,7 @@ class OddsPapiClient:
                     error_code=error_code,
                 )
 
-            try:
-                payload: Any = response.json()
-            except (ValueError, requests.exceptions.JSONDecodeError) as exc:
-                raise OddsPapiError(
-                    f"Invalid JSON from OddsPapi endpoint=/v4/{normalized_endpoint} "
-                    f"status_code={status_code}"
-                ) from exc
-
-            if not isinstance(payload, (dict, list)):
-                raise OddsPapiError(
-                    f"Invalid JSON payload type from OddsPapi endpoint=/v4/{normalized_endpoint}: "
-                    f"{type(payload).__name__}"
-                )
-            return payload
+            return response
 
         raise OddsPapiError(
             f"OddsPapi request exhausted retries endpoint=/v4/{normalized_endpoint}"
@@ -407,7 +440,47 @@ class OddsPapiClient:
         has_odds: bool | str | None = None,
         bookmakers: list[str] | None = None,
     ) -> dict | list:
-        params = {
+        return self._request("fixtures", self._fixtures_params(
+            tournament_id, sport_id, participant_id, from_date, to_date,
+            language, status_id, has_odds, bookmakers,
+        ))
+
+    def iter_fixtures(
+        self,
+        tournament_id: str | int | None = None,
+        sport_id: str | int | None = None,
+        participant_id: str | int | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        language: str | None = None,
+        status_id: str | int | None = None,
+        has_odds: bool | str | None = None,
+        bookmakers: list[str] | None = None,
+    ) -> Iterator[dict]:
+        """Yield one fixture at a time; exhaustion validates the complete response."""
+        params = self._fixtures_params(
+            tournament_id, sport_id, participant_id, from_date, to_date,
+            language, status_id, has_odds, bookmakers,
+        )
+        with open_json_document(self, "fixtures", params) as document:
+            invalid_items = 0
+            try:
+                for item in document_entries(document, ("", "fixtures", "data", "items")):
+                    if isinstance(item, dict):
+                        yield item
+                    else:
+                        invalid_items += 1
+            except (ValueError, JSONError) as exc:
+                raise OddsPapiError("Invalid JSON collection from OddsPapi endpoint=/v4/fixtures") from exc
+            finally:
+                if invalid_items:
+                    logger.warning("Ignored %s non-object OddsPapi fixture payload(s)", invalid_items)
+
+    def _fixtures_params(
+        self, tournament_id, sport_id, participant_id, from_date, to_date,
+        language, status_id, has_odds, bookmakers,
+    ) -> dict:
+        return {
             "tournamentId": tournament_id,
             "sportId": sport_id,
             "participantId": participant_id,
@@ -418,8 +491,6 @@ class OddsPapiClient:
             "hasOdds": has_odds,
             "bookmakers": self._comma_separated(bookmakers),
         }
-        logger.info("✈️ Fetching oddspapi fixtures with params: %s", params)
-        return self._request("fixtures", params)
 
     def get_odds(
         self,

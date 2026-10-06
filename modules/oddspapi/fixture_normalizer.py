@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from infrastructure.settings import Config
-from modules.sports.catalog import sport_display_name
+from modules.sports.catalog import oddspapi_sport_id_for_fixture, sport_display_name
 from shared.temporal import as_utc, in_timezone
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,8 @@ class OddspapiFixtureIdentity:
             fixture_id=fixture_id,
             sport_id=_normalize_optional_text(data.get("sportId")),
             sport_name=_normalize_optional_text(data.get("sportName")),
-            normalized_sport=_normalize_sport_name(data.get("sportName")),
+            normalized_sport=(sport_display_name(oddspapi_sport_id_for_fixture(data))
+                              or _normalize_sport_name(data.get("sportName"))),
             tournament_id=_normalize_optional_text(data.get("tournamentId")),
             tournament_name=_normalize_optional_text(data.get("tournamentName")),
             tournament_slug=_normalize_optional_text(data.get("tournamentSlug")),

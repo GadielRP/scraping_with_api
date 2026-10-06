@@ -4,15 +4,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from modules.competition.discovery_scope import (
-    is_tracked_source_event,
+from infrastructure.settings import discovery as settings
+from modules.jobs.discovery.filters import (
+    sofascore_event_filter_reason,
     load_tracked_source_competitions,
     UNRESOLVED_SCOPE,
 )
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from modules.sports.catalog import is_supported_sofascore_event
 from shared.concurrency import bounded_results
 from shared.execution_context import WorkDeferred
 
@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 
 def fetch_nearest_team_events(
     team_ids: List[int],
-    max_workers: int = 5,
+    max_workers: int | None = None,
     *,
     tracked_competitions=UNRESOLVED_SCOPE,
 ) -> List[Dict]:
     """Fetch nearest events for multiple teams in parallel."""
+    max_workers = settings.SOFASCORE.team_event_workers if max_workers is None else max_workers
     tracked_competitions = (
         tracked_competitions
         if tracked_competitions is not UNRESOLVED_SCOPE
@@ -39,15 +40,9 @@ def fetch_nearest_team_events(
                 logger.debug("No nearest event found for team %s", team_id)
                 return None
 
-            if not is_supported_sofascore_event(event_response):
-                logger.debug(
-                    "Skipping unsupported sport event %s for team %s",
-                    event_response.get("event", event_response).get("id"),
-                    team_id,
-                )
-                return None
-            if not is_tracked_source_event(event_response, tracked_competitions):
-                logger.debug("Skipping untracked SofaScore event for team %s", team_id)
+            reason = sofascore_event_filter_reason(event_response, tracked_competitions)
+            if reason:
+                logger.debug("Skipping team event team=%s reason=%s", team_id, reason)
                 return None
 
             event_data = api_client.normalize_event_payload(
@@ -83,11 +78,12 @@ class OddsFetchSummary:
 
 def fetch_event_odds(
     events: List[Dict],
-    max_workers: int = 5,
+    max_workers: int | None = None,
     *,
     odds_fetcher: SofaScoreOddsFetcher | None = None,
 ) -> OddsFetchSummary:
     """Fetch odds without treating temporary failures as missing endpoints."""
+    max_workers = settings.SOFASCORE.odds_workers if max_workers is None else max_workers
     fetcher = odds_fetcher or SofaScoreOddsFetcher(api_client)
 
     def fetch_odds(event_data: Dict):

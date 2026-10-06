@@ -47,7 +47,7 @@ def test_make_request_rotates_once_then_raises_challenge_exception(monkeypatch):
     monkeypatch.setattr(
         api,
         "_rotate_proxy_identity",
-        lambda reason: rotate_calls.append(reason),
+        lambda reason, **kwargs: rotate_calls.append(reason),
     )
 
     with pytest.raises(SofaScoreChallengeException):
@@ -73,6 +73,7 @@ def test_make_request_skips_evidence_when_capture_disabled(monkeypatch):
     api.session = FakeSession()
     api.proxy_manager.should_rotate_on_sofascore_error = lambda: False
     api.set_challenge_evidence_enabled(False)
+    api.challenge_response_logging_enabled = False
     monkeypatch.setattr(Config, "MAX_RETRIES", 1)
     monkeypatch.setattr(Config, "REQUEST_DELAY_SECONDS", 0)
     monkeypatch.setattr(

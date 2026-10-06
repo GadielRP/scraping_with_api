@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left, bisect_right
-from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 import logging
 from time import perf_counter
 from typing import Callable
 
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from infrastructure.persistence.models import Event
-from infrastructure.settings import Config
+from infrastructure.settings import discovery as settings
+from infrastructure.persistence.repositories.discovery_repository import (
+    DiscoveryRepository, OddspapiCandidatePool,
+)
+from modules.jobs.discovery.filters import oddspapi_fixture_filter_reason
+from .summary import OddspapiFixtureBatchResult
 from infrastructure.persistence.repositories.event_source_mapping_repository import (
     EventSourceMappingRepository,
 )
@@ -37,44 +36,8 @@ from modules.oddspapi.fixture_persistence import (
 )
 
 from .candidate_shortlist import shortlist_candidates
-from .constants import DEFAULT_PERSISTENCE_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
-
-# Maps matcher sport keys to canonical Event.sport values stored in DB.
-SPORT_KEY_TO_DB_NAME = {
-    "football": ("Football",),
-    "basketball": ("Basketball",),
-    "tennis": ("Tennis",),
-    "baseball": ("Baseball",),
-    "ice hockey": ("Ice hockey",),
-    "american football": ("American Football", "American football"),
-    "american-football": ("American Football", "American football"),
-    "volleyball": ("Volleyball",),
-}
-
-
-def _sport_key(value: object) -> str:
-    text = str(value or "").strip().casefold()
-    return {"soccer": "football", "hockey": "ice hockey"}.get(text, text)
-
-
-def _db_sport_names(sport_keys: set[str]) -> list[str]:
-    names: list[str] = []
-    for key in sorted(sport_keys):
-        mapped = SPORT_KEY_TO_DB_NAME.get(key)
-        if mapped:
-            names.extend(mapped)
-        elif key:
-            names.append(key.title())
-    # Preserve order while deduplicating.
-    return list(dict.fromkeys(names))
-
-
-def _fixture_time(fixture: OddspapiFixtureIdentity) -> datetime | None:
-    """Return the provider kickoff on the canonical aware-UTC basis."""
-    return fixture.starts_at
-
 
 # Rare dual-perfect ties need human adjudication even when broad queue
 # persistence is disabled for low-confidence / no-candidate noise.
@@ -108,150 +71,6 @@ def should_persist_queue(decision: MatchDecision, *, persist_queue: bool) -> boo
     )
 
 
-def _percentile(values: list[float], pct: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return float(ordered[0])
-    rank = (len(ordered) - 1) * pct
-    low = int(rank)
-    high = min(low + 1, len(ordered) - 1)
-    weight = rank - low
-    return float(ordered[low] * (1.0 - weight) + ordered[high] * weight)
-
-
-class OddspapiCandidatePool:
-    """A preloaded candidate set with O(log N) time-window lookup."""
-
-    # Keep the batch preload aligned with OddspapiEventCandidateMatcher's
-    # single-fixture candidate query window.
-    TOLERANCE = timedelta(hours=1)
-
-    def __init__(self, events: list[Event] | None = None) -> None:
-        self.events_by_sport: dict[str, list[Event]] = defaultdict(list)
-        self._sorted_events_by_sport: dict[str, list[Event]] = {}
-        self._sorted_times_by_sport: dict[str, list[datetime]] = {}
-        for event in events or []:
-            sport = _sport_key(getattr(event, "sport", None))
-            self.events_by_sport[sport].append(event)
-
-        for sport, sport_events in self.events_by_sport.items():
-            timed = [
-                event
-                for event in sport_events
-                if isinstance(getattr(event, "starts_at", None), datetime)
-            ]
-            timed.sort(key=lambda event: event.starts_at)
-            self._sorted_events_by_sport[sport] = timed
-            self._sorted_times_by_sport[sport] = [event.starts_at for event in timed]
-
-    @classmethod
-    def load(
-        cls,
-        fixtures: list[OddspapiFixtureIdentity],
-        session: Session,
-        *,
-        competition_ids: tuple[int, ...] | None = None,
-    ) -> "OddspapiCandidatePool":
-        if not fixtures:
-            return cls([])
-
-        times = [_fixture_time(fixture) for fixture in fixtures if _fixture_time(fixture) is not None]
-        sport_keys = {
-            _sport_key(fixture.normalized_sport)
-            for fixture in fixtures
-            if fixture.normalized_sport
-        }
-        query = session.query(Event).options(
-            joinedload(Event.home_participant),
-            joinedload(Event.away_participant),
-            joinedload(Event.competition_ref),
-        )
-        db_sports = _db_sport_names(sport_keys)
-        if db_sports or sport_keys:
-            # Prefer exact canonical sport labels for index-friendly equality,
-            # and keep a lower() fallback for legacy spelling variants.
-            clauses = []
-            if db_sports:
-                clauses.append(Event.sport.in_(db_sports))
-            if sport_keys:
-                clauses.append(func.lower(Event.sport).in_(sorted(sport_keys)))
-            query = query.filter(or_(*clauses))
-        if times:
-            query = query.filter(
-                Event.starts_at >= min(times) - cls.TOLERANCE,
-                Event.starts_at <= max(times) + cls.TOLERANCE,
-            )
-        if competition_ids is not None:
-            query = query.filter(Event.competition_id.in_(competition_ids))
-        events = query.all()
-        logger.info("Loaded Oddspapi candidate pool events=%s fixtures=%s", len(events), len(fixtures))
-        return cls(events)
-
-    def get_candidates_for(self, fixture: OddspapiFixtureIdentity) -> list[Event]:
-        sport = _sport_key(fixture.normalized_sport)
-        fixture_time = _fixture_time(fixture)
-        if fixture_time is None:
-            return list(self.events_by_sport.get(sport, []))
-
-        times = self._sorted_times_by_sport.get(sport) or []
-        events = self._sorted_events_by_sport.get(sport) or []
-        if not times:
-            return []
-
-        window_start = fixture_time - self.TOLERANCE
-        window_end = fixture_time + self.TOLERANCE
-        left = bisect_left(times, window_start)
-        right = bisect_right(times, window_end)
-        return events[left:right]
-
-
-@dataclass
-class OddspapiFixtureBatchResult:
-    fixtures_valid: int = 0
-    fixtures_deduplicated: int = 0
-    invalid_payloads: int = 0
-    fixtures_skipped_untracked_competition: int = 0
-    resolved_existing_oddspapi: int = 0
-    resolved_external_sofascore: int = 0
-    resolved_candidate_match: int = 0
-    mappings_created: int = 0
-    unresolved_no_candidates: int = 0
-    needs_review: int = 0
-    queue_rows_written: int = 0
-    ambiguous_queued: int = 0
-    layer3_scored: int = 0
-    shortlist_fallback_count: int = 0
-    shortlist_widened_count: int = 0
-    pool_candidate_counts: list[int] = field(default_factory=list)
-    fuzzy_candidate_counts: list[int] = field(default_factory=list)
-    score_duration_ms_values: list[float] = field(default_factory=list)
-    resolutions: list[OddspapiEventResolution] | None = None
-
-    def merge_metrics_from(self, other: "OddspapiFixtureBatchResult") -> None:
-        self.fixtures_valid += int(getattr(other, "fixtures_valid", 0) or 0)
-        self.fixtures_deduplicated += int(getattr(other, "fixtures_deduplicated", 0) or 0)
-        self.invalid_payloads += int(getattr(other, "invalid_payloads", 0) or 0)
-        self.fixtures_skipped_untracked_competition += int(
-            getattr(other, "fixtures_skipped_untracked_competition", 0) or 0
-        )
-        self.resolved_existing_oddspapi += int(getattr(other, "resolved_existing_oddspapi", 0) or 0)
-        self.resolved_external_sofascore += int(getattr(other, "resolved_external_sofascore", 0) or 0)
-        self.resolved_candidate_match += int(getattr(other, "resolved_candidate_match", 0) or 0)
-        self.mappings_created += int(getattr(other, "mappings_created", 0) or 0)
-        self.unresolved_no_candidates += int(getattr(other, "unresolved_no_candidates", 0) or 0)
-        self.needs_review += int(getattr(other, "needs_review", 0) or 0)
-        self.queue_rows_written += int(getattr(other, "queue_rows_written", 0) or 0)
-        self.ambiguous_queued += int(getattr(other, "ambiguous_queued", 0) or 0)
-        self.layer3_scored += int(getattr(other, "layer3_scored", 0) or 0)
-        self.shortlist_fallback_count += int(getattr(other, "shortlist_fallback_count", 0) or 0)
-        self.shortlist_widened_count += int(getattr(other, "shortlist_widened_count", 0) or 0)
-        self.pool_candidate_counts.extend(list(getattr(other, "pool_candidate_counts", []) or []))
-        self.fuzzy_candidate_counts.extend(list(getattr(other, "fuzzy_candidate_counts", []) or []))
-        self.score_duration_ms_values.extend(list(getattr(other, "score_duration_ms_values", []) or []))
-
-
 class OddspapiFixtureBatchProcessor:
     """Resolve fixtures using bulk lookups and chunked commits."""
 
@@ -261,7 +80,7 @@ class OddspapiFixtureBatchProcessor:
         matcher: OddspapiEventCandidateMatcher | None = None,
         candidate_pool_loader: Callable | None = None,
         persistence_writer: Callable | None = None,
-        chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
+        chunk_size: int = settings.ODDSPAPI.persistence_chunk_size,
         keep_resolutions: bool = False,
     ) -> None:
         self.resolver = resolver
@@ -273,11 +92,10 @@ class OddspapiFixtureBatchProcessor:
         self.keep_resolutions = keep_resolutions
         self.tracked_competition_ids = (
             get_tracked_competition_ids()
-            if Config.DISCOVERY_TRACKED_COMPETITIONS_ONLY
+            if settings.ODDSPAPI.filters.tracked_competitions_only
             else None
         )
-        if matcher is not None:
-            self.resolver._candidate_matcher = matcher
+        self.matcher = matcher if matcher is not None else self.resolver._candidate_matcher
 
     def process_batch(
         self,
@@ -301,6 +119,11 @@ class OddspapiFixtureBatchProcessor:
                 result.fixtures_deduplicated += 1
                 continue
             seen_ids.add(identity.fixture_id)
+            reason = oddspapi_fixture_filter_reason(payload)
+            if reason:
+                result.fixtures_skipped_policy += 1
+                result.rejected_by_reason[reason] = result.rejected_by_reason.get(reason, 0) + 1
+                continue
             # Capture the exact fixture object before persistence can omit its
             # participant rows because required source data is absent or invalid.
             OddspapiFixtureResponseDebugWriter.save_if_incomplete(payload)
@@ -357,6 +180,29 @@ class OddspapiFixtureBatchProcessor:
                 session=session,
             )
         )
+        mapped_event_ids = {
+            detail[0] for mappings in (oddspapi_mapping_details, sofascore_mapping_details)
+            for detail in mappings.values()
+        }
+        admitted_ids = DiscoveryRepository.admitted_event_ids(
+            session, mapped_event_ids, policy=settings.ODDSPAPI.filters,
+        )
+        eligible_identities = []
+        for fixture in identities:
+            detail = oddspapi_mapping_details.get(fixture.fixture_id)
+            if detail is None:
+                detail = sofascore_mapping_details.get(
+                    normalize_source_id(fixture.external_providers.get("sofascoreId"))
+                )
+            if detail is not None and detail[0] not in admitted_ids:
+                result.fixtures_skipped_policy += 1
+                reason = "ineligible_canonical_event"
+                result.rejected_by_reason[reason] = result.rejected_by_reason.get(reason, 0) + 1
+                continue
+            eligible_identities.append(fixture)
+        identities = eligible_identities
+        if not identities:
+            return result
         tracked_competition_id_set = (
             set(self.tracked_competition_ids)
             if self.tracked_competition_ids is not None
@@ -443,7 +289,7 @@ class OddspapiFixtureBatchProcessor:
                 shortlist = shortlist_candidates(
                     fixture,
                     pool_candidates,
-                    fixture_time=_fixture_time(fixture),
+                    fixture_time=fixture.starts_at,
                 )
                 decision_candidates = shortlist.events
             else:
@@ -461,6 +307,7 @@ class OddspapiFixtureBatchProcessor:
                 existing_sofascore=existing_sofascore,
                 candidate_events=decision_candidates,
                 queue_pure_no_candidates=False,
+                matcher=self.matcher,
             )
             elapsed_ms = round((perf_counter() - started) * 1000.0, 3)
             if self.keep_resolutions and result.resolutions is not None:
@@ -560,20 +407,3 @@ class OddspapiFixtureBatchProcessor:
                     result.mappings_created += 1
 
         return result
-
-
-def format_batch_metrics(result: OddspapiFixtureBatchResult) -> str:
-    """Compact metric line for sport/batch completion logs."""
-    pool = result.pool_candidate_counts
-    fuzzy = result.fuzzy_candidate_counts
-    score_ms = result.score_duration_ms_values
-    return (
-        f"l3_scored={result.layer3_scored} "
-        f"ambiguous_queued={result.ambiguous_queued} "
-        f"shortlist_fallback={result.shortlist_fallback_count} "
-        f"shortlist_widened={result.shortlist_widened_count} "
-        f"pool_p50={_percentile(pool, 0.50)} pool_p95={_percentile(pool, 0.95)} pool_max={max(pool) if pool else None} "
-        f"fuzzy_p50={_percentile(fuzzy, 0.50)} fuzzy_p95={_percentile(fuzzy, 0.95)} fuzzy_max={max(fuzzy) if fuzzy else None} "
-        f"score_ms_p50={_percentile(score_ms, 0.50)} score_ms_p95={_percentile(score_ms, 0.95)} "
-        f"score_ms_max={max(score_ms) if score_ms else None}"
-    )

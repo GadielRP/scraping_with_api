@@ -85,6 +85,15 @@ def test_api_key_is_never_logged(caplog):
     assert "also-secret" not in caplog.text
 
 
+def test_error_preview_redacts_key_before_truncating():
+    api = client()
+    api.session.get = Mock(return_value=response(404, text="x" * 495 + "top-secret" + " trailing"))
+    with pytest.raises(OddsPapiError) as caught:
+        api._request("fixture")
+    assert "top-" not in str(caught.value)
+    assert "***" in str(caught.value)
+
+
 @pytest.mark.parametrize("status_code", [429, 500, 502, 503, 504])
 def test_transient_http_statuses_retry(status_code):
     api = client()

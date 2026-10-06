@@ -7,6 +7,8 @@ from datetime import date, datetime, timedelta, timezone
 import json
 import logging
 
+from infrastructure.settings import discovery as settings
+
 from modules.oddspapi.client import OddsPapiClient
 from modules.oddspapi.runtime import (
     get_oddspapi_key_scheduler,
@@ -15,16 +17,10 @@ from modules.oddspapi.runtime import (
 )
 from modules.sports.catalog import (
     canonical_sport_id,
-    oddspapi_sport_ids,
 )
 
-from .constants import (
-    DEFAULT_LOOKAHEAD_DAYS,
-    DEFAULT_PERSISTENCE_CHUNK_SIZE,
-    DEFAULT_PERSIST_QUEUE,
-    DEFAULT_STATUS_ID,
-)
 from .fixture_discovery_job import OddspapiFixtureDiscoveryJob
+from modules.jobs.discovery.filters import oddspapi_discovery_sport_ids
 from .response_utils import as_utc_datetime
 
 
@@ -40,9 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from-date", type=_parse_datetime_argument)
     parser.add_argument("--to-date", type=_parse_datetime_argument)
     parser.add_argument("--date", type=str, help="UTC calendar day, YYYY-MM-DD")
-    parser.add_argument("--lookahead-days", type=int, default=DEFAULT_LOOKAHEAD_DAYS)
+    parser.add_argument("--lookahead-days", type=int, default=settings.ODDSPAPI.lookahead_days)
     parser.add_argument("--sports", type=str, help="Comma-separated canonical sport IDs or provider aliases")
-    parser.add_argument("--status-id", type=int, default=DEFAULT_STATUS_ID)
+    parser.add_argument("--status-id", type=int, default=settings.ODDSPAPI.status_id)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Do not write mappings or queue rows")
     mode.add_argument("--commit", action="store_true", help="Persist successful mappings")
@@ -51,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=DEFAULT_PERSISTENCE_CHUNK_SIZE,
+        default=settings.ODDSPAPI.persistence_chunk_size,
         help="Fixtures persisted per transaction",
     )
     parser.add_argument("--log-json", action="store_true")
@@ -81,7 +77,7 @@ def _resolve_window(args: argparse.Namespace) -> tuple[datetime, datetime]:
 
 def _resolve_sports(value: str | None) -> dict[str, int]:
     if value is None:
-        return oddspapi_sport_ids()
+        return oddspapi_discovery_sport_ids()
     requested = [sport.strip().casefold() for sport in value.split(",") if sport.strip()]
     requested_ids = [canonical_sport_id(sport) for sport in requested]
     unknown = [sport for sport, sport_id in zip(requested, requested_ids) if sport_id is None]
@@ -91,13 +87,13 @@ def _resolve_sports(value: str | None) -> dict[str, int]:
         )
     if not requested:
         raise ValueError("--sports must contain at least one sport")
-    return oddspapi_sport_ids(requested_ids)
+    return oddspapi_discovery_sport_ids(requested_ids)
 
 
 def current_utc_day_window(
     *,
     now: datetime | None = None,
-    lookahead_days: int = DEFAULT_LOOKAHEAD_DAYS,
+    lookahead_days: int = settings.ODDSPAPI.lookahead_days,
 ) -> tuple[datetime, datetime]:
     """Return the start of the current UTC day through the requested lookahead.
 
@@ -118,13 +114,13 @@ def current_utc_day_window(
 def run_fixture_discovery_job(
     *,
     target_date: date | str | None = None,
-    lookahead_days: int = DEFAULT_LOOKAHEAD_DAYS,
+    lookahead_days: int = settings.ODDSPAPI.lookahead_days,
     sports: dict[str, int] | None = None,
     create_mappings: bool = True,
-    persist_queue: bool = DEFAULT_PERSIST_QUEUE,
-    status_id: int = DEFAULT_STATUS_ID,
+    persist_queue: bool = settings.ODDSPAPI.persist_queue,
+    status_id: int = settings.ODDSPAPI.status_id,
     max_fixtures_per_sport: int | None = None,
-    chunk_size: int = DEFAULT_PERSISTENCE_CHUNK_SIZE,
+    chunk_size: int = settings.ODDSPAPI.persistence_chunk_size,
     client: OddsPapiClient | None = None,
     now: datetime | None = None,
 ):
@@ -155,7 +151,7 @@ def run_fixture_discovery_job(
     try:
         return OddspapiFixtureDiscoveryJob(
             client=runtime_client,
-            sports=(oddspapi_sport_ids() if sports is None else sports),
+            sports=(oddspapi_discovery_sport_ids() if sports is None else sports),
             create_mappings=create_mappings,
             persist_queue=persist_queue,
             status_id=status_id,

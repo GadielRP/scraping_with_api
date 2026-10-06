@@ -23,9 +23,9 @@ from modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor import (
 )
 from modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job import OddspapiFixtureDiscoveryJob
 from modules.jobs.oddspapi.fixture_discovery.response_utils import (
-    extract_fixture_list,
     split_time_window,
 )
+from modules.jobs.oddspapi.fixture_discovery.summary import OddspapiFixtureBatchResult
 from modules.oddspapi.exceptions import OddsPapiHttpError
 from modules.oddspapi.event_resolver import OddspapiEventResolver
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
@@ -40,6 +40,12 @@ from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import (
 )
 
 
+@pytest.fixture(autouse=True)
+def fixture_clock(monkeypatch):
+    monkeypatch.setattr("modules.jobs.discovery.filters.utc_now", lambda: datetime(2026, 7, 14, tzinfo=timezone.utc))
+    monkeypatch.setattr("infrastructure.persistence.repositories.discovery_repository.utc_now", lambda: datetime(2026, 7, 14, tzinfo=timezone.utc))
+
+
 def _fixture(fixture_id: str = "f-1") -> dict:
     return {
         "fixtureId": fixture_id,
@@ -49,19 +55,6 @@ def _fixture(fixture_id: str = "f-1") -> dict:
         "participant1Name": "Home",
         "participant2Name": "Away",
     }
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [[_fixture()], {"fixtures": [_fixture()]}, {"data": [_fixture()]}, {"items": [_fixture()]}],
-)
-def test_extract_fixture_list_supports_raw_and_wrapped_shapes(payload):
-    assert extract_fixture_list(payload) == [_fixture()]
-
-
-def test_extract_fixture_list_unsupported_shape_returns_empty(caplog):
-    assert extract_fixture_list({"unexpected": []}) == []
-    assert "Unsupported Oddspapi" in caplog.text
 
 
 def test_window_splitting_keeps_chunks_within_limit():
@@ -114,30 +107,16 @@ class _Client:
     def __init__(self):
         self.calls = []
 
-    def get_fixtures(self, **kwargs):
+    def iter_fixtures(self, **kwargs):
         self.calls.append(kwargs)
         if kwargs["sport_id"] == 11:
             raise RuntimeError("basketball unavailable")
-        return [_fixture(f"{kwargs['sport_id']}-fixture")]
-
-
-class _BatchResult:
-    fixtures_valid = 1
-    fixtures_deduplicated = 0
-    invalid_payloads = 0
-    fixtures_skipped_untracked_competition = 0
-    resolved_existing_oddspapi = 1
-    resolved_external_sofascore = 0
-    resolved_candidate_match = 0
-    mappings_created = 0
-    unresolved_no_candidates = 0
-    needs_review = 0
-    queue_rows_written = 0
+        yield _fixture(f"{kwargs['sport_id']}-fixture")
 
 
 class _BatchProcessor:
     def process_batch(self, **kwargs):
-        return _BatchResult()
+        return OddspapiFixtureBatchResult(fixtures_valid=1, resolved_existing_oddspapi=1)
 
 
 @contextmanager
@@ -169,7 +148,7 @@ def test_api_error_for_one_sport_does_not_stop_other_sports(monkeypatch):
 
 def test_fixture_not_found_is_treated_as_empty_success(monkeypatch):
     class _NoFixturesClient:
-        def get_fixtures(self, **kwargs):
+        def iter_fixtures(self, **kwargs):
             raise OddsPapiHttpError(
                 status_code=404,
                 endpoint="/v4/fixtures",
@@ -188,6 +167,103 @@ def test_fixture_not_found_is_treated_as_empty_success(monkeypatch):
     )
     assert summary.sports[0].errors == 0
     assert summary.sports[0].fixtures_fetched == 0
+
+
+def test_bounded_batches_deduplicate_across_request_windows(monkeypatch):
+    closed = []
+    batches = []
+
+    class Client:
+        def iter_fixtures(self, **kwargs):
+            try:
+                for index in range(123):
+                    yield _fixture(str(index))
+            finally:
+                closed.append(True)
+
+    class Processor:
+        def process_batch(self, fixture_payloads, **kwargs):
+            batches.append(len(fixture_payloads))
+            return OddspapiFixtureBatchResult(fixtures_valid=len(fixture_payloads))
+
+    monkeypatch.setattr("modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job.db_manager.get_session", _session)
+    job = OddspapiFixtureDiscoveryJob(client=Client(), sports={"soccer": 10},
+                                     create_mappings=False, chunk_size=25, batch_processor=Processor())
+    start = datetime(2026, 7, 15, tzinfo=timezone.utc)
+    summary = job.run(start, start + timedelta(days=3)).sports[0]
+    assert batches == [25, 25, 25, 25, 23]
+    assert summary.fixtures_fetched == 246
+    assert summary.fixtures_valid == summary.fixtures_deduplicated == 123
+    assert summary.errors == 0 and len(closed) == 2
+
+
+def test_processing_cap_still_detects_a_truncated_document(monkeypatch):
+    from modules.oddspapi.exceptions import OddsPapiError
+
+    batches = []
+
+    class Client:
+        def iter_fixtures(self, **kwargs):
+            for index in range(20):
+                yield _fixture(str(index))
+            raise OddsPapiError("truncated JSON")
+
+    class Processor:
+        def process_batch(self, fixture_payloads, **kwargs):
+            batches.append(len(fixture_payloads))
+            return OddspapiFixtureBatchResult(fixtures_valid=len(fixture_payloads))
+
+    monkeypatch.setattr("modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job.db_manager.get_session", _session)
+    job = OddspapiFixtureDiscoveryJob(client=Client(), sports={"soccer": 10},
+                                     create_mappings=False, max_fixtures_per_sport=5,
+                                     chunk_size=5, batch_processor=Processor())
+    summary = job.run(datetime(2026, 7, 15, tzinfo=timezone.utc),
+                      datetime(2026, 7, 16, tzinfo=timezone.utc)).sports[0]
+    assert batches == [5]
+    assert summary.fixtures_valid == 5
+    assert summary.fixtures_fetched == 20 and summary.errors == 1
+
+
+def test_execution_deferral_propagates_and_closes_fixture_iteration():
+    from shared.execution_context import WorkDeferred
+
+    closed = []
+
+    class Client:
+        def iter_fixtures(self, **kwargs):
+            try:
+                yield from ()
+                raise WorkDeferred("deadline")
+            finally:
+                closed.append(True)
+
+    job = OddspapiFixtureDiscoveryJob(client=Client(), sports={"soccer": 10}, create_mappings=False)
+    with pytest.raises(WorkDeferred, match="deadline"):
+        job.run(datetime(2026, 7, 15, tzinfo=timezone.utc), datetime(2026, 7, 16, tzinfo=timezone.utc))
+    assert closed == [True]
+
+
+def test_database_failure_closes_fixture_iteration(monkeypatch):
+    closed = []
+
+    class Client:
+        def iter_fixtures(self, **kwargs):
+            try:
+                for index in range(10):
+                    yield _fixture(str(index))
+            finally:
+                closed.append(True)
+
+    class Processor:
+        def process_batch(self, **kwargs):
+            raise ValueError("write failed")
+
+    monkeypatch.setattr("modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job.db_manager.get_session", _session)
+    job = OddspapiFixtureDiscoveryJob(client=Client(), sports={"soccer": 10},
+                                     create_mappings=False, chunk_size=5, batch_processor=Processor())
+    summary = job.run(datetime(2026, 7, 15, tzinfo=timezone.utc),
+                      datetime(2026, 7, 16, tzinfo=timezone.utc)).sports[0]
+    assert summary.errors == 1 and closed == [True]
 
 
 def test_successful_oddspapi_mapping_persists_and_links_participants(monkeypatch):

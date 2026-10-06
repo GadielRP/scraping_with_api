@@ -1,25 +1,27 @@
-"""Discover tracked SofaScore events with dropping odds."""
+"""Discover admitted SofaScore events with dropping odds."""
 
 from __future__ import annotations
 
 import logging
 
-from infrastructure.settings import Config
-from modules.competition.discovery_scope import load_tracked_source_competitions
-from modules.jobs.discovery_filters import filter_upcoming_events
-from modules.jobs.discovery.summary import log_discovery_summary
 from infrastructure.persistence.transient.discovery_run_store import DiscoveryRunStore
-from shared.execution_context import WorkDeferred, check_execution_budget
+from infrastructure.settings import Config
+from modules.jobs.discovery.filters import (
+    load_tracked_source_competitions,
+    sofascore_discovery_sport_routes,
+)
 from modules.jobs.discovery.persistence import persist_events_with_odds
+from modules.jobs.discovery.summary import log_discovery_summary
 from modules.sofascore import api_client
-from modules.sports.catalog import configured_sport_ids, sofascore_sport_routes
+from modules.sports.catalog import configured_sport_ids
+from shared.execution_context import WorkDeferred, check_execution_budget
 
 logger = logging.getLogger(__name__)
 
 
 def run_discover_dropping_odds() -> None:
-    """Fetch each configured SofaScore sport feed once and persist tracked events."""
-    routes = sofascore_sport_routes()
+    """Fetch each admitted sport feed once and persist events under the configured policy."""
+    routes = sofascore_discovery_sport_routes()
     sports = list(dict.fromkeys(slug for _, slug in routes))
     logger.info(
         "Resolved dropping odds sport scope "
@@ -63,20 +65,18 @@ def run_discover_dropping_odds() -> None:
                         )
                         continue
 
-                    events, odds_map = api_client.extract_events_and_odds_from_dropping_response(
+                    admitted_events, odds_map = api_client.extract_events_and_odds_from_dropping_response(
                         response,
                         odds_extraction=True,
                         discovery_source="dropping_odds",
                         tracked_competitions=tracked_competitions,
                     )
                     del response
-                    response_eligible_count = len(events)
-                    upcoming_events = filter_upcoming_events(events)
-                    upcoming_count = len(upcoming_events)
+                    admitted_event_count = len(admitted_events)
                     selected_ids = set()
                     events = []
                     duplicate_event_count = 0
-                    for event in upcoming_events:
+                    for event in admitted_events:
                         source_event_id = str(event.get("event", event)["id"])
                         if (
                             source_event_id in processed_event_ids
@@ -91,8 +91,7 @@ def run_discover_dropping_odds() -> None:
                             continue
                         selected_ids.add(source_event_id)
                         events.append(event)
-                    del upcoming_events
-                    upcoming_unique_count = len(events)
+                    del admitted_events
                     response_eligible_odds_count = len(odds_map)
                     odds_map = {
                         str(sid): odds for sid, odds in odds_map.items() if str(sid) in selected_ids
@@ -100,16 +99,13 @@ def run_discover_dropping_odds() -> None:
                     events_without_odds_count = len(selected_ids - odds_map.keys())
                     logger.info(
                         "Dropping feed selection "
-                        "sport=%s eligible_events=%s rejected_by_time_filter=%s "
-                        "upcoming_candidates=%s rejected_duplicate_events=%s upcoming_new_events=%s "
-                        "eligible_odds=%s odds_without_upcoming_new_event=%s "
-                        "odds_for_upcoming=%s events_without_odds=%s",
+                        "sport=%s admitted_events=%s rejected_duplicate_events=%s new_events=%s "
+                        "eligible_odds=%s odds_without_new_event=%s "
+                        "odds_for_new_events=%s events_without_odds=%s",
                         sport,
-                        response_eligible_count,
-                        response_eligible_count - upcoming_count,
-                        upcoming_count,
+                        admitted_event_count,
                         duplicate_event_count,
-                        upcoming_unique_count,
+                        len(events),
                         response_eligible_odds_count,
                         response_eligible_odds_count - len(odds_map),
                         len(odds_map),
@@ -118,7 +114,7 @@ def run_discover_dropping_odds() -> None:
                     if not events:
                         logger.info(
                             "No dropping odds events to persist sport=%s "
-                            "reason=no_events_remained_after_eligibility_time_and_deduplication_filters",
+                            "reason=no_events_remained_after_admission_and_deduplication_filters",
                             sport,
                         )
                         continue

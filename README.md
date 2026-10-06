@@ -252,16 +252,26 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `DATABASE_URL` – PostgreSQL connection string (postgresql+psycopg2://user:pass@host/dbname).
 *   `TIMEZONE` – local timezone (default America/Mexico_City).
 *   `POLL_INTERVAL_MINUTES` – polling interval for the pre‑start check job.
-*   `DISCOVERY_INTERVAL_HOURS` and `DISCOVERY2_INTERVAL_HOURS` – intervals for discovery jobs.
 *   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONAL_CHAT_ID` – credentials for Telegram alerts.
 *   `ODDSPAPI_KEY` - API key required for Oddspapi requests.
 *   `ODDSPAPI_BASE_URL`, `ODDSPAPI_TIMEOUT_SECONDS` and `ODDSPAPI_DEFAULT_LANGUAGE` - Oddspapi client settings.
-*   `ODDSPAPI_FIXTURE_DISCOVERY_TIMES` - comma-separated scheduler times for automatic fixture discovery.
 *   `ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` - minimum delay between `/v4/fixtures` requests; default `2.0` seconds.
 *   `ENABLE_ODDSPAPI_PRE_START_ODDS` - enables Oddspapi odds ingestion inside the normal pre-start run.
 *   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_MARKET_KEYS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
 *   Proxy toggles and credentials (if scraping behind a proxy).
 *   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `SUPPORTED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
+
+Configure discovery schedules and admission policy in
+[`infrastructure/settings/discovery.py`](infrastructure/settings/discovery.py),
+then restart. SofaScore and OddsPapi have independent switches for future events,
+tracked competitions, excluded sports, excluded categories and excluded competitions.
+The default accepts events at least ten minutes before kickoff and excludes the
+audited lists in that module. It does not reject an event merely because
+SofaScore's `has_odds` is false or unknown. See the
+[coverage investigation and implementation plan](docs/analysis/discovery-filter-plan.md).
+The existing odds-first admission in team streaks remains enabled through
+`SOFASCORE.team_streaks_require_odds`; disable it to persist admitted events
+without requiring an odds response first.
 
 Initialise the database. Run:
 
@@ -405,7 +415,8 @@ overridden if required: `ODDSPAPI_BASE_URL=https://api.oddspapi.io`,
 `ODDSPAPI_TIMEOUT_SECONDS=15`, `ODDSPAPI_DEFAULT_ODDS_FORMAT=decimal`,
 `ODDSPAPI_DEFAULT_LANGUAGE=en`, and `ODDSPAPI_DEFAULT_VERBOSITY=3`.
 `ODDSPAPI_ENDPOINT_COOLDOWNS` controls the serialized per-endpoint cooldowns,
-including the five-second Historical Odds delay. `ODDSPAPI_FIXTURE_DISCOVERY_TIMES`
+including the five-second Historical Odds delay. `ODDSPAPI.scheduled_times` in
+`infrastructure/settings/discovery.py`
 configures the separate mapping-discovery job and does not schedule this
 pre-start subflow.
 
@@ -548,19 +559,20 @@ When the full scheduler is started with:
 python main.py start
 ```
 
-`infrastructure/scheduler/job_scheduler.py` registers the job once per day at
-the times in `ODDSPAPI_FIXTURE_DISCOVERY_TIMES`. The default is `03:00` and
-can be changed in `.env` as a comma-separated list, for example:
+`infrastructure/scheduler/schedules.py` registers fixture discovery at
+`ODDSPAPI.scheduled_times` in `infrastructure/settings/discovery.py`.
+The default is `17:47` in `Config.TIMEZONE`. Edit the provider settings and restart,
+for example:
 
-```text
-ODDSPAPI_FIXTURE_DISCOVERY_TIMES=03:00,15:00
+```python
+ODDSPAPI = OddspapiDiscoverySettings(scheduled_times=("03:00", "15:00"))
 ```
 
-The scheduled invocation processes the current UTC day, all configured sports,
+The scheduled evening invocation targets the next UTC day after SofaScore's daily pass,
+all configured discovery sports,
 commits successful mappings, and keeps queue persistence disabled unless the
-job is explicitly invoked with queue persistence enabled. The scheduler also
-exposes an immediate trigger through
-`JobScheduler.run_job_oddspapi_fixture_discovery_now()`.
+job is explicitly invoked with queue persistence enabled. Use
+`python main.py oddspapi-fixture-discovery --help` for immediate CLI execution.
 
 ## Developing & Extending
 

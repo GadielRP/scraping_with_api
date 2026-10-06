@@ -367,6 +367,7 @@ class OddspapiEventResolver:
         existing_sofascore: dict[str, int] | None = None,
         candidate_events: list | None = None,
         queue_pure_no_candidates: bool = True,
+        matcher: OddspapiEventCandidateMatcher | None = None,
     ) -> OddspapiEventResolution:
         """Resolve a normalized fixture using a caller-owned DB session.
 
@@ -432,16 +433,17 @@ class OddspapiEventResolver:
             )
             return direct_resolution
 
+        candidate_matcher = matcher if matcher is not None else cls._candidate_matcher
         if candidate_events is None:
             logger.info("Running candidate matcher for OddsPapi fixture %s", fixture.fixture_id)
-            decision = cls._candidate_matcher.find_best_match(fixture, session=session)
+            decision = candidate_matcher.find_best_match(fixture, session=session)
         else:
             logger.info(
                 "Running candidate matcher against preloaded %s event(s) for OddsPapi fixture %s",
                 len(candidate_events),
                 fixture.fixture_id,
             )
-            decision = cls._candidate_matcher.find_best_match_from_candidates(
+            decision = candidate_matcher.find_best_match_from_candidates(
                 fixture,
                 candidate_events,
             )

@@ -7,8 +7,9 @@ from datetime import timedelta, timezone
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.settings import Config
+from infrastructure.settings import discovery as settings
 from modules.jobs.event_discard_cleanup import run_event_discard_cleanup
-from modules.sports.catalog import sofascore_sport_slugs
+from modules.jobs.discovery.filters import sofascore_discovery_sport_slugs
 from shared.temporal import now_in_timezone
 
 from .pipeline import discover_events_for_date
@@ -21,8 +22,8 @@ def resolve_daily_discovery_slot(now=None) -> str | None:
         now = now_in_timezone(Config.TIMEZONE)
 
     current_hour = now.hour
-    next_utc_day_hour = Config.DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR
-    current_utc_day_hour = Config.DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR
+    next_utc_day_hour = settings.SOFASCORE.daily_next_utc_day_open_hour
+    current_utc_day_hour = settings.SOFASCORE.daily_current_utc_day_open_hour
 
     # Each configured local-time window identifies the UTC date it queries.
     # Neither window carries over from the previous local calendar day.
@@ -61,7 +62,7 @@ def run_daily_discovery_job(*, target_date=None, run_slot=None) -> dict | None:
     run_event_discard_cleanup()
 
     try:
-        DailyDiscoveryRepository.cleanup_old_logs(Config.DAILY_DISCOVERY_DAYS_TO_KEEP)
+        DailyDiscoveryRepository.cleanup_old_logs(settings.SOFASCORE.daily_progress_retention_days)
     except Exception as exc:
         logger.warning("Failed to cleanup DailyDiscovery logs: %s", exc)
 
@@ -81,13 +82,13 @@ def run_daily_discovery_job(*, target_date=None, run_slot=None) -> dict | None:
         Config.TIMEZONE,
     )
 
-    discovery_sports = sofascore_sport_slugs()
+    discovery_sports = sofascore_discovery_sport_slugs()
     DailyDiscoveryRepository.initialize_sports_for_slot(
         today_str,
         run_slot,
         discovery_sports,
     )
-    pending_sports = sofascore_sport_slugs(
+    pending_sports = sofascore_discovery_sport_slugs(
         DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
     )
     if not pending_sports:

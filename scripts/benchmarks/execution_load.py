@@ -188,10 +188,14 @@ def main():
 
     class Provider:
         from modules.sofascore.event_normalizer import normalize_event_payload
+        from modules.sofascore.client import SofaScoreAPI
 
         normalize_event_payload = staticmethod(normalize_event_payload)
+        open_scheduled_tournaments = SofaScoreAPI.open_scheduled_tournaments
+        open_scheduled_events = SofaScoreAPI.open_scheduled_events
+        open_scheduled_odds = SofaScoreAPI.open_scheduled_odds
 
-        def request_json(self, endpoint, *, body_file):
+        def download_json(self, endpoint, body_file, params=None):
             if "scheduled-tournaments" in endpoint:
                 body_file.write(
                     b'{"scheduled":[{"tournament":{"id":50,"uniqueTournament":{"id":5}}}],"hasNextPage":false}'
@@ -206,7 +210,6 @@ def main():
                     body_file.write(json.dumps(raw_event(args.history + index + 1)).encode())
                 body_file.write(b"]}")
             body_file.seek(0)
-            return body_file
 
     def result_response(_client, source_id, **_):
         sleep(0.001)  # Network fixture; it never reaches an external provider.

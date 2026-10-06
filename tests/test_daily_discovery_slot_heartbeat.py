@@ -7,6 +7,8 @@ import pytest
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.settings import Config
+from infrastructure.settings import discovery as settings
+from dataclasses import replace
 from modules.jobs.daily_discovery.run_daily_discovery import resolve_daily_discovery_slot
 
 daily_job = import_module("modules.jobs.daily_discovery.run_daily_discovery")
@@ -27,8 +29,8 @@ def test_daily_discovery_log_uses_slot_scoped_uniqueness():
 
 
 def test_resolve_daily_discovery_slot_boundaries(monkeypatch):
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 5)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 16)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
 
     assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 4, 59)) is None
     assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 5, 0)) == "next_utc_day"
@@ -43,8 +45,8 @@ def test_daily_discovery_job_skips_before_first_slot(monkeypatch):
         "pending": [],
         "run": [],
     }
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 5)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 16)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
 
     monkeypatch.setattr(
         daily_job,
@@ -74,15 +76,15 @@ def test_daily_discovery_job_skips_before_first_slot(monkeypatch):
 
     daily_job.run_daily_discovery_job()
 
-    assert calls["cleanup"] == [getattr(Config, "DAILY_DISCOVERY_DAYS_TO_KEEP", 1)]
+    assert calls["cleanup"] == [settings.SOFASCORE.daily_progress_retention_days]
     assert calls["init"] == []
     assert calls["pending"] == []
     assert calls["run"] == []
 
 
 def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 5)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 16)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
     calls = {
         "cleanup": [],
         "init": [],
@@ -118,14 +120,14 @@ def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
 
     daily_job.run_daily_discovery_job()
 
-    assert calls["cleanup"] == [getattr(Config, "DAILY_DISCOVERY_DAYS_TO_KEEP", 1)]
+    assert calls["cleanup"] == [settings.SOFASCORE.daily_progress_retention_days]
     from modules.sports.catalog import sofascore_sport_slugs
 
-    assert calls["init"][0][0] == ("2026-06-01", "next_utc_day", sofascore_sport_slugs())
-    assert calls["pending"][0][0] == ("2026-06-01", "next_utc_day")
+    assert calls["init"][0][0] == ("2026-06-02", "next_utc_day", sofascore_sport_slugs())
+    assert calls["pending"][0][0] == ("2026-06-02", "next_utc_day")
     assert calls["run"][0][1] == {
         "sports": ["basketball", "tennis"],
-        "date": "2026-06-01",
+        "date": "2026-06-02",
         "run_slot": "next_utc_day",
     }
 
@@ -134,18 +136,24 @@ def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
     "hour, slot", [(0, None), (7, None), (8, "current_utc_day"), (16, "current_utc_day"), (17, "next_utc_day"), (23, "next_utc_day")]
 )
 def test_configured_slot_hours_do_not_wrap_into_the_next_day(monkeypatch, hour, slot):
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 17)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 8)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
     assert resolve_daily_discovery_slot(datetime(2026, 9, 29, hour)) == slot
 
 
-@pytest.mark.parametrize("hour, slot", [(8, "current_utc_day"), (17, "next_utc_day"), (18, "next_utc_day"), (21, "next_utc_day"), (23, "next_utc_day")])
-def test_heartbeat_targets_utc_date_for_configured_slot(monkeypatch, hour, slot):
+@pytest.mark.parametrize("hour, slot, target", [
+    (8, "current_utc_day", "2026-09-29"),
+    (17, "next_utc_day", "2026-09-30"),
+    (18, "next_utc_day", "2026-10-01"),
+    (21, "next_utc_day", "2026-10-01"),
+    (23, "next_utc_day", "2026-10-01"),
+])
+def test_heartbeat_targets_utc_date_for_configured_slot(monkeypatch, hour, slot, target):
     from unittest.mock import Mock
 
     monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 17)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 8)
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
     local_now = datetime(2026, 9, 29, hour, 40, tzinfo=ZoneInfo(Config.TIMEZONE))
     monkeypatch.setattr(daily_job, "now_in_timezone", lambda _: local_now)
     monkeypatch.setattr(DailyDiscoveryRepository, "cleanup_old_logs", lambda _: 0)
@@ -157,8 +165,8 @@ def test_heartbeat_targets_utc_date_for_configured_slot(monkeypatch, hour, slot)
 
     daily_job.run_daily_discovery_job()
 
-    pending.assert_called_once_with("2026-09-29", slot)
-    run.assert_called_once_with(sports=["football"], date="2026-09-29", run_slot=slot)
+    pending.assert_called_once_with(target, slot)
+    run.assert_called_once_with(sports=["football"], date=target, run_slot=slot)
 
 
 def test_pending_sports_follow_explicit_slot_status(monkeypatch):
@@ -205,9 +213,9 @@ def test_pending_sports_follow_explicit_slot_status(monkeypatch):
     engine.dispose()
 
 
-def test_heartbeats_complete_two_passes_per_local_day(monkeypatch):
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR", 17)
-    monkeypatch.setattr(Config, "DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR", 8)
+def test_heartbeats_deduplicate_each_utc_date_and_slot(monkeypatch):
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
+    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
     completed = set()
     calls = []
     monkeypatch.setattr(DailyDiscoveryRepository, "cleanup_old_logs", lambda _: 0)
@@ -233,7 +241,8 @@ def test_heartbeats_complete_two_passes_per_local_day(monkeypatch):
 
     assert calls == [
         ("2026-12-31", "current_utc_day"),
-        ("2026-12-31", "next_utc_day"),
-        ("2027-01-01", "current_utc_day"),
         ("2027-01-01", "next_utc_day"),
+        ("2027-01-02", "next_utc_day"),
+        ("2027-01-01", "current_utc_day"),
+        ("2027-01-03", "next_utc_day"),
     ]

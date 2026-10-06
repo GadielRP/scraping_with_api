@@ -1,35 +1,36 @@
 """Commit bounded event batches, then join streamed odds to confirmed run members."""
 
-from datetime import timedelta
 import logging
-from sqlalchemy import select
+
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventSourceMapping
 from infrastructure.persistence.repositories.daily_discovery_repository import (
     DailyDiscoveryRepository,
 )
-from infrastructure.settings.job_execution import JobExecutionSettings
-from modules.competition.discovery_scope import load_tracked_source_competitions
-from .persistence import persist_daily_events
-from modules.jobs.discovery.summary import log_discovery_summary
+from infrastructure.persistence.repositories.discovery_repository import DiscoveryRepository
 from infrastructure.persistence.transient.discovery_run_store import DiscoveryRunStore
+from infrastructure.runtime.resource_budget import check_maintenance_capacity
+from infrastructure.settings import discovery as settings
+from infrastructure.settings.job_execution import JobExecutionSettings
+from modules.competition.tracked_competitions import tracked_competition_ids
+from modules.jobs.discovery.filters import load_tracked_source_competitions, sofascore_discovery_sport_slugs
+from modules.jobs.discovery.summary import log_discovery_summary
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 from modules.sofascore import api_client
-from modules.sofascore.streaming import bulk_document, document_entries
-from modules.sports.catalog import sofascore_sport_slugs
+from infrastructure.network.json_document import document_entries
 from shared.batching import chunks
-from shared.execution_context import check_execution_budget, WorkDeferred
-from shared.temporal import utc_now
+from shared.execution_context import WorkDeferred, check_execution_budget
+
 from .event_source import iter_sport_events
-from infrastructure.runtime.resource_budget import check_maintenance_capacity
+from .persistence import persist_daily_events
 
 logger = logging.getLogger(__name__)
 
 
 def persist_sport_odds(client, date, sport, store, batch_size):
     saved = 0
-    with bulk_document(client, f"/sport/{sport}/odds/1/{date}") as document:
+    with client.open_scheduled_odds(date, sport) as document:
         for batch in chunks(document_entries(document, "odds", mapping=True), batch_size):
             check_execution_budget()
             check_maintenance_capacity()
@@ -38,18 +39,20 @@ def persist_sport_odds(client, date, sport, store, batch_size):
                 continue
             # Recheck live canonical identity and kickoff in one short read transaction.
             with db_manager.get_session() as session:
-                eligible = dict(
-                    session.execute(
-                        select(EventSourceMapping.source_event_id, Event.id)
-                        .join(Event, Event.id == EventSourceMapping.event_id)
-                        .where(
-                            Event.id.in_(members.values()),
-                            EventSourceMapping.source == "sofascore",
-                            EventSourceMapping.source_event_id.in_(members),
-                            Event.starts_at > utc_now() + timedelta(minutes=10),
-                        )
-                    ).all()
+                query = (
+                    session.query(EventSourceMapping.source_event_id, Event.id)
+                    .join(Event, Event.id == EventSourceMapping.event_id)
+                    .where(
+                        Event.id.in_(members.values()),
+                        EventSourceMapping.source == "sofascore",
+                        EventSourceMapping.source_event_id.in_(members),
+                    )
                 )
+                policy = settings.SOFASCORE.filters
+                eligible = dict(DiscoveryRepository.admit_query(
+                    query, policy,
+                    competition_ids=tracked_competition_ids() if policy.tracked_competitions_only else None,
+                ).all())
             for sid, raw in batch:
                 event_id = eligible.get(str(sid))
                 if event_id is None or event_id != members.get(str(sid)):
@@ -78,6 +81,7 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
             "events_updated",
             "events_discarded",
             "events_failed",
+            "events_filtered",
             "sports_failed",
             "odds_inserted",
         ),
@@ -85,7 +89,7 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
     )
     with DiscoveryRunStore() as store:
         try:
-            for sport in sofascore_sport_slugs(sports):
+            for sport in sofascore_discovery_sport_slugs(sports):
                 check_execution_budget()
                 failed = False
                 try:
@@ -95,7 +99,9 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
                     ):
                         check_execution_budget()
                         check_maintenance_capacity()
-                        result = persist_daily_events(client, batch, run_store=store)
+                        result = persist_daily_events(
+                            client, batch, run_store=store, tracked_competitions=scope,
+                        )
                         stats["events_processed"] += len(batch)
                         for name, value in (
                             ("persisted", result.persisted),
@@ -103,6 +109,7 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
                             ("updated", result.updated),
                             ("discarded", result.discarded),
                             ("failed", result.failed),
+                            ("filtered", result.filtered),
                         ):
                             stats[f"events_{name}"] += value
                         failed |= result.failed > 0

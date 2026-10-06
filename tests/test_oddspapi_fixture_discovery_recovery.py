@@ -15,6 +15,8 @@ from infrastructure.persistence.repositories import (
 )
 from modules.jobs.oddspapi.fixture_discovery.recovery import FixtureDiscoveryService
 from infrastructure.settings import Config
+from infrastructure.settings import discovery as settings
+from dataclasses import replace
 from modules.sports.catalog import oddspapi_sport_ids
 
 scheduler_module = import_module("modules.jobs.oddspapi.fixture_discovery.recovery")
@@ -25,17 +27,9 @@ def _scheduler_without_setup() -> FixtureDiscoveryService:
 
 
 def test_missed_slot_targets_next_utc_day_after_evening_restart(monkeypatch):
-    monkeypatch.setattr(Config, "ODDSPAPI_FIXTURE_DISCOVERY_TIMES", ["17:45"])
-    monkeypatch.setattr(
-        Config,
-        "ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS",
-        36,
-    )
-    monkeypatch.setattr(
-        Config,
-        "ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS",
-        2,
-    )
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, scheduled_times=["17:45"]))
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, catchup_lookback_hours=36))
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, max_catchup_runs=2))
 
     slots = _scheduler_without_setup()._missed_fixture_discovery_slots(
         now_local=datetime(2026, 7, 24, 17, 52),
@@ -49,17 +43,9 @@ def test_missed_slot_targets_next_utc_day_after_evening_restart(monkeypatch):
 
 
 def test_missed_slot_is_still_recovered_next_morning(monkeypatch):
-    monkeypatch.setattr(Config, "ODDSPAPI_FIXTURE_DISCOVERY_TIMES", ["17:45"])
-    monkeypatch.setattr(
-        Config,
-        "ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS",
-        36,
-    )
-    monkeypatch.setattr(
-        Config,
-        "ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS",
-        2,
-    )
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, scheduled_times=["17:45"]))
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, catchup_lookback_hours=36))
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, max_catchup_runs=2))
 
     slots = _scheduler_without_setup()._missed_fixture_discovery_slots(
         now_local=datetime(2026, 7, 25, 10, 0),

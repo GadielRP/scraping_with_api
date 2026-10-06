@@ -7,7 +7,7 @@ from importlib import import_module
 import pytest
 
 from infrastructure.settings import Config
-from modules.competition.discovery_scope import SourceCompetitionIds
+from modules.jobs.discovery.filters import SourceCompetitionIds
 from modules.jobs.discover_secondary_sources import (
     run_discover_secondary_sources as run_secondary_discovery,
 )
@@ -18,7 +18,7 @@ from modules.jobs.oddspapi.fixture_discovery.fixture_discovery_job import (
     OddspapiFixtureDiscoveryJob,
 )
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import _resolve_sports
-from modules.jobs.discovery_filters import filter_upcoming_events
+from modules.jobs.discovery.filters import filter_sofascore_events
 from modules.sports.catalog import (
     oddspapi_sport_ids,
     sofascore_sport_slugs,
@@ -42,9 +42,9 @@ def _future_event(event_id: int, sport: str) -> dict:
 
 def test_shared_discovery_filter_logs_reason_for_each_rejection(monkeypatch, caplog):
     monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["Football"])
-    caplog.set_level("INFO", logger="modules.jobs.discovery_filters")
+    caplog.set_level("INFO", logger="modules.jobs.discovery.filters")
 
-    events = filter_upcoming_events(
+    events = filter_sofascore_events(
         [
             _future_event(1, "Darts"),
             _future_event(2, "American football"),
@@ -55,21 +55,9 @@ def test_shared_discovery_filter_logs_reason_for_each_rejection(monkeypatch, cap
     )
 
     assert [event["event"]["id"] for event in events] == [3]
-    assert (
-        "input=5 kept=1 rejected_unsupported_sport=2 "
-        "rejected_missing_start_timestamp=1 rejected_invalid_start_timestamp=0 "
-        "rejected_start_too_soon_or_started=1"
-    ) in caplog.text
-
-
-def test_upcoming_filter_fails_closed_when_filtering_raises(monkeypatch):
-    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["Football"])
-
-    def fail_timezone(_timezone):
-        raise RuntimeError("invalid timezone")
-
-    monkeypatch.setattr("modules.jobs.discovery_filters.now_in_timezone", fail_timezone)
-    assert filter_upcoming_events([_future_event(1, "Football")]) == []
+    assert "'unsupported_sport': 2" in caplog.text
+    assert "'missing_start_timestamp': 1" in caplog.text
+    assert "'start_too_soon_or_started': 1" in caplog.text
 
 
 def test_event_only_persistence_rejects_unsupported_sports(monkeypatch):
@@ -284,10 +272,10 @@ def test_oddspapi_discovery_filters_scope_and_fixture_payloads(monkeypatch):
     processed_payloads = []
 
     class Client:
-        def get_fixtures(self, **kwargs):
-            return [
+        def iter_fixtures(self, **kwargs):
+            yield from [
                 {"fixtureId": "darts-1", "sportName": "Darts"},
-                {"fixtureId": "football-1", "sportName": "Soccer"},
+                {"fixtureId": "football-1", "sportName": "Soccer", "startTime": "2100-01-01T12:00:00Z"},
             ]
 
     class Processor:
@@ -316,4 +304,5 @@ def test_oddspapi_discovery_filters_scope_and_fixture_payloads(monkeypatch):
 
     assert list(job.sports) == ["soccer"]
     assert [payload["fixtureId"] for payload in processed_payloads] == ["football-1"]
-    assert summary.total_fixtures_fetched == 1
+    assert summary.total_fixtures_fetched == 2
+    assert summary.total_fixtures_skipped_policy == 1

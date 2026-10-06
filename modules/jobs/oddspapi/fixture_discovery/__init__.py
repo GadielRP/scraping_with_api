@@ -1,7 +1,7 @@
 """Runtime jobs for discovering Oddspapi fixtures."""
 
-from .fixture_discovery_job import (
-    OddspapiFixtureDiscoveryJob,
+from .fixture_discovery_job import OddspapiFixtureDiscoveryJob
+from .summary import (
     OddspapiFixtureDiscoverySummary,
     SportFixtureDiscoverySummary,
 )

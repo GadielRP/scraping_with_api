@@ -115,6 +115,9 @@ docs/lectures
 docs/audits
 docs/refactors
 docs/learning
+docs/analysis
+
+scripts/analysis
 
 # =========================================================
 # Local CSV/data exports

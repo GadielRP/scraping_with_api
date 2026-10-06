@@ -473,12 +473,14 @@ def test_dynamic_client_fails_over_after_request_limit_rejection():
                 text="request limit exceeded",
                 headers={},
                 json=lambda: {"code": "REQUEST_LIMIT_EXCEEDED"},
+                close=lambda: None,
             ),
             SimpleNamespace(
                 status_code=200,
                 text="",
                 headers={},
                 json=lambda: {"fixtureId": "fixture-1"},
+                close=lambda: None,
             ),
         ]
     )
@@ -542,6 +544,7 @@ def test_successful_large_payload_is_decoded_only_once():
         text="",
         headers={},
         json=decode,
+        close=lambda: None,
     )
 
     assert client.get_odds("fixture-1")["fixtureId"] == "fixture-1"

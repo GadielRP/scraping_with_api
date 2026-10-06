@@ -3,33 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-import logging
-from typing import Any
-
-logger = logging.getLogger(__name__)
-
-
-def extract_fixture_list(payload: dict | list) -> list[dict]:
-    """Extract fixture dictionaries from raw or common wrapped responses."""
-    candidates: Any = payload
-    if isinstance(payload, dict):
-        for key in ("fixtures", "data", "items"):
-            if key in payload:
-                candidates = payload[key]
-                break
-        else:
-            logger.warning("Unsupported Oddspapi fixtures response keys=%s", sorted(payload))
-            return []
-
-    if not isinstance(candidates, list):
-        logger.warning("Unsupported Oddspapi fixtures response shape=%s", type(candidates).__name__)
-        return []
-
-    fixtures = [item for item in candidates if isinstance(item, dict)]
-    invalid_items = len(candidates) - len(fixtures)
-    if invalid_items:
-        logger.warning("Ignored %s non-object Oddspapi fixture payload(s)", invalid_items)
-    return fixtures
 
 
 def to_oddspapi_iso(dt: datetime) -> str:

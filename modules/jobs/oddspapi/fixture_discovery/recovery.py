@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from infrastructure.persistence.repositories import OddspapiFixtureDiscoveryRunRepository
 from infrastructure.settings import Config
-from modules.sports.catalog import oddspapi_sport_ids
+from infrastructure.settings import discovery as settings
+from modules.jobs.discovery.filters import oddspapi_discovery_sport_ids
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.oddspapi.runtime import (
     oddspapi_account_usage_refresh_enabled,
@@ -28,7 +29,7 @@ class FixtureDiscoveryService:
         scheduled_local_date = scheduled_local_date or local_now.strftime("%Y-%m-%d")
         scheduled_time = scheduled_time or local_now.strftime("%H:%M")
         sport_scope = OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-            kwargs.get("sports") if kwargs.get("sports") is not None else oddspapi_sport_ids()
+            kwargs.get("sports") if kwargs.get("sports") is not None else oddspapi_discovery_sport_ids()
         )
 
         # If target_date is not explicitly passed (or is forwarded as None by
@@ -208,7 +209,7 @@ class FixtureDiscoveryService:
             now_local = now_local.replace(tzinfo=ZoneInfo(Config.TIMEZONE))
         lookback_hours = max(
             0,
-            Config.ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS,
+            settings.ODDSPAPI.catchup_lookback_hours,
         )
         cutoff = now_local - timedelta(hours=lookback_hours)
         day_count = lookback_hours // 24 + 2
@@ -217,12 +218,12 @@ class FixtureDiscoveryService:
 
         for days_ago in range(day_count, -1, -1):
             local_date = (now_local - timedelta(days=days_ago)).date()
-            for configured_time in Config.ODDSPAPI_FIXTURE_DISCOVERY_TIMES:
+            for configured_time in settings.ODDSPAPI.scheduled_times:
                 try:
                     slot_time = datetime.strptime(configured_time, "%H:%M").time()
                 except ValueError:
                     logger.error(
-                        "Ignoring invalid ODDSPAPI_FIXTURE_DISCOVERY_TIMES value: %s",
+                        "Ignoring invalid ODDSPAPI.scheduled_times value: %s",
                         configured_time,
                     )
                     continue
@@ -240,7 +241,7 @@ class FixtureDiscoveryService:
                 slots.append((occurrence, configured_time, target_date))
 
         slots.sort(key=lambda item: item[0])
-        max_runs = max(0, Config.ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS)
+        max_runs = max(0, settings.ODDSPAPI.max_catchup_runs)
         return slots[-max_runs:] if max_runs else []
 
     def recover(self) -> None:
@@ -260,7 +261,7 @@ class FixtureDiscoveryService:
                 if OddspapiFixtureDiscoveryRunRepository.has_success(
                     target_date,
                     sport_scope=OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-                        oddspapi_sport_ids()
+                        oddspapi_discovery_sport_ids()
                     ),
                 ):
                     continue

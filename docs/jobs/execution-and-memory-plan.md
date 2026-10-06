@@ -73,7 +73,7 @@ Aplicación de SOLID: cada módulo tiene un motivo concreto de cambio; los casos
 | `modules/jobs/discovery/fetching.py`, `persistence.py`, `summary.py` | Consulta concurrente acotada, políticas explícitas de admisión/persistencia y presentación de la auditoría |
 | `modules/jobs/daily_discovery/event_source.py` | Iteración de torneos/eventos y filtros del proveedor, sin escrituras |
 | `modules/jobs/daily_discovery/run_daily_discovery.py` | Coordinación heartbeat/slot/deporte, limpieza y progreso; absorbe el coordinador del extractor |
-| `modules/sofascore/streaming.py` | Adaptación incremental de respuestas voluminosas, reutilizando transporte autenticado/reintentos existentes |
+| `infrastructure/network/json_document.py` | Documento temporal y parser incremental compartidos; cada proveedor conserva su transporte autenticado y sus reintentos |
 | `infrastructure/persistence/transient/discovery_run_store.py` | Almacenamiento temporal en disco de IDs confirmados y calendario final por run; sin ORM ni payloads completos |
 | `modules/jobs/results_collection_job/contracts.py` | Selección temporal y outcomes del procesamiento, sin SQL |
 | `modules/jobs/results_collection_job/batch_processor.py` | Resolución de un lote y aplicación de escrituras existentes |

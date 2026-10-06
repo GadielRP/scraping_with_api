@@ -8,7 +8,9 @@ from curl_cffi.requests.exceptions import Timeout
 
 from infrastructure.settings import Config
 from modules.sofascore import client as client_module
-from modules.sofascore.streaming import bulk_document, document_entries
+from infrastructure.network.json_document import open_json_document, document_entries
+from infrastructure.network import json_document
+from infrastructure.settings.job_execution import JobExecutionSettings
 from shared.execution_context import WorkDeferred
 
 
@@ -38,7 +40,7 @@ def test_streamed_timeout_retries_and_discards_the_partial_body(api, monkeypatch
 
     api.session = SimpleNamespace(get=get)
     monkeypatch.setattr(client_module, "wait_interruptibly", waits.append)
-    with bulk_document(api, ENDPOINT) as document:
+    with open_json_document(api, ENDPOINT) as document:
         assert list(document_entries(document, "events")) == [{"id": 1}]
     assert len(calls) == 2
     assert waits == [5]
@@ -56,7 +58,7 @@ def test_persistent_timeout_stops_after_configured_attempts(api, monkeypatch, ca
     api.session = SimpleNamespace(get=get)
     monkeypatch.setattr(client_module, "wait_interruptibly", waits.append)
     with pytest.raises(RuntimeError, match="Incomplete provider response"):
-        with bulk_document(api, ENDPOINT):
+        with open_json_document(api, ENDPOINT):
             pytest.fail("An incomplete response must not reach discovery parsing")
     assert len(calls) == 3
     assert waits == [5, 10]
@@ -79,3 +81,30 @@ def test_retry_wait_preserves_execution_deferral(api, monkeypatch):
     with pytest.raises(WorkDeferred, match="Execution deadline reached"):
         api.request_json(ENDPOINT)
     assert len(calls) == 1
+
+
+def test_callback_abort_preserves_original_size_error_instead_of_curl_failure(api, monkeypatch):
+    from curl_cffi.requests.exceptions import RequestException
+
+    monkeypatch.setattr(json_document, "JobExecutionSettings", lambda: JobExecutionSettings(response_max_bytes=5))
+    calls = []
+
+    def get(url, *, content_callback, **kwargs):
+        calls.append(url)
+        assert content_callback(b"123456") == 0
+        raise RequestException("write callback aborted", code=23)
+
+    api.session = SimpleNamespace(get=get)
+    with pytest.raises(ValueError, match="byte budget"):
+        with open_json_document(api, ENDPOINT):
+            pytest.fail("An oversized body must not reach parsing")
+    assert len(calls) == 1
+
+
+def test_each_actual_attempt_logs_airplane_and_endpoint_at_info(api, caplog):
+    api.session = SimpleNamespace(get=lambda *args, **kwargs: SimpleNamespace(
+        status_code=200, json=lambda: {"event": {"id": 1}},
+    ))
+    caplog.set_level(logging.INFO, logger="modules.sofascore.client")
+    assert api.request_json("/event/1") == {"event": {"id": 1}}
+    assert "✈️ SofaScore GET" in caplog.text and "/event/1 attempt=1/3" in caplog.text

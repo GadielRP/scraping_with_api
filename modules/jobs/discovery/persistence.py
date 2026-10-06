@@ -4,12 +4,11 @@ import logging
 
 from infrastructure.persistence.repositories import EventRepository, EventSourceMappingRepository
 from infrastructure.settings.job_execution import JobExecutionSettings
-from modules.competition.discovery_scope import (
-    filter_tracked_source_events,
+from modules.jobs.discovery.filters import (
+    filter_sofascore_events,
     load_tracked_source_competitions,
     UNRESOLVED_SCOPE,
 )
-from modules.jobs.discovery_filters import filter_supported_sofascore_events
 from modules.odds_ingestion import MarketOddsIngestionService
 from shared.batching import chunks
 from shared.execution_context import WorkDeferred, check_execution_budget
@@ -23,8 +22,7 @@ def _source_id(event):
 
 
 def _eligible_events(events, tracked_competitions):
-    supported = filter_supported_sofascore_events(events)
-    eligible = filter_tracked_source_events(supported, tracked_competitions)
+    eligible = filter_sofascore_events(events, tracked_competitions)
     if not eligible:
         return []
     blocked = EventRepository.discarded_source_ids("sofascore", [_source_id(e) for e in eligible])
@@ -116,7 +114,7 @@ def persist_events_with_odds(
 def fetch_and_persist_events_with_odds(
     events,
     discovery_source=None,
-    max_workers=5,
+    max_workers=None,
     *,
     tracked_competitions=UNRESOLVED_SCOPE,
     run_store=None

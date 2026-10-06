@@ -7,10 +7,12 @@ import pytest
 
 from infrastructure.persistence.models import Event
 from infrastructure.settings import Config
+from infrastructure.settings import discovery as settings
+from dataclasses import replace
 from modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor import (
-    OddspapiCandidatePool,
     OddspapiFixtureBatchProcessor,
 )
+from infrastructure.persistence.repositories.discovery_repository import OddspapiCandidatePool
 from modules.oddspapi.event_candidate_matcher import EventCandidateScore, MatchDecision
 from modules.oddspapi.event_resolver import OddspapiEventResolver
 from modules.oddspapi.fixture_normalizer import OddspapiFixtureIdentity
@@ -56,6 +58,10 @@ def _empty_candidate_pool(cls, fixtures, session, *, competition_ids=None):
 
 @pytest.fixture(autouse=True)
 def _disable_debug_artifacts(monkeypatch):
+    # This suite exercises matching, not admission; use its historical fixture clock.
+    monkeypatch.setattr("modules.jobs.discovery.filters.utc_now", lambda: datetime(2026, 7, 14, tzinfo=timezone.utc))
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, filters=replace(settings.ODDSPAPI.filters, tracked_competitions_only=True)))
+    monkeypatch.setattr("infrastructure.persistence.repositories.discovery_repository.DiscoveryRepository.admitted_event_ids", lambda session, ids, **kwargs: set(ids))
     monkeypatch.setattr(
         "modules.jobs.oddspapi.fixture_discovery.fixture_batch_processor."
         "OddspapiFixtureResponseDebugWriter.save_if_incomplete",
@@ -193,7 +199,7 @@ def test_existing_oddspapi_mapping_to_untracked_competition_is_not_reused(monkey
 
 
 def test_disabling_competition_filter_expands_oddspapi_candidate_scope(monkeypatch):
-    monkeypatch.setattr(Config, "DISCOVERY_TRACKED_COMPETITIONS_ONLY", False)
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, filters=replace(settings.ODDSPAPI.filters, tracked_competitions_only=False)))
     matcher = _Matcher(_decision(456))
     candidate_pool_scopes = []
     persisted = []
@@ -395,6 +401,9 @@ def test_candidate_pool_query_filters_to_the_tracked_competitions():
             self.filters = []
 
         def options(self, *args):
+            return self
+
+        def outerjoin(self, *args):
             return self
 
         def filter(self, *expressions):

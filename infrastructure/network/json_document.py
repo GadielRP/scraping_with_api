@@ -1,63 +1,71 @@
-"""Bulk JSON on disk; libcurl writes chunks without building Response.content."""
+"""Bounded JSON documents independent of the HTTP library and provider schema."""
 
 from contextlib import contextmanager
+from pathlib import Path
 from tempfile import TemporaryFile
+from typing import BinaryIO, Iterator, Protocol
 import re
+
 import ijson
 from ijson.common import ObjectBuilder
+
 from infrastructure.settings.job_execution import JobExecutionSettings
 from shared.execution_context import check_execution_budget
 
 
-class BoundedBody:
-    def __init__(self, file, maximum):
-        self.file, self.maximum = file, maximum
-        self.size = 0
-        self.error = None
+class JsonDocument:
+    """A disk-backed response body with an enforced download size limit."""
 
-    def write(self, data):
-        try:
-            check_execution_budget()
-            if self.size + len(data) > self.maximum:
-                raise ValueError("Provider response exceeds byte budget")
-            count = self.file.write(data)
-            self.size += count
-            return count
-        except BaseException as exc:
-            self.error = exc
-            return 0  # Abort libcurl; the caller re-raises the original error.
+    def __init__(self, file: BinaryIO, maximum: int):
+        self.file = file
+        self.maximum = maximum
+        self.size = 0
+
+    def write(self, data: bytes) -> int:
+        check_execution_budget()
+        if self.size + len(data) > self.maximum:
+            raise ValueError("Provider response exceeds byte budget")
+        count = self.file.write(data)
+        self.size += count
+        return count
+
+    def reset(self) -> None:
+        """Discard a failed attempt before retrying the same download."""
+        self.file.seek(0)
+        self.file.truncate()
+        self.size = 0
 
     def seek(self, *args):
         return self.file.seek(*args)
 
-    def truncate(self):
-        self.size = 0
-        return self.file.truncate()
+    def read(self, size=-1):
+        return self.file.read(size)
 
-    def read(self, *args):
-        return self.file.read(*args)
+
+class JsonDownloader(Protocol):
+    def download_json(
+        self, endpoint: str, document: JsonDocument, params: dict | None = None
+    ) -> None:
+        """Write a complete successful body, or raise; never decode it to objects."""
+        ...
 
 
 @contextmanager
-def bulk_document(client, endpoint):
-    limits = JobExecutionSettings()
-    # data/ is disk-backed in compose; TemporaryFile is unlinked automatically on POSIX.
-    from pathlib import Path
-
+def open_json_document(
+    client: JsonDownloader, endpoint: str, params: dict | None = None
+) -> Iterator[JsonDocument]:
+    """Own the temporary body for the download and all incremental parsing."""
     directory = Path("data/runtime")
     directory.mkdir(parents=True, exist_ok=True)
     with TemporaryFile(dir=directory) as file:
-        body = BoundedBody(file, limits.response_max_bytes)
-        response = client.request_json(endpoint, body_file=body)
-        if body.error:
-            raise body.error
-        if response is None:
-            raise RuntimeError(f"Incomplete provider response: {endpoint}")
-        yield body
+        document = JsonDocument(file, JobExecutionSettings().response_max_bytes)
+        client.download_json(endpoint, document, params=params)
+        document.seek(0)
+        yield document
 
 
 class TokenBoundedReader:
-    """Reject oversized JSON tokens before the SAX parser constructs a scalar."""
+    """Reject oversized tokens and nesting before the parser allocates them."""
 
     _STRING_BOUNDARY = re.compile(rb'["\\]')
     _TOKEN_BOUNDARY = re.compile(rb'["{}\[\]:,\s]')
@@ -69,6 +77,7 @@ class TokenBoundedReader:
         self.token_bytes = 0
 
     def read(self, size=-1):
+        check_execution_budget()
         data = self.document.read(min(size, 65536) if size >= 0 else 65536)
         offset = 0
         while offset < len(data):
@@ -102,44 +111,49 @@ class TokenBoundedReader:
         return data
 
 
-def document_entries(document, field, *, mapping=False, controls=None):
-    """Build a single bounded member; validate the entire JSON before completion."""
+def document_entries(document, field: str | tuple[str, ...], *, mapping=False, controls=None):
+    """Yield bounded members; exhaustion validates the whole JSON document.
+
+    Use an empty field for a root array, or a tuple for supported alternative
+    collection paths. Only the requested scalar metadata keys are captured.
+    """
+    fields = (field,) if isinstance(field, str) else field
     controls = controls if controls is not None else {}
     limits = JobExecutionSettings()
     maximum = limits.json_item_max_bytes
-    found = False
+    collection = None
     builder = None
-    depth = 0
-    size = 0
-    member_key = None
-    member_prefix = None
+    depth = size = 0
+    member_key = member_prefix = None
     for prefix, event, value in ijson.parse(
         TokenBoundedReader(document, maximum, limits.json_max_depth), use_float=True
     ):
-        check_execution_budget()
-        if prefix == field and event == ("start_map" if mapping else "start_array"):
-            found = True
-        if prefix == "hasNextPage" and event == "boolean":
-            controls["hasNextPage"] = value
-        if mapping and prefix == field and event == "map_key":
+        if collection is None and prefix in fields and event == (
+            "start_map" if mapping else "start_array"
+        ):
+            collection = prefix
+        if prefix in controls and event in ("boolean", "string", "number", "null"):
+            controls[prefix] = value
+        if collection is None:
+            continue
+        if mapping and prefix == collection and event == "map_key":
             member_key = value
-            member_prefix = f"{field}.{value}"
-        target = member_prefix if mapping else f"{field}.item"
-        if (
-            builder is None
-            and prefix == target
-            and event not in ("map_key", "end_array", "end_map")
+            member_prefix = f"{collection}.{value}" if collection else str(value)
+        target = member_prefix if mapping else f"{collection}.item" if collection else "item"
+        if builder is None and prefix == target and event not in (
+            "map_key", "end_array", "end_map"
         ):
             builder, depth, size = ObjectBuilder(), 0, 0
         if builder is not None:
             size += len(str(value).encode("utf-8")) + 16
             if size > maximum:
-                raise ValueError(f"Provider JSON element exceeds budget field={field}")
+                raise ValueError(f"Provider JSON element exceeds budget field={collection}")
             builder.event(event, value)
             depth += int(event in ("start_map", "start_array"))
             depth -= int(event in ("end_map", "end_array"))
             if depth == 0:
+                check_execution_budget()
                 yield (member_key, builder.value) if mapping else builder.value
                 builder = None
-    if not found:
-        raise ValueError(f"Provider JSON missing required collection: {field}")
+    if collection is None:
+        raise ValueError(f"Provider JSON missing required collection: {fields}")

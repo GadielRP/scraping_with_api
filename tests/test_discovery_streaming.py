@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import json
 import pytest
 from infrastructure.persistence.transient.discovery_run_store import DiscoveryRunStore
-from modules.sofascore.streaming import document_entries, BoundedBody
-from modules.sofascore import streaming
+from infrastructure.network.json_document import document_entries, JsonDocument
+from infrastructure.network import json_document as streaming
 from infrastructure.settings.job_execution import JobExecutionSettings
 
 
@@ -18,7 +18,7 @@ def test_document_entries_validates_empty_missing_and_truncated_collections():
 
 
 def test_streams_member_keys_nested_payloads_and_pagination_controls():
-    controls = {}
+    controls = {"hasNextPage": False}
     data = {"scheduled": [{"a": [1, 2]}], "hasNextPage": True}
     assert list(
         document_entries(BytesIO(json.dumps(data).encode()), "scheduled", controls=controls)
@@ -31,10 +31,10 @@ def test_streams_member_keys_nested_payloads_and_pagination_controls():
 
 def test_response_limit_aborts_without_materializing_body():
     file = BytesIO()
-    body = BoundedBody(file, 5)
+    body = JsonDocument(file, 5)
     assert body.write(b"1234") == 4
-    assert body.write(b"56") == 0
-    assert isinstance(body.error, ValueError)
+    with pytest.raises(ValueError, match="byte budget"):
+        body.write(b"56")
     assert file.getvalue() == b"1234"
 
 
@@ -52,6 +52,9 @@ def test_disk_membership_deduplicates_and_keeps_final_calendar():
         assert list(store.counts()) == [("Football", "2026-10-04", 1)]
         assert store.first_tournament("football", 1)
         assert not store.first_tournament("football", 1)
+        assert store.first_seen("oddspapi:10", "fixture-1")
+        assert not store.first_seen("oddspapi:10", "fixture-1")
+        assert store.first_seen("oddspapi:11", "fixture-1")
         store.record_mapping({"100": event})
         assert store.source_members(["99", "100"]) == {"99": 1, "100": 1}
 

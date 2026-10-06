@@ -226,8 +226,6 @@ class Config:
     PRE_START_T_MINUS_ONE_INTERVAL_MINUTES = int(
         os.getenv("PRE_START_T_MINUS_ONE_INTERVAL_MINUTES", "1")
     )
-    DISCOVERY_INTERVAL_HOURS = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
-    DISCOVERY2_INTERVAL_HOURS = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))  # Separate interval for Discovery2
     PRE_START_WINDOW_MINUTES = int(os.getenv('PRE_START_WINDOW_MINUTES', '120'))
     PRE_START_WORKERS = int(os.getenv('PRE_START_WORKERS', '5'))  # Number of parallel workers for pre-start checks
     INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES = int(os.getenv("INTRADAY_RESULT_FRESHNESS_WINDOW_MINUTES", "390"))
@@ -271,47 +269,6 @@ class Config:
         False,
     )
 
-    # Daily Discovery Log/Queue Configuration
-    DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES = int(os.getenv('DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES', '240'))
-    DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES = int(
-        os.getenv(
-            'DAILY_DISCOVERY_CHECK_INTERVAL_MINUTES',
-            str(DAILY_DISCOVERY_RETRY_INTERVAL_MINUTES),
-        )
-    )
-    # These thresholds are local wall-clock hours; their names describe the UTC
-    # calendar date queried. Old environment variable names remain supported.
-    DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR = int(
-        os.getenv(
-            'DAILY_DISCOVERY_NEXT_UTC_DAY_OPEN_HOUR',
-            os.getenv('DAILY_DISCOVERY_AM_OPEN_HOUR', '17'),
-        )
-    )
-    DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR = int(
-        os.getenv(
-            'DAILY_DISCOVERY_CURRENT_UTC_DAY_OPEN_HOUR',
-            os.getenv('DAILY_DISCOVERY_PM_OPEN_HOUR', '8'),
-        )
-    )
-
-    # Fixed trigger times for daily discovery. The interval-based heartbeat stays as a safety retry net;
-    # these fixed times are the primary triggers and fire first in the vast majority of cases.
-    DAILY_DISCOVERY_FIXED_TIMES = _parse_env_list('DAILY_DISCOVERY_FIXED_TIMES', ['17:10'])
-    DAILY_DISCOVERY_DAYS_TO_KEEP = int(os.getenv('DAILY_DISCOVERY_DAYS_TO_KEEP', '1'))
-    # Runs at 17:47 MX — after the 17:10 next-UTC-day discovery slot, and off the
-    # :45 pre-start tick so both jobs are not due in the same scheduler batch.
-    ODDSPAPI_FIXTURE_DISCOVERY_TIMES = _parse_env_list(
-        'ODDSPAPI_FIXTURE_DISCOVERY_TIMES',
-        ['17:47'],
-    )
-    # Replay recently missed fixture-discovery slots after an unplanned restart.
-    # Keep the window bounded so a long outage cannot create an unbounded backlog.
-    ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS = int(
-        os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_CATCHUP_LOOKBACK_HOURS', '36')
-    )
-    ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS = int(
-        os.getenv('ODDSPAPI_FIXTURE_DISCOVERY_MAX_CATCHUP_RUNS', '2')
-    )
     # Soft memory guardrails for ~1 GB app containers. Defaults are applied
     # here so production does not need these keys in .env. Override only when
     # measuring RSS on a larger host (or temporarily lowering under pressure).
@@ -326,30 +283,6 @@ class Config:
     MATCHUP_H2H_MAX_EVENTS = max(1, int(os.getenv('MATCHUP_H2H_MAX_EVENTS', '200')))
 
 
-    # Discovery Schedule Times (dynamically generated based on DISCOVERY_INTERVAL_HOURS)
-    # Runs at exact hours: 00:00, 06:00, 12:00, 18:00 (if interval is 6)
-    @staticmethod
-    def _generate_discovery_times():
-        interval_hours = int(os.getenv('DISCOVERY_INTERVAL_HOURS', '6'))
-        times = []
-        for hour in range(0, 24, interval_hours):
-            times.append(f"{hour:02d}:12")
-        return times
-    
-    DISCOVERY_TIMES = _generate_discovery_times.__func__() if hasattr(_generate_discovery_times, "__func__") else _generate_discovery_times()
-    
-    # Discovery2 Schedule Times (runs at hh:02 to avoid blocking pre-start checks at hh:00)
-    # Runs at 2 minutes past the hour: 00:02, 06:02, 12:02, 18:02 (if interval is 6)
-    @staticmethod
-    def _generate_discovery2_times():
-        interval_hours = int(os.getenv('DISCOVERY2_INTERVAL_HOURS', '6'))
-        times = []
-        for hour in range(0, 24, interval_hours):
-            times.append(f"{hour:02d}:02")  # Run at hh:02 instead of hh:00
-        return times
-    
-    DISCOVERY2_TIMES = _generate_discovery2_times.__func__() if hasattr(_generate_discovery2_times, "__func__") else _generate_discovery2_times()
-    
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'America/Mexico_City')
 
@@ -655,12 +588,6 @@ class Config:
             'baseball',
         ],
     )
-    # Applies only to discovery jobs; supported-sport filtering stays enabled.
-    DISCOVERY_TRACKED_COMPETITIONS_ONLY = _parse_env_bool(
-        'DISCOVERY_TRACKED_COMPETITIONS_ONLY',
-        False,
-    )
-
     # Pipeline toggles
     ENABLE_PILLAR_PIPELINE = _parse_env_bool('ENABLE_PILLAR_PIPELINE', True)
     # Configured key moments at which the pillar pipeline is allowed to execute.
