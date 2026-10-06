@@ -247,11 +247,22 @@ class OddsPortalAttemptMixin:
             logger.info(f"🗺️ Scraping route for '{sport}': {route_step_count} steps (resume step={start_step_idx}, fragment={normalized_resume_state.get('resume_fragment')})")
             logger.info(f'🌐 Navigating to match: {initial_url}')
             self._original_debug_dir = self.debug_dir
-            self._event_debug_dir_created = False
-            if self.debug_dir and match_url:
+            self._event_debug_dir_created = getattr(
+                self, "_debug_event_dir", None
+            ) is not None
+            if self.debug_dir and match_url and not self._event_debug_dir_created:
+                from .debug_paths import event_debug_directory
+
                 match_slug = self._normalize_base_match_url(match_url).split('/')[-1]
                 if match_slug:
-                    self.debug_dir = os.path.join(self.debug_dir, f'debug_{match_slug}')
+                    event_debug_dir = event_debug_directory(
+                        getattr(self, "_debug_root_dir", None) or self.debug_dir,
+                        self._debug_event_id,
+                        match_slug,
+                    )
+                    os.makedirs(event_debug_dir, exist_ok=True)
+                    self._debug_event_dir = event_debug_dir
+                    self.debug_dir = str(event_debug_dir)
                     self._event_debug_dir_created = True
             response = None
             e_goto = None
@@ -487,11 +498,18 @@ class OddsPortalAttemptMixin:
                 if match_data.away_team in (None, '', 'Unknown'):
                     match_data.away_team = period_data.away_team
                 if self.debug_dir and (not self._event_debug_dir_created) and match_data.home_team and match_data.away_team:
-                    slug = f'{match_data.home_team}-vs-{match_data.away_team}'.lower().replace(' ', '-').replace('/', '-')
-                    event_debug_dir = os.path.join(self.debug_dir, f'debug_{slug}')
+                    from .debug_paths import event_debug_directory
+
+                    event_debug_dir = event_debug_directory(
+                        getattr(self, "_debug_root_dir", None) or self.debug_dir,
+                        self._debug_event_id,
+                        match_data.home_team,
+                        match_data.away_team,
+                    )
                     try:
                         os.makedirs(event_debug_dir, exist_ok=True)
-                        self.debug_dir = event_debug_dir
+                        self._debug_event_dir = event_debug_dir
+                        self.debug_dir = str(event_debug_dir)
                         self._event_debug_dir_created = True
                         logger.info(f'📂 Event debug directory: {self.debug_dir}')
                     except Exception as e:

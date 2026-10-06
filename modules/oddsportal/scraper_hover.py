@@ -252,14 +252,17 @@ class OddsPortalHoverMixin:
         if not debug_root:
             return None
 
-        if event_id is not None:
-            target_dir = os.path.join(
+        event_dir = getattr(self, "_debug_event_dir", None)
+        if event_dir is None:
+            from .debug_paths import event_debug_directory
+
+            event_dir = event_debug_directory(
                 debug_root,
-                f"oddsportal_{event_id}_tooltips",
+                event_id,
+                getattr(self, "_debug_home_team", None),
+                getattr(self, "_debug_away_team", None),
             )
-        else:
-            # Compatibility for manual scraper callers without an event ID.
-            target_dir = getattr(self, "debug_dir", None) or debug_root
+        target_dir = os.path.join(str(event_dir), "tooltips")
 
         bookmaker_label = (
             "Betfair Exchange" if source == "betfair" else (bookie_name or source)

@@ -76,6 +76,7 @@ from .cache_utils import (
 )
 from .logging_context import _LOG_CONTEXT, _OddsPortalLogPrefixFilter, _log_prefix
 from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
+from .debug_paths import event_debug_directory
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +91,12 @@ class OddsPortalBrowserMixin:
     ):
         self.headless = headless
         self.debug_dir = debug_dir
-        # Keep an immutable run-level root because ``debug_dir`` is temporarily
-        # redirected to match-specific failure-artifact folders during a scrape.
+        # Keep the configured root while ``debug_dir`` points to the active event.
         self._debug_root_dir = debug_dir
         self._debug_event_id: Optional[int] = None
+        self._debug_event_dir = None
+        self._debug_home_team: Optional[str] = None
+        self._debug_away_team: Optional[str] = None
         # ``testing_mode`` remains supported for development scripts. Runtime
         # pre-start debugging is carried explicitly through ``debug_mode``.
         self.debug_mode = bool(debug_mode or testing_mode)
@@ -111,11 +114,20 @@ class OddsPortalBrowserMixin:
             import os
             os.makedirs(self.debug_dir, exist_ok=True)
 
-    def set_debug_event_context(self, event_id) -> None:
-        """Associate subsequent debug artifacts with one canonical event ID."""
+    def set_debug_event_context(
+        self,
+        event_id,
+        home_team: Optional[str] = None,
+        away_team: Optional[str] = None,
+    ) -> None:
+        """Route subsequent debug artifacts into this event's folder."""
 
         if event_id is None:
             self._debug_event_id = None
+            self._debug_event_dir = None
+            self._debug_home_team = None
+            self._debug_away_team = None
+            self.debug_dir = self._debug_root_dir
             return
         try:
             normalized_event_id = int(event_id)
@@ -125,8 +137,31 @@ class OddsPortalBrowserMixin:
                 event_id,
             )
             self._debug_event_id = None
+            self._debug_event_dir = None
+            self._debug_home_team = None
+            self._debug_away_team = None
+            self.debug_dir = self._debug_root_dir
             return
         self._debug_event_id = normalized_event_id
+        self._debug_home_team = home_team
+        self._debug_away_team = away_team
+        if self._debug_root_dir:
+            self._debug_event_dir = event_debug_directory(
+                self._debug_root_dir,
+                normalized_event_id,
+                home_team,
+                away_team,
+            )
+            self.debug_dir = str(self._debug_event_dir)
+            self._event_debug_dir_created = True
+            try:
+                os.makedirs(self.debug_dir, exist_ok=True)
+            except OSError as exc:
+                logger.warning(
+                    "Failed to create OddsPortal event debug directory %s: %s",
+                    self.debug_dir,
+                    exc,
+                )
 
     def _should_rotate_proxy_on_browser_restart(self) -> bool:
         return self.proxy_manager.should_rotate_on_browser_restart()

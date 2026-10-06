@@ -680,7 +680,7 @@ External rows are not guaranteed to be exclusively from OddsPortal: `get_externa
 | `browser.save_debug_on_goto_timeout` | `true` | Save qualifying navigation artifacts. |
 | `browser.enable_shell_grace` | `true` | Enable the shell grace path. |
 | `browser.debug_timing` | `false` | Print direct timing diagnostics. |
-| `browser.debug_dir` | `oddsportal_debug` | Batch diagnostic artifact directory. |
+| `browser.debug_dir` | `debug/oddsportal` | Root for event-scoped diagnostic artifacts. |
 
 Market groups and periods intentionally remain in `oddsportal_routes.py`, next to their fragment identifiers.
 
@@ -720,12 +720,13 @@ Normal current OddsPortal modules use loggers such as `modules.oddsportal.scrape
 
 The filter applies to records emitted after the process restarts with this logging configuration. Existing historical lines in an already-created weekly file are not rewritten or deleted.
 
-Production batch calls pass the package-configured `browser.debug_dir` (default `oddsportal_debug`). On classified match-page failures, `_save_debug_artifacts()` writes an event subdirectory containing:
+Production batch calls pass the package-configured `browser.debug_dir` (default `debug/oddsportal`). Artifacts are grouped under an event directory named `{event_id}-{home-team}-vs-{away-team}`. On classified failures, `_save_debug_artifacts()` writes:
 
-- full-page PNG;
-- HTML with inline scripts/styles removed;
-- extracted inline CSS and JavaScript when present;
-- JSON manifest with URL, page state, classification, timeouts, proxy session label, and resume metadata.
+- `screenshots/`: full-page PNG captures;
+- `html/`: full page HTML copies, including inline scripts and styles;
+- `css/` and `javascript/`: extracted inline CSS and JavaScript when present;
+- `manifests/`: JSON with URL, page state, classification, timeouts, proxy session label, and resume metadata;
+- `tooltips/`: accepted bookmaker and Betfair tooltip HTML captures.
 
 The artifacts are diagnostic and may contain provider page content. Treat them as operational data.
 

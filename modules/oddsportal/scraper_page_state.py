@@ -332,22 +332,30 @@ class OddsPortalPageStateMixin:
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             safe_reason = reason.replace('/', '_').replace(' ', '_').lower()
             base_name = f'op_fail_{timestamp}_{safe_reason}'
-            os.makedirs(self.debug_dir, exist_ok=True)
-            png_path = os.path.join(self.debug_dir, f'{base_name}.png')
+            artifact_dirs = {
+                "screenshots": os.path.join(self.debug_dir, "screenshots"),
+                "html": os.path.join(self.debug_dir, "html"),
+                "css": os.path.join(self.debug_dir, "css"),
+                "javascript": os.path.join(self.debug_dir, "javascript"),
+                "manifests": os.path.join(self.debug_dir, "manifests"),
+            }
+            for artifact_dir in artifact_dirs.values():
+                os.makedirs(artifact_dir, exist_ok=True)
+
+            png_path = os.path.join(artifact_dirs["screenshots"], f'{base_name}.png')
             await page.screenshot(path=png_path, full_page=True)
             html_content = await page.content()
             styles = '\n'.join(re.findall('<style[^>]*>(.*?)</style>', html_content, flags=re.IGNORECASE | re.DOTALL))
             if styles.strip():
-                with open(os.path.join(self.debug_dir, f'{base_name}.css'), 'w', encoding='utf-8') as f:
+                with open(os.path.join(artifact_dirs["css"], f'{base_name}.css'), 'w', encoding='utf-8') as f:
                     f.write(styles)
             scripts = '\n'.join(re.findall('<script[^>]*>(.*?)</script>', html_content, flags=re.IGNORECASE | re.DOTALL))
             if scripts.strip():
-                with open(os.path.join(self.debug_dir, f'{base_name}.js'), 'w', encoding='utf-8') as f:
+                with open(os.path.join(artifact_dirs["javascript"], f'{base_name}.js'), 'w', encoding='utf-8') as f:
                     f.write(scripts)
-            raw_html = re.sub('<(style|script)[^>]*>.*?</\\1>', '', html_content, flags=re.IGNORECASE | re.DOTALL)
-            html_path = os.path.join(self.debug_dir, f'{base_name}.html')
+            html_path = os.path.join(artifact_dirs["html"], f'{base_name}.html')
             with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(raw_html)
+                f.write(html_content)
             state = await self._collect_match_page_state(page)
             classification = self._classify_match_page_state(state)
             extras_payload = extra or {}
@@ -361,9 +369,13 @@ class OddsPortalPageStateMixin:
                     if key in nested_resume:
                         resume_manifest[key] = nested_resume.get(key)
             manifest = {'timestamp': timestamp, 'reason': reason, 'url': page.url, 'title': await page.title(), 'session_id': getattr(self, '_session_id', 'unknown'), 'state': state, 'classification': classification, 'config': {'goto_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.match_goto_timeout_ms, 'empty_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.fast_fail_empty_timeout_ms, 'render_timeout': ODDSPORTAL_SCRAPING_SETTINGS.browser.market_render_timeout_ms, 'shell_grace': ODDSPORTAL_SCRAPING_SETTINGS.browser.shell_grace_timeout_ms}, 'extras': extras_payload, **resume_manifest}
-            json_path = os.path.join(self.debug_dir, f'{base_name}.json')
+            json_path = os.path.join(artifact_dirs["manifests"], f'{base_name}.json')
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(manifest, f, indent=4)
-            logger.info(f'💾 Saved debug artifacts for {reason} at {self.debug_dir}/{base_name}.*')
+            logger.info(
+                '💾 Saved debug artifacts for %s under %s',
+                reason,
+                self.debug_dir,
+            )
         except Exception as e:
             logger.error(f'Failed to save debug artifacts: {e}')

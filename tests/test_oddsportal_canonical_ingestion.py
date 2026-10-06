@@ -682,7 +682,7 @@ def test_worker_loads_reference_data_once_and_requests_streaming(monkeypatch):
     assert len(loads) == 1
     assert calls[0]["collect_results"] is False
     assert calls[0]["debug_mode"] is True
-    assert calls[0]["debug_dir"] == "logs/debug/oddsportal"
+    assert calls[0]["debug_dir"] == "debug/oddsportal"
 
 
 def test_worker_propagates_debug_mode_into_background_scrape(monkeypatch):
@@ -692,7 +692,7 @@ def test_worker_propagates_debug_mode_into_background_scrape(monkeypatch):
     monkeypatch.setattr(
         oddsportal_worker,
         "build_oddsportal_scrape_candidates",
-        lambda *_args: [{"event_id": 7}],
+        lambda *_args, **_kwargs: [{"event_id": 7}],
     )
     monkeypatch.setattr(
         oddsportal_worker,
@@ -725,7 +725,7 @@ async def test_league_goto_timeout_saves_debug_artifacts():
     from unittest.mock import AsyncMock, MagicMock
     from modules.oddsportal.scraper_impl import OddsPortalScraper
 
-    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    scraper = OddsPortalScraper(debug_dir="debug/oddsportal", debug_mode=True)
     mock_page = AsyncMock()
     mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
     mock_page.goto.side_effect = Exception("net::ERR_TIMED_OUT or timeout exceeded")
@@ -755,7 +755,7 @@ async def test_league_non_200_saves_debug_artifacts():
     from unittest.mock import AsyncMock, MagicMock
     from modules.oddsportal.scraper_impl import OddsPortalScraper
 
-    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    scraper = OddsPortalScraper(debug_dir="debug/oddsportal", debug_mode=True)
     mock_page = AsyncMock()
     mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
     mock_response = MagicMock()
@@ -786,7 +786,7 @@ async def test_league_blocked_saves_debug_artifacts():
     from unittest.mock import AsyncMock, MagicMock
     from modules.oddsportal.scraper_impl import OddsPortalScraper
 
-    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    scraper = OddsPortalScraper(debug_dir="debug/oddsportal", debug_mode=True)
     mock_page = AsyncMock()
     mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
     mock_response = MagicMock()
@@ -818,7 +818,7 @@ async def test_league_no_rows_saves_debug_artifacts():
     from unittest.mock import AsyncMock, MagicMock
     from modules.oddsportal.scraper_impl import OddsPortalScraper
 
-    scraper = OddsPortalScraper(debug_dir="logs/debug/oddsportal", debug_mode=True)
+    scraper = OddsPortalScraper(debug_dir="debug/oddsportal", debug_mode=True)
     mock_page = AsyncMock()
     mock_page.url = "https://www.oddsportal.com/baseball/usa/mlb/"
     mock_response = MagicMock()
@@ -844,3 +844,41 @@ async def test_league_no_rows_saves_debug_artifacts():
     args, kwargs = save_mock.call_args
     assert args[0] is mock_page
     assert args[1] == "league_no_rows"
+
+
+@pytest.mark.asyncio
+async def test_failure_debug_artifacts_are_event_scoped_and_type_separated(tmp_path):
+    from unittest.mock import AsyncMock
+    from modules.oddsportal.scraper_impl import OddsPortalScraper
+
+    debug_root = tmp_path / "debug" / "oddsportal"
+    scraper = OddsPortalScraper(debug_dir=str(debug_root), debug_mode=True)
+    scraper.set_debug_event_context(376188, "Buffalo Sabres", "Minnesota Wild")
+    scraper._collect_match_page_state = AsyncMock(return_value={"state": "blocked"})
+    scraper._classify_match_page_state = lambda _state: "CLOUDFLARE_BLOCK"
+
+    page = AsyncMock()
+    page.url = "https://www.oddsportal.com/hockey/usa/nhl/"
+    page.title = AsyncMock(return_value="Just a moment...")
+    page.content = AsyncMock(return_value=(
+        "<html><head><style>.blocked { color: red; }</style>"
+        "<script>window.challenge = true;</script></head><body>blocked</body></html>"
+    ))
+
+    await scraper._save_debug_artifacts(page, "league_blocked")
+
+    event_dir = debug_root / "376188-buffalo-sabres-vs-minnesota-wild"
+    html_files = list((event_dir / "html").glob("*.html"))
+    css_files = list((event_dir / "css").glob("*.css"))
+    js_files = list((event_dir / "javascript").glob("*.js"))
+    manifests = list((event_dir / "manifests").glob("*.json"))
+
+    assert len(html_files) == len(css_files) == len(js_files) == len(manifests) == 1
+    assert page.screenshot.await_args.kwargs["path"].startswith(
+        str(event_dir / "screenshots")
+    )
+    full_html = html_files[0].read_text(encoding="utf-8")
+    assert "<style>.blocked" in full_html
+    assert "<script>window.challenge" in full_html
+    assert ".blocked { color: red; }" in css_files[0].read_text(encoding="utf-8")
+    assert "window.challenge = true;" in js_files[0].read_text(encoding="utf-8")

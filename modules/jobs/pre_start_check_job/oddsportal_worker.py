@@ -39,11 +39,13 @@ def start_oddsportal_scrape_for_events(
     pre_calculated_timings: Dict[int, int],
     *,
     debug_mode: bool = False,
+    scraping_enabled: bool | None = None,
 ) -> OddsPortalScrapeContext:
     """Prepare and start one OddsPortal cycle for the upcoming event batch."""
     candidates = build_oddsportal_scrape_candidates(
         upcoming_events,
         pre_calculated_timings,
+        scraping_enabled=scraping_enabled,
     )
     event_states = create_oddsportal_scrape_state(candidates) if candidates else {}
     context = OddsPortalScrapeContext(
@@ -57,6 +59,7 @@ def start_oddsportal_scrape_for_events(
         context.event_states,
         context.data_cache,
         debug_mode=debug_mode,
+        scraping_enabled=scraping_enabled,
     )
     return context
 
@@ -64,9 +67,16 @@ def start_oddsportal_scrape_for_events(
 def build_oddsportal_scrape_candidates(
     upcoming_events: List[Dict],
     pre_calculated_timings: Dict[int, int],
+    *,
+    scraping_enabled: bool | None = None,
 ) -> List[Dict]:
     """Collect events for the temporary OddsPortal opening-odds capture."""
-    if not Config.ODDSPORTAL_SCRAPING_ENABLED:
+    enabled = (
+        Config.ODDSPORTAL_SCRAPING_ENABLED
+        if scraping_enabled is None
+        else scraping_enabled
+    )
+    if not enabled:
         logger.info("OddsPortal scraping is disabled by config; skipping candidate selection.")
         return []
 
@@ -124,9 +134,15 @@ def start_oddsportal_scrape_thread(
     op_data_cache: Dict[int, Any],
     *,
     debug_mode: bool = False,
+    scraping_enabled: bool | None = None,
 ):
     """Start OddsPortal scraping in the background if there is work to do."""
-    if not Config.ODDSPORTAL_SCRAPING_ENABLED or not op_candidates:
+    enabled = (
+        Config.ODDSPORTAL_SCRAPING_ENABLED
+        if scraping_enabled is None
+        else scraping_enabled
+    )
+    if not enabled or not op_candidates:
         return None
 
     thread = runtime.oddsportal.launch(
@@ -226,8 +242,8 @@ def scrape_oddsportal_batch(
     logger.info(f"🔍 OddsPortal worker: {len(op_tasks)} events eligible for scraping")
     if debug_mode:
         logger.info(
-            "OddsPortal tooltip debug capture enabled: "
-            "./debug/oddsportal_{event_id}_tooltips/"
+            "OddsPortal debug artifacts rooted at %s/<event_id>-<home>-vs-<away>/",
+            ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_dir,
         )
     saved_counts: Dict[int, Optional[int]] = {}
     reference_data = None
@@ -323,7 +339,11 @@ def scrape_oddsportal_batch(
     op_results = scrape_multiple_matches_parallel_sync(
         op_tasks,
         num_browsers=num_browsers,
-        debug_dir="logs/debug/oddsportal" if debug_mode else None,
+        debug_dir=(
+            ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_dir
+            if debug_mode
+            else None
+        ),
         debug_mode=debug_mode,
         on_task_started=_on_event_started,
         on_result=_on_event_scraped,

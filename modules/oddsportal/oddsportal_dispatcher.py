@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .scraper_impl import OddsPortalScraper
 from .dataclasses import MatchOddsData, ScrapeAttemptResult, GroupSeedResult
 from .oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
+from .scraping_settings import ODDSPORTAL_SCRAPING_SETTINGS
 from .cache_utils import _coerce_current_date, _build_league_group_key, _format_group_key
 from .logging_context import _log_prefix
 
@@ -24,6 +25,21 @@ def _get_scraper_cls():
         return RootOddsPortalScraper
     except Exception:
         return OddsPortalScraper
+
+
+def _set_debug_event_context(scraper, task: Dict[str, Any]) -> None:
+    setter = getattr(scraper, "set_debug_event_context", None)
+    if not callable(setter):
+        return
+    try:
+        setter(
+            task.get("event_id"),
+            task.get("home_team"),
+            task.get("away_team"),
+        )
+    except TypeError:
+        # Keep support for the older optional scraper implementation.
+        setter(task.get("event_id"))
 
 
 async def get_scaler():
@@ -41,9 +57,7 @@ async def _scrape_task_with_recovery(
     on_task_started=None,
 ):
     """Retry a task with persisted resume state until it succeeds or stops making progress."""
-    set_debug_event = getattr(scraper, "set_debug_event_context", None)
-    if callable(set_debug_event):
-        set_debug_event(task.get("event_id"))
+    _set_debug_event_context(scraper, task)
     match_url = task.get("match_url")
     sport = task.get("sport")
     clear_state = task.get("clear_state", False)
@@ -196,7 +210,9 @@ def scrape_multiple_matches_sync(
 
         async def _run():
             effective_debug_dir = debug_dir or (
-                "logs/debug/oddsportal" if debug_mode else None
+                ODDSPORTAL_SCRAPING_SETTINGS.browser.debug_dir
+                if debug_mode
+                else None
             )
             scraper = _get_scraper_cls()(
                 debug_dir=effective_debug_dir,
@@ -207,6 +223,7 @@ def scrape_multiple_matches_sync(
                 for i, task in enumerate(tasks):
                     event_id = task['event_id']
                     season_id = task.get('season_id')
+                    _set_debug_event_context(scraper, task)
                     try:
                         logger.info(f"🔍 OddsPortal [{i + 1}/{len(tasks)}]: {task['home_team']} vs {task['away_team']}")
                         match_url = None
@@ -226,6 +243,8 @@ def scrape_multiple_matches_sync(
                             clear_state = task.get('clear_state', False)
                             task_payload = {
                                 "event_id": event_id,
+                                "home_team": task.get("home_team"),
+                                "away_team": task.get("away_team"),
                                 "match_url": match_url,
                                 "sport": task_sport,
                                 "clear_state": clear_state,
@@ -252,6 +271,8 @@ def scrape_multiple_matches_sync(
                             if retry_url:
                                 retry_task = {
                                     "event_id": event_id,
+                                    "home_team": task.get("home_team"),
+                                    "away_team": task.get("away_team"),
                                     "match_url": retry_url,
                                     "sport": task_sport,
                                     "clear_state": clear_state,

@@ -228,7 +228,11 @@ def test_debug_mode_saves_one_accepted_tooltip_per_bookie_choice(tmp_path):
         debug_dir=str(debug_root),
         debug_mode=True,
     )
-    scraper.set_debug_event_context(156595)
+    scraper.set_debug_event_context(
+        156595,
+        "Buffalo Sabres",
+        "Minnesota Wild",
+    )
 
     regular_path = scraper._save_parsed_tooltip_html(
         tooltip_html="<div>regular tooltip</div>",
@@ -243,7 +247,11 @@ def test_debug_mode_saves_one_accepted_tooltip_per_bookie_choice(tmp_path):
         choice="lay_1",
     )
 
-    event_dir = debug_root / "oddsportal_156595_tooltips"
+    event_dir = (
+        debug_root
+        / "156595-buffalo-sabres-vs-minnesota-wild"
+        / "tooltips"
+    )
     assert regular_path == str(event_dir / "bet365_2_tooltip.html")
     assert exchange_path == str(
         event_dir / "betfair_exchange_lay_1_tooltip.html"
@@ -261,7 +269,7 @@ def test_tooltip_debug_files_are_disabled_without_debug_mode(tmp_path):
         debug_dir=str(tmp_path / "debug"),
         debug_mode=False,
     )
-    scraper.set_debug_event_context(156595)
+    scraper.set_debug_event_context(156595, "Buffalo Sabres", "Minnesota Wild")
 
     saved_path = scraper._save_parsed_tooltip_html(
         tooltip_html="<div>must not be saved</div>",
@@ -271,7 +279,12 @@ def test_tooltip_debug_files_are_disabled_without_debug_mode(tmp_path):
     )
 
     assert saved_path is None
-    assert not (tmp_path / "debug" / "oddsportal_156595_tooltips").exists()
+    assert not (
+        tmp_path
+        / "debug"
+        / "156595-buffalo-sabres-vs-minnesota-wild"
+        / "tooltips"
+    ).exists()
 
 
 def test_regular_tooltip_current_overwrites_legacy_visible_value():
