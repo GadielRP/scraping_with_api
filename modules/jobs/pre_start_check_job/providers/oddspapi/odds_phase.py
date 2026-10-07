@@ -67,7 +67,7 @@ def _log_summary(summary: OddspapiPreStartOddsSummary) -> None:
         if result.skipped and result.skip_reason
     )
     logger.info(
-        "Oddspapi pre-start odds summary: candidates_seen=%s candidates_with_mapping=%s "
+        "👨 Oddspapi pre-start odds summary: candidates_seen=%s candidates_with_mapping=%s "
         "requests_attempted=%s responses_received=%s events_ingested=%s events_skipped=%s "
         "events_failed=%s markets_saved=%s choices_saved=%s snapshots_saved=%s "
         "unmapped_markets_detected=%s unmapped_outcomes_detected=%s "

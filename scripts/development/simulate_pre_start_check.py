@@ -58,11 +58,11 @@ from shared.runtime_observability import observe_operation
 # Simulation toggles - Pipeline flows
 ENABLE_ODDS_INGESTION_SIMULATION = True
 ENABLE_ALERT_PIPELINE = False
-ENABLE_PILLAR_PIPELINE = True
+ENABLE_PILLAR_PIPELINE = False
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
-ENABLE_SOFASCORE_ODDS_SIMULATION = True
+ENABLE_SOFASCORE_ODDS_SIMULATION = False
 ENABLE_ODDSPAPI_ODDS_SIMULATION = True
 ENABLE_ODDSPORTAL_ODDS_SIMULATION = True
 
@@ -80,6 +80,27 @@ if hasattr(sys.stdout, "reconfigure"):
 from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_simulation_toggle_overrides() -> None:
+    """Make this script's ingestion toggles authoritative for this process."""
+    if ENABLE_ODDS_INGESTION_SIMULATION:
+        # Candidate timing is gated by the global production setting. The
+        # simulator's explicit enable must win over ENABLE_ODDS_EXTRACTION in .env.
+        Config.ENABLE_ODDS_EXTRACTION = True
+        logger.info("Simulation override: ENABLE_ODDS_EXTRACTION=True")
+
+    # run_oddspapi_pre_start_odds has a second, provider-level feature gate.
+    # Mirror the local provider toggle so an .env value cannot silently bypass
+    # an explicitly enabled simulation. The production .env file is untouched.
+    Config.ENABLE_ODDSPAPI_PRE_START_ODDS = (
+        ENABLE_ODDS_INGESTION_SIMULATION
+        and ENABLE_ODDSPAPI_ODDS_SIMULATION
+    )
+    logger.info(
+        "Simulation override: ENABLE_ODDSPAPI_PRE_START_ODDS=%s",
+        Config.ENABLE_ODDSPAPI_PRE_START_ODDS,
+    )
 
 
 def _ensure_logging_configured() -> None:
@@ -380,6 +401,7 @@ def simulate_pre_start_check(
     evaluation_as_of: datetime | None = None,
 ) -> bool:
     """Run the pre-start flow for one or more events with production observability and debug mode."""
+    _apply_simulation_toggle_overrides()
     _ensure_logging_configured()
     previous_evidence_mode = getattr(
         api_client,
@@ -672,6 +694,7 @@ def main() -> int:
         logger.error("Argument error: %s", err)
         return 1
 
+    _apply_simulation_toggle_overrides()
     if not initialize_system():
         logger.error(
             "Failed to initialize system; the pre-start simulation cannot run."

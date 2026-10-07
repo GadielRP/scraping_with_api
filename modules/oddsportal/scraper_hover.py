@@ -280,7 +280,7 @@ class OddsPortalHoverMixin:
                 debug_file.write(tooltip_html)
         except OSError as exc:
             logger.warning(
-                "Failed to save parsed OddsPortal tooltip %s: %s",
+                "Failed to save OddsPortal tooltip %s: %s",
                 filepath,
                 exc,
             )
@@ -449,6 +449,7 @@ class OddsPortalHoverMixin:
             attempts_used = 0
             tooltip_seen = False
             tooltip_appearance_logged = False
+            movement_heading_logged = False
             for attempt in range(3):
                 attempts_used = attempt + 1
                 try:
@@ -593,12 +594,20 @@ class OddsPortalHoverMixin:
                             if not await heading.is_visible():
                                 continue
                             tooltip_seen = True
-                            if not tooltip_appearance_logged:
+                            if not movement_heading_logged:
                                 logger.info(
-                                    "OddsPortal tooltip appeared source=%s choice=%s heading=%r",
+                                    "OddsPortal tooltip movement heading detected "
+                                    "source=%s choice=%s heading=%r",
                                     source,
                                     choice,
                                     heading_text,
+                                )
+                                movement_heading_logged = True
+                            if not tooltip_appearance_logged:
+                                logger.info(
+                                    "OddsPortal tooltip appeared source=%s choice=%s",
+                                    source,
+                                    choice,
                                 )
                                 tooltip_appearance_logged = True
                             wrapper_handle = await heading.evaluate_handle(
@@ -637,12 +646,21 @@ class OddsPortalHoverMixin:
                                         else "<missing>"
                                     )
                                     if not tooltip_appearance_logged:
-                                        logger.info(
-                                            "OddsPortal tooltip appeared source=%s choice=%s heading=%r",
-                                            source,
-                                            choice,
-                                            tooltip_heading,
-                                        )
+                                        if tooltip_heading == "<missing>":
+                                            logger.info(
+                                                "OddsPortal tooltip container appeared "
+                                                "before its heading source=%s choice=%s",
+                                                source,
+                                                choice,
+                                            )
+                                        else:
+                                            logger.info(
+                                                "OddsPortal tooltip container appeared "
+                                                "source=%s choice=%s heading=%r",
+                                                source,
+                                                choice,
+                                                tooltip_heading,
+                                            )
                                         tooltip_appearance_logged = True
                                     if source == "betfair":
                                         unrecognized_tooltip_html = await tooltip.inner_html()
