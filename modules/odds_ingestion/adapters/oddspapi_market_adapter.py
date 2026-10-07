@@ -196,6 +196,7 @@ class OddspapiMarketAdapter:
                     source_sport_id=source_sport_id,
                     source=source,
                     is_live=bool(payload.get("isLive", False)),
+                    require_active_quotes=require_active_quotes,
                 )
                 for decision in selection.diagnostics:
                     OddspapiMarketAdapter._append_diagnostic(

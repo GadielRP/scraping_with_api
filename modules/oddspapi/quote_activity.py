@@ -14,7 +14,8 @@ def should_skip_inactive_market(
 
     ``ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES`` owns both player ``active`` and
     market ``marketActive``. When the flag is false, suspended observations remain eligible.
-    Current line selection separately requires complete active choices.
+    Current line selection shares the market flag policy and separately
+    requires complete active individual choices.
     """
     if not require_active_quotes:
         return False

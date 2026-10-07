@@ -200,7 +200,7 @@ def test_adapter_and_cache_choose_identical_outcomes_without_mutating_payload(ma
     assert payload == original
 
 
-def test_current_lines_require_activity_even_when_suspended_observations_are_allowed():
+def test_current_lines_require_active_players_even_when_suspended_observations_are_allowed():
     payload, index = _fixture([{"active": False}, {}])
     adapted = OddspapiMarketAdapter.from_odds_response(
         payload, market_mapping_index=index, persist_main_line_only=True, require_active_quotes=False,
@@ -210,6 +210,43 @@ def test_current_lines_require_activity_even_when_suspended_observations_are_all
     )
     assert [market["lineValue"] for market in adapted["bookmakers"][0]["markets"]] == ["2"]
     assert {row["source_market_id"] for row in cached} == {"2"}
+
+
+@pytest.mark.parametrize("require_active_quotes, expected_market_id", [(False, "1"), (True, "2")])
+def test_market_activity_toggle_is_shared_by_adapter_cache_and_exchange_planner(
+    require_active_quotes, expected_market_id,
+):
+    payload, index = _fixture([
+        {"market_active": False, "line": "1.5", "prices": [1.53, 2.32]},
+        {"mainline": False, "line": "2.5", "prices": [2, 2]},
+    ])
+    original = deepcopy(payload)
+    selection = select_current_lines(
+        payload["bookmakerOdds"]["bet365"]["markets"],
+        market_mapping_index=index,
+        source_sport_id="13",
+        require_active_quotes=require_active_quotes,
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload, market_mapping_index=index, persist_main_line_only=True,
+        require_active_quotes=require_active_quotes,
+    )
+    cached = OddspapiMainlineOutcomeExtractor.extract(
+        payload, market_mapping_index=index, require_active_quotes=require_active_quotes,
+    )
+    planned = OddspapiExchangeOutcomeSelector.select(
+        payload, exchange_bookmakers=["bet365"], market_mapping_index=index,
+        allowed_market_keys=None, main_line_only=True,
+        require_active_quotes=require_active_quotes,
+    )
+
+    assert selection.selected_market_ids == {expected_market_id}
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+    expected_outcomes = {f"{expected_market_id}-0", f"{expected_market_id}-1"}
+    assert {choice["sourceOutcomeId"] for choice in choices} == expected_outcomes
+    assert {row["source_outcome_id"] for row in cached} == expected_outcomes
+    assert {row.source_outcome_id for row in planned.selections} == expected_outcomes
+    assert payload == original
 
 
 def test_historical_ingestion_preserves_cached_line_despite_new_price_balance():

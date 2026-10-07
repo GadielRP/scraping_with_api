@@ -120,11 +120,12 @@ def _candidate(
     resolution: CanonicalMarketResolution,
     index: MarketMappingIndex,
     expected: set[str],
+    require_active_quotes: bool,
 ) -> tuple[_Candidate | None, str | None]:
     line = _finite_decimal(resolution.source_handicap)
     if line is None:
         return None, "invalid_line"
-    if market.get("marketActive") is False:
+    if require_active_quotes and market.get("marketActive") is False:
         return None, "inactive_market"
     if len(expected) < 2:
         return None, "unknown_complete_choice_set"
@@ -172,11 +173,14 @@ def select_current_lines(
     source_sport_id: Any,
     source: str = "oddspapi",
     is_live: bool = False,
+    require_active_quotes: bool = True,
 ) -> LineSelection:
-    """Select complete active lines independently for each bookmaker's payload.
+    """Select complete lines independently for each bookmaker's payload.
 
     Prices are compared with Decimal at source precision, before persistence
     rounding. Non-line and live markets are outside this policy's scope.
+    Market activity follows require_active_quotes; individual choices must
+    still be active to select a current line.
     """
     if market_mapping_index is None:
         return LineSelection()
@@ -206,6 +210,7 @@ def select_current_lines(
         candidate, reason = _candidate(
             market_id, market, resolution, market_mapping_index,
             expected_by_mapping.get(resolution.mapping_id, set()),
+            require_active_quotes,
         )
         if candidate is None:
             diagnostics.append({

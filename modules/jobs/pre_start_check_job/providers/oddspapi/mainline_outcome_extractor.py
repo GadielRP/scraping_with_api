@@ -76,6 +76,7 @@ class OddspapiMainlineOutcomeExtractor:
                 source_sport_id=source_sport_id,
                 source="oddspapi",
                 is_live=bool(payload.get("isLive", False)),
+                require_active_quotes=require_active_quotes,
             )
 
             for source_market_id, market_data in cls._entries(markets_data):

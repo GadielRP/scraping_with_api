@@ -759,7 +759,7 @@ Consequently, at T−5 fallback the configured T−5 moment and `current` collap
 Not persisted as OddspAPI prices:
 
 - Unmapped source markets / outcomes (diagnostics only).
-- Markets with `marketActive=false`.
+- Markets with `marketActive=false` when `ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES=true`.
 - Incomplete markets (mapped market whose expected choices are not all present).
 - Quotes with empty/`null` `price`.
 - Non-selected current lines, regardless of `ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY`. For non-line/historical observations, that flag still drops choices whose resolved `mainLine` is not true.
@@ -795,12 +795,14 @@ Selection is independent per bookmaker, canonical market and period; it does not
 force different bookmakers to share a line.
 
 1. Require a finite line and the complete catalog-defined set of choices (at least
-   two). Reject ambiguous choices, explicitly inactive markets/players, and prices
-   that are not finite decimal odds greater than one. This current-line requirement
-   applies even when `REQUIRE_ACTIVE_QUOTES=false` allows suspended observations
-   for non-line or historical markets.
+   two). Reject ambiguous choices, explicitly inactive players, and prices
+   that are not finite decimal odds greater than one. Reject markets with
+   `marketActive=false` only when `REQUIRE_ACTIVE_QUOTES=true`; when the toggle
+   is false, those markets remain eligible in the adapter, mainline cache and
+   exchange historical request planner. Individual players must still be active
+   for current-line selection, independently of the toggle.
 2. Prefer candidates whose **every choice** has provider `mainLine=true`.
-   If none qualify, a complete valid active alternative can be selected.
+   If none qualify, a complete valid alternative with active players can be selected.
 3. Minimize `max(prices) - min(prices)` using Decimal at source precision. This is
    the absolute difference for two choices and the largest pairwise separation
    for three choices.
