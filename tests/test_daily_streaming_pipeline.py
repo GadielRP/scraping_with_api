@@ -74,7 +74,7 @@ def database(tmp_path, monkeypatch):
         lambda _: None,
     )
     daily_discovery_repository.DailyDiscoveryRepository.initialize_sports_for_slot(
-        "2026-10-03", "current_utc_day", ["football"]
+        "2026-10-03", "actualizacion", ["football"]
     )
     yield db
     Base.metadata.drop_all(db.engine)
@@ -82,7 +82,7 @@ def database(tmp_path, monkeypatch):
 
 
 def test_real_batches_persist_complete_source_and_mark_sport_complete(database):
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider())
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=Provider())
     assert stats["events_inserted"] == stats["events_persisted"] == 205
     assert stats["events_failed"] == 0
     assert stats["sports_failed"] == 0
@@ -93,14 +93,14 @@ def test_real_batches_persist_complete_source_and_mark_sport_complete(database):
 
 def test_truncation_retains_commits_and_retry_is_idempotent(database):
     stats = discover_events_for_date(
-        "2026-10-03", ["football"], "current_utc_day", client=Provider(truncated=True)
+        "2026-10-03", ["football"], "actualizacion", client=Provider(truncated=True)
     )
     assert stats["events_failed"] == 0
     assert stats["sports_failed"] == 1
     with database.get_session() as session:
         assert session.query(Event).count() == 200
         assert session.query(DailyDiscoveryLog).one().status == "failed"
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider())
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=Provider())
     assert stats["events_inserted"] == 5
     assert stats["events_updated"] == 200
     assert stats["events_failed"] == 0
@@ -117,7 +117,7 @@ def test_event_write_failures_have_separate_event_and_sport_counts(database, mon
             persisted=0, inserted=0, updated=0, discarded=0, failed=2, filtered=0
         ),
     )
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=Provider(count=2))
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=Provider(count=2))
     assert stats["events_failed"] == 2
     assert stats["sports_failed"] == 1
     with database.get_session() as session:
@@ -127,14 +127,14 @@ def test_event_write_failures_have_separate_event_and_sport_counts(database, mon
 def test_daily_future_toggle_rejects_before_normalization_and_can_persist_backfills(database, monkeypatch):
     monkeypatch.setattr("modules.jobs.discovery.filters.utc_now", lambda: datetime(2026, 10, 6, tzinfo=timezone.utc))
     provider = Provider(count=2)
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=provider)
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=provider)
     assert stats["events_processed"] == stats["events_persisted"] == 0
     assert stats["sports_failed"] == 0
     with database.get_session() as session:
         assert session.query(Event).count() == 0
     monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE,
         filters=replace(settings.SOFASCORE.filters, future_only=False)))
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=provider)
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=provider)
     assert stats["events_persisted"] == 2
 
 
@@ -154,7 +154,7 @@ def test_excluded_calendar_category_does_not_download_or_normalize_events(databa
         def normalize_event_payload(*args, **kwargs):
             pytest.fail("Excluded tournaments must be rejected before normalization")
 
-    stats = discover_events_for_date("2026-10-03", ["football"], "current_utc_day", client=ExcludedProvider())
+    stats = discover_events_for_date("2026-10-03", ["football"], "actualizacion", client=ExcludedProvider())
     assert stats["events_processed"] == stats["events_persisted"] == stats["sports_failed"] == 0
     with database.get_session() as session:
         assert session.query(Event).count() == 0
@@ -168,7 +168,7 @@ def test_tennis_ranking_toggle_filters_before_normalization_and_writes(database,
         settings.SOFASCORE, tennis_ranking_filter_enabled=enabled, tennis_ranking_cutoff=120,
     ))
     daily_discovery_repository.DailyDiscoveryRepository.initialize_sports_for_slot(
-        "2026-10-03", "current_utc_day", ["tennis"]
+        "2026-10-03", "actualizacion", ["tennis"]
     )
     normalized_ids = []
 
@@ -196,7 +196,7 @@ def test_tennis_ranking_toggle_filters_before_normalization_and_writes(database,
             normalized_ids.append(raw["id"])
             return normalize_event_payload(raw, discovery_source)
 
-    stats = discover_events_for_date("2026-10-03", ["tennis"], "current_utc_day", client=TennisProvider())
+    stats = discover_events_for_date("2026-10-03", ["tennis"], "actualizacion", client=TennisProvider())
     assert set(normalized_ids) == expected_ids
     assert stats["events_processed"] == stats["events_persisted"] == len(expected_ids)
     assert stats["events_failed"] == stats["sports_failed"] == 0

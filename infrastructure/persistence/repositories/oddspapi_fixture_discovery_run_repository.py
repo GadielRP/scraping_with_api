@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -34,20 +35,6 @@ class OddspapiFixtureDiscoveryRunRepository:
         return ','.join(normalized) or OddspapiFixtureDiscoveryRunRepository.DEFAULT_SPORT_SCOPE
 
     @staticmethod
-    def has_success(target_date: str, sport_scope: str = DEFAULT_SPORT_SCOPE) -> bool:
-        with db_manager.get_session() as session:
-            return (
-                session.query(OddspapiFixtureDiscoveryRun.id)
-                .filter(
-                    OddspapiFixtureDiscoveryRun.target_date == target_date,
-                    OddspapiFixtureDiscoveryRun.sport_scope == sport_scope,
-                    OddspapiFixtureDiscoveryRun.status == 'success',
-                )
-                .first()
-                is not None
-            )
-
-    @staticmethod
     def begin(
         target_date: str,
         *,
@@ -56,8 +43,9 @@ class OddspapiFixtureDiscoveryRunRepository:
         create_mappings: bool = True,
         scheduled_local_date: str | None = None,
         scheduled_time: str | None = None,
+        discovery_completed_at: datetime | None = None,
     ) -> bool:
-        """Atomically claim a target date and sport scope."""
+        """Claim a date/scope, replaying success only after newer SofaScore work."""
         now = utc_now()
         scheduled_local_date = scheduled_local_date or now.strftime('%Y-%m-%d')
         scheduled_time = scheduled_time or now.strftime('%H:%M')
@@ -113,6 +101,11 @@ class OddspapiFixtureDiscoveryRunRepository:
                 run is not None
                 and run.status == 'success'
                 and not (create_mappings and successful_dry_run)
+                and not (
+                    discovery_completed_at is not None
+                    and run.finished_at is not None
+                    and discovery_completed_at > run.finished_at
+                )
             ):
                 return False
 

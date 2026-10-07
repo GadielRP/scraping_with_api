@@ -26,13 +26,10 @@ def configure_calendar(clock, settings, on_due=None):
     daily("midnight", ["04:00"])
     daily(
         "daily",
-        sorted(
-            set(discovery_settings.SOFASCORE.daily_fixed_times)
-            | {
-                f"{discovery_settings.SOFASCORE.daily_next_utc_day_open_hour:02d}:00",
-                f"{discovery_settings.SOFASCORE.daily_current_utc_day_open_hour:02d}:00",
-            }
-        ),
+        sorted({
+            discovery_settings.SOFASCORE.daily_advance_time,
+            discovery_settings.SOFASCORE.daily_refresh_time,
+        }),
     )
     daily("fixtures", discovery_settings.ODDSPAPI.scheduled_times)
     bind(clock.every(discovery_settings.SOFASCORE.daily_check_interval_minutes).minutes, "daily")

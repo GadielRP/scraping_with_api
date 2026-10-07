@@ -225,7 +225,7 @@ def main():
     Config.SUPPORTED_SPORTS = ["Football"]
     pipeline.load_tracked_source_competitions = lambda _: None
     batch_processor.fetch_authoritative_event_response = result_response
-    DailyDiscoveryRepository.initialize_sports_for_slot("2026-10-03", "current_utc_day", ["football"])
+    DailyDiscoveryRepository.initialize_sports_for_slot("2026-10-03", "actualizacion", ["football"])
     stop, finished = Event(), Event()
     samples, read_seconds, dispatch_seconds, outcomes = [], [], [], {}
 
@@ -242,7 +242,7 @@ def main():
     def heavy():
         try:
             outcomes["daily"] = pipeline.discover_events_for_date(
-                "2026-10-03", ["football"], "current_utc_day", client=Provider()
+                "2026-10-03", ["football"], "actualizacion", client=Provider()
             )
             outcomes["results"] = run_results_collection(date(2026, 10, 2))
             outcomes["view_refresh"] = run_view_refresh(force=True)

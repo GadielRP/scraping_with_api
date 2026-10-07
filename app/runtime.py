@@ -21,7 +21,6 @@ class ApplicationRuntime:
         self.fixtures = FixtureDiscoveryService()
         self.scheduler = None
         from modules.jobs.clean_league_cache import run_clean_league_cache_job
-        from modules.jobs.daily_discovery import run_daily_discovery_job
         from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
         from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
         from modules.jobs.midnight_sync_job import run_midnight_sync_job
@@ -32,7 +31,7 @@ class ApplicationRuntime:
             discovery=run_discover_dropping_odds,
             discovery2=run_discover_secondary_sources,
             midnight=run_midnight_sync_job,
-            daily=run_daily_discovery_job,
+            daily=self._run_daily_discovery,
             results=run_results_collection,
             results_all=run_results_collection,
             results_date=run_results_collection,
@@ -45,6 +44,13 @@ class ApplicationRuntime:
                 run_t_minus_one_odds_job, self.pre_start, debug_mode=Config.global_debug_mode
             ),
         )
+
+    def _run_daily_discovery(self):
+        from modules.jobs.daily_discovery import run_daily_discovery_job
+
+        result = run_daily_discovery_job()
+        self.fixtures.retry_due()
+        return result
 
     def run(self, name, **kwargs):
         if name == "fixtures":
@@ -77,10 +83,6 @@ class ApplicationRuntime:
         """Bind occurrence identity and deadline before submitting to the assigned worker."""
         from infrastructure.scheduler.contracts import JobRequest
         from shared.temporal import in_timezone
-        from modules.jobs.daily_discovery import (
-            resolve_daily_discovery_slot,
-            resolve_daily_discovery_target_date,
-        )
 
         local = in_timezone(scheduled_at, Config.TIMEZONE)
         action = self.jobs[name]
@@ -93,11 +95,6 @@ class ApplicationRuntime:
         elif name == "midnight":
             target = local.date() - timedelta(days=1)
             action, key = partial(action, target_date=target), f"midnight:{target}"
-        elif name == "daily":
-            slot = resolve_daily_discovery_slot(local)
-            target = resolve_daily_discovery_target_date(local, slot)
-            action = partial(action, target_date=target, run_slot=slot)
-            key = f"daily:{local.date()}:{slot}"
         elif name == "fixtures":
             target = self.fixtures.target_date_for_slot(local)
             action = partial(
@@ -146,7 +143,10 @@ class ApplicationRuntime:
             JobRequest("temporary_cleanup", clean_abandoned_runs, utc_now(), Priority.MAINTENANCE)
         )
         self.scheduler.dispatch(
-            JobRequest("fixture_recovery", self.fixtures.recover, utc_now(), Priority.MAINTENANCE)
+            JobRequest("fixture_recovery", self.fixtures.recover_interrupted, utc_now(), Priority.MAINTENANCE)
+        )
+        self.scheduler.dispatch(
+            JobRequest("daily", self.jobs["daily"], utc_now(), Priority.MAINTENANCE)
         )
         self.scheduler.start()
 

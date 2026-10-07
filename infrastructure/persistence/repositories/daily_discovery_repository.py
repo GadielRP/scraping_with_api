@@ -1,6 +1,7 @@
 """Durable per-sport progress, with errors distinguished from empty work."""
 
 from datetime import timedelta
+from sqlalchemy import func
 from infrastructure.persistence.models import DailyDiscoveryLog
 from infrastructure.persistence.database import db_manager
 from shared.temporal import now_in_timezone, utc_now
@@ -10,7 +11,7 @@ from infrastructure.settings import Config
 class DailyDiscoveryRepository:
     @staticmethod
     def initialize_sports_for_slot(date_str, run_slot, sports):
-        if run_slot not in {"current_utc_day", "next_utc_day"}:
+        if run_slot not in {"anticipada", "actualizacion"}:
             raise ValueError("Invalid discovery slot")
         if not sports:
             return
@@ -71,6 +72,16 @@ class DailyDiscoveryRepository:
             )
             if count != 1:
                 raise RuntimeError("Missing initialized discovery progress row")
+
+    @staticmethod
+    def latest_completed_at(date_str, sports):
+        """Allow fixture reconciliation after SofaScore completes more work."""
+        with db_manager.get_session() as session:
+            return session.query(func.max(DailyDiscoveryLog.last_attempt_at)).filter(
+                DailyDiscoveryLog.date == date_str,
+                DailyDiscoveryLog.sport.in_(sports),
+                DailyDiscoveryLog.status == "completed",
+            ).scalar()
 
     @staticmethod
     def cleanup_old_logs(days_to_keep):

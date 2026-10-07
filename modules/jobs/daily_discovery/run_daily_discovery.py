@@ -1,102 +1,69 @@
-"""Daily calendar progress, retention and retry coordination."""
+"""Two scheduled passes, with durable per-sport retries until the UTC day ends."""
 
 from __future__ import annotations
 
 import logging
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta
 
 from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.settings import Config
 from infrastructure.settings import discovery as settings
 from modules.jobs.event_discard_cleanup import run_event_discard_cleanup
 from modules.jobs.discovery.filters import sofascore_discovery_sport_slugs
-from shared.temporal import now_in_timezone
+from shared.temporal import UTC, in_timezone, now_in_timezone
 
 from .pipeline import discover_events_for_date
 
 logger = logging.getLogger(__name__)
 
 
-def resolve_daily_discovery_slot(now=None) -> str | None:
-    if now is None:
-        now = now_in_timezone(Config.TIMEZONE)
+def daily_discovery_passes(now: datetime) -> list[tuple[datetime, str, str]]:
+    """Reconstruct due passes, including missed starts, with their original dates.
 
-    current_hour = now.hour
-    next_utc_day_hour = settings.SOFASCORE.daily_next_utc_day_open_hour
-    current_utc_day_hour = settings.SOFASCORE.daily_current_utc_day_open_hour
-
-    # Each configured local-time window identifies the UTC date it queries.
-    # Neither window carries over from the previous local calendar day.
-    if next_utc_day_hour > current_utc_day_hour:
-        if current_utc_day_hour <= current_hour < next_utc_day_hour:
-            return "current_utc_day"
-        return "next_utc_day" if current_hour >= next_utc_day_hour else None
-    else:
-        if current_hour >= current_utc_day_hour:
-            return "current_utc_day"
-        if current_hour >= next_utc_day_hour:
-            return "next_utc_day"
-        return None
-
-
-def resolve_daily_discovery_target_date(now, run_slot: str | None) -> str | None:
-    """Return the UTC calendar date for a daily-discovery slot.
-
-    ``next_utc_day`` targets the next UTC date; ``current_utc_day`` targets
-    the current UTC date. ``now`` should be the scheduled occurrence when this
-    is called from the scheduler, so deferred work keeps its original date.
+    The target comes from the opening occurrence, never the retry clock.
+    Past UTC dates are excluded because discovery only admits future events.
     """
-    if run_slot is None:
-        return None
-    utc_date = now.astimezone(timezone.utc)
-    if run_slot == "next_utc_day":
-        utc_date += timedelta(days=1)
-    elif run_slot != "current_utc_day":
-        raise ValueError(f"Unsupported Daily Discovery slot: {run_slot}")
-    return utc_date.date().isoformat()
+    local = in_timezone(now, Config.TIMEZONE)
+    current_date = now.astimezone(UTC).date().isoformat()
+    passes = []
+    # Also covers zones where a local opening belongs to an adjacent UTC date.
+    for days_ago in (2, 1, 0):
+        day = local.date() - timedelta(days=days_ago)
+        for slot, opening_time, offset in (
+            ("anticipada", settings.SOFASCORE.daily_advance_time, 1),
+            ("actualizacion", settings.SOFASCORE.daily_refresh_time, 0),
+        ):
+            occurrence = datetime.combine(
+                day, datetime.strptime(opening_time, "%H:%M").time(), tzinfo=local.tzinfo,
+            )
+            target = (occurrence.astimezone(UTC).date() + timedelta(days=offset)).isoformat()
+            if occurrence <= local and target >= current_date:
+                passes.append((occurrence, target, slot))
+    return sorted(passes)
 
 
-def run_daily_discovery_job(*, target_date=None, run_slot=None) -> dict | None:
+def run_daily_discovery_job() -> dict | None:
     logger.info("Starting daily discovery heartbeat")
-    # Run before slot/cache checks so every heartbeat can advance bounded cleanup.
     run_event_discard_cleanup()
-
     try:
         DailyDiscoveryRepository.cleanup_old_logs(settings.SOFASCORE.daily_progress_retention_days)
     except Exception as exc:
         logger.warning("Failed to cleanup DailyDiscovery logs: %s", exc)
 
-    now = now_in_timezone(Config.TIMEZONE)
-    run_slot = run_slot or resolve_daily_discovery_slot(now)
-
-    if not run_slot:
-        logger.info("No Daily Discovery slot is open yet. Skipping.")
-        return
-
-    today_str = target_date or resolve_daily_discovery_target_date(now, run_slot)
-    logger.info(
-        "Daily discovery target_date=%s slot=%s local_now=%s timezone=%s",
-        today_str,
-        run_slot,
-        now.isoformat(),
-        Config.TIMEZONE,
-    )
-
-    discovery_sports = sofascore_discovery_sport_slugs()
-    DailyDiscoveryRepository.initialize_sports_for_slot(
-        today_str,
-        run_slot,
-        discovery_sports,
-    )
-    pending_sports = sofascore_discovery_sport_slugs(
-        DailyDiscoveryRepository.get_pending_sports(today_str, run_slot)
-    )
-    if not pending_sports:
-        logger.info(
-            "Daily discovery slot %s for %s is already completed for all sports.",
-            run_slot,
-            today_str,
+    stats = {}
+    sports = sofascore_discovery_sport_slugs()
+    for occurrence, target, slot in daily_discovery_passes(now_in_timezone(Config.TIMEZONE)):
+        DailyDiscoveryRepository.initialize_sports_for_slot(target, slot, sports)
+        pending = sofascore_discovery_sport_slugs(
+            DailyDiscoveryRepository.get_pending_sports(target, slot)
         )
-        return
-
-    return discover_events_for_date(date=today_str, sports=pending_sports, run_slot=run_slot)
+        if not pending:
+            continue
+        logger.info(
+            "Daily discovery target_date=%s pass=%s scheduled_at=%s pending_sports=%s",
+            target, slot, occurrence.isoformat(), pending,
+        )
+        result = discover_events_for_date(date=target, sports=pending, run_slot=slot)
+        for name, count in result.items():
+            stats[name] = stats.get(name, 0) + count
+    return stats or None

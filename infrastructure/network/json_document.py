@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryFile
+from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Iterator, Protocol
 import re
 
@@ -57,7 +57,8 @@ def open_json_document(
     """Own the temporary body for the download and all incremental parsing."""
     directory = Path("data/runtime")
     directory.mkdir(parents=True, exist_ok=True)
-    with TemporaryFile(dir=directory) as file:
+    # Keep the name until close: truncating an unlinked file fails on Windows bind mounts.
+    with NamedTemporaryFile(dir=directory) as file:
         document = JsonDocument(file, JobExecutionSettings().response_max_bytes)
         client.download_json(endpoint, document, params=params)
         document.seek(0)

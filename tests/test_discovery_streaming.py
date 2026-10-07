@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import json
@@ -7,6 +8,44 @@ from infrastructure.persistence.transient.discovery_run_store import DiscoveryRu
 from infrastructure.network.json_document import document_entries, JsonDocument
 from infrastructure.network import json_document as streaming
 from infrastructure.settings.job_execution import JobExecutionSettings
+
+
+def test_temporary_body_stays_linked_during_resets_and_is_removed_on_close(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    paths = []
+
+    class Client:
+        def download_json(self, endpoint, document, params=None):
+            path = Path(document.file.name)
+            paths.append(path)
+            assert path.is_file()
+            document.reset()
+            document.write(b'{"events":[{"broken":')
+            document.reset()
+            document.write(b'{"events":[{"id":1}]}')
+
+    with streaming.open_json_document(Client(), "events") as document:
+        assert paths[0].is_file()
+        assert list(document_entries(document, "events")) == [{"id": 1}]
+    assert document.file.closed
+    assert not paths[0].exists()
+
+
+def test_failed_download_removes_its_named_temporary_body(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    paths = []
+
+    class Client:
+        def download_json(self, endpoint, document, params=None):
+            paths.append(Path(document.file.name))
+            document.reset()
+            document.write(b"partial")
+            raise RuntimeError("download failed")
+
+    with pytest.raises(RuntimeError, match="download failed"):
+        with streaming.open_json_document(Client(), "events"):
+            pytest.fail("Failed downloads must not reach parsing")
+    assert not paths[0].exists()
 
 
 def test_document_entries_validates_empty_missing_and_truncated_collections():

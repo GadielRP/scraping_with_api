@@ -1,183 +1,28 @@
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime
 from importlib import import_module
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.persistence.models import DailyDiscoveryLog
+from infrastructure.persistence.repositories import DailyDiscoveryRepository
 from infrastructure.settings import Config
-from infrastructure.settings import discovery as settings
-from dataclasses import replace
-from modules.jobs.daily_discovery.run_daily_discovery import resolve_daily_discovery_slot
 
 daily_job = import_module("modules.jobs.daily_discovery.run_daily_discovery")
+repository = import_module("infrastructure.persistence.repositories.daily_discovery_repository")
 
 
-@pytest.fixture(autouse=True)
-def avoid_database_cleanup(monkeypatch):
-    """Keep heartbeat unit tests from invoking the real discard-memory cleanup."""
-    monkeypatch.setattr(daily_job, "run_event_discard_cleanup", lambda: 0)
+def local(value):
+    return datetime.fromisoformat(value).replace(tzinfo=ZoneInfo("America/Mexico_City"))
 
 
-def test_daily_discovery_log_uses_slot_scoped_uniqueness():
-    column_names = {column.name for column in DailyDiscoveryLog.__table__.columns}
-    constraint_names = {constraint.name for constraint in DailyDiscoveryLog.__table__.constraints}
-
-    assert "run_slot" in column_names
-    assert "unique_date_slot_sport_discovery" in constraint_names
-
-
-def test_resolve_daily_discovery_slot_boundaries(monkeypatch):
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
-
-    assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 4, 59)) is None
-    assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 5, 0)) == "next_utc_day"
-    assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 15, 59)) == "next_utc_day"
-    assert resolve_daily_discovery_slot(datetime(2026, 6, 1, 16, 0)) == "current_utc_day"
-
-
-def test_daily_discovery_job_skips_before_first_slot(monkeypatch):
-    calls = {
-        "cleanup": [],
-        "init": [],
-        "pending": [],
-        "run": [],
-    }
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
-
-    monkeypatch.setattr(
-        daily_job,
-        "now_in_timezone",
-        lambda _zone: datetime(2026, 6, 1, 4, 59, tzinfo=timezone.utc),
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "cleanup_old_logs",
-        lambda days: calls["cleanup"].append(days) or 1,
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "initialize_sports_for_slot",
-        lambda *args, **kwargs: calls["init"].append((args, kwargs)) or True,
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "get_pending_sports",
-        lambda *args, **kwargs: calls["pending"].append((args, kwargs)) or [],
-    )
-    monkeypatch.setattr(
-        daily_job,
-        "discover_events_for_date",
-        lambda *args, **kwargs: calls["run"].append((args, kwargs)) or {},
-    )
-
-    daily_job.run_daily_discovery_job()
-
-    assert calls["cleanup"] == [settings.SOFASCORE.daily_progress_retention_days]
-    assert calls["init"] == []
-    assert calls["pending"] == []
-    assert calls["run"] == []
-
-
-def test_run_daily_discovery_job_passes_slot_and_pending_sports(monkeypatch):
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=5))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=16))
-    calls = {
-        "cleanup": [],
-        "init": [],
-        "pending": [],
-        "run": [],
-    }
-
-    monkeypatch.setattr(
-        daily_job,
-        "now_in_timezone",
-        lambda _zone: datetime(2026, 6, 1, 5, 1, tzinfo=timezone.utc),
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "cleanup_old_logs",
-        lambda days: calls["cleanup"].append(days) or 1,
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "initialize_sports_for_slot",
-        lambda *args, **kwargs: calls["init"].append((args, kwargs)) or True,
-    )
-    monkeypatch.setattr(
-        daily_job.DailyDiscoveryRepository,
-        "get_pending_sports",
-        lambda *args, **kwargs: calls["pending"].append((args, kwargs)) or ["basketball", "tennis"],
-    )
-    monkeypatch.setattr(
-        daily_job,
-        "discover_events_for_date",
-        lambda *args, **kwargs: calls["run"].append((args, kwargs)) or {"events_inserted": 1},
-    )
-
-    daily_job.run_daily_discovery_job()
-
-    assert calls["cleanup"] == [settings.SOFASCORE.daily_progress_retention_days]
-    from modules.sports.catalog import sofascore_sport_slugs
-
-    assert calls["init"][0][0] == ("2026-06-02", "next_utc_day", sofascore_sport_slugs())
-    assert calls["pending"][0][0] == ("2026-06-02", "next_utc_day")
-    assert calls["run"][0][1] == {
-        "sports": ["basketball", "tennis"],
-        "date": "2026-06-02",
-        "run_slot": "next_utc_day",
-    }
-
-
-@pytest.mark.parametrize(
-    "hour, slot", [(0, None), (7, None), (8, "current_utc_day"), (16, "current_utc_day"), (17, "next_utc_day"), (23, "next_utc_day")]
-)
-def test_configured_slot_hours_do_not_wrap_into_the_next_day(monkeypatch, hour, slot):
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
-    assert resolve_daily_discovery_slot(datetime(2026, 9, 29, hour)) == slot
-
-
-@pytest.mark.parametrize("hour, slot, target", [
-    (8, "current_utc_day", "2026-09-29"),
-    (17, "next_utc_day", "2026-09-30"),
-    (18, "next_utc_day", "2026-10-01"),
-    (21, "next_utc_day", "2026-10-01"),
-    (23, "next_utc_day", "2026-10-01"),
-])
-def test_heartbeat_targets_utc_date_for_configured_slot(monkeypatch, hour, slot, target):
-    from unittest.mock import Mock
-
-    monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
-    local_now = datetime(2026, 9, 29, hour, 40, tzinfo=ZoneInfo(Config.TIMEZONE))
-    monkeypatch.setattr(daily_job, "now_in_timezone", lambda _: local_now)
-    monkeypatch.setattr(DailyDiscoveryRepository, "cleanup_old_logs", lambda _: 0)
-    monkeypatch.setattr(DailyDiscoveryRepository, "initialize_sports_for_slot", lambda *args: True)
-    pending = Mock(return_value=["football"])
-    run = Mock(return_value={"events_inserted": 1})
-    monkeypatch.setattr(DailyDiscoveryRepository, "get_pending_sports", pending)
-    monkeypatch.setattr(daily_job, "discover_events_for_date", run)
-
-    daily_job.run_daily_discovery_job()
-
-    pending.assert_called_once_with(target, slot)
-    run.assert_called_once_with(sports=["football"], date=target, run_slot=slot)
-
-
-def test_pending_sports_follow_explicit_slot_status(monkeypatch):
-    from contextlib import contextmanager
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-    from infrastructure.persistence.repositories import daily_discovery_repository as repository
-
+@pytest.fixture
+def progress(monkeypatch):
     engine = create_engine("sqlite://")
     DailyDiscoveryLog.__table__.create(engine)
-    monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
 
     @contextmanager
     def session_scope():
@@ -186,63 +31,98 @@ def test_pending_sports_follow_explicit_slot_status(monkeypatch):
             session.commit()
 
     monkeypatch.setattr(repository.db_manager, "get_session", session_scope)
-    with session_scope() as session:
-        for sport, slot, status, attempted in [
-            ("football", "next_utc_day", "completed", datetime(2026, 9, 30, 3, 40, tzinfo=timezone.utc)),
-            ("tennis", "next_utc_day", "completed", datetime(2026, 10, 1, 23, 0, tzinfo=timezone.utc)),
-            ("basketball", "next_utc_day", "failed", datetime(2026, 10, 1, 23, 0, tzinfo=timezone.utc)),
-            ("football", "current_utc_day", "pending", None),
-        ]:
-            session.add(
-                DailyDiscoveryLog(
-                    date="2026-10-01",
-                    run_slot=slot,
-                    sport=sport,
-                    status=status,
-                    last_attempt_at=attempted,
-                )
-            )
-
-    assert DailyDiscoveryRepository.get_pending_sports("2026-10-01", "next_utc_day") == ["basketball"]
-    assert DailyDiscoveryRepository.get_pending_sports("2026-10-01", "current_utc_day") == ["football"]
-    monkeypatch.setattr(
-        repository, "utc_now", lambda: datetime(2026, 10, 1, 23, 0, tzinfo=timezone.utc)
-    )
-    DailyDiscoveryRepository.update_sport_status("2026-10-01", "next_utc_day", "football", "completed")
-    assert DailyDiscoveryRepository.get_pending_sports("2026-10-01", "next_utc_day") == ["basketball"]
+    monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
+    monkeypatch.setattr(daily_job, "run_event_discard_cleanup", lambda: 0)
+    monkeypatch.setattr(daily_job, "sofascore_discovery_sport_slugs", lambda sports=None: sports if sports is not None else ["football", "tennis"])
+    yield session_scope
     engine.dispose()
 
 
-def test_heartbeats_deduplicate_each_utc_date_and_slot(monkeypatch):
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_next_utc_day_open_hour=17))
-    monkeypatch.setattr(settings, "SOFASCORE", replace(settings.SOFASCORE, daily_current_utc_day_open_hour=8))
-    completed = set()
-    calls = []
-    monkeypatch.setattr(DailyDiscoveryRepository, "cleanup_old_logs", lambda _: 0)
-    monkeypatch.setattr(DailyDiscoveryRepository, "initialize_sports_for_slot", lambda *a: True)
-    monkeypatch.setattr(
-        DailyDiscoveryRepository,
-        "get_pending_sports",
-        lambda date, slot: [] if (date, slot) in completed else ["football"],
-    )
+@pytest.mark.parametrize("when, expected", [
+    ("2026-10-05T16:59", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion")]),
+    ("2026-10-05T17:01", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion")]),
+    ("2026-10-05T17:02", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion"), ("2026-10-06", "anticipada")]),
+    ("2026-10-05T23:48", [("2026-10-06", "anticipada")]),
+    ("2026-10-06T00:00", [("2026-10-06", "anticipada")]),
+    ("2026-10-06T07:59", [("2026-10-06", "anticipada")]),
+    ("2026-10-06T08:01", [("2026-10-06", "anticipada")]),
+    ("2026-10-06T08:02", [("2026-10-06", "anticipada"), ("2026-10-06", "actualizacion")]),
+    ("2026-12-31T23:48", [("2027-01-01", "anticipada")]),
+])
+def test_due_passes_keep_the_opening_date_and_expire_past_utc_days(monkeypatch, when, expected):
+    monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
+    assert [(target, slot) for _, target, slot in daily_job.daily_discovery_passes(local(when))] == expected
 
-    def run(**kwargs):
-        key = (kwargs["date"], kwargs["run_slot"])
-        calls.append(key)
-        completed.add(key)
+
+def set_now(monkeypatch, when):
+    now = local(when)
+    monkeypatch.setattr(daily_job, "now_in_timezone", lambda _: now)
+    monkeypatch.setattr(repository, "now_in_timezone", lambda _: now)
+    monkeypatch.setattr(repository, "utc_now", lambda: now)
+
+
+def test_failed_sport_retries_overnight_without_repeating_completed_sport(progress, monkeypatch):
+    calls = []
+
+    def discover(date, sports, run_slot):
+        calls.append((date, run_slot, sports))
+        for sport in sports:
+            status = "failed" if len(calls) == 1 and sport == "tennis" else "completed"
+            DailyDiscoveryRepository.update_sport_status(date, run_slot, sport, status)
         return {"events_inserted": 1}
 
-    monkeypatch.setattr(daily_job, "discover_events_for_date", run)
-    for day in (datetime(2026, 12, 31), datetime(2027, 1, 1)):
-        for hour in (0, 7, 8, 12, 17, 18, 21, 23):
-            now = day.replace(hour=hour, tzinfo=ZoneInfo("America/Mexico_City"))
-            monkeypatch.setattr(daily_job, "now_in_timezone", lambda _, now=now: now)
-            daily_job.run_daily_discovery_job()
+    monkeypatch.setattr(daily_job, "discover_events_for_date", discover)
+    # Late startup reconstructs the missed 17:02 occurrence, with no rows present.
+    for when in ("2026-10-05T23:48", "2026-10-06T00:18", "2026-10-06T07:48", "2026-10-06T08:02", "2026-10-06T08:30"):
+        set_now(monkeypatch, when)
+        daily_job.run_daily_discovery_job()
 
     assert calls == [
-        ("2026-12-31", "current_utc_day"),
-        ("2027-01-01", "next_utc_day"),
-        ("2027-01-02", "next_utc_day"),
-        ("2027-01-01", "current_utc_day"),
-        ("2027-01-03", "next_utc_day"),
+        ("2026-10-06", "anticipada", ["football", "tennis"]),
+        ("2026-10-06", "anticipada", ["tennis"]),
+        ("2026-10-06", "actualizacion", ["football", "tennis"]),
     ]
+    with progress() as session:
+        rows = session.query(DailyDiscoveryLog).order_by(DailyDiscoveryLog.id).all()
+        assert [(row.run_slot, row.sport, row.attempts) for row in rows] == [
+            ("anticipada", "football", 1), ("anticipada", "tennis", 2),
+            ("actualizacion", "football", 1), ("actualizacion", "tennis", 1),
+        ]
+        assert all(row.status == "completed" for row in rows)
+    assert DailyDiscoveryRepository.latest_completed_at("2026-10-06", ["football"]) == local("2026-10-06T08:02")
+
+
+def test_expired_failures_are_not_replayed(progress, monkeypatch):
+    DailyDiscoveryRepository.initialize_sports_for_slot("2026-10-05", "actualizacion", ["football"])
+    with progress() as session:
+        session.query(DailyDiscoveryLog).update({"status": "failed"})
+    set_now(monkeypatch, "2026-10-05T18:00")
+    calls = []
+    monkeypatch.setattr(daily_job, "discover_events_for_date", lambda **kwargs: calls.append(kwargs) or {})
+    daily_job.run_daily_discovery_job()
+    assert [(call["date"], call["run_slot"]) for call in calls] == [("2026-10-06", "anticipada")]
+
+
+def test_calendar_has_two_starts_and_thirty_minute_retries():
+    import schedule
+    from infrastructure.scheduler.schedules import configure_calendar
+    from infrastructure.settings.job_execution import JobExecutionSettings
+
+    clock = schedule.Scheduler()
+    configure_calendar(clock, JobExecutionSettings())
+    daily = [job for job in clock.jobs if job.job_func.args[1] == "daily"]
+    assert sorted(job.at_time.strftime("%H:%M") for job in daily if job.at_time) == ["08:02", "17:02"]
+    retry = next(job for job in daily if job.at_time is None)
+    assert (retry.interval, retry.unit) == (30, "minutes")
+
+
+def test_runtime_recovers_sofascore_before_fixture_reconciliation(monkeypatch):
+    from types import SimpleNamespace
+    from app.runtime import ApplicationRuntime
+
+    calls = []
+    monkeypatch.setattr(import_module("modules.jobs.daily_discovery"), "run_daily_discovery_job", lambda: calls.append("sofascore") or {"events_inserted": 1})
+    runtime = ApplicationRuntime.__new__(ApplicationRuntime)
+    runtime.fixtures = SimpleNamespace(retry_due=lambda: calls.append("fixtures"))
+    assert runtime._run_daily_discovery() == {"events_inserted": 1}
+    assert calls == ["sofascore", "fixtures"]

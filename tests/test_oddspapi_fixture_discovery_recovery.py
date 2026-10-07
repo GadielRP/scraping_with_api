@@ -22,6 +22,11 @@ from modules.sports.catalog import oddspapi_sport_ids
 scheduler_module = import_module("modules.jobs.oddspapi.fixture_discovery.recovery")
 
 
+@pytest.fixture(autouse=True)
+def avoid_daily_progress_database(monkeypatch):
+    monkeypatch.setattr(scheduler_module.DailyDiscoveryRepository, "latest_completed_at", lambda *args: None)
+
+
 def _scheduler_without_setup() -> FixtureDiscoveryService:
     return FixtureDiscoveryService.__new__(FixtureDiscoveryService)
 
@@ -57,6 +62,8 @@ def test_missed_slot_is_still_recovered_next_morning(monkeypatch):
 
 def test_fixture_discovery_records_success(monkeypatch):
     calls = []
+    completed_at = datetime(2026, 7, 24, 23, 46, tzinfo=timezone.utc)
+    monkeypatch.setattr(scheduler_module.DailyDiscoveryRepository, "latest_completed_at", lambda *args: completed_at)
     summary = SimpleNamespace(
         total_fixtures_fetched=589,
         total_mappings_created=457,
@@ -97,6 +104,7 @@ def test_fixture_discovery_records_success(monkeypatch):
     assert calls[0][0] == "begin"
     assert calls[0][1] == ("2026-07-25",)
     assert calls[0][2]["trigger"] == "catch_up"
+    assert calls[0][2]["discovery_completed_at"] == completed_at
     assert calls[0][2]["sport_scope"] == (
         OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(oddspapi_sport_ids())
     )
@@ -166,7 +174,7 @@ def test_fixture_discovery_defaults_when_cli_forwards_none_target_date(monkeypat
         sports={"soccer": 10},
     )
 
-    assert calls[0][0] == ("2026-08-07",)
+    assert calls[0][0] == ("2026-08-06",)
     assert calls[0][1]["sport_scope"] == "soccer"
     assert calls[0][1]["scheduled_local_date"] == "2026-08-06"
     assert calls[0][1]["scheduled_time"] == "07:00"
@@ -337,19 +345,66 @@ def test_same_target_date_can_be_claimed_for_different_sport_scopes(fixture_data
         assert all(run.scheduled_local_date for run in runs)
         assert all(run.scheduled_time for run in runs)
 
-    assert OddspapiFixtureDiscoveryRunRepository.has_success(
-        "2099-01-03",
-        sport_scope="soccer",
-    )
-    assert not OddspapiFixtureDiscoveryRunRepository.has_success(
-        "2099-01-03",
-        sport_scope="baseball",
-    )
-
-
 def test_sport_scope_is_stable_for_multi_sport_runs():
     scope = OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
         {"Soccer": 10, "baseball": 13}
     )
 
     assert scope == "baseball,soccer"
+
+
+def test_fixture_success_reopens_only_after_new_sofascore_completion(fixture_database, monkeypatch):
+    from datetime import timedelta
+    module = import_module("infrastructure.persistence.repositories.oddspapi_fixture_discovery_run_repository")
+    finished = datetime(2026, 10, 5, 23, 47, tzinfo=timezone.utc)
+    monkeypatch.setattr(module, "utc_now", lambda: finished)
+    assert OddspapiFixtureDiscoveryRunRepository.begin("2026-10-06", trigger="scheduled")
+    OddspapiFixtureDiscoveryRunRepository.finish_success("2026-10-06", {"create_mappings": True})
+    assert not OddspapiFixtureDiscoveryRunRepository.begin(
+        "2026-10-06", trigger="catch_up", discovery_completed_at=finished - timedelta(minutes=1),
+    )
+    assert OddspapiFixtureDiscoveryRunRepository.begin(
+        "2026-10-06", trigger="catch_up", discovery_completed_at=finished + timedelta(minutes=1),
+    )
+    assert not OddspapiFixtureDiscoveryRunRepository.begin(
+        "2026-10-06", trigger="catch_up", discovery_completed_at=finished + timedelta(minutes=2),
+    )
+
+
+def test_late_manual_fixture_retry_keeps_the_scheduled_date(monkeypatch):
+    monkeypatch.setattr(Config, "TIMEZONE", "America/Mexico_City")
+    for when in ("2026-10-05T23:48", "2026-10-06T02:00", "2026-10-06T08:00"):
+        now = datetime.fromisoformat(when).replace(tzinfo=ZoneInfo(Config.TIMEZONE))
+        assert FixtureDiscoveryService.target_date_for_slot(now) == "2026-10-06"
+
+
+def test_periodic_fixture_recovery_preserves_date_and_does_not_reset_running_markers(monkeypatch):
+    service = FixtureDiscoveryService()
+    monkeypatch.setattr(scheduler_module, "now_in_timezone", lambda _: datetime(2026, 10, 6, 2, tzinfo=ZoneInfo(Config.TIMEZONE)))
+    calls = []
+    monkeypatch.setattr(service, "run", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(OddspapiFixtureDiscoveryRunRepository, "mark_running_as_interrupted", lambda: pytest.fail("only startup should reset running markers"))
+    service.retry_due()
+    assert len(calls) == 1
+    assert calls[0]["target_date"] == "2026-10-06"
+    assert calls[0]["_scheduled_local_date"] == "2026-10-05"
+    assert calls[0]["_scheduled_time"] == "17:47"
+
+
+def test_deferred_fixture_work_is_retryable_without_failure_alert(monkeypatch):
+    from shared.execution_context import WorkDeferred
+
+    service = FixtureDiscoveryService()
+    failures = []
+    monkeypatch.setattr(scheduler_module.OddspapiFixtureDiscoveryRunRepository, "begin", lambda *args, **kwargs: True)
+    monkeypatch.setattr(scheduler_module.OddspapiFixtureDiscoveryRunRepository, "finish_failed", lambda *args, **kwargs: failures.append(args))
+    monkeypatch.setattr(service, "_send_fixture_discovery_ops_alert", lambda **kwargs: pytest.fail("deferral is not an operational failure"))
+    monkeypatch.setattr(service, "_missed_fixture_discovery_slots", lambda: [(datetime(2026, 10, 5, 17, 47), "17:47", "2026-10-06")])
+
+    def defer(**kwargs):
+        raise WorkDeferred("maintenance busy")
+
+    monkeypatch.setattr(scheduler_module, "run_fixture_discovery_job", defer)
+    with pytest.raises(WorkDeferred):
+        service.retry_due()
+    assert failures == [("2026-10-06", "Deferred by maintenance executor")]

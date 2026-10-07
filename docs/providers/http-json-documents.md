@@ -25,6 +25,10 @@ flowchart TD
   herencia, una biblioteca HTTP concreta ni un esquema del proveedor.
 - `open_json_document` crea el archivo en `data/runtime`, invoca ese contrato y
   cierra el archivo al salir del contexto, también ante errores.
+  Usa `NamedTemporaryFile`: mantiene el nombre mientras el documento está abierto
+  y lo elimina al cerrar. Esto permite truncar el cuerpo entre intentos también
+  en volúmenes de Windows montados en contenedores Linux, donde un archivo
+  desvinculado creado con `TemporaryFile` puede fallar con `FileNotFoundError`.
 - `document_entries` produce elementos de una colección específica. Admite un
   arreglo raíz (`""`), un campo o rutas alternativas. Los controles de paginación
   se solicitan expresamente; el parser no conoce nombres de proveedores.

@@ -67,8 +67,8 @@ def persist_sport_odds(client, date, sport, store, batch_size):
 
 
 def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_client):
-    if run_slot not in {"current_utc_day", "next_utc_day"}:
-        raise ValueError("Daily discovery requires an explicit UTC-date slot")
+    if run_slot not in {"anticipada", "actualizacion"}:
+        raise ValueError("Daily discovery requires an explicit pass")
     limits = JobExecutionSettings()
     scope = load_tracked_source_competitions("sofascore")
     if scope is not None and not scope:

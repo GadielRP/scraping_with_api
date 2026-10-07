@@ -3,16 +3,21 @@ import json
 import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from infrastructure.persistence.repositories import OddspapiFixtureDiscoveryRunRepository
+from infrastructure.persistence.repositories import (
+    DailyDiscoveryRepository,
+    OddspapiFixtureDiscoveryRunRepository,
+)
 from infrastructure.settings import Config
 from infrastructure.settings import discovery as settings
 from modules.jobs.discovery.filters import oddspapi_discovery_sport_ids
+from modules.sports.catalog import sofascore_sport_slugs
 from modules.jobs.oddspapi.fixture_discovery.run_fixture_discovery import run_fixture_discovery_job
 from modules.oddspapi.runtime import (
     oddspapi_account_usage_refresh_enabled,
     refresh_oddspapi_account_usage_if_due,
 )
 from shared.runtime_observability import observe_operation
+from shared.execution_context import WorkDeferred
 from shared.temporal import UTC, now_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -20,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 class FixtureDiscoveryService:
     def run(self, **kwargs):
-        self.refresh_usage()
         trigger = kwargs.pop("_trigger", "scheduled")
         scheduled_local_date = kwargs.pop("_scheduled_local_date", None)
         scheduled_time = kwargs.pop("_scheduled_time", None)
@@ -32,10 +36,7 @@ class FixtureDiscoveryService:
             kwargs.get("sports") if kwargs.get("sports") is not None else oddspapi_discovery_sport_ids()
         )
 
-        # If target_date is not explicitly passed (or is forwarded as None by
-        # the CLI), compute it dynamically.
-        # Since this job runs late in the MX evening (23:45 UTC), we target the upcoming UTC day
-        # (tomorrow UTC) to avoid trying to resolve matches that have already started.
+        # Anchor manual/recovery calls to the latest configured occurrence too.
         if kwargs.get("target_date") is None:
             kwargs["target_date"] = self.target_date_for_slot(local_now)
 
@@ -50,6 +51,13 @@ class FixtureDiscoveryService:
                     create_mappings=create_mappings,
                     scheduled_local_date=scheduled_local_date,
                     scheduled_time=scheduled_time,
+                    discovery_completed_at=DailyDiscoveryRepository.latest_completed_at(
+                        target_date_str,
+                        sofascore_sport_slugs(
+                            kwargs.get("sports") if kwargs.get("sports") is not None
+                            else oddspapi_discovery_sport_ids()
+                        ),
+                    ),
                 )
                 if not tracked_run:
                     logger.info(
@@ -76,6 +84,7 @@ class FixtureDiscoveryService:
                 target_date_str,
             )
 
+        self.refresh_usage()
         logger.info(
             "Starting Oddspapi fixture discovery for UTC day: %s sport_scope=%s trigger=%s "
             "scheduled_local_date=%s scheduled_time=%s",
@@ -127,6 +136,12 @@ class FixtureDiscoveryService:
                     detail=f"completed with {errors} sport error(s)",
                 )
             return summary
+        except WorkDeferred:
+            if tracked_run:
+                OddspapiFixtureDiscoveryRunRepository.finish_failed(
+                    target_date_str, "Deferred by maintenance executor", sport_scope=sport_scope,
+                )
+            raise
         except Exception as exc:
             if tracked_run:
                 try:
@@ -193,9 +208,20 @@ class FixtureDiscoveryService:
 
     @staticmethod
     def target_date_for_slot(slot_local: datetime) -> str:
+        """Use the last configured occurrence, even for a late manual retry."""
         if slot_local.tzinfo is None or slot_local.utcoffset() is None:
             slot_local = slot_local.replace(tzinfo=ZoneInfo(Config.TIMEZONE))
-        slot_utc = slot_local.astimezone(UTC)
+        slot_local = slot_local.astimezone(ZoneInfo(Config.TIMEZONE))
+        occurrences = [
+            datetime.combine(
+                slot_local.date() - timedelta(days=days_ago),
+                datetime.strptime(configured_time, "%H:%M").time(),
+                tzinfo=slot_local.tzinfo,
+            )
+            for days_ago in (1, 0)
+            for configured_time in settings.ODDSPAPI.scheduled_times
+        ]
+        slot_utc = max(occurrence for occurrence in occurrences if occurrence <= slot_local).astimezone(UTC)
         target = slot_utc + timedelta(days=1) if slot_utc.hour >= 12 else slot_utc
         return target.strftime("%Y-%m-%d")
 
@@ -235,6 +261,8 @@ class FixtureDiscoveryService:
                 if occurrence < cutoff or occurrence > now_local:
                     continue
                 target_date = self.target_date_for_slot(occurrence)
+                if target_date < now_local.astimezone(UTC).date().isoformat():
+                    continue
                 if target_date in seen_targets:
                     continue
                 seen_targets.add(target_date)
@@ -244,7 +272,7 @@ class FixtureDiscoveryService:
         max_runs = max(0, settings.ODDSPAPI.max_catchup_runs)
         return slots[-max_runs:] if max_runs else []
 
-    def recover(self) -> None:
+    def recover_interrupted(self) -> None:
         try:
             interrupted = OddspapiFixtureDiscoveryRunRepository.mark_running_as_interrupted()
             if interrupted:
@@ -256,29 +284,9 @@ class FixtureDiscoveryService:
         except Exception:
             logger.exception("Could not mark interrupted Oddspapi fixture-discovery runs")
 
+    def retry_due(self) -> None:
+        """Retry due occurrences after SofaScore, including newly completed passes."""
         for occurrence, configured_time, target_date in self._missed_fixture_discovery_slots():
-            try:
-                if OddspapiFixtureDiscoveryRunRepository.has_success(
-                    target_date,
-                    sport_scope=OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(
-                        oddspapi_discovery_sport_ids()
-                    ),
-                ):
-                    continue
-            except Exception:
-                logger.exception(
-                    "Could not check prior Oddspapi fixture-discovery success "
-                    "for %s; attempting catch-up fail-open",
-                    target_date,
-                )
-
-            logger.warning(
-                "Catch-up Oddspapi fixture discovery for missed slot "
-                "local_date=%s time=%s target_utc_date=%s",
-                occurrence.strftime("%Y-%m-%d"),
-                configured_time,
-                target_date,
-            )
             try:
                 self.run(
                     target_date=target_date,
@@ -286,6 +294,8 @@ class FixtureDiscoveryService:
                     _scheduled_local_date=occurrence.strftime("%Y-%m-%d"),
                     _scheduled_time=configured_time,
                 )
+            except WorkDeferred:
+                raise
             except Exception:
                 logger.exception(
                     "Catch-up Oddspapi fixture discovery failed for target UTC day %s",

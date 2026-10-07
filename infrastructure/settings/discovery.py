@@ -59,10 +59,9 @@ class SofascoreDiscoverySettings:
     tennis_ranking_cutoff: int = 120  # Reject when any known participant rank >= cutoff.
     dropping_interval_hours: int = 6
     secondary_interval_hours: int = 6
-    daily_check_interval_minutes: int = 240
-    daily_next_utc_day_open_hour: int = 17
-    daily_current_utc_day_open_hour: int = 8
-    daily_fixed_times: tuple[str, ...] = ("17:10",)
+    daily_check_interval_minutes: int = 30
+    daily_advance_time: str = "17:02"
+    daily_refresh_time: str = "08:02"
     daily_progress_retention_days: int = 1
     team_event_workers: int = 10
     odds_workers: int = 5
@@ -74,10 +73,7 @@ class SofascoreDiscoverySettings:
                      "tennis_ranking_cutoff"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
-        for hour in (self.daily_next_utc_day_open_hour, self.daily_current_utc_day_open_hour):
-            if not 0 <= hour <= 23:
-                raise ValueError("daily opening hours must be between 0 and 23")
-        _validate_times(self.daily_fixed_times)
+        _validate_times((self.daily_advance_time, self.daily_refresh_time))
 
     @property
     def dropping_times(self) -> tuple[str, ...]:
@@ -127,10 +123,9 @@ SOFASCORE = SofascoreDiscoverySettings(
     tennis_ranking_cutoff=120,
     dropping_interval_hours=3,
     secondary_interval_hours=6,
-    daily_check_interval_minutes=480,
-    daily_next_utc_day_open_hour=17,
-    daily_current_utc_day_open_hour=8,
-    daily_fixed_times=("17:10",),
+    daily_check_interval_minutes=30,
+    daily_advance_time="17:02",
+    daily_refresh_time="08:02",
     daily_progress_retention_days=1,
     filters=DiscoveryFilters(
         future_only=True,
