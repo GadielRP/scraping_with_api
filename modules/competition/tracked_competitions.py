@@ -32,6 +32,7 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(172, "Ligue 1", "Football"),
     TrackedCompetition(2192, "Liga MX Clausura", "Football"),
     TrackedCompetition(328, "Liga MX Apertura", "Football"),
+    TrackedCompetition(261, "Liga Portugal", "Football"),
     TrackedCompetition(429, "Euroleague", "Basketball"),
     TrackedCompetition(525, "Liiga", "Ice hockey"),
     TrackedCompetition(180, "SHL", "Ice hockey"),

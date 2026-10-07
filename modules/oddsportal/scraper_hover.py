@@ -207,7 +207,9 @@ class OddsPortalHoverMixin:
 
         raw_value = await container.evaluate(
             r"""element => {
-                const candidates = element.querySelectorAll('a.odds-link, p');
+                const candidates = element.matches('a[href*="/betslip/"]')
+                    ? [element]
+                    : element.querySelectorAll('a[href*="/betslip/"], a.odds-link, p');
                 const oddsPattern = /^(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)$/;
                 for (const candidate of candidates) {
                     if (candidate.closest('.tooltip, .odds-tooltip')) continue;
@@ -235,7 +237,7 @@ class OddsPortalHoverMixin:
         normalized = re.sub(r"[^a-zA-Z0-9]+", "_", str(value or ""))
         return normalized.strip("_").lower() or "unknown"
 
-    def _save_parsed_tooltip_html(
+    def _save_tooltip_html(
         self,
         *,
         tooltip_html: str,
@@ -243,7 +245,7 @@ class OddsPortalHoverMixin:
         bookie_name: Optional[str],
         choice: str,
     ) -> Optional[str]:
-        """Save one accepted tooltip under its current event debug context."""
+        """Save a captured tooltip under its current event debug context."""
 
         if not getattr(self, "debug_mode", False):
             return None
@@ -284,7 +286,7 @@ class OddsPortalHoverMixin:
             )
             return None
         logger.info(
-            "Saved parsed OddsPortal tooltip event=%s source=%s choice=%s path=%s",
+            "Saved OddsPortal tooltip event=%s source=%s choice=%s path= %s",
             event_id,
             bookmaker_label,
             choice,
@@ -335,11 +337,12 @@ class OddsPortalHoverMixin:
         if source == "betfair":
             leaf_selectors = await page.evaluate(
                 """() => {
-                    const section = document.querySelector('[data-testid="betting-exchanges-section"]');
+                    const betfairLinkSelector = 'a[href*="/bookmakers/betfair-exchange/betslip/"]';
+                    const section = Array.from(document.querySelectorAll('section'))
+                        .find(candidate => candidate.querySelector(betfairLinkSelector));
                     if (!section) return [];
                     const desktop = section.querySelector('[class*="max-mm:hidden"]') || section;
-                    const all = Array.from(desktop.querySelectorAll('[data-testid="odd-container"]'));
-                    const leaves = all.filter(el => !el.querySelector('[data-testid="odd-container"]'));
+                    const leaves = Array.from(desktop.querySelectorAll(betfairLinkSelector));
                     
                     leaves.forEach((el, idx) => {
                         el.setAttribute('data-bf-leaf-idx', idx.toString());
@@ -422,7 +425,11 @@ class OddsPortalHoverMixin:
                 "[data-testid='odd-container']"
             )
             if not initial_containers:
-                logger.warning("No odd containers found for: %s", bookie_name)
+                initial_containers = await initial_scope.query_selector_all(
+                    "td.h-9 a[href*='/betslip/']"
+                )
+            if not initial_containers:
+                logger.warning("No odds hover targets found for: %s", bookie_name)
                 return None
             choice_keys = ["1", "X", "2"] if len(initial_containers) >= 3 else ["1", "2"]
             choice_indexes = {choice: idx for idx, choice in enumerate(choice_keys)}
@@ -439,7 +446,11 @@ class OddsPortalHoverMixin:
             await page.mouse.move(0, 0)
             await page.wait_for_timeout(300)
 
+            attempts_used = 0
+            tooltip_seen = False
+            tooltip_appearance_logged = False
             for attempt in range(3):
+                attempts_used = attempt + 1
                 try:
                     if source == "betfair":
                         target_cell = await page.query_selector(
@@ -492,6 +503,10 @@ class OddsPortalHoverMixin:
                         containers = await scope.query_selector_all(
                             "[data-testid='odd-container']"
                         )
+                        if not containers:
+                            containers = await scope.query_selector_all(
+                                "td.h-9 a[href*='/betslip/']"
+                            )
                         container_index = configured_index
 
                     if container_index >= len(containers):
@@ -548,8 +563,26 @@ class OddsPortalHoverMixin:
                     timeout_ms = 3000 + attempt * 1000
                     deadline = time.monotonic() + timeout_ms / 1000
                     tooltip_html = None
+                    loading_tooltip_html = None
+                    unrecognized_tooltip_html = None
                     while time.monotonic() < deadline:
-                        headings = await current_container.query_selector_all("h3")
+                        tooltip_scope_handle = await current_container.evaluate_handle(
+                            """element => {
+                                let ancestor = element.parentElement;
+                                while (ancestor && ancestor !== document.body) {
+                                    if (ancestor.querySelector('[role="tooltip"]')) {
+                                        return ancestor;
+                                    }
+                                    ancestor = ancestor.parentElement;
+                                }
+                                return element;
+                            }"""
+                        )
+                        tooltip_scope = tooltip_scope_handle.as_element() or current_container
+                        headings = await tooltip_scope.query_selector_all("h3")
+                        if not headings:
+                            headings = await page.query_selector_all("h3")
+                        matched_heading = False
                         for heading in headings:
                             heading_text = (await heading.text_content() or "").strip().lower()
                             if heading_text not in {
@@ -559,23 +592,98 @@ class OddsPortalHoverMixin:
                                 continue
                             if not await heading.is_visible():
                                 continue
+                            tooltip_seen = True
+                            if not tooltip_appearance_logged:
+                                logger.info(
+                                    "OddsPortal tooltip appeared source=%s choice=%s heading=%r",
+                                    source,
+                                    choice,
+                                    heading_text,
+                                )
+                                tooltip_appearance_logged = True
                             wrapper_handle = await heading.evaluate_handle(
                                 "node => node.parentElement"
                             )
                             wrapper = wrapper_handle.as_element()
                             if wrapper:
-                                tooltip_html = await wrapper.inner_html()
+                                candidate_html = await wrapper.inner_html()
+                                matched_heading = True
+                                if re.search(
+                                    r"role=[\"']status[\"'][^>]*>[\s\S]*?>\s*Loading\s*<|>\s*Loading\s*</",
+                                    candidate_html,
+                                    flags=re.IGNORECASE,
+                                ):
+                                    loading_tooltip_html = candidate_html
+                                else:
+                                    tooltip_html = candidate_html
                             break
                         if tooltip_html:
                             break
+                        if not matched_heading:
+                            tooltips = await tooltip_scope.query_selector_all(
+                                '[role="tooltip"]'
+                            )
+                            if not tooltips:
+                                tooltips = await page.query_selector_all(
+                                    '[role="tooltip"]'
+                                )
+                            for tooltip in tooltips:
+                                if await tooltip.is_visible():
+                                    tooltip_seen = True
+                                    heading = await tooltip.query_selector("h3")
+                                    tooltip_heading = (
+                                        (await heading.text_content() or "").strip()
+                                        if heading
+                                        else "<missing>"
+                                    )
+                                    if not tooltip_appearance_logged:
+                                        logger.info(
+                                            "OddsPortal tooltip appeared source=%s choice=%s heading=%r",
+                                            source,
+                                            choice,
+                                            tooltip_heading,
+                                        )
+                                        tooltip_appearance_logged = True
+                                    if source == "betfair":
+                                        unrecognized_tooltip_html = await tooltip.inner_html()
+                                    break
                         await page.wait_for_timeout(100)
 
+                    if not tooltip_html:
+                        # Keep opening odds available if the movement history
+                        # remains in its loading state until the wait expires.
+                        tooltip_html = loading_tooltip_html
+                    if not tooltip_html and unrecognized_tooltip_html:
+                        self._save_tooltip_html(
+                            tooltip_html=unrecognized_tooltip_html,
+                            source=source,
+                            bookie_name=bookie_name,
+                            choice=choice,
+                        )
+                        logger.warning(
+                            "Captured Betfair tooltip with an unrecognized heading "
+                            "for choice=%s; saved raw markup for inspection",
+                            choice,
+                        )
                     if not tooltip_html:
                         await page.mouse.move(0, 0)
                         await page.wait_for_timeout(300)
                         continue
 
+                    self._save_tooltip_html(
+                        tooltip_html=tooltip_html,
+                        source=source,
+                        bookie_name=bookie_name,
+                        choice=choice,
+                    )
                     parsed = self._parse_odds_tooltip_html(tooltip_html)
+                    if not parsed:
+                        logger.warning(
+                            "Captured OddsPortal tooltip has no dated movement "
+                            "odds or numeric opening odds source=%s choice=%s",
+                            source,
+                            choice,
+                        )
                     if parsed and not self._tooltip_matches_visible_cell(
                         parsed,
                         visible_odds,
@@ -594,12 +702,6 @@ class OddsPortalHoverMixin:
                         continue
                     if parsed:
                         results[choice] = parsed
-                        self._save_parsed_tooltip_html(
-                            tooltip_html=tooltip_html,
-                            source=source,
-                            bookie_name=bookie_name,
-                            choice=choice,
-                        )
                     await page.mouse.move(0, 0)
                     await page.wait_for_timeout(300)
                     break
@@ -621,6 +723,21 @@ class OddsPortalHoverMixin:
                 choice in results,
                 time.perf_counter() - started_at,
             )
+            if not tooltip_seen:
+                logger.warning(
+                    "OddsPortal tooltip did not appear source=%s choice=%s attempts=%s",
+                    source,
+                    choice,
+                    attempts_used,
+                )
+            elif choice not in results:
+                logger.warning(
+                    "OddsPortal tooltip appeared but yielded no parseable snapshot "
+                    "source=%s choice=%s attempts=%s",
+                    source,
+                    choice,
+                    attempts_used,
+                )
 
         return results or None
 

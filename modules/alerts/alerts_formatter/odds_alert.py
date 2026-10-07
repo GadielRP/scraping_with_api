@@ -15,7 +15,6 @@ from infrastructure.persistence.repositories.market.market_read_models import (
 )
 from modules.alerts import pre_start_notifier
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.oddsportal.oddsportal_config import ODDSPORTAL_COMPETITION_ROUTES
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +86,11 @@ def send_odds_alert(event_data: Dict, odds_response: Dict, minutes_until_start: 
         
         # --- EXTERNAL BOOKIES INTEGRATION ---
         try:
-            if competition_id in ODDSPORTAL_COMPETITION_ROUTES:
-                external_markets = MarketRepository.get_external_markets_for_event(event_data.get('id'))
-                if external_markets:
-                    external_section = _format_external_markets_section(external_markets)
-                    message += external_section
-                    logger.info(f"📊 Added external markets section to alert for event {event_data.get('id')}")
+            external_markets = MarketRepository.get_external_markets_for_event(event_data.get('id'))
+            if external_markets:
+                external_section = _format_external_markets_section(external_markets)
+                message += external_section
+                logger.info(f"📊 Added external markets section to alert for event {event_data.get('id')}")
         except Exception as op_err:
             logger.error(f"Error adding external markets section to alert: {op_err}")
 

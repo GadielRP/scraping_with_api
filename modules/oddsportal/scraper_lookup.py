@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -87,9 +88,17 @@ class OddsPortalLookupMixin:
         reference_date = _coerce_current_date(current_date)
         cached = OddsPortalCacheRepository.get_league_cache(season_id)
         if not cached:
+            logger.info('OddsPortal persisted league cache is empty for season %s', season_id)
             return []
         total_cached_entries = len([href for href in cached.keys() if href])
         logger.info(f'Cache found for season {season_id}: total_entries={total_cached_entries}, current_date={reference_date.isoformat()}')
+        logger.info(
+            'OddsPortal persisted league cache entries for season %s (%d; current_date=%s):\n%s',
+            season_id,
+            total_cached_entries,
+            reference_date.isoformat(),
+            json.dumps(cached, ensure_ascii=False, indent=2, default=str),
+        )
         candidates = []
         skipped_stale_candidates = 0
         for href, data in cached.items():
@@ -123,6 +132,17 @@ class OddsPortalLookupMixin:
             logger.info(f'Cache date filter for season {season_id}: valid_entries={len(candidates)}, stale_or_undated={skipped_stale_candidates}, current_date={reference_date.isoformat()}')
         else:
             logger.info(f'Cache date filter for season {season_id}: valid_entries={len(candidates)}, stale_or_undated=0, current_date={reference_date.isoformat()}')
+        logger.info(
+            'OddsPortal cache candidates after date filtering for season %s (%d):\n%s',
+            season_id,
+            len(candidates),
+            json.dumps(
+                _build_structured_league_cache(candidates, reference_date),
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
+        )
         return candidates
 
     async def _extract_league_candidates(self, league_url: str, season_id: Optional[int], skip_cache_save: bool=False, current_date: Optional[date]=None) -> List[Dict[str, str]]:
@@ -172,8 +192,13 @@ class OddsPortalLookupMixin:
             except Exception:
                 pass
             try:
-                # Support both old 'div.eventRow' and new 'div[data-testid="game-row"]'
-                await page.wait_for_selector('div.eventRow, div[data-testid="game-row"]', timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS)
+                # OddsPortal's current league table renders match links without
+                # the old eventRow/game-row test IDs. Keep those legacy hooks,
+                # but also wait for a modern match link with its row fragment.
+                await page.wait_for_selector(
+                    'div.eventRow, div[data-testid="game-row"], a[href*="/h2h/"][href*="#"]',
+                    timeout=ODDSPORTAL_LEAGUE_ROWS_TIMEOUT_MS,
+                )
                 t_wait = time.perf_counter()
                 log_timing(f'Waiting for event rows took {t_wait - t_goto:.2f}s')
             except Exception as e:
@@ -190,7 +215,7 @@ class OddsPortalLookupMixin:
                 pass
 
             t_js_league = time.perf_counter()
-            rows_data = await page.evaluate("""() => {
+            rows_data = await page.evaluate(r"""() => {
                 const elements = Array.from(document.querySelectorAll('[data-testid="secondary-header"], div.eventRow, div[data-testid="game-row"]'));
                 
                 let currentDate = "";
@@ -272,6 +297,48 @@ class OddsPortalLookupMixin:
                         game_text: row.innerText.trim(),
                     });
                 }
+
+                // Current OddsPortal league pages use ordered date headers and
+                // flex event rows, without eventRow/game-row/date-header IDs.
+                // Walk both in DOM order so every event inherits its date
+                // header, rather than trying to infer a date from row ancestry.
+                const leagueRoot = document.querySelector('main') || document;
+                const dateHeaderSelector = 'div[class*="border-l"][class*="border-r"][class*="bg-gray-light"]';
+                const scheduleElements = Array.from(leagueRoot.querySelectorAll(
+                    `${dateHeaderSelector}, div[class*="hover:bg"]`
+                ));
+                let modernCurrentDate = '';
+                for (const element of scheduleElements) {
+                    if (element.matches(dateHeaderSelector)) {
+                        const dateLabel = element.querySelector('div[class*="truncate"][class*="font-main"]');
+                        if (dateLabel) modernCurrentDate = dateLabel.innerText.trim();
+                        continue;
+                    }
+
+                    const link = element.querySelector(':scope > a[href*="/h2h/"][href*="#"]');
+                    if (!link || link.closest('div.eventRow, div[data-testid="game-row"]')) continue;
+                    const originalHref = link.getAttribute('href') || '';
+                    const href = originalHref.replace('/inplay-odds', '');
+                    const teamNames = Array.from(link.querySelectorAll('img[alt]'))
+                        .map(img => (img.getAttribute('alt') || '').trim())
+                        .filter(Boolean);
+                    const paragraphs = Array.from(link.querySelectorAll('p'))
+                        .map(p => p.innerText.trim())
+                        .filter(Boolean);
+                    const teams = teamNames.length >= 2
+                        ? teamNames
+                        : paragraphs.filter(text => !/^\d{1,2}:\d{2}$/.test(text));
+                    const rowId = href.split('#').pop() || '';
+                    results.push({
+                        original_href: originalHref,
+                        href,
+                        row_id: rowId,
+                        date: modernCurrentDate,
+                        home: teams[0] || '',
+                        away: teams[1] || '',
+                        game_text: element.innerText.trim(),
+                    });
+                }
                 
                 return results;
             }""")
@@ -282,6 +349,25 @@ class OddsPortalLookupMixin:
                 if getattr(self, 'debug_dir', None) and hasattr(self, '_save_debug_artifacts'):
                     await self._save_debug_artifacts(page, 'league_no_rows_data', {'url': navigation_league_url})
                 return []
+            discovered_rows = [
+                {
+                    **item,
+                    'date_filter': (
+                        'keep'
+                        if _is_cache_date_current_or_future(
+                            item.get('date', ''), reference_date
+                        )
+                        else 'stale/undated'
+                    ),
+                }
+                for item in rows_data
+            ]
+            logger.info(
+                'OddsPortal discovered league rows before filtering (%d; current_date=%s):\n%s',
+                len(discovered_rows),
+                reference_date.isoformat(),
+                json.dumps(discovered_rows, ensure_ascii=False, indent=2, default=str),
+            )
             candidates = []
             total_rows = len(rows_data)
             already_had_fragment = 0
@@ -356,6 +442,12 @@ class OddsPortalLookupMixin:
                     from infrastructure.persistence.repositories import OddsPortalCacheRepository
                     cache_dict = _build_structured_league_cache(candidates, current_date=reference_date)
                     if cache_dict:
+                        logger.info(
+                            'OddsPortal cache payload from accepted league rows for season %s (%d):\n%s',
+                            season_id,
+                            len(cache_dict),
+                            json.dumps(cache_dict, ensure_ascii=False, indent=2, default=str),
+                        )
                         new_quality = _evaluate_cache_quality(cache_dict, reference_date)
                         new_count = new_quality.total_count
                         new_homog = new_quality.homogeneity
@@ -410,6 +502,13 @@ class OddsPortalLookupMixin:
                 logger.warning(f'OddsPortal discovery returned no candidates for {league_url}')
                 return None
             logger.info(f'Scanning {len(candidates)} candidates for {home_team} vs {away_team}...')
+            logger.info(
+                'OddsPortal live match lookup: target=%s vs %s target_time_utc=%s timezone=%s',
+                home_team,
+                away_team,
+                target_time_utc.isoformat() if target_time_utc else None,
+                Config.TIMEZONE,
+            )
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates, target_time_utc=target_time_utc)
             if best_match:
                 logger.info(f"Match found: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f}, Reversed: {best_match['is_reversed']})")
@@ -428,6 +527,16 @@ class OddsPortalLookupMixin:
                 logger.debug(f'No valid candidates parsed from cache for season {season_id}')
                 return None
             logger.debug(f'Scanning {len(candidates)} cached candidates for {home_team} vs {away_team}...')
+            logger.info(
+                'OddsPortal cache match lookup: season=%s target=%s vs %s '
+                'target_time_utc=%s timezone=%s candidates=%d',
+                season_id,
+                home_team,
+                away_team,
+                target_time_utc.isoformat() if target_time_utc else None,
+                Config.TIMEZONE,
+                len(candidates),
+            )
             best_match = self.team_matcher.find_best_match(home_team, away_team, candidates, target_time_utc=target_time_utc)
             if best_match and best_match['max_score'] >= 80:
                 logger.info(f"Cache hit: {best_match['home']} vs {best_match['away']} (Score: {best_match['max_score']:.1f})")

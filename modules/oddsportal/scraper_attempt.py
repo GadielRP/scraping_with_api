@@ -493,6 +493,15 @@ class OddsPortalAttemptMixin:
                     debug_extra = {'step': step, **self._resume_state_for_debug(normalized_resume_state)}
                     await self._save_debug_artifacts(page, reason_code, debug_extra)
                     return ScrapeAttemptResult(data=None, resume_state=normalized_resume_state, partial_match_data=match_data, failed_reason=reason_code, failed_step_idx=step_idx)
+                if step.get('betfair_enabled') and not period_data.betfair:
+                    await self._save_debug_artifacts(
+                        page,
+                        f'betfair_initial_data_missing_{db_market_period}',
+                        {
+                            'stage': 'initial_period_extraction',
+                            'market_period': db_market_period,
+                        },
+                    )
                 if match_data.home_team in (None, '', 'Unknown'):
                     match_data.home_team = period_data.home_team
                 if match_data.away_team in (None, '', 'Unknown'):
@@ -587,6 +596,17 @@ class OddsPortalAttemptMixin:
                         'ℹ️ No persisted regular bookie matched the configured hover scope for %s',
                         db_market_period,
                     )
+                if step.get('betfair_enabled') and not period_data.betfair:
+                    # The exchange section can render after the standard
+                    # bookmaker table. Re-read it after regular hover work has
+                    # given the page time to finish rendering.
+                    refreshed_period_data = await self._extract_data(page, match_url)
+                    if refreshed_period_data.betfair:
+                        period_data.betfair = refreshed_period_data.betfair
+                        logger.info(
+                            'Betfair Exchange appeared after initial extraction; refreshed current odds (%s)',
+                            db_market_period,
+                        )
                 extraction_betfair = None
                 if (
                     step.get('betfair_enabled')

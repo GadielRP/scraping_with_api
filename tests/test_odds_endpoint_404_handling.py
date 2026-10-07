@@ -20,6 +20,7 @@ from modules.alerts.alerts_formatter.odds_alert import (
 from modules.jobs.pre_start_check_job import event_candidate_builder
 from modules.jobs.pre_start_check_job import intraday_result_freshness
 from modules.jobs.pre_start_check_job import run_pre_start_check_job as pre_start_job_runner
+from modules.jobs.pre_start_check_job import oddsportal_worker
 from modules.jobs.pre_start_check_job.providers.oddspapi import odds_phase as oddspapi_odds_phase
 from modules.jobs.pre_start_check_job.providers.oddspapi.event_selector import (
     OddspapiPreStartCandidate,
@@ -1760,11 +1761,60 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
         "evaluation",
     ]
     assert calls[0][3] == {101: 0}
-    assert calls[0][4] == {"debug_mode": True}
+    assert calls[0][4] == {
+        "debug_mode": True,
+        "scraping_enabled": True,
+    }
     assert calls[1][2]["runtime"] is scheduler
     assert calls[2][2] is event_plan
     assert calls[2][3] is op_context
     assert calls[2][4]["debug_mode"] is True
+
+
+def test_oddsportal_simulation_override_controls_worker_config_gate(monkeypatch):
+    monkeypatch.setattr(oddsportal_worker.Config, "ODDSPORTAL_SCRAPING_ENABLED", False)
+    competition_id = next(iter(oddsportal_worker.ODDSPORTAL_COMPETITION_ROUTES))
+    event = {
+        "id": 101,
+        "competition_id": competition_id,
+    }
+    timings = {
+        101: oddsportal_worker.Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES,
+    }
+    launched = []
+    runtime = SimpleNamespace(
+        oddsportal=SimpleNamespace(launch=lambda work: launched.append(work) or object())
+    )
+
+    context = oddsportal_worker.start_oddsportal_scrape_for_events(
+        runtime,
+        [event],
+        timings,
+        scraping_enabled=True,
+    )
+
+    assert context.event_ids == {101}
+    assert len(launched) == 1
+
+    default_context = oddsportal_worker.start_oddsportal_scrape_for_events(
+        runtime,
+        [event],
+        timings,
+    )
+    assert default_context.event_ids == set()
+    assert len(launched) == 1
+
+
+def test_simulator_waits_for_oddsportal_worker():
+    calls = []
+    worker_thread = SimpleNamespace(join=lambda: calls.append("joined"))
+    runtime = SimpleNamespace(
+        oddsportal=SimpleNamespace(active_thread=worker_thread),
+    )
+
+    simulate_pre_start_check._wait_for_oddsportal_worker(runtime)
+
+    assert calls == ["joined"]
 
 
 def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():

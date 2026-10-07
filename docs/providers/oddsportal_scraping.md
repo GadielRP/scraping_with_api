@@ -2,7 +2,7 @@
 
 > Canonical implementation guide for the OddsPortal path started by the pre-start job.
 >
-> Last verified against the repository: **2026-08-04**.
+> Last verified against the repository and the 2026-10-06 NHL league-page capture: **2026-10-06**.
 >
 > Scope: the production path beginning at `modules/jobs/pre_start_check_job/run_pre_start_check_job.py`, through Playwright extraction, persistence, and alert synchronization. Statements below describe the code as it exists; they do not describe an intended or older architecture.
 
@@ -356,16 +356,18 @@ For each event, the sequential browser batch does:
 
 ### 10.3 Live candidate extraction
 
-The live league lookup:
+The live league lookup supports both OddsPortal's older event markup and the current date-grouped flex layout:
 
-- waits for `div[class*="empty:min-h-[80vh]"] div.eventRow`;
-- tracks date headers from `[data-testid="date-header"]`;
-- reads match links from `div.group.flex[data-testid="game-row"] > a[href]`;
-- reads participant names from `div[data-testid="event-participants"] a[title]`;
-- repairs missing row fragments with the `eventRow` ID when possible;
+- waits for either `div.eventRow`, `div[data-testid="game-row"]`, or a match link `a[href*="/h2h/"][href*="#"]`;
+- on the older layout, tracks `[data-testid="date-header"]`, gets participant names from `[data-testid="participant-name"]` or `div[data-testid="event-participants"] a[title]`, and repairs missing fragments with the event row's `id`;
+- on the current layout, date labels are read from `div[class*="border-l"][class*="border-r"][class*="bg-gray-light"] div[class*="truncate"][class*="font-main"]`, then inherited in DOM order by event rows `div[class*="hover:bg"] > a[href*="/h2h/"][href*="#"]`; team names come from the row's `img[alt]`;
 - removes `/inplay-odds` from match paths;
 - accepts both modern `/{sport}/h2h/...` and legacy `/{sport}/{country}/...` paths;
 - rejects wrong-sport, malformed, league-self, missing-team, stale, and undated candidates.
+
+The row wait intentionally matches the current event link format instead of relying on the former `data-testid="game-row"` attribute. The saved 2026-10-06 page had visible rows and match links but no `eventRow`, `game-row`, `date-header`, `event-participants`, or `participant-name` markers; waiting only for the older selectors caused the 18-second `league_no_rows` timeout.
+
+League discovery and persisted-cache reads log the formatted rows, their date-filter decision, and the resulting candidate list. Cache date staleness is evaluated from OddsPortal's displayed event date against the configured local current date; it does not read `Event.starts_at`. `starts_at` is passed to `TeamMatcher` for a date-distance penalty after candidates are loaded, with the target instant converted to `Config.TIMEZONE`.
 
 ### 10.4 Team matching
 
@@ -390,6 +392,8 @@ After live discovery, a new structured cache is compared with the existing row. 
 ```
 
 The displayed score `fresh_count * homogeneity` is diagnostic; it is not the direct comparison key. A lower-quality new cache is rejected. An equal-or-better cache replaces the whole JSON object through an upsert.
+
+In the 2026-10-06 NHL run, 16 event rows were discovered but only 5 were accepted because the previous date lookup returned empty dates for 11 rows. The old and new comparison keys were both `(5, 1.0, 1.0, 5)`, so the equal-quality five-entry cache was saved. With the DOM-ordered date headers applied to every row in each group, a larger all-fresh list increases `fresh_count` and outranks the smaller cache.
 
 The cleanup job runs every three days at `05:00` and removes rows older than the configured three-day retention boundary.
 
@@ -457,11 +461,15 @@ Failures create a structured `ScrapeAttemptResult` rather than silently returnin
 For standard tables, `_extract_data()` reads:
 
 - teams from the match-page `h1`;
-- bookmaker rows from `div.flex.h-9` containing `border-black-borders`;
-- odds from `div.odds-cell`;
+- bookmaker rows from `tr.h-9` (or the older `div.flex.h-9` layout);
+- prices from the table row's middle `td` cells, with `div.odds-cell` retained for older layouts;
 - bookie names from `a[title]` or `img[alt]`;
 - payout text from the final row child;
-- Betfair Back/Lay values from `[data-testid="betting-exchanges-section"]`.
+- Betfair Back/Lay values from the `<section>` containing anchors under `/bookmakers/betfair-exchange/betslip/`.
+
+The saved 2026-10-06 match page used `<tr class="h-9">` rows and `<td class="... h-9 ...">` price cells. The prices were anchors whose href contains `/bookmakers/{slug}/betslip/`; this layout did not include `div.odds-cell` or `data-testid="odd-container"`.
+
+That page's Betfair block used a `Betting Exchanges` section without `data-testid="betting-exchanges-section"`. Its desktop Back/Lay odds were betfair-exchange betslip anchors (four for two-way markets or six for three-way markets), ordered by Back outcomes followed by Lay outcomes. The section can render after the standard bookmaker table; when an enabled route initially finds no Betfair data, extraction is retried after regular-bookmaker hover work.
 
 Two-way and three-way layouts are handled separately.
 
@@ -488,11 +496,11 @@ The current package policy selects, hovers, and persists at most one matching re
 bet365
 ```
 
-It then hovers each two-way or three-way odds cell, re-resolving DOM handles between attempts. Each cell receives up to three hover attempts.
+It then hovers each two-way or three-way odds cell, re-resolving DOM handles between attempts. Current table rows use the row-scoped anchors `td.h-9 a[href*="/betslip/"]` as hover targets; older layouts use `[data-testid="odd-container"]`. Each cell receives up to three hover attempts. Tooltip headings are read from the nearest odds-cell ancestor containing `[role="tooltip"]`, with a visible page-level fallback for layouts that mount tooltips elsewhere.
 
 The tooltip parser recognizes both `Odds movement` and `Movimiento de cuotas`, but it deliberately ignores every movement-history row. The authoritative value for `initialOdds` is read exclusively from the dedicated lower block labeled `Opening odds`, `Cuotas de apertura`, or `Cuotas iniciales`. Its date is detected by content rather than CSS class and returned with the price. Decimal and fractional opening prices are normalized to decimal.
 
-Each selected regular bookmaker is hovered independently. Betfair Exchange remains structurally separate: package fields `persist_betfair` and `hover_betfair` control current Back/Lay persistence and tooltip opening-block extraction. Betfair hover additionally requires a route step whose `betfair_enabled` is true and successfully extracted current exchange data; the sole current step enables it. Every standard extraction logs a Betfair status (`section_not_found`, `insufficient_containers`, `no_parseable_back_odds`, or `current_odds_extracted`) before the hover decision.
+Each selected regular bookmaker is hovered independently. The movement tooltip may be nested in an ancestor wrapper and is looked up there after the hover, since OddsPortal can insert it only once the pointer enters the odds cell. Betfair Exchange remains structurally separate: package fields `persist_betfair` and `hover_betfair` control current Back/Lay persistence and tooltip opening-block extraction. Betfair hover additionally requires a route step whose `betfair_enabled` is true and successfully extracted current exchange data; the sole current step enables it. Every standard extraction logs a Betfair status (`section_not_found`, `insufficient_containers`, `no_parseable_back_odds`, or `current_odds_extracted`) before the hover decision.
 
 The parsed opening values are stored in `initial_odds_*` / `initial_back_*` / `initial_lay_*` and persisted through the `initialOdds` path. An opening date, when supplied, remains in the compatibility field `movement_odds_time`; no movement-history timestamp is substituted when the opening block omits one.
 
@@ -675,7 +683,7 @@ External rows are not guaranteed to be exclusively from OddsPortal: `get_externa
 | `browser.shell_grace_timeout_ms` | `8000` | Optional shell-without-data grace wait. |
 | `browser.tab_wait_timeout_s` | `20` | Group/period tab validation loop. |
 | `browser.league_goto_timeout_ms` | `21000` | League-page navigation timeout. |
-| `browser.league_rows_timeout_ms` | `18000` | Scoped league-row wait. |
+| `browser.league_rows_timeout_ms` | `18000` | League event-row/link wait. |
 | `browser.session_restart_attempts` | `2` | Maximum session-aware attempts for a match batch item. |
 | `browser.save_debug_on_goto_timeout` | `true` | Save qualifying navigation artifacts. |
 | `browser.enable_shell_grace` | `true` | Enable the shell grace path. |

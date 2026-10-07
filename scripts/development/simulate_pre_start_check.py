@@ -62,9 +62,9 @@ ENABLE_PILLAR_PIPELINE = True
 SHOW_MARKET_PERSISTENCE_REPORT = False
 
 # Simulation toggles - Providers (active when ENABLE_ODDS_INGESTION_SIMULATION = True)
-ENABLE_SOFASCORE_ODDS_SIMULATION = False
-ENABLE_ODDSPAPI_ODDS_SIMULATION = False
-ENABLE_ODDSPORTAL_ODDS_SIMULATION = False
+ENABLE_SOFASCORE_ODDS_SIMULATION = True
+ENABLE_ODDSPAPI_ODDS_SIMULATION = True
+ENABLE_ODDSPORTAL_ODDS_SIMULATION = True
 
 # Simulation toggles - Individual Pillars (active when ENABLE_PILLAR_PIPELINE = True)
 ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
@@ -88,6 +88,18 @@ def _ensure_logging_configured() -> None:
         for handler in logging.getLogger().handlers
     ):
         setup_logging()
+
+
+def _wait_for_oddsportal_worker(runtime) -> None:
+    """Keep the one-shot simulator alive until its OddsPortal cycle completes."""
+    oddsportal_worker = getattr(runtime, "oddsportal", None)
+    worker_thread = getattr(oddsportal_worker, "active_thread", None)
+    if worker_thread is None:
+        return
+
+    logger.info("Waiting for the OddsPortal scrape worker to finish...")
+    worker_thread.join()
+    logger.info("OddsPortal scrape worker finished.")
 
 
 def _log_pipeline_eligibility(event_obj) -> bool:
@@ -501,6 +513,7 @@ def _run_pre_start_check_simulation(
                 events_data,
                 timings,
                 debug_mode=debug_mode,
+                scraping_enabled=ENABLE_ODDSPORTAL_ODDS_SIMULATION,
             )
         else:
             logger.info(
@@ -606,6 +619,8 @@ def _run_pre_start_check_simulation(
             "Step 4: Skipping pillar and alert evaluation "
             "(both ENABLE_ALERT_PIPELINE and ENABLE_PILLAR_PIPELINE are False)"
         )
+
+    _wait_for_oddsportal_worker(runtime)
 
     logger.info("=" * 80)
     logger.info(

@@ -19,26 +19,26 @@ def get_current_date() -> date:
 # Provider routing only. This is deliberately separate from the business
 # allowlist in modules.competition.tracked_competitions.
 ODDSPORTAL_COMPETITION_ROUTES = {
-    176: {"sport": "basketball", "country": "usa", "league": "nba"},
-    318: {"sport": "football", "country": "brazil", "league": "serie-a"},
-    129: {"sport": "baseball", "country": "usa", "league": "mlb"},
-    167: {"sport": "football", "country": "spain", "league": "laliga"},
-    88: {"sport": "football", "country": "italy", "league": "serie-a"},
-    168: {"sport": "football", "country": "england", "league": "premier-league"},
-    50: {
-        "sport": "football",
-        "country": "saudi-arabia",
-        "league": "saudi-professional-league",
-    },
-    171: {"sport": "football", "country": "germany", "league": "bundesliga"},
-    172: {"sport": "football", "country": "france", "league": "ligue-1"},
-    2192: {"sport": "football", "country": "mexico", "league": "liga-mx"},
-    328: {"sport": "football", "country": "mexico", "league": "liga-mx"},
-    429: {"sport": "basketball", "country": "europe", "league": "euroleague"},
-    525: {"sport": "hockey", "country": "finland", "league": "liiga"},
-    526: {"sport": "hockey", "country": "sweden", "league": "shl"},
-    527: {"sport": "hockey", "country": "usa", "league": "nhl"},
-    317: {"sport": "football", "country": "netherlands", "league": "eredivisie"},
+    176: {"sport": "basketball", "country": "usa", "league": "nba"}, # NBA
+    318: {"sport": "football", "country": "brazil", "league": "serie-a-betano"}, # BRASILEIRAO SERIE A BETANO
+    129: {"sport": "baseball", "country": "usa", "league": "mlb"}, # MLB
+    167: {"sport": "football", "country": "spain", "league": "laliga"}, # LALIGA EA SPORTS
+    88: {"sport": "football", "country": "italy", "league": "serie-a"}, # SERIE A
+    168: {"sport": "football", "country": "england", "league": "premier-league"}, # PREMIER LEAGUE
+    50: {"sport": "football", "country": "saudi-arabia", "league": "saudi-professional-league"}, # SAUDI PRO LEAGUE
+    171: {"sport": "football", "country": "germany", "league": "bundesliga"}, # BUNDESLIGA
+    172: {"sport": "football", "country": "france", "league": "ligue-1"}, # LIGUE 1
+    2192: {"sport": "football", "country": "mexico", "league": "liga-mx"}, # LIGA MX CLAUSURA
+    328: {"sport": "football", "country": "mexico", "league": "liga-mx"}, # LIGA MX APERTURA
+    429: {"sport": "basketball", "country": "europe", "league": "euroleague"}, # BASKETBALL EUROLEAGUE
+    525: {"sport": "hockey", "country": "finland", "league": "liiga"}, # HOCKEY LIIGA FINLAND
+    180: {"sport": "hockey", "country": "sweden", "league": "shl"}, # HOCKEY SHL SWEDEN
+    5196: {"sport": "hockey", "country": "usa", "league": "nhl"}, # HOCKEY NHL USA
+    310: {"sport": "football", "country": "argentina", "league": "liga-profesional"}, # LPF CLAUSURA
+    247: {"sport": "football", "country": "argentina", "league": "liga-profesional"}, # LPF APERTURA
+    261: {"sport": "football", "country": "portugal", "league": "liga-portugal"}, # LIGA PORTUGAL
+
+    5153: {"sport": "football", "country": "usa", "league": "nfl"}, # NFL
 }
 
 # Normalize bookie names to match DB exact names

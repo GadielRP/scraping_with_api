@@ -237,13 +237,15 @@ class OddsPortalDataMixin:
             // --- Extract Betfair Exchange ---
             // These visible Back/Lay prices are also legacy fallbacks. The
             // timestamped tooltip movement value is authoritative when found.
-            // Search for the section directly
-            const exchangeSection = document.querySelector('[data-testid="betting-exchanges-section"]');
+            // The current page labels the exchange section rather than exposing
+            // the old test id. Scope by Betfair's own market links.
+            const betfairLinkSelector = 'a[href*="/bookmakers/betfair-exchange/betslip/"]';
+            const exchangeSection = Array.from(document.querySelectorAll('section'))
+                .find(section => section.querySelector(betfairLinkSelector));
 
             if (exchangeSection) {
                 const desktop = exchangeSection.querySelector('[class*="max-mm:hidden"]') || exchangeSection;
-                const allOddContainers = Array.from(desktop.querySelectorAll('[data-testid="odd-container"]'));
-                const leafContainers = allOddContainers.filter(el => !el.querySelector('[data-testid="odd-container"]'));
+                const leafContainers = Array.from(desktop.querySelectorAll(betfairLinkSelector));
                 
                 result.betfairContainerCount = leafContainers.length;
                 result.betfairStatus = leafContainers.length >= 4
@@ -251,6 +253,12 @@ class OddsPortalDataMixin:
                     : 'insufficient_containers';
 
                 const extractOddFromContainer = (container) => {
+                    if (container.matches('a')) {
+                        const value = container.textContent.trim();
+                        return /^(?:\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)$/.test(value)
+                            ? value
+                            : null;
+                    }
                     const elements = container.querySelectorAll('a, p');
 
                     for (const el of elements) {
