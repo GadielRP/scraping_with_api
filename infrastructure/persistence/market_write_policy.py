@@ -1,9 +1,7 @@
-"""Provider-specific ownership rules for canonical market writes.
+"""Provider ownership rules for quotes within shared canonical markets.
 
-The current schema intentionally collapses matching provider markets into one
-``Market``/``MarketChoice`` row.  Until provider identity becomes part of that
-schema, write ownership must be explicit so asynchronous providers cannot
-silently replace each other's values.
+Market and choice identity are shared; quote identity includes the provider,
+exchange side and depth. A provider's write policy only changes its own quotes.
 """
 
 from __future__ import annotations
@@ -13,7 +11,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class MarketWritePolicy:
-    """Describe which parts of a canonical choice one source may mutate."""
+    """Describe which parts of a provider quote one source may mutate."""
 
     name: str
     overwrite_initial_odds: bool = False
@@ -25,13 +23,8 @@ class MarketWritePolicy:
 
 DEFAULT_MARKET_WRITE_POLICY = MarketWritePolicy(name="standard")
 
-# TEMPORARY ARCHITECTURE DECISION:
-# OddsPortal is currently used only as the authoritative opening-odds source.
-# It must not write current odds or snapshots because snapshots from different
-# providers share the same canonical choice and downstream trajectory queries
-# do not yet distinguish opening snapshots from current snapshots.  Keeping the
-# rule here makes the compromise visible and removable when the schema becomes
-# source-aware.
+# OddsPortal supplies authoritative openings. Its quotes do not write current
+# prices or trajectory snapshots; readers resolve those fields independently.
 ODDSPORTAL_OPENING_ONLY_POLICY = MarketWritePolicy(
     name="oddsportal_opening_only",
     overwrite_initial_odds=True,

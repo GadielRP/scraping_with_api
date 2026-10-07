@@ -13,8 +13,8 @@ from infrastructure.persistence.repositories.market.market_quote_read_policy imp
     QuoteFieldPriority,
     QuoteReadPriorityPolicy,
 )
-from infrastructure.persistence.repositories.market.market_read_queries import (
-    MarketReadQueries,
+from infrastructure.persistence.repositories.market.market_odds_read_repository import (
+    MarketOddsReadRepository,
 )
 from infrastructure.persistence.repositories.market_repository import MarketRepository
 
@@ -111,19 +111,73 @@ def test_market_reader_projects_catalog_labels(tmp_path):
         )
 
     with patch(
-        "infrastructure.persistence.repositories.market.market_read_queries.db_manager",
+        "infrastructure.persistence.repositories.market.market_odds_read_repository.db_manager",
         manager,
     ):
-        result = MarketReadQueries.get_external_market_quotes_for_event(
-            event_id, POLICY
-        )
+        result = MarketOddsReadRepository(POLICY).get_market_odds_state(event_id)
 
-    assert len(result.blocks) == 1
-    block = result.blocks[0]
+    assert len(result.markets) == 1
+    block = result.markets[0]
     assert block.market_name == "1X2 Full Time"
     assert block.market_group == "1X2"
     assert block.market_period == "Full Time"
     assert block.line_value is None
+
+
+def test_odds_state_includes_sofascore_and_filters_bookmakers_and_sources(tmp_path):
+    manager = DatabaseManager(f"sqlite:///{tmp_path / 'all-providers.db'}")
+    manager.create_tables()
+    event_id, bookie_id = _setup(manager)
+    priority = QuoteReadPriorityPolicy(1, QuoteFieldPriority(
+        initial=("oddsportal", "oddspapi", "sofascore"),
+        current=("oddspapi", "sofascore", "oddsportal"),
+    ))
+    opening_at = datetime(2026, 9, 19, 12, tzinfo=timezone.utc)
+    batch = _batch(bookie_id)
+    batch[0]["markets"][0]["choices"][0].update(
+        changedAt=opening_at.isoformat(), initialChangedAt=opening_at.isoformat(), mainLine=True,
+    )
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        MarketRepository.save_canonical_bookmaker_batches(event_id, _batch(1), source="sofascore")
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batch, source="oddspapi")
+        batch[0]["markets"][0]["choices"][0]["initialOdds"] = "2.40"
+        MarketRepository.save_canonical_bookmaker_batches(event_id, batch, source="oddsportal")
+
+    with patch("infrastructure.persistence.repositories.market.market_odds_read_repository.db_manager", manager):
+        reader = MarketOddsReadRepository(priority)
+        assert {m.bookie_id for m in reader.get_market_odds_state(event_id).markets} == {1, bookie_id}
+        merged = reader.get_market_odds_state(event_id, bookie_ids=(bookie_id,)).markets[0].choices[0]
+        assert merged.opening.value == Decimal("2.40")
+        assert merged.opening.origin.source == "oddsportal"
+        assert merged.opening.origin.initial_captured_at == opening_at
+        assert merged.opening.origin.current_updated_at is None
+        assert merged.current.value == Decimal("2.00")
+        assert merged.current.origin.source == "oddspapi"
+        assert merged.current.origin.current_updated_at is not None
+        assert merged.current.origin.initial_captured_at is None
+        own = reader.get_market_odds_state(event_id, sources=("oddspapi",)).markets[0].choices[0]
+        assert own.opening.value == Decimal("2.10")
+        assert reader.get_market_odds_state(event_id, sources=()).markets == ()
+        assert reader.get_market_odds_state(event_id, is_live=True).markets == ()
+        assert reader.get_market_odds_state(event_id, canonical_market_keys=("over_under_full_time",)).markets == ()
+        assert reader.has_quotes(event_id, sources=("oddsportal",), bookie_ids=(bookie_id,))
+        assert not reader.has_quotes(event_id, sources=("oddsportal",), bookie_ids=(1,))
+
+
+def test_signed_handicap_lines_remain_distinct_in_odds_state(tmp_path):
+    manager = DatabaseManager(f"sqlite:///{tmp_path / 'signed-read.db'}")
+    manager.create_tables()
+    event_id, bookie_id = _setup(manager)
+    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+        for line in ("-0.25", "0.25"):
+            batch = _batch(bookie_id, line_value=line)
+            batch[0]["markets"][0]["canonicalMarketKey"] = "asian_handicap_full_time"
+            MarketRepository.save_canonical_bookmaker_batches(event_id, batch, source="provider-a")
+    with patch("infrastructure.persistence.repositories.market.market_odds_read_repository.db_manager", manager):
+        result = MarketOddsReadRepository(POLICY).get_market_odds_state(event_id)
+    assert {m.line_value for m in result.markets} == {Decimal("-0.25"), Decimal("0.25")}
+    assert len({m.market_id for m in result.markets}) == 2
+    assert all(m.market_family == "spread_2way" for m in result.markets)
 
 
 def test_line_value_is_nullable_numeric_identity(tmp_path):

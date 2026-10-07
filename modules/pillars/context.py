@@ -88,7 +88,6 @@ class EventContext:
     country: Optional[str] = None
     round: Optional[str] = None
     observations: list[dict] = field(default_factory=list)
-    odds_response: Optional[dict] = None
     odds_trajectory: list[dict] = field(default_factory=list)
     odds_trajectory_context: Optional[Any] = None
     ft_1x2_odds_trajectory_context: Optional[Any] = None
@@ -142,7 +141,6 @@ def build_event_context(
     minutes_until_start: Optional[int] = None,
     metadata_snapshot: Optional[dict] = None,
     observations: Optional[list[dict]] = None,
-    odds_response: Optional[dict] = None,
     odds_trajectory: Optional[list[dict]] = None,
     success: bool = True,
 ) -> Optional[EventContext]:
@@ -350,7 +348,6 @@ def build_event_context(
         participants_label=f"{home_name} vs {away_name}",
         context_status=context_status,
         observations=observations or [],
-        odds_response=odds_response,
         odds_trajectory=odds_trajectory or [],
         success=success,
         alert_sent=bool(getattr(event_obj, "alert_sent", False)),

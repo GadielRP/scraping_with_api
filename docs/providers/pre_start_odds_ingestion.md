@@ -1141,3 +1141,33 @@ Only `scripts/development/simulate_pre_start_check.py` currently establishes a v
 | `tests/test_pre_start_memory_limits.py` | Existing pre-start memory boundaries. |
 
 The focused detector, acquisition, batch-wiring, memory, endpoint, scheduler, client, repository, and T-1 suites should be run together when validating an ingestion release. Test results are environment-dependent and are intentionally not recorded as a fixed count here.
+
+
+## Persisted odds reads for alerts
+
+Odds alerts use `MarketOddsReadRepository.get_market_odds_state(event_id)` for
+all bookmakers, including SofaScore. Optional `bookie_ids`, `sources`,
+`canonical_market_keys` and `is_live` filters limit the query; `None` includes all
+and an empty tuple includes none. Provider filters apply before field priority.
+
+The repository loads quote rows in one statement and delegates selection to the
+pure `resolve_market_odds_state()` resolver. Conventional opening/current prices
+are selected independently using `config/odds_read_priority.json`. Exchange
+states retain their provider and side and select the shallowest level per choice.
+Signed market lines remain part of identity and are not inverted at read time.
+
+The typed result contains `MarketOddsState` and `ChoiceOddsState`. Each opening
+or current `OddsPrice` carries its own `QuotePriceOrigin`, including quote/provider
+IDs, side/depth, mainline and limit metadata. `initial_captured_at` is the opening
+clock; `current_updated_at` is the local price-update clock. Neither is renamed
+as a snapshot collection/provider timestamp. Snapshot history is a separate read.
+
+In `run_pre_start_odds_moments()`, synchronous SofaScore/OddspAPI ingestion commits
+before downstream evaluation. The odds alert waits for scheduled OddsPortal work:
+its worker signals completion after the ingestion transaction returns. If that
+worker remains unfinished after the wait timeout, the odds alert is skipped for
+that evaluation. No API/scraper payload is used as a read fallback, and OddsPortal
+payloads are no longer retained in a cycle cache.
+
+This migration replaces only the odds-alert reads. Trajectory reads, dual-process
+views and P5 price memory retain their separate temporal/business responsibilities.

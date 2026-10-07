@@ -1,3 +1,4 @@
+from decimal import Decimal
 import json
 import logging
 from types import SimpleNamespace
@@ -10,12 +11,14 @@ import modules.oddspapi.client as oddspapi_client_module
 
 from infrastructure.persistence.catalogs.canonical_market_types import CANONICAL_MARKET_TYPE_IDS
 from infrastructure.persistence.repositories import EventOddsSourceState
-from infrastructure.persistence.repositories.market.market_read_models import (
-    ExternalChoiceQuote,
-    ExternalMarketQuoteBlock,
+from infrastructure.persistence.repositories.market.market_odds_read_models import (
+    ChoiceOddsState,
+    OddsPrice,
+    QuotePriceOrigin,
+    MarketOddsState,
 )
 from modules.alerts.alerts_formatter.odds_alert import (
-    _format_external_markets_section,
+    format_market_odds,
 )
 from modules.jobs.pre_start_check_job import event_candidate_builder
 from modules.jobs.pre_start_check_job import intraday_result_freshness
@@ -252,7 +255,6 @@ def test_orchestrator_loads_odds_before_intraday_maintenance(monkeypatch):
         lambda *_args, **_kwargs: SimpleNamespace(
             event_states={},
             event_ids=set(),
-            data_cache={},
         ),
     )
     monkeypatch.setattr(
@@ -1699,7 +1701,6 @@ def test_single_event_simulator_uses_production_op_and_evaluation_flow(
     op_context = SimpleNamespace(
         event_states={},
         event_ids=set(),
-        data_cache={},
     )
     calls = []
 
@@ -1818,30 +1819,19 @@ def test_simulator_waits_for_oddsportal_worker():
 
 
 def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():
-    external_markets = [
-        ExternalMarketQuoteBlock(
-            market_id=1,
-            bookie_id=2,
-            bookie_name="Betfair Exchange",
-            market_type_id=CANONICAL_MARKET_TYPE_IDS[
-                "home_away_full_time_including_overtime"
-            ],
-            line_value=None,
-            is_live=False,
-            aggregation="exchange",
-            source="oddsportal",
-            exchange_side="back",
-            contributing_sources=("oddsportal",),
-            choices=(
-                ExternalChoiceQuote(1, "1", 0, 1.89, None, None, None, None),
-                ExternalChoiceQuote(2, "2", 0, 1.72, None, None, None, None),
-            ),
-        )
-    ]
-
-    message = _format_external_markets_section(external_markets)
-
-    assert "Betfair Exchange (Back): 1.89→N/A | 1.72→N/A" in message
+    markets = [MarketOddsState(
+        event_id=1, market_id=1, bookie_id=2, bookie_name="Betfair Exchange",
+        market_type_id=CANONICAL_MARKET_TYPE_IDS["home_away_full_time_including_overtime"],
+        canonical_market_key="home_away_full_time_including_overtime",
+        market_name="Home/Away Full Time Including Overtime", market_group="Home/Away",
+        market_period="Full Time Including Overtime", market_family="side_2way",
+        line_value=None, is_live=False, source="oddsportal", exchange_side="back",
+        choices=tuple(ChoiceOddsState(i, name, OddsPrice(Decimal(price),
+            QuotePriceOrigin(i, "oddsportal", exchange_side="back")), None)
+            for i, name, price in [(1, "1", "1.89"), (2, "2", "1.72")]),
+    )]
+    message = format_market_odds(markets)
+    assert "Betfair Exchange (Back, oddsportal): 1: 1.89→N/A | 2: 1.72→N/A" in message
 
 
 class _NoOpOddspapiIngestionService:

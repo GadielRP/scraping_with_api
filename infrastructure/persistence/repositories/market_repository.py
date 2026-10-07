@@ -1257,37 +1257,6 @@ class MarketRepository:
         return None
 
     @staticmethod
-    def get_external_markets_for_event(event_id: int):
-        """Return the canonical quote-aware external market blocks."""
-        from infrastructure.persistence.repositories.market.market_quote_read_policy import (
-            load_quote_read_priority_policy,
-        )
-        from infrastructure.persistence.repositories.market.market_read_queries import (
-            MarketReadQueries,
-        )
-        from infrastructure.settings import Config
-
-        policy = load_quote_read_priority_policy(Config.ODDS_READ_PRIORITY_CONFIG)
-        result = MarketReadQueries.get_external_market_quotes_for_event(event_id, policy)
-        blocking = [item.code for item in result.diagnostics if item.blocking]
-        if blocking:
-            logger.error(
-                "Quote-aware external odds read produced blocking diagnostics "
-                "event_id=%s codes=%s",
-                event_id,
-                sorted(set(blocking)),
-            )
-        return list(result.blocks)
-
-    @staticmethod
-    def has_external_markets_for_event(event_id: int) -> bool:
-        """Check availability through the canonical quote-aware reader."""
-        from infrastructure.persistence.repositories.market.market_read_queries import (
-            MarketReadQueries,
-        )
-        return MarketReadQueries.has_external_market_quotes_for_event(event_id)
-
-    @staticmethod
     def get_market_count(event_id: int) -> int:
         try:
             with db_manager.get_session() as session:

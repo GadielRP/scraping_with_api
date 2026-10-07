@@ -629,6 +629,8 @@ def test_worker_loads_reference_data_once_and_requests_streaming(monkeypatch):
 
     loads = []
     calls = []
+    from threading import Event
+    states = {i: {"done_event": Event()} for i in (1, 2)}
     reference_data = SimpleNamespace(unresolved_bookie_slugs=())
 
     monkeypatch.setattr(
@@ -636,24 +638,19 @@ def test_worker_loads_reference_data_once_and_requests_streaming(monkeypatch):
         "load_oddsportal_reference_data",
         staticmethod(lambda source_bookies: loads.append(source_bookies) or reference_data),
     )
-    monkeypatch.setattr(
-        oddsportal_worker.MarketOddsIngestionService,
-        "save_from_oddsportal_data",
-        staticmethod(
-            lambda event_id, data, reference_data: SimpleNamespace(
-                markets_saved=1,
-                choices_saved=2,
-                snapshots_saved=2,
-                skipped=False,
-                reason=None,
-            )
-        ),
-    )
+    def committed_ingest(event_id, data, reference_data):
+        assert not states[event_id]["done_event"].is_set()
+        return SimpleNamespace(markets_saved=1, choices_saved=2, snapshots_saved=0,
+                               skipped=False, reason=None)
+
+    monkeypatch.setattr(oddsportal_worker.MarketOddsIngestionService,
+                        "save_from_oddsportal_data", staticmethod(committed_ingest))
 
     def fake_dispatch(tasks, **kwargs):
         calls.append(kwargs)
         for task in tasks:
             kwargs["on_result"](task["event_id"], object())
+            assert states[task["event_id"]]["done_event"].is_set()
         return {task["event_id"]: None for task in tasks}
 
     monkeypatch.setattr(
@@ -676,7 +673,7 @@ def test_worker_loads_reference_data_once_and_requests_streaming(monkeypatch):
         for event_id in (1, 2)
     ]
 
-    saved = oddsportal_worker.scrape_oddsportal_batch(events, debug_mode=True)
+    saved = oddsportal_worker.scrape_oddsportal_batch(events, states, debug_mode=True)
 
     assert saved == {1: 1, 2: 1}
     assert len(loads) == 1

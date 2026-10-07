@@ -30,7 +30,6 @@ class OddsPortalScrapeContext:
 
     event_states: Dict[int, Dict[str, Any]]
     event_ids: set[int]
-    data_cache: Dict[int, Any]
 
 
 def start_oddsportal_scrape_for_events(
@@ -51,13 +50,11 @@ def start_oddsportal_scrape_for_events(
     context = OddsPortalScrapeContext(
         event_states=event_states,
         event_ids=set(event_states),
-        data_cache={},
     )
     start_oddsportal_scrape_thread(
         runtime,
         candidates,
         context.event_states,
-        context.data_cache,
         debug_mode=debug_mode,
         scraping_enabled=scraping_enabled,
     )
@@ -131,7 +128,6 @@ def start_oddsportal_scrape_thread(
     runtime,
     op_candidates: List[Dict],
     op_event_states: Dict[int, Dict[str, threading.Event]],
-    op_data_cache: Dict[int, Any],
     *,
     debug_mode: bool = False,
     scraping_enabled: bool | None = None,
@@ -146,7 +142,7 @@ def start_oddsportal_scrape_thread(
         return None
 
     thread = runtime.oddsportal.launch(
-        partial(run_oddsportal_scrape_cycle, op_candidates, op_event_states, op_data_cache,
+        partial(run_oddsportal_scrape_cycle, op_candidates, op_event_states,
                 debug_mode=debug_mode)
     )
     if thread is None:
@@ -161,7 +157,6 @@ def start_oddsportal_scrape_thread(
 def run_oddsportal_scrape_cycle(
     op_candidates: List[Dict],
     op_event_states: Optional[Dict[int, Dict[str, threading.Event]]] = None,
-    op_data_cache: Optional[Dict[int, Any]] = None,
     *,
     debug_mode: bool = False,
 ):
@@ -171,7 +166,6 @@ def run_oddsportal_scrape_cycle(
         scrape_oddsportal_batch(
             op_candidates,
             op_event_states,
-            op_data_cache,
             debug_mode=debug_mode,
         )
     except (KeyboardInterrupt, WorkDeferred) as exc:
@@ -199,7 +193,6 @@ def run_oddsportal_scrape_cycle(
 def scrape_oddsportal_batch(
     events_to_process: List[Dict],
     op_event_states: Optional[Dict[int, Dict[str, threading.Event]]] = None,
-    op_data_cache: Optional[Dict[int, Any]] = None,
     *,
     debug_mode: bool = False,
 ) -> Dict[int, Optional[int]]:
@@ -297,8 +290,6 @@ def scrape_oddsportal_batch(
                 )
                 saved = ingestion_result.markets_saved
                 saved_counts[event_id] = saved
-                if saved > 0 and op_data_cache is not None:
-                    op_data_cache[event_id] = op_data
                 logger.info(
                     "OddsPortal canonical ingestion event=%s markets=%s choices=%s "
                     "snapshots=%s skipped=%s reason=%s",

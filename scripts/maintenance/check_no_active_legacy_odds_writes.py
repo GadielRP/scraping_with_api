@@ -9,10 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_DIRS = [
     ROOT / "modules" / "jobs",
 ]
-ALLOWED_FILES = {
-    ROOT / "modules" / "jobs" / "pre_start_check_job" / "odds_extraction.py",
-    ROOT / "modules" / "jobs" / "pre_start_check_job" / "__init__.py",
-}
 FORBIDDEN = [
     "OddsRepository.upsert_event_odds",
     "OddsRepository.create_odds_snapshot",
@@ -24,8 +20,6 @@ def main() -> int:
     violations = []
     for directory in ACTIVE_DIRS:
         for path in directory.rglob("*.py"):
-            if path in ALLOWED_FILES:
-                continue
             source = path.read_text(encoding="utf-8", errors="ignore")
             for pattern in FORBIDDEN:
                 if pattern in source:

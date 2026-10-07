@@ -185,11 +185,10 @@ For each selected event, `create_oddsportal_scrape_state()` creates:
 }
 ```
 
-`OddsPortalScrapeContext` carries three shared objects into evaluation:
+`OddsPortalScrapeContext` carries two shared objects into evaluation:
 
 - `event_states`: synchronization state keyed by canonical event ID.
 - `event_ids`: the selected IDs.
-- `data_cache`: in-memory `MatchOddsData` keyed by event ID.
 
 ## 6. Cycle-level thread behavior
 
@@ -595,7 +594,7 @@ For every event processed normally or caught by the per-event exception handler,
 
 1. Call `MarketOddsIngestionService.save_from_oddsportal_data(event_id, op_data, reference_data=...)`.
 2. Record `ingestion_result.markets_saved` in `saved_counts[event_id]`.
-3. If `saved > 0` and `op_data_cache` is provided, cache `op_data` in memory.
+3. Release the completed scrape payload; odds readers use committed quotes.
 4. Set `done_at_monotonic` and `done_event`.
 
 ### 15.1 Architectural Ownership: Opening Odds Only
@@ -634,30 +633,29 @@ The recorded `saved` count represents saved market records, not raw bookmaker ro
 
 ## 16. Alert and pillar integration
 
-### 16.1 Legacy alert synchronization
+### 16.1 Odds alert persistence barrier
 
-Only `EventAlertProcessor._sync_oddsportal_data()` waits for this scraper. The wait is attempted only when all of the following are true:
+`EventAlertProcessor._sync_oddsportal_data()` waits for scheduled OddsPortal work
+independently of a SofaScore payload. The worker signals `done_event` after its
+canonical ingestion call returns, including the database transaction commit.
+Queue resolution waits for worker claim; after claim the wait uses the remaining
+`ODDSPORTAL_ALERT_WAIT_TIMEOUT` measured from `started_at_monotonic`.
 
-- the event evaluation payload is successful;
-- a normalized event context was built;
-- `odds_response` is truthy;
-- the event ID was selected for OddsPortal;
-- an OddsPortal state exists for it.
+If the worker is still running after that timeout, the odds alert is skipped for
+that evaluation. No quote read races the pending OddsPortal persistence. If the
+worker finishes without data, the reader can still use other committed providers.
+Availability verification explicitly filters `sources=("oddsportal",)`.
 
-The wait has two phases:
-
-1. While neither `started_event` nor `done_event` is set, poll every 250 ms for the browser worker to claim the event. This queue/URL-resolution phase has no configured timeout.
-2. After `started_event`, wait only for the remainder of `ODDSPORTAL_ALERT_WAIT_TIMEOUT`, measured from `started_at_monotonic`.
-
-After completion or timeout, the alert path queries `MarketRepository.get_external_markets_for_event()` to verify/read persisted external markets. It also returns the in-memory `MatchOddsData`, when present, so the formatter can add movement timestamps that are not read from the DB query.
-
-`send_odds_alert()` itself only sends odds alerts at minutes `30` and `5` (`ALLOWED_ODDS_ALERT_MINUTES = {30, 5}`). It appends the external-markets section when the event's `competition_id` has an OddsPortal route and external DB rows exist.
-
-External rows are not guaranteed to be exclusively from OddsPortal: `get_external_markets_for_event()` returns all non-primary bookies and derives the displayed source from the latest choice snapshot.
+`send_odds_alert()` sends only at minutes 30 and 5. It reads all bookmakers through
+`MarketOddsReadRepository.get_market_odds_state()`, including SofaScore, and formats
+one typed result. It does not consume scraper or API payloads. Completed scrape
+payloads are not retained in a cycle cache.
 
 ### 16.2 Pillar pipeline
 
-`key_moment_evaluation.py` passes the OddsPortal state/cache arguments to `evaluate_and_calculate_pillars_batch()`, but the current pillar implementation does not consume them. The pillar pipeline neither waits for OddsPortal nor reads `op_data_cache` through those parameters.
+The pillar pipeline uses its own snapshot trajectory read. This alert refactor
+neither changes historical selection nor applies the alert's opening resolution
+to pillar trajectories.
 
 ## 17. Configuration reference
 

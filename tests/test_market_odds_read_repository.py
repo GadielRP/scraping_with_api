@@ -7,10 +7,12 @@ from infrastructure.persistence.repositories.market.market_quote_read_policy imp
     QuoteFieldPriority,
     QuoteReadPriorityPolicy,
 )
-from infrastructure.persistence.repositories.market.market_read_queries import (
-    MarketReadQueries,
-    project_external_market_quote_rows,
+from infrastructure.persistence.repositories.market.market_odds_read_repository import (
+    MarketOddsReadRepository,
 )
+
+
+from infrastructure.persistence.repositories.market.market_odds_resolver import resolve_market_odds_state
 
 
 POLICY = QuoteReadPriorityPolicy(
@@ -67,23 +69,22 @@ def test_normal_market_merges_fields_by_priority_and_keeps_provenance():
         _row(choice_id=2, choice_name="2", quote_id=13, source="oddspapi", current="1.90"),
     ]
 
-    result = project_external_market_quote_rows(7, rows, POLICY)
+    result = resolve_market_odds_state(7, rows, POLICY)
 
     assert not result.diagnostics
-    assert len(result.blocks) == 1
-    block = result.blocks[0]
-    assert block.aggregation == "field_priority"
+    assert len(result.markets) == 1
+    block = result.markets[0]
     assert block.source is None
-    assert block.contributing_sources == ("oddspapi", "oddsportal")
+    assert block.source is None
     assert [choice.choice_name for choice in block.choices] == ["1", "2"]
     home, away = block.choices
-    assert (home.initial, home.current, home.movement) == (
+    assert (home.opening.value, home.current.value, home.movement) == (
         Decimal("2.10"),
         Decimal("1.95"),
         -1,
     )
-    assert home.initial_origin.quote_id == 10
-    assert home.current_origin.quote_id == 11
+    assert home.opening.origin.quote_id == 10
+    assert home.current.origin.quote_id == 11
     assert away.movement == 1
 
 
@@ -114,21 +115,21 @@ def test_exchange_keeps_sources_and_sides_separate_and_suppresses_unsided():
         )
     )
 
-    result = project_external_market_quote_rows(7, rows, POLICY)
+    result = resolve_market_odds_state(7, rows, POLICY)
 
-    assert [(block.source, block.exchange_side) for block in result.blocks] == [
+    assert [(block.source, block.exchange_side) for block in result.markets] == [
         ("oddspapi", "back"),
         ("oddspapi", "lay"),
         ("oddsportal", "back"),
         ("oddsportal", "lay"),
     ]
-    assert {block.choices[0].initial_origin.quote_id for block in result.blocks} == {
+    assert {block.choices[0].opening.origin.quote_id for block in result.markets} == {
         20,
         21,
         22,
         23,
     }
-    opening_only = [block for block in result.blocks if block.source == "oddsportal"]
+    opening_only = [block for block in result.markets if block.source == "oddsportal"]
     assert all(block.choices[0].movement is None for block in opening_only)
     diagnostic = next(item for item in result.diagnostics if item.code == "redundant_unsided_quote_suppressed")
     assert diagnostic.blocking is False
@@ -141,13 +142,13 @@ def test_top_of_book_uses_lowest_level_without_mixing_fields():
         _row(choice_id=1, choice_name="1", quote_id=30, source="oddspapi", side="back", level=0, initial="2", current="3"),
     ]
 
-    result = project_external_market_quote_rows(7, rows, POLICY)
+    result = resolve_market_odds_state(7, rows, POLICY)
 
-    assert len(result.blocks) == 1
-    choice = result.blocks[0].choices[0]
-    assert choice.exchange_level == 0
-    assert choice.initial_origin.quote_id == 30
-    assert (choice.initial, choice.current) == (Decimal("2"), Decimal("3"))
+    assert len(result.markets) == 1
+    choice = result.markets[0].choices[0]
+    assert choice.current.origin.exchange_level == 0
+    assert choice.opening.origin.quote_id == 30
+    assert (choice.opening.value, choice.current.value) == (Decimal("2"), Decimal("3"))
 
 
 def test_duplicate_identity_is_blocking_and_omits_choice():
@@ -156,9 +157,9 @@ def test_duplicate_identity_is_blocking_and_omits_choice():
         _row(choice_id=1, choice_name="1", quote_id=41, source="oddspapi", current="3"),
     ]
 
-    result = project_external_market_quote_rows(7, rows, POLICY)
+    result = resolve_market_odds_state(7, rows, POLICY)
 
-    assert result.blocks == ()
+    assert result.markets == ()
     assert result.has_blocking_diagnostics
     assert result.diagnostics[0].code == "unexpected_duplicate"
     assert result.diagnostics[0].quote_ids == (40, 41)
@@ -170,11 +171,11 @@ def test_unconfigured_source_is_last_resort_and_reported():
         _row(choice_id=1, choice_name="1", quote_id=51, source="oddsportal", initial="2.4"),
     ]
 
-    result = project_external_market_quote_rows(7, rows, POLICY)
+    result = resolve_market_odds_state(7, rows, POLICY)
 
-    choice = result.blocks[0].choices[0]
-    assert choice.initial_origin.source == "oddsportal"
-    assert choice.current_origin.source == "zz-provider"
+    choice = result.markets[0].choices[0]
+    assert choice.opening.origin.source == "oddsportal"
+    assert choice.current.origin.source == "zz-provider"
     assert any(item.code == "unconfigured_source_fallback" for item in result.diagnostics)
 
 
@@ -215,14 +216,14 @@ def test_repository_materializes_quote_read_with_one_statement(monkeypatch):
         _row(choice_id=1, choice_name="1", quote_id=60, source="oddspapi", current="1.9")
     ])
     monkeypatch.setattr(
-        "infrastructure.persistence.repositories.market.market_read_queries.db_manager.get_session",
+        "infrastructure.persistence.repositories.market.market_odds_read_repository.db_manager.get_session",
         lambda: _SessionContext(session),
     )
 
-    result = MarketReadQueries.get_external_market_quotes_for_event(7, POLICY)
+    result = MarketOddsReadRepository(POLICY).get_market_odds_state(7)
 
     assert session.execute_count == 1
-    assert len(result.blocks) == 1
+    assert len(result.markets) == 1
 
 
 class _ScalarResult:
@@ -241,9 +242,9 @@ class _AvailabilitySession:
 def test_availability_uses_select_exists(monkeypatch):
     session = _AvailabilitySession()
     monkeypatch.setattr(
-        "infrastructure.persistence.repositories.market.market_read_queries.db_manager.get_session",
+        "infrastructure.persistence.repositories.market.market_odds_read_repository.db_manager.get_session",
         lambda: _SessionContext(session),
     )
 
-    assert MarketReadQueries.has_external_market_quotes_for_event(7) is True
+    assert MarketOddsReadRepository(POLICY).has_quotes(7) is True
     assert "EXISTS" in session.statement

@@ -339,7 +339,6 @@ def _build_evaluation_payloads(
             minutes_until_start=initial_minutes,
             metadata_snapshot=candidate.get("metadata_snapshot"),
             observations=candidate.get("observations"),
-            odds_response=candidate.get("odds_response"),
             odds_trajectory=[],
             success=True,
         )
@@ -527,7 +526,6 @@ def evaluate_pre_start_key_moments(
             runtime.event_repo,
             op_event_states=oddsportal_context.event_states,
             op_event_ids=oddsportal_context.event_ids,
-            op_data_cache=oddsportal_context.data_cache,
             debug_mode=debug_mode,
         )
 

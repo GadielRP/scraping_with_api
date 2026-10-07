@@ -41,7 +41,7 @@ def _event_plan(*event_ids: int):
 
 
 def _oddsportal_context():
-    return SimpleNamespace(event_states={}, event_ids=set(), data_cache={})
+    return SimpleNamespace(event_states={}, event_ids=set())
 
 
 def _configure_pipeline(monkeypatch, *, alerts: bool, pillars: bool) -> None:

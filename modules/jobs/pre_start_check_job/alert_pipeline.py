@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
-from infrastructure.persistence.repositories import MarketRepository
+from infrastructure.persistence.repositories.market.market_odds_read_repository import MarketOddsReadRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.moment_policy import (
     dual_process_moments,
@@ -31,13 +31,11 @@ class EventAlertProcessor:
         event_repo,
         op_event_states: Optional[dict] = None,
         op_event_ids: Optional[set] = None,
-        op_data_cache: Optional[dict] = None,
         debug_mode: Optional[bool] = False,
     ):
         self.event_repo = event_repo
         self.op_event_states = op_event_states
         self.op_event_ids = op_event_ids
-        self.op_data_cache = op_data_cache
         self.debug_mode = debug_mode
 
     def process_event(self, event_context: EventContext) -> None:
@@ -55,7 +53,6 @@ class EventAlertProcessor:
             else None
         )
         minutes_until_start = getattr(event_context, "minutes_until_start", None)
-        odds_response = getattr(event_context, "odds_response", None)
 
         season_id = event_context.season_id
         competition_id = event_context.competition.competition_id
@@ -66,7 +63,7 @@ class EventAlertProcessor:
         is_selected_source = discovery_source in Config.DISCOVERY_SOURCES_FOR_ALERTS
 
         # 1. Synchronization (Wait for external data providers if necessary)
-        self._sync_oddsportal_data(event_id, odds_response)
+        odds_ready = self._sync_oddsportal_data(event_id)
 
         # 2. Evaluation (Perform analysis and generate prediction reports)
         streak_analysis = None
@@ -95,20 +92,20 @@ class EventAlertProcessor:
             event_context=event_context,
             season_id=season_id,
             minutes_until_start=minutes_until_start,
-            odds_response=odds_response,
+            odds_ready=odds_ready,
             streak_analysis=streak_analysis,
             should_send_streak=should_send_streak,
             dual_report=dual_report,
         )
 
-    def _sync_oddsportal_data(self, event_id, odds_response) -> None:
-        """Wait for OddsPortal persistence and release its cached payload."""
-        if not (odds_response and self.op_event_ids and event_id in self.op_event_ids and self.op_event_states):
-            return
+    def _sync_oddsportal_data(self, event_id) -> bool:
+        """Allow the odds read after the scheduled OddsPortal worker finishes."""
+        if not (self.op_event_ids and event_id in self.op_event_ids and self.op_event_states):
+            return True
 
         state = self.op_event_states.get(event_id)
         if not state:
-            return
+            return True
 
         # Wait for worker claim
         if not state["done_event"].is_set():
@@ -151,28 +148,30 @@ class EventAlertProcessor:
                             extra={"oddsportal": True},
                         )
 
-        # Verify DB availability
+        if not state["done_event"].is_set():
+            # The worker commits before signaling completion. Do not read while
+            # it is still persisting, even if the configured wait has elapsed.
+            return False
+
+        # Verify this provider, rather than any bookmaker's quotes.
         try:
-            if MarketRepository.has_external_markets_for_event(event_id):
+            if MarketOddsReadRepository().has_quotes(event_id, sources=("oddsportal",)):
                 logger.info(
-                    f"[OP] External markets data available for {event_id}.",
+                    f"[OP] Persisted OddsPortal quotes available for {event_id}.",
                     extra={"oddsportal": True},
                 )
             else:
                 logger.info(
-                    f"[OP] External markets data NOT available for {event_id}.",
+                    f"[OP] Persisted OddsPortal quotes NOT available for {event_id}.",
                     extra={"oddsportal": True},
                 )
         except Exception as exc:
             logger.warning(
-                f"[OP] Could not verify external markets availability for {event_id}: {exc}",
+                f"[OP] Could not verify OddsPortal quote availability for {event_id}: {exc}",
                 extra={"oddsportal": True},
             )
 
-        # Transfer ownership to this evaluation so completed scrape trees do
-        # not remain retained by the cycle context.
-        if self.op_data_cache:
-            self.op_data_cache.pop(event_id, None)
+        return True
 
     def _ensure_matchup_streak_analysis(
         self, event_context: EventContext
@@ -233,14 +232,14 @@ class EventAlertProcessor:
         event_context: EventContext,
         season_id,
         minutes_until_start: Optional[int],
-        odds_response: Optional[dict],
+        odds_ready: bool,
         streak_analysis: Optional[dict],
         should_send_streak: bool,
         dual_report: Optional[dict],
     ) -> None:
         """Sends the appropriate alerts to the notifier."""
         # 1. Odds Alerts
-        if odds_response and minutes_until_start is not None:
+        if odds_ready and minutes_until_start is not None:
             event_data_for_odds = {
                 "id": event_context.event_id,
                 "home_team": event_context.home.name,
@@ -252,7 +251,7 @@ class EventAlertProcessor:
                 "season_id": season_id,
                 "competition_id": event_context.competition.competition_id,
             }
-            send_odds_alert(event_data_for_odds, odds_response, minutes_until_start)
+            send_odds_alert(event_data_for_odds, minutes_until_start)
 
         # 2. Matchup Streak Alerts
         if streak_analysis and should_send_streak:
@@ -290,7 +289,6 @@ def evaluate_and_dispatch_alerts_batch(
     event_repo,
     op_event_states=None,
     op_event_ids=None,
-    op_data_cache=None,
     debug_mode=False,
 ):
     """Entry point to evaluate and dispatch alerts for a batch of events."""
@@ -305,7 +303,6 @@ def evaluate_and_dispatch_alerts_batch(
         event_repo=event_repo,
         op_event_states=op_event_states,
         op_event_ids=op_event_ids,
-        op_data_cache=op_data_cache,
         debug_mode=debug_mode,
     )
 

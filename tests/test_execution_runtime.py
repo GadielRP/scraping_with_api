@@ -126,15 +126,15 @@ def test_oddsportal_retains_running_cycle_across_empty_and_busy_ticks(monkeypatc
 
     monkeypatch.setattr(browser_job, "run_oddsportal_scrape_cycle", action)
     try:
-        first = browser_job.start_oddsportal_scrape_thread(runtime, [{}], {}, {})
+        first = browser_job.start_oddsportal_scrape_thread(runtime, [{}], {})
         assert started.wait(2)
-        assert browser_job.start_oddsportal_scrape_thread(runtime, [], {}, {}) is None
+        assert browser_job.start_oddsportal_scrape_thread(runtime, [], {}) is None
         assert state.active_thread is first
         with pytest.raises(WorkDeferred):
             with view_refresh_exclusion.refresh():
                 pytest.fail("Reporting must not overlap the background browser cycle")
         blocked_state = browser_job.create_oddsportal_scrape_state([{"event_id": 1}])
-        assert browser_job.start_oddsportal_scrape_thread(runtime, [{}], blocked_state, {}) is None
+        assert browser_job.start_oddsportal_scrape_thread(runtime, [{}], blocked_state) is None
         assert blocked_state[1]["done_event"].is_set()
         assert state.active_thread is first
         release.set()

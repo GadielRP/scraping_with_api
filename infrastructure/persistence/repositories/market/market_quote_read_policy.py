@@ -1,7 +1,7 @@
 """Configuration-backed field priority for quote-aware reads.
 
 Write identity always keeps providers separate.  This policy only composes the
-single number expected by existing non-exchange presentation consumers while
+effective opening/current prices requested by conventional odds readers while
 retaining per-field provenance in the read model.
 """
 

@@ -544,7 +544,6 @@ def _run_pre_start_check_simulation(
             oddsportal_context = OddsPortalScrapeContext(
                 event_states={},
                 event_ids=set(),
-                data_cache={},
             )
 
         logger.info(
@@ -580,7 +579,6 @@ def _run_pre_start_check_simulation(
         oddsportal_context = OddsPortalScrapeContext(
             event_states={},
             event_ids=set(),
-            data_cache={},
         )
 
         logger.info(

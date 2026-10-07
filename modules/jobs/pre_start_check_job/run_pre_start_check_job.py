@@ -371,6 +371,9 @@ def run_pre_start_odds_moments(
             if candidate.get("should_extract_odds")
         ),
     )
+    # These synchronous phases commit their quotes before returning. Alert
+    # evaluation reads only the DB; its OddsPortal barrier waits for the async
+    # worker's post-persistence completion signal.
     if evaluate_key_moments:
         evaluate_pre_start_key_moments(
             runtime,

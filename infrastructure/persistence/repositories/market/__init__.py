@@ -1,11 +1,4 @@
-"""Persistence collaborators for the odds market schema refactor.
-
-See docs/refactors/db-schema-odds-refactor.md for the full design and the
-phase each module belongs to. This subpackage exists to split
-`market_repository.py` (market identity, choice writes, exchange quote
-writes, snapshot writes, read queries) into single-responsibility units
-instead of one monolithic repository class.
-"""
+"""Canonical market persistence, odds reads and quote integrity collaborators."""
 
 from .exchange_quote_payload import ExchangeQuotePayload
 from .market_choice_quote_merge_policy import (
@@ -23,14 +16,11 @@ from .market_quote_read_policy import (
     QuoteReadPriorityPolicy,
     load_quote_read_priority_policy,
 )
-from .market_read_models import (
-    ExternalChoiceQuote,
-    ExternalMarketQuoteBlock,
-    ExternalMarketQuoteReadResult,
-    MarketQuoteReadDiagnostic,
-    QuoteFieldOrigin,
+from .market_odds_read_models import (
+    ChoiceOddsState, MarketOddsState, MarketOddsReadResult,
+    MarketOddsReadDiagnostic, OddsPrice, QuotePriceOrigin,
 )
-from .market_read_queries import MarketReadQueries
+from .market_odds_read_repository import MarketOddsReadRepository
 from .market_quote_readiness import (
     MarketQuoteReadinessAuditor,
     MarketQuoteReadinessIssue,
@@ -48,15 +38,16 @@ __all__ = [
     "QuoteUpsertResult",
     "compute_movement",
     "decide_quote_merge",
-    "ExternalChoiceQuote",
-    "ExternalMarketQuoteBlock",
-    "ExternalMarketQuoteReadResult",
-    "MarketQuoteReadDiagnostic",
-    "MarketReadQueries",
+    "ChoiceOddsState",
+    "MarketOddsState",
+    "MarketOddsReadResult",
+    "MarketOddsReadDiagnostic",
+    "MarketOddsReadRepository",
     "MarketQuoteReadinessAuditor",
     "MarketQuoteReadinessIssue",
     "MarketQuoteReadinessReport",
-    "QuoteFieldOrigin",
+    "QuotePriceOrigin",
+    "OddsPrice",
     "QuoteFieldPriority",
     "QuoteReadPriorityPolicy",
     "load_quote_read_priority_policy",

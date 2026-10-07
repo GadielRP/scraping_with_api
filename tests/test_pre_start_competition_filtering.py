@@ -203,7 +203,7 @@ def test_pipeline_gate_filters_before_alerts_and_pillars(monkeypatch):
     key_moment_evaluation.evaluate_pre_start_key_moments(
         SimpleNamespace(event_repo=SimpleNamespace()),
         event_plan,
-        SimpleNamespace(event_states={}, event_ids=set(), data_cache={}),
+        SimpleNamespace(event_states={}, event_ids=set()),
     )
 
     assert calls == [
@@ -279,7 +279,7 @@ def test_legacy_alert_pipeline_does_not_load_pillar_trajectory(monkeypatch):
     key_moment_evaluation.evaluate_pre_start_key_moments(
         SimpleNamespace(event_repo=SimpleNamespace()),
         event_plan,
-        SimpleNamespace(event_states={}, event_ids=set(), data_cache={}),
+        SimpleNamespace(event_states={}, event_ids=set()),
     )
 
     assert calls == ["alerts"]
