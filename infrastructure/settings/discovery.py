@@ -55,6 +55,8 @@ class DiscoveryFilters:
 @dataclass(frozen=True, slots=True)
 class SofascoreDiscoverySettings:
     filters: DiscoveryFilters = field(default_factory=DiscoveryFilters)
+    tennis_ranking_filter_enabled: bool = False
+    tennis_ranking_cutoff: int = 120  # Reject when any known participant rank >= cutoff.
     dropping_interval_hours: int = 6
     secondary_interval_hours: int = 6
     daily_check_interval_minutes: int = 240
@@ -68,7 +70,8 @@ class SofascoreDiscoverySettings:
 
     def __post_init__(self):
         for name in ("dropping_interval_hours", "secondary_interval_hours", "daily_check_interval_minutes",
-                     "team_event_workers", "odds_workers", "daily_progress_retention_days"):
+                     "team_event_workers", "odds_workers", "daily_progress_retention_days",
+                     "tennis_ranking_cutoff"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
         for hour in (self.daily_next_utc_day_open_hour, self.daily_current_utc_day_open_hour):
@@ -119,6 +122,9 @@ def _validate_times(times):
 # from that snapshot use the original Config/provider job defaults above.
 # Each provider owns its switches and can override the shared audited lists.
 SOFASCORE = SofascoreDiscoverySettings(
+    # Optional tennis policy enabled explicitly; the constructor defaults to disabled.
+    tennis_ranking_filter_enabled=True,
+    tennis_ranking_cutoff=120,
     dropping_interval_hours=3,
     secondary_interval_hours=6,
     daily_check_interval_minutes=480,

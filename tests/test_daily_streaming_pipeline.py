@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import pytest
 from infrastructure.persistence.database import DatabaseManager
-from infrastructure.persistence.models import Event, DailyDiscoveryLog
+from infrastructure.persistence.models import Event, EventSourceMapping, DailyDiscoveryLog
 from infrastructure.persistence.orm_base import Base
 from infrastructure.persistence.repositories import event_repository, daily_discovery_repository
 from infrastructure.settings import Config
@@ -159,3 +159,48 @@ def test_excluded_calendar_category_does_not_download_or_normalize_events(databa
     with database.get_session() as session:
         assert session.query(Event).count() == 0
         assert session.query(DailyDiscoveryLog).one().status == "completed"
+
+
+@pytest.mark.parametrize("enabled,expected_ids", [(True, {102}), (False, {101, 102})])
+def test_tennis_ranking_toggle_filters_before_normalization_and_writes(database, monkeypatch, enabled, expected_ids):
+    monkeypatch.setattr(Config, "SUPPORTED_SPORTS", ["tennis"])
+    monkeypatch.setattr(settings, "SOFASCORE", replace(
+        settings.SOFASCORE, tennis_ranking_filter_enabled=enabled, tennis_ranking_cutoff=120,
+    ))
+    daily_discovery_repository.DailyDiscoveryRepository.initialize_sports_for_slot(
+        "2026-10-03", "current_utc_day", ["tennis"]
+    )
+    normalized_ids = []
+
+    class TennisProvider(Provider):
+        def download_json(self, endpoint, body_file, params=None):
+            if "scheduled-events" not in endpoint:
+                return super().download_json(endpoint, body_file, params)
+            events = []
+            for source_id, ranking in [(101, 120), (102, 119)]:
+                events.append(dict(
+                    id=source_id, slug=f"tennis-{source_id}", startTimestamp=1791108000,
+                    homeTeam=dict(id=source_id + 100, name=f"Home {source_id}", gender="M",
+                                  playerTeamInfo=dict(currentRanking=ranking)),
+                    awayTeam=dict(id=source_id + 200, name=f"Away {source_id}", gender="M"),
+                    tournament=dict(id=50, name="ATP Tournament",
+                                    uniqueTournament=dict(id=5, name="ATP Tournament"),
+                                    category=dict(name="ATP", sport=dict(name="Tennis", id=5))),
+                    status=dict(type="notstarted", code=0),
+                ))
+            body_file.write(json.dumps({"events": events}).encode())
+            body_file.seek(0)
+
+        @staticmethod
+        def normalize_event_payload(raw, discovery_source):
+            normalized_ids.append(raw["id"])
+            return normalize_event_payload(raw, discovery_source)
+
+    stats = discover_events_for_date("2026-10-03", ["tennis"], "current_utc_day", client=TennisProvider())
+    assert set(normalized_ids) == expected_ids
+    assert stats["events_processed"] == stats["events_persisted"] == len(expected_ids)
+    assert stats["events_failed"] == stats["sports_failed"] == 0
+    with database.get_session() as session:
+        assert session.query(Event).count() == len(expected_ids)
+        assert {int(row.source_event_id) for row in session.query(EventSourceMapping)} == expected_ids
+        assert session.query(DailyDiscoveryLog).filter_by(sport="tennis").one().status == "completed"

@@ -1,4 +1,4 @@
-"""Shared discovery admission: provider scopes, time and curated exclusions."""
+"""Discovery admission: provider scopes, time, rankings and curated exclusions."""
 
 from __future__ import annotations
 
@@ -175,8 +175,21 @@ def sofascore_tournament_filter_reason(event, scope, sport, *, policy=None):
     )
 
 
+def _participant_ranking(participant) -> int | None:
+    """Prefer the current player ranking, falling back to the event's ranking."""
+    if not isinstance(participant, dict):
+        return None
+    player_info = participant.get("playerTeamInfo") or {}
+    current_ranking = player_info.get("currentRanking") if isinstance(player_info, dict) else None
+    for value in (current_ranking, participant.get("ranking")):
+        ranking = _as_int(value)
+        if ranking is not None and ranking > 0:
+            return ranking
+    return None
+
+
 def sofascore_event_filter_reason(event, scope=None, *, policy=None, now=None):
-    """Evaluate either a raw SofaScore event or its normalized envelope."""
+    """Evaluate raw or normalized data; participant rankings require raw data."""
     policy = policy or settings.SOFASCORE.filters
     if not isinstance(event, dict) or not isinstance(event.get("event", event), dict):
         return "invalid_event_payload"
@@ -187,9 +200,16 @@ def sofascore_event_filter_reason(event, scope=None, *, policy=None, now=None):
         sport_id, _category_name(event),
         source_competition_ids(event).source_unique_tournament_id, policy,
     )
-    if reason or not policy.future_only:
+    if reason:
         return reason
     payload = event.get("event", event)
+    if settings.SOFASCORE.tennis_ranking_filter_enabled and sport_id in ("tennis", "tennis_doubles"):
+        for side in ("homeTeam", "awayTeam"):
+            ranking = _participant_ranking(payload.get(side))
+            if ranking is not None and ranking >= settings.SOFASCORE.tennis_ranking_cutoff:
+                return "tennis_ranking_excluded"
+    if not policy.future_only:
+        return None
     raw_start = payload.get("startTimestamp")
     if raw_start is None:
         return "missing_start_timestamp"

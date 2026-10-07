@@ -57,6 +57,27 @@ in `.env`; `SUPPORTED_SPORTS` remains a shared application constraint.
 [investigation and plan](../analysis/discovery-filter-plan.md) for evidence and
 the estimated scope of the initial exclusions. Existing history is retained.
 
+The optional SofaScore tennis ranking filter is configured on `SOFASCORE`:
+`tennis_ranking_filter_enabled=True` and `tennis_ranking_cutoff=120` in the current
+runtime configuration. The settings constructor defaults to a disabled filter
+(`False`), with cutoff 120. When enabled, it rejects a tennis event (singles or
+doubles) when either participant's known ranking is **greater than or equal to**
+the cutoff. A numerically higher ranking means a worse position; rank 120 is
+rejected at cutoff 120, while rank 119 is eligible.
+Each participant's `playerTeamInfo.currentRanking` takes precedence over the
+top-level `ranking`, which is used when the current ranking is absent or invalid.
+Only positive rankings are considered known. A missing ranking does not reject
+an event, but one known ranking at or above the cutoff suffices even when the
+other is missing. This switch is independent of `future_only`.
+
+The shared raw-event gate applies this filter before normalization in daily,
+dropping and secondary discovery, including nearest team events. Rejections use
+the log reason `tennis_ranking_excluded`. It uses rankings already present on
+`homeTeam` / `awayTeam`, without extra provider requests or rank persistence.
+Normalized events no longer contain these fields, so ranking admission belongs
+at the raw source boundary. This optional filter does not affect OddsPapi fixture
+admission or delete existing events or mappings. Restart after editing settings.
+
 Logs expose reason counts for raw source admission and persistence boundaries.
 `events_filtered` counts rejections at the daily persistence boundary;
 earlier calendar/source rejections are reported by `Daily source ... counts`.
