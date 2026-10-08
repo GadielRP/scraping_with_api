@@ -51,12 +51,15 @@ class FixtureDiscoveryService:
                     create_mappings=create_mappings,
                     scheduled_local_date=scheduled_local_date,
                     scheduled_time=scheduled_time,
-                    discovery_completed_at=DailyDiscoveryRepository.latest_completed_at(
-                        target_date_str,
-                        sofascore_sport_slugs(
-                            kwargs.get("sports") if kwargs.get("sports") is not None
-                            else oddspapi_discovery_sport_ids()
-                        ),
+                    discovery_completed_at=(
+                        DailyDiscoveryRepository.latest_completed_at(
+                            target_date_str,
+                            sofascore_sport_slugs(
+                                kwargs.get("sports") if kwargs.get("sports") is not None
+                                else oddspapi_discovery_sport_ids()
+                            ),
+                        )
+                        if settings.ODDSPAPI.reconciliation_enabled else None
                     ),
                 )
                 if not tracked_run:

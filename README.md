@@ -87,7 +87,7 @@ Oddspapi jobs are grouped under `modules/jobs/oddspapi/fixture_discovery/` for m
 Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
 
 clean_league_cache/ – clears stale OddsPortal league cache rows before the day’s discovery.
-daily_discovery/ – runs an advance pass at 17:02 and an update at 08:02, with fixed UTC target dates and per-sport retries every 30 minutes, including overnight. It maintains progress via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
+daily_discovery/ – runs an advance pass at 17:07 and an update at 08:07, with fixed UTC target dates and per-sport retries every 30 minutes, including overnight. It maintains progress via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
 midnight_sync_job/ – runs after midnight to collect match results and update prediction logs. Reporting is refreshed independently by maintenance polling.
 discovery/ – bounded provider fetching, explicit event/odds admission policies and calendar audit logging. The application runtime dispatches jobs to separate pre-start, closing and maintenance workers.
@@ -561,7 +561,9 @@ python main.py start
 
 `infrastructure/scheduler/schedules.py` registers fixture discovery at
 `ODDSPAPI.scheduled_times` in `infrastructure/settings/discovery.py`.
-The default is `17:47` in `Config.TIMEZONE`. Edit the provider settings and restart,
+`ODDSPAPI.reconciliation_enabled` defaults to `True`: newer Daily Discovery completion allows a successful fixture run to reconcile again. Set it to `False` to disable that replay while preserving retries for missing, failed or interrupted runs.
+
+The default schedule is `17:47` in `Config.TIMEZONE`. Edit the provider settings and restart,
 for example:
 
 ```python

@@ -40,13 +40,13 @@ def progress(monkeypatch):
 
 @pytest.mark.parametrize("when, expected", [
     ("2026-10-05T16:59", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion")]),
-    ("2026-10-05T17:01", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion")]),
-    ("2026-10-05T17:02", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion"), ("2026-10-06", "anticipada")]),
+    ("2026-10-05T17:06", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion")]),
+    ("2026-10-05T17:07", [("2026-10-05", "anticipada"), ("2026-10-05", "actualizacion"), ("2026-10-06", "anticipada")]),
     ("2026-10-05T23:48", [("2026-10-06", "anticipada")]),
     ("2026-10-06T00:00", [("2026-10-06", "anticipada")]),
     ("2026-10-06T07:59", [("2026-10-06", "anticipada")]),
-    ("2026-10-06T08:01", [("2026-10-06", "anticipada")]),
-    ("2026-10-06T08:02", [("2026-10-06", "anticipada"), ("2026-10-06", "actualizacion")]),
+    ("2026-10-06T08:06", [("2026-10-06", "anticipada")]),
+    ("2026-10-06T08:07", [("2026-10-06", "anticipada"), ("2026-10-06", "actualizacion")]),
     ("2026-12-31T23:48", [("2027-01-01", "anticipada")]),
 ])
 def test_due_passes_keep_the_opening_date_and_expire_past_utc_days(monkeypatch, when, expected):
@@ -72,8 +72,8 @@ def test_failed_sport_retries_overnight_without_repeating_completed_sport(progre
         return {"events_inserted": 1}
 
     monkeypatch.setattr(daily_job, "discover_events_for_date", discover)
-    # Late startup reconstructs the missed 17:02 occurrence, with no rows present.
-    for when in ("2026-10-05T23:48", "2026-10-06T00:18", "2026-10-06T07:48", "2026-10-06T08:02", "2026-10-06T08:30"):
+    # Late startup reconstructs the missed 17:07 occurrence, with no rows present.
+    for when in ("2026-10-05T23:48", "2026-10-06T00:18", "2026-10-06T07:48", "2026-10-06T08:07", "2026-10-06T08:30"):
         set_now(monkeypatch, when)
         daily_job.run_daily_discovery_job()
 
@@ -89,7 +89,7 @@ def test_failed_sport_retries_overnight_without_repeating_completed_sport(progre
             ("actualizacion", "football", 1), ("actualizacion", "tennis", 1),
         ]
         assert all(row.status == "completed" for row in rows)
-    assert DailyDiscoveryRepository.latest_completed_at("2026-10-06", ["football"]) == local("2026-10-06T08:02")
+    assert DailyDiscoveryRepository.latest_completed_at("2026-10-06", ["football"]) == local("2026-10-06T08:07")
 
 
 def test_expired_failures_are_not_replayed(progress, monkeypatch):
@@ -111,7 +111,7 @@ def test_calendar_has_two_starts_and_thirty_minute_retries():
     clock = schedule.Scheduler()
     configure_calendar(clock, JobExecutionSettings())
     daily = [job for job in clock.jobs if job.job_func.args[1] == "daily"]
-    assert sorted(job.at_time.strftime("%H:%M") for job in daily if job.at_time) == ["08:02", "17:02"]
+    assert sorted(job.at_time.strftime("%H:%M") for job in daily if job.at_time) == ["08:07", "17:07"]
     retry = next(job for job in daily if job.at_time is None)
     assert (retry.interval, retry.unit) == (30, "minutes")
 

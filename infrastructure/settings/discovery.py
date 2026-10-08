@@ -60,8 +60,8 @@ class SofascoreDiscoverySettings:
     dropping_interval_hours: int = 6
     secondary_interval_hours: int = 6
     daily_check_interval_minutes: int = 30
-    daily_advance_time: str = "17:02"
-    daily_refresh_time: str = "08:02"
+    daily_advance_time: str = "17:07"
+    daily_refresh_time: str = "08:07"
     daily_progress_retention_days: int = 1
     team_event_workers: int = 10
     odds_workers: int = 5
@@ -88,6 +88,7 @@ class SofascoreDiscoverySettings:
 class OddspapiDiscoverySettings:
     filters: DiscoveryFilters = field(default_factory=DiscoveryFilters)
     scheduled_times: tuple[str, ...] = ("17:47",)
+    reconciliation_enabled: bool = True  # Replay success after newer Daily Discovery completion.
     catchup_lookback_hours: int = 36
     max_catchup_runs: int = 2
     status_id: int = 0
@@ -124,8 +125,8 @@ SOFASCORE = SofascoreDiscoverySettings(
     dropping_interval_hours=3,
     secondary_interval_hours=6,
     daily_check_interval_minutes=30,
-    daily_advance_time="17:02",
-    daily_refresh_time="08:02",
+    daily_advance_time="17:07",
+    daily_refresh_time="08:07",
     daily_progress_retention_days=1,
     filters=DiscoveryFilters(
         future_only=True,
@@ -138,6 +139,7 @@ SOFASCORE = SofascoreDiscoverySettings(
 )
 ODDSPAPI = OddspapiDiscoverySettings(
     scheduled_times=("17:47",),
+    reconciliation_enabled=True,
     catchup_lookback_hours=36,
     max_catchup_runs=2,
     filters=DiscoveryFilters(

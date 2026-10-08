@@ -160,6 +160,7 @@ reduced_sofascore.sqlite3
 # Manifests, JSONL event populations, checkpoints and result logs are
 # environment-specific operational state and can become very large.
 /data/backfills/
+data/runtime/
 
 
 # =========================================================

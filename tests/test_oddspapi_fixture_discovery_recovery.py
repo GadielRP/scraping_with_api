@@ -60,7 +60,11 @@ def test_missed_slot_is_still_recovered_next_morning(monkeypatch):
     assert slots[-1][2] == "2026-07-25"
 
 
-def test_fixture_discovery_records_success(monkeypatch):
+@pytest.mark.parametrize("reconciliation_enabled", [True, False])
+def test_fixture_discovery_records_success(monkeypatch, reconciliation_enabled):
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(
+        settings.ODDSPAPI, reconciliation_enabled=reconciliation_enabled,
+    ))
     calls = []
     completed_at = datetime(2026, 7, 24, 23, 46, tzinfo=timezone.utc)
     monkeypatch.setattr(scheduler_module.DailyDiscoveryRepository, "latest_completed_at", lambda *args: completed_at)
@@ -104,7 +108,7 @@ def test_fixture_discovery_records_success(monkeypatch):
     assert calls[0][0] == "begin"
     assert calls[0][1] == ("2026-07-25",)
     assert calls[0][2]["trigger"] == "catch_up"
-    assert calls[0][2]["discovery_completed_at"] == completed_at
+    assert calls[0][2]["discovery_completed_at"] == (completed_at if reconciliation_enabled else None)
     assert calls[0][2]["sport_scope"] == (
         OddspapiFixtureDiscoveryRunRepository.normalize_sport_scope(oddspapi_sport_ids())
     )
@@ -408,3 +412,24 @@ def test_deferred_fixture_work_is_retryable_without_failure_alert(monkeypatch):
     with pytest.raises(WorkDeferred):
         service.retry_due()
     assert failures == [("2026-10-06", "Deferred by maintenance executor")]
+
+
+@pytest.mark.parametrize("previous_status", ["success", "failed"])
+def test_disabled_reconciliation_preserves_failed_run_retries(fixture_database, monkeypatch, previous_status):
+    monkeypatch.setattr(settings, "ODDSPAPI", replace(settings.ODDSPAPI, reconciliation_enabled=False))
+    target = "2099-01-04"
+    assert OddspapiFixtureDiscoveryRunRepository.begin(target, trigger="scheduled", sport_scope="soccer")
+    if previous_status == "success":
+        OddspapiFixtureDiscoveryRunRepository.finish_success(target, {}, sport_scope="soccer")
+    else:
+        OddspapiFixtureDiscoveryRunRepository.finish_failed(target, "HTTP failure", sport_scope="soccer")
+
+    monkeypatch.setattr(scheduler_module.DailyDiscoveryRepository, "latest_completed_at",
+                        lambda *args: pytest.fail("disabled reconciliation must not query Daily progress"))
+    calls = []
+    summary = SimpleNamespace(total_fixtures_fetched=0, total_mappings_created=0, sports=[], to_dict=lambda: {})
+    monkeypatch.setattr(scheduler_module, "run_fixture_discovery_job", lambda **kwargs: calls.append(kwargs) or summary)
+    monkeypatch.setattr(FixtureDiscoveryService, "refresh_usage", lambda self: False)
+    result = FixtureDiscoveryService().run(target_date=target, sports={"soccer": 10}, _trigger="catch_up")
+    assert len(calls) == (1 if previous_status == "failed" else 0)
+    assert result is (summary if previous_status == "failed" else None)
