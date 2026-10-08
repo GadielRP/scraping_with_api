@@ -91,6 +91,11 @@ def run_sofascore_backfill_odds(
                 source_event_id=sofascore_event_id,
                 minutes_until_start=candidate.get("minutes_until_start"),
                 payload=raw_payload,
+                competition_slug=candidate["event_data"].get("competition_slug"),
+                sport=candidate["event_data"].get("sport"),
+                home_participant=candidate["event_data"].get("home_team"),
+                away_participant=candidate["event_data"].get("away_team"),
+                event_label=candidate["event_data"].get("slug"),
             )
         if result.endpoint_missing:
             logger.info(

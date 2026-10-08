@@ -322,7 +322,7 @@ def test_custom_pipeline_never_builds_an_executor_even_with_multiple_keys():
     assert captured[0]["exchange_fetch_executor"] is None
 
 
-def test_debug_response_writer_unicode_team_names_normalization(tmp_path, monkeypatch):
+def test_debug_response_writer_competition_folder(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     writer = batch_module.OddspapiDebugResponseWriter
 
@@ -333,10 +333,12 @@ def test_debug_response_writer_unicode_team_names_normalization(tmp_path, monkey
         payload={"odds": []},
         endpoint="odds",
         minutes_until_start=5,
+        competition_slug="LaLiga",
+        sport="Football",
         home_participant="Málaga CF",
         away_participant="Villarreal",
     )
 
     assert saved_path is not None
-    assert "286174_Malaga_CF_Villarreal" in str(saved_path)
+    assert saved_path.resolve().parent == tmp_path / "debug" / "oddspapi_odds_responses" / "football" / "laliga" / "286174_Malaga_CF_Villarreal"
     assert saved_path.exists()

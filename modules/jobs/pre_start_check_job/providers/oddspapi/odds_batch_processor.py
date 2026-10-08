@@ -310,6 +310,8 @@ class OddspapiPreStartOddsBatchProcessor:
                 endpoint=endpoint,
                 outcome_id=outcome_id,
                 minutes_until_start=candidate.minutes_until_start,
+                competition_slug=candidate.competition_slug,
+                sport=candidate.sport,
                 home_participant=candidate.home_participant,
                 away_participant=candidate.away_participant,
                 event_label=candidate.event_label,

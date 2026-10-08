@@ -59,6 +59,7 @@ class EventRepository:
             "home_participant_id": event_obj.home_participant_id,
             "away_participant_id": event_obj.away_participant_id,
             "competition_id": event_obj.competition_id,
+            "competition_slug": competition_ref.slug if competition_ref else None,
             "home_source_participant_id": (
                 home_participant.source_participant_id if home_participant else None
             ),

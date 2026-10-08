@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 
 
+from ..debug_paths import event_folder_name, sport_folder_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +38,12 @@ class SofaScoreDebugResponseWriter:
         source_event_id: int,
         minutes_until_start: int | float | None,
         payload: dict,
+        competition_slug: str | None = None,
+        sport: str | None = None,
+        home_participant: str | None = None,
+        away_participant: str | None = None,
+        event_label: str | None = None,
+        event_folder: str | None = None,
     ) -> Path | None:
         """Save raw provider JSON without affecting successful ingestion."""
 
@@ -49,7 +57,14 @@ class SofaScoreDebugResponseWriter:
                 f"t_{cls._moment_token(minutes_until_start)}",
             )
         ) + ".json"
-        path = cls.OUTPUT_DIRECTORY / filename
+        competition_folder = re.sub(
+            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
+        ).strip("_") or "unknown_competition"
+        folder_name = event_folder or event_folder_name(
+            event_id, home_participant=home_participant,
+            away_participant=away_participant, event_label=event_label,
+        )
+        path = cls.OUTPUT_DIRECTORY / sport_folder_name(sport) / competition_folder / folder_name / filename
 
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

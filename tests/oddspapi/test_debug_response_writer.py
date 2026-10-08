@@ -21,12 +21,14 @@ def test_debug_response_writer_with_minutes_until_start(tmp_path, monkeypatch):
         payload=payload,
         endpoint="odds",
         minutes_until_start=5,
+        competition_slug="Liga-MX-Apertura",
+        sport="Football",
         home_participant="Real Madrid",
         away_participant="Real Sociedad",
     )
 
     assert saved_path is not None
-    assert saved_path.parent.name == "207699_Real_Madrid_Real_Sociedad"
+    assert saved_path.parent == tmp_path / "football" / "liga_mx_apertura" / "207699_Real_Madrid_Real_Sociedad"
     assert saved_path.name == "207699_id1000000872478460_t_5_odds_pinnacle_bet365_betfair-ex.json"
     assert saved_path.exists()
 
@@ -49,7 +51,7 @@ def test_debug_response_writer_without_minutes_until_start(tmp_path, monkeypatch
     )
 
     assert saved_path is not None
-    assert saved_path.parent.name == "207699"
+    assert saved_path.parent == tmp_path / "unknown_sport" / "unknown_competition" / "207699"
     assert saved_path.name == "207699_id1000000872478460_historical_pinnacle_bet365.json"
     assert saved_path.exists()
 
@@ -173,6 +175,8 @@ def test_batch_processor_saves_only_odds_when_save_odds_responses_enabled(monkey
         source_sport_id="10",
         home_participant="Team A",
         away_participant="Team B",
+        competition_slug="liga-mx-apertura",
+        sport="Football",
     )
     # Candidate 2: live (0 mins until start) -> /historical-odds
     cand_2 = OddspapiPreStartCandidate(
@@ -222,7 +226,7 @@ def test_batch_processor_saves_only_odds_when_save_odds_responses_enabled(monkey
     assert saved_calls[0]["event_id"] == 101
     assert saved_calls[0]["endpoint"] == ODDSPAPI_CURRENT_ODDS_ENDPOINT
     assert saved_calls[0]["minutes_until_start"] == 30
-    assert saved_calls[0]["home_participant"] == "Team A"
-    assert saved_calls[0]["away_participant"] == "Team B"
+    assert saved_calls[0]["competition_slug"] == "liga-mx-apertura"
+    assert saved_calls[0]["sport"] == "Football"
 
 

@@ -61,10 +61,7 @@ def collect_response_files(target_path: Path) -> list[tuple[int | str, Path]]:
     if target_path.is_file():
         files = [target_path]
     elif target_path.is_dir():
-        files = sorted(target_path.glob("*.json"))
-        # Also check subdirectories recursively if root debug folder is passed
-        if not files:
-            files = sorted(target_path.glob("*/*.json"))
+        files = sorted(target_path.rglob("*.json"))
     else:
         raise FileNotFoundError(f"Path does not exist: {target_path}")
 

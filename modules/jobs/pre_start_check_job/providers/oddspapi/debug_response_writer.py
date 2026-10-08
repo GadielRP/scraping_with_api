@@ -10,6 +10,8 @@ from typing import Iterable
 import unicodedata
 
 
+from ..debug_paths import event_folder_name, sport_folder_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,23 +46,6 @@ class OddspapiDebugResponseWriter:
         return cls._filename_token(label, fallback="endpoint")
 
     @classmethod
-    def _event_folder_token(
-        cls,
-        event_id: int,
-        *,
-        home_participant: str | None = None,
-        away_participant: str | None = None,
-        event_label: str | None = None,
-    ) -> str:
-        home_token = cls._filename_token(home_participant, fallback="") if home_participant else ""
-        away_token = cls._filename_token(away_participant, fallback="") if away_participant else ""
-        if home_token and away_token:
-            return f"{event_id}_{home_token}_{away_token}"
-        if event_label:
-            return f"{event_id}_{cls._filename_token(event_label, fallback='event')}"
-        return str(event_id)
-
-    @classmethod
     def save(
         cls,
         *,
@@ -71,6 +56,8 @@ class OddspapiDebugResponseWriter:
         endpoint: str | None = None,
         outcome_id: str | int | None = None,
         minutes_until_start: int | None = None,
+        competition_slug: str | None = None,
+        sport: str | None = None,
         home_participant: str | None = None,
         away_participant: str | None = None,
         event_label: str | None = None,
@@ -81,13 +68,14 @@ class OddspapiDebugResponseWriter:
         if not isinstance(payload, dict):
             return None
 
-        folder_name = event_folder or cls._event_folder_token(
-            event_id,
-            home_participant=home_participant,
-            away_participant=away_participant,
-            event_label=event_label,
+        competition_folder = re.sub(
+            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
+        ).strip("_") or "unknown_competition"
+        folder_name = event_folder or event_folder_name(
+            event_id, home_participant=home_participant,
+            away_participant=away_participant, event_label=event_label,
         )
-        target_directory = cls.OUTPUT_DIRECTORY / folder_name
+        target_directory = cls.OUTPUT_DIRECTORY / sport_folder_name(sport) / competition_folder / folder_name
 
         bookmaker_tokens = [
             cls._filename_token(bookmaker, fallback="bookmaker")

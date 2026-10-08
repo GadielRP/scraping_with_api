@@ -230,7 +230,7 @@ def run_production_odds_phase(
         run_sofascore_pre_start_odds(
             event_plan.candidates,
             source_states,
-            debug_mode=show_persistence_report,
+            debug_mode=debug_mode,
             tracked_competition_ids=(
                 tracked_ids if restrict_sofascore_odds_extraction else None
             ),

@@ -775,6 +775,9 @@ def test_sofascore_debug_mode_saves_raw_response_by_event_and_moment(
         tmp_path
         / "debug"
         / "sofascore_odds_responses"
+        / "football"
+        / "unknown_competition"
+        / "101_Home_Away"
         / "101_9001_t_30.json"
     )
     assert result.events_ingested == 1
@@ -1309,14 +1312,14 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
         pre_start_odds_simulation,
         "run_sofascore_pre_start_odds",
         lambda event_infos, source_states, **_kwargs: calls.append(
-            ("sofascore", event_infos, source_states)
+            ("sofascore", event_infos, source_states, _kwargs["debug_mode"])
         ),
     )
     monkeypatch.setattr(
         pre_start_odds_simulation,
         "run_oddspapi_pre_start_odds",
         lambda event_infos, source_states, **_kwargs: (
-            calls.append(("oddspapi", event_infos, source_states))
+            calls.append(("oddspapi", event_infos, source_states, _kwargs["debug_mode"]))
             or SimpleNamespace(
                 requests_attempted=0,
                 events_ingested=0,
@@ -1349,6 +1352,8 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
         "sofascore",
         "oddspapi",
     ]
+    assert calls[1][3] is True
+    assert calls[2][3] is True
     assert calls[1][2] is states
     assert calls[2][2] is states
 
@@ -1910,6 +1915,8 @@ def test_debug_mode_saves_raw_oddspapi_response(tmp_path, monkeypatch):
         tmp_path
         / "debug"
         / "oddspapi_odds_responses"
+        / "unknown_sport"
+        / "unknown_competition"
         / "156608"
         / "156608_fixture-raw-1_t_-5_historical_pinnacle_bet365.json"
     )

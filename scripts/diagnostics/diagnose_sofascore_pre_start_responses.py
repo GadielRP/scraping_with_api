@@ -262,7 +262,7 @@ def discover_responses(
     if not input_directory.is_dir():
         raise FileNotFoundError(f"Input directory does not exist: {input_directory}")
 
-    for path in sorted(input_directory.glob("*.json")):
+    for path in sorted(input_directory.rglob("*.json")):
         if path.stem.startswith(REPORT_FILENAME_PREFIX):
             continue
         match = _FILENAME_RE.match(path.name)

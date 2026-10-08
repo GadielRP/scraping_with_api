@@ -31,6 +31,8 @@ class OddspapiPreStartCandidate:
     home_participant: str | None = None
     away_participant: str | None = None
     event_label: str | None = None
+    competition_slug: str | None = None
+    sport: str | None = None
 
 
 def _canonical_event_id(event_info: dict) -> int | None:
@@ -138,6 +140,8 @@ def select_oddspapi_pre_start_candidates(
                 source_sport_id=source_state.source_sport_id if source_state else None,
                 is_live=_is_live_moment(minutes_until_start),
                 competition_id=event_data.get("competition_id"),
+                competition_slug=event_data.get("competition_slug"),
+                sport=event_data.get("sport"),
                 starts_at=event_data.get("starts_at"),
                 home_participant=home_participant,
                 away_participant=away_participant,
