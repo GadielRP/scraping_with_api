@@ -34,13 +34,17 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(328, "Liga MX Apertura", "Football"),
     TrackedCompetition(261, "Liga Portugal", "Football"),
     TrackedCompetition(429, "Euroleague", "Basketball"),
-    TrackedCompetition(525, "Liiga", "Ice hockey"),
-    TrackedCompetition(180, "SHL", "Ice hockey"),
-    TrackedCompetition(5196, "NHL", "Ice hockey"),
+
+    # TURNED OFF DUE TO LACK OF ODDS MARKETS DATA: CURRENTLY ODDSPAPI ONLY RETURNS FULL TIME DATA, NO 1ST HALF DATA
+    # TrackedCompetition(525, "Liiga", "Ice hockey"),
+    # TrackedCompetition(180, "SHL", "Ice hockey"),    
+    # TrackedCompetition(5196, "NHL", "Ice hockey"),
+
     TrackedCompetition(317, "Eredivisie", "Football"),
     TrackedCompetition(5153, "NFL", "American football"),
     TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
     TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
+    TrackedCompetition(447, "NBA preseason", "Basketball"),
 )
 
 TRACKED_COMPETITIONS_BY_ID: Final[Mapping[int, TrackedCompetition]] = (

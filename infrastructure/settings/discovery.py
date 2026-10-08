@@ -88,7 +88,7 @@ class SofascoreDiscoverySettings:
 class OddspapiDiscoverySettings:
     filters: DiscoveryFilters = field(default_factory=DiscoveryFilters)
     scheduled_times: tuple[str, ...] = ("17:47",)
-    reconciliation_enabled: bool = True  # Replay success after newer Daily Discovery completion.
+    reconciliation_enabled: bool = False  # Replay success after newer Daily Discovery completion.
     catchup_lookback_hours: int = 36
     max_catchup_runs: int = 2
     status_id: int = 0

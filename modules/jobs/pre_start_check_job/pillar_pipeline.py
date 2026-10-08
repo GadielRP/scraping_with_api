@@ -262,7 +262,7 @@ def _save_pillar_debug_snapshots(
             _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", resolved_streak)
 
         logger.info(
-            "Pillar debug snapshots saved for event %s at %s (streak_analysis_saved=%s)",
+            "💾 Pillar debug snapshots saved for event %s at %s (streak_analysis_saved=%s)",
             event_id,
             debug_dir,
             resolved_streak is not None,
