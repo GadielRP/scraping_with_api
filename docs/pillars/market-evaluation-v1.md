@@ -1,242 +1,276 @@
-# Política común de mercados de P2–P5
+# Política común de evaluación de mercados de P2–P5
 
-P2, P3, P4 y P5 utilizan `market-evaluation-v1` y el contrato de resultados
-`payload_schema_version = 4`. P1 conserva su motor, versiones y semántica.
-El éxito indica que se calculó una señal; no certifica cobertura completa ni
-confianza estadística.
+[Guía funcional del flujo](guia-funcional/00-flujo-principal.md) · [Entradas y expedientes](inputs.md) · [Conservación de resultados](mining-persistence.md)
 
-## Responsabilidades y dependencias
+Documento contrastado con el código el 8 de octubre de 2026. Explica cómo P2, P3, P4 y P5 acuerdan qué cuotas pueden leer, qué momento representan y qué condiciones de mercado están comparando. La política se identifica como `market-evaluation-v1`; el formato actual de sus resultados es `payload_schema_version = 4`.
+
+P1 conserva sus propios motores y formatos. Los detalles de cada fórmula están en las guías de [P2](guia-funcional/02-pilar-2-mercado-de-lado.md), [P3](guia-funcional/03-pilar-3-mercado-de-totales.md), [P4](guia-funcional/04-pilar-4-movimiento-temporal.md) y [P5](guia-funcional/05-pilar-5-memoria-de-precios.md).
+
+## 1. Qué resuelve esta política
+
+Un precio solo se puede interpretar si se sabe a qué resultado, periodo, línea y fuente pertenece. Esta política prepara esa identidad antes de que cada pilar aplique sus fórmulas.
+
+Un **contrato** es la condición del mercado: por ejemplo, Over 2.5 de tiempo reglamentario. Una **observación** es el precio registrado para un resultado de ese contrato en un momento. Un **punto de evaluación**, también llamado checkpoint, es una lectura que representa un momento previsto, como cinco minutos antes del inicio.
+
+El recorrido común es:
 
 ```mermaid
-flowchart LR
-    A[Cuotas y snapshots del evento] --> B[Normalización e índice]
-    B --> C[Checkpoint causal común]
-    C --> D[Selección FT común]
-    D --> E[Dependencias por señal]
-    E --> F[Fórmulas de cada pilar]
-    F --> G[Resultado v4]
-    G --> H[Mining: run y señales]
-    E --> I[P5: agregado SQL y muestra congelada]
-    I --> F
+flowchart TD
+    A[Historial de cuotas del encuentro] --> B[Organizar identidad y procedencia]
+    B --> C[Elegir un momento observable]
+    C --> D[Elegir el periodo de tiempo completo]
+    D --> E[Preparar las entradas de cada lectura]
+    E --> F[Calcular señales de P2 a P5]
+    F --> G[Conservar valores y explicaciones]
 ```
 
-- `market_evaluation.py`: registro inmutable de bookmakers, contratos reconocidos,
-  capacidades, selección FT y cobertura. Agregar un bookmaker al registro exige
-  declarar sus capacidades antes de habilitar cálculos.
-- `odds_trajectory_context.py` y `market_snapshot_extractor.py`: identidad,
-  procedencia, indexación y extracción causal. El índice vive durante el evento.
-- `signal_dependencies.py` y `profile_evaluation.py`: dependencias y referencias
-  de P2/P3. Separan disponibilidad y diagnóstico de las fórmulas.
-- Los motores específicos reciben snapshots o series acotados. Las primitivas
-  numéricas comunes viven en `market_math.py`; P4 no importa matemática de P2/P3.
-- `trajectory_sampling.py`: validación, deduplicación, proyección de checkpoints y
-  corte por endpoint compartidos por la selección FT y P4. La decisión de si una
-  trayectoria permite calcular usa los puntos que admite el cálculo. Los puntos
-  derivados comparten procedencia; no existe caché global de observaciones.
-- `evaluation_contracts.py`: estado global, estado de ejecución y señales tipadas.
-- `mining/adapters/market.py`: persiste un resultado canónico, con units por señal
-  y métricas escalares. P5 depende del puerto `PriceMemoryReader`, inyectado por
-  el pipeline; SQL y transacciones quedan en infraestructura.
+P2–P5 comparten una selección temporal y un periodo de tiempo completo. Cada señal mantiene sus propios requisitos: una lectura calculable puede conservarse aunque otra no tenga suficientes ingredientes.
 
-Estas fronteras permiten modificar selección, fórmulas o almacenamiento por
-separado. Las diferencias legítimas de los pilares se mantienen en capacidades
-y dependencias; no hay un motor anterior activo ni un sistema de plugins.
+## 2. Casas, proveedores y capacidades
 
-## Selección temporal y FT
+Una **casa** publica el precio. Un **proveedor** entrega ese dato al sistema. Oddspapi puede entregar cuotas de Pinnacle; no se convierte por ello en la casa del contrato.
 
-El pipeline resuelve una sola instancia de `TargetMinuteSelection`, con la
-tolerancia configurada en `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES`, y construye
-un `EventMarketEvaluation` compartido por los cuatro motores. Los candidatos
-son contratos canónicos reconocidos y no live.
+El registro actual reconoce:
 
-1. Se examina `Full Time Including Overtime` en el checkpoint causal elegido.
-2. Se elige overtime si permite alguna lectura actual soportada: par de precios,
-   separación de líneas o movimiento temporal con sus observaciones requeridas.
-3. Si overtime no es utilizable, se evalúa `Full Time` de regulación.
-4. Si ninguno permite una lectura, FT queda sin seleccionar. Otros periodos
-   soportados pueden seguir aportando señales independientes.
+| Casa | Identificador `bookie_id` | Participación |
+|---|---|---|
+| Pinnacle | 302 | Lecturas de precios, líneas, movimiento y memoria. |
+| bet365 | 3 | Las mismas familias de lectura que estén soportadas. |
+| Betfair | 4 | Exchange: precios BACK/LAY y cantidades; en P5 es información de diagnóstico. |
 
-La prioridad no maximiza cobertura: una lectura OT válida prevalece sobre una
-regulación más completa. Cada pilar recibe únicamente el FT elegido; ningún
-bookmaker sustituye ese periodo. El historial de P5 no participa en esta decisión.
-`selection` conserva candidatos, contratos utilizables, bloqueos, checkpoint y
-motivo: `OVERTIME_PRIORITY`, `REGULATION_FALLBACK` o `NO_USABLE_FULL_TIME`.
+Un **mercado de intercambio**, o exchange, permite negociar posiciones entre participantes. BACK representa apoyar un resultado; LAY, tomar la posición contraria. Sus niveles y cantidades se conservan por resultado. Una lectura BACK puede ser válida aunque falte su correspondiente LAY.
 
-## Identidad y completitud local
+SofaScore participa en la recopilación y en el contexto deportivo, pero no es una casa admitida por los cálculos nuevos de esta política. No existe una casa obligatoria para que un pilar tenga algún resultado válido.
 
-Un contrato conserva clave/tipo canónico, familia, periodo, línea y condición
-live. Sus observaciones conservan mercado del proveedor, bookmaker, source,
-outcome, lado y nivel de exchange, quote/snapshot y timestamps. Dos mercados del
-proveedor no aportan fragmentos para fabricar un outcome vector completo.
-El registro usa únicamente tipos que existen en el catálogo actual.
+### Familias y periodos reconocidos
 
-Una cuota válida es decimal finita y mayor que uno. Tamaños y límites son
-opcionales cuando la fórmula usa solo precios. Los niveles BACK/LAY se conservan
-por outcome; una ambigüedad de LAY no invalida una lectura BACK independiente.
-Distintos contratos legítimos, como 1X2 y Home/Away, se calculan por separado.
+| Pilar | Familias | Periodos reconocidos |
+|---|---|---|
+| P2 | 1X2, Home/Away, Asian Handicap y Handicap estándar. | Tiempo reglamentario, tiempo completo con prórroga, primera mitad y primeras cinco entradas. |
+| P3 | Over/Under. | Tiempo reglamentario, tiempo completo con prórroga y primera mitad. |
+| P4 | 1X2, Home/Away, Asian Handicap y Over/Under. | Tiempo reglamentario, tiempo completo con prórroga, primera mitad y primer cuarto. |
+| P5 | 1X2 y Home/Away. | Tiempo completo seleccionado, reglamentario o con prórroga. |
 
-| Pilar | Lectura mínima y relaciones conservadas |
+Esta tabla describe capacidades generales. **No significa que exista toda combinación posible de familia y periodo**. El catálogo canónico actual reconoce:
+
+| Familia | Periodos presentes en el catálogo de esta política |
 |---|---|
-| P2 | Home y Away habilitan el edge de una familia. Si el contrato es 1X2, la falta de Draw mantiene la cobertura incompleta y se identifica la lectura `HOME_AWAY_PRICES_FROM_1X2`. Las comparaciones entre bookmakers, moneyline/handicap, exchange y FT/periodo secundario exigen sus dependencias y compatibilidad respectivas. First To Fifth Inning conserva su periodo y etiquetas propias. |
-| P3 | Over y Under habilitan el edge del contrato. La separación de líneas necesita las líneas; las comparaciones de precios en una misma línea exigen igualdad de periodo y línea. FT y First Half aportan lecturas independientes. BACK y LAY solo se exigen juntos cuando la fórmula usa ambos. |
-| P4 | Una métrica de movimiento necesita al menos dos observaciones válidas y endpoint operativo. La continuidad se exige por métrica: un gap puede permitir net move y bloquear velocidad/path. Un contrato terminado conserva observaciones y diagnósticos, sin exponer movimiento cero. Los cambios de línea se representan explícitamente; no se unen trayectorias de precios de contratos distintos. Conserva moneyline, Asian Handicap, totals y sus periodos ya soportados, incluido OU First Quarter. |
-| P5 | Vector actual moneyline FT por Pinnacle/bet365 y contrato. 1X2 exige Home/Draw/Away; Home/Away excluye Draw. El mínimo histórico sigue siendo tres eventos elegibles, con las mismas fórmulas y cuantización de precios a tres decimales. Betfair permanece diagnóstico y SofaScore no participa en cálculos nuevos. |
+| 1X2 | Tiempo reglamentario, primera mitad y primeras cinco entradas. |
+| Home/Away | Tiempo reglamentario, con prórroga, primera mitad y primeras cinco entradas. |
+| Over/Under | Tiempo reglamentario, con prórroga, primera mitad y primer cuarto. |
+| Asian Handicap | Tiempo reglamentario, con prórroga y primera mitad. |
+| Handicap estándar | Tiempo completo con prórroga y primeras cinco entradas. |
 
-El contrato recibido refleja la historia de los outcomes de la línea principal
-que seleccionó `/odds` y cuya historia reconstruyó `/historical-odds`. El filtro
-`main_line IS TRUE` no proporciona la sucesión de todas las main lines históricas.
-P4 solo puede observar transiciones presentes en sus inputs; no observar una
-transición no demuestra que el mercado real nunca cambiara de línea.
+Por ejemplo, P4 puede leer primer cuarto de totales, pero esta tabla no habilita automáticamente primer cuarto de 1X2. P2 conserva las primeras cinco entradas con su significado de béisbol; no las presenta como una mitad.
 
-No hay bookmaker obligatorio para el éxito global. Betfair ausente nunca bloquea
-globalmente un pilar. Un resultado neutral, incluyendo cero, cuenta como cálculo
-válido; un valor ausente se mantiene ausente.
+1X2 distingue victoria local, empate y victoria visitante. Home/Away compara local y visitante sin una opción de empate. Over/Under compara superar o quedar por debajo de una cifra total. El hándicap ajusta el marcador mediante una ventaja o desventaja; Asian Handicap identifica una familia de liquidación particular, descrita en la guía de P2.
 
-## Contrato y estados
+Una lectura denominada **edge** expresa una diferencia o ventaja relativa entre los precios de dos resultados según la fórmula de su pilar. No es por sí sola una probabilidad de acierto.
 
-El resultado contiene evento, pilar, versiones, checkpoint, selección FT,
-`signals`, `coverage`, `inputs`, `contracts`, `analysis`, evidencia y diagnósticos.
-Las entradas se guardan una vez; señales y series apuntan a referencias.
-Los análisis específicos conservan los intermedios útiles para explicar fórmulas.
-Las señales derivadas de varias fuentes heredan los contratos de sus series
-constituyentes, incluso cuando no tienen un único `BOOKIE_ID`. P4 añade al
-`checkpoint` sus límites nominal y operativo sin modificar la selección compartida.
-Su logging de diagnóstico lee el resultado: límites temporales, fuentes, series,
-endpoints y motivos de indisponibilidad permanecen explicables sin recalcular.
-P5 conserva precios, tamaños y procedencia BACK/LAY en inputs diagnósticos de
-Betfair; `exchange_exposure` los referencia y no genera señales ni score.
+`Bookmaker` reúne nombre, identificador y si se trata de un exchange. `ReadingCapability` identifica pilar, nombre de lectura, familias, resultados requeridos, casas y periodos. Esas declaraciones permiten comprobar qué puede calcularse con los datos presentes.
+
+## 3. Identidad del contrato y procedencia
+
+La identidad común incluye `canonical_market_key`, `market_group`, `market_period`, `line_value` y `is_live`: tipo canónico, familia, periodo, línea y si es un mercado en juego. En este recorrido se admiten contratos reconocidos previos al juego.
+
+La clave `contract_key` se deriva de esa combinación. Sirve para referenciar el contrato de manera estable; no es una puntuación.
+
+Las observaciones conservan también:
+
+- `market_id`: mercado identificado en la fuente.
+- `bookie_id`, `bookie_name`: casa.
+- `source`: proveedor.
+- `choice_name`: resultado, como local, visitante, Over o Under.
+- `exchange_side`, `exchange_level`: BACK/LAY y nivel.
+- `quote_id`, `snapshot_id`: cotización y observación.
+- Fechas de recogida y de cambio informado por el proveedor.
+
+Dos contratos con distinta línea se conservan separados. Tampoco se unen fragmentos de mercados distintos del proveedor para fabricar un par completo. El conjunto de referencias `market_ids` permite reconocer los mercados de origen; si hay más de uno, no se inventa una identidad única de mercado de proveedor.
+
+Una cuota utilizable debe ser finita y mayor que 1. Una línea debe ser un número finito cuando la operación la necesita. Tamaños y límites pueden faltar si la fórmula utiliza únicamente precios.
+
+## 4. Selección temporal compartida
+
+El sistema construye un `OddsTrajectoryContext` por encuentro y obtiene una única `TargetMinuteSelection`. Ese objeto contiene `target_minute`, `reason` y `diagnostics`: minuto elegido, explicación y evidencia.
+
+### 4.1. Elegir el minuto
+
+`evaluation_minute` expresa cuánto falta para el inicio cuando se evalúa. `target_minute` identifica el momento de mercado representado.
+
+Entre los momentos presentes y permitidos, conserva los que cumplen:
+
+**minuto candidato ≥ minuto de evaluación.**
+
+Después elige el menor de esos candidatos. Como la escala cuenta minutos restantes, un número mayor representa un instante más antiguo.
+
+Ejemplo: evaluando en T−5, elige 5 si existe; si solo existen 30 y 120, elige 30. No elige 1, porque ese momento todavía es posterior a la evaluación.
+
+Sin historial disponible, con identidad de evento incompatible o sin un minuto elegible, conserva un motivo de ausencia. No asigna un precio de otro encuentro ni un cero para completar la selección.
+
+### 4.2. Ventana de una observación
+
+Para cada minuto elegido:
+
+**instante nominal = inicio del partido − minuto objetivo.**
+
+**inicio de ventana = instante nominal − tolerancia.**
+
+**fin de ventana = instante nominal + tolerancia**, limitado por la hora de evaluación y, cuando el minuto es cero o positivo, por el inicio del partido.
+
+La tolerancia habitual es de tres minutos. Si el llamador no aporta hora de evaluación, el límite final se acota al instante nominal.
+
+`SnapshotTargetWindow` conserva `target_minute`, `nominal_at`, `earliest_at` y `latest_at`. Los extremos están incluidos.
+
+Dentro de la ventana se prefiere la observación más cercana al instante nominal. En igualdad se prefiere el momento efectivo más reciente, después la recogida más reciente y después el identificador mayor de observación.
+
+### 4.3. Dos relojes
+
+`collected_at` es la fecha de recogida asignada a la observación guardada. Se utiliza para comprobar disponibilidad y cercanía al checkpoint. En una historia reconstruida puede ser aproximada; la tolerancia se aplica de forma común.
+
+`source_collected_at` es el momento informado por el proveedor. Para situar el cambio en la trayectoria:
+
+**momento efectivo = menor entre momento del proveedor y recogida**, si existen ambos; sin momento de proveedor se utiliza la recogida.
+
+Ejemplo: el partido comienza a las 03:10:00 UTC. T−5 corresponde a 03:05:00. Una cuota recogida a 03:05:15 puede representar ese checkpoint si la evaluación se realiza a 03:05:16. Una recogida a 03:05:45 no estaba disponible para esa evaluación.
+
+P4 conserva además su endpoint, la observación que representa el final de la serie. Sus puntos adaptativos cumplen simultáneamente: momento efectivo no posterior al del endpoint y disponibilidad no posterior al corte de evaluación. Un cambio antiguo recogido más tarde puede entrar si ya estaba disponible al evaluar.
+
+## 5. Elección del tiempo completo
+
+`prepare_event_markets` prepara un `EventMarketEvaluation` común. Primero examina `Full Time Including Overtime`, tiempo completo con prórroga.
+
+Lo selecciona si permite alguna lectura actual soportada:
+
+- Un par de precios requerido por una capacidad.
+- Una separación de líneas calculable.
+- Un movimiento temporal con observaciones válidas y endpoint.
+
+Si no permite ninguna, examina `Full Time`, tiempo reglamentario. Si tampoco es utilizable, no selecciona un tiempo completo.
+
+**La prioridad no maximiza la cantidad de datos.** Una lectura válida con prórroga prevalece aunque el tiempo reglamentario tenga más información. El historial de coincidencias de P5 no decide el periodo: esa consulta histórica ocurre después.
+
+Todos los pilares reciben el mismo tiempo completo. Los otros periodos soportados pueden seguir produciendo lecturas independientes.
+
+| Motivo de selección | Significado |
+|---|---|
+| `OVERTIME_PRIORITY` | Se pudo elegir el periodo con prórroga. |
+| `REGULATION_FALLBACK` | Se eligió tiempo reglamentario al no poder usar el anterior. |
+| `NO_USABLE_FULL_TIME` | Ninguno permitió una lectura actual. |
+
+`selection` conserva periodo elegido, candidatos, contratos utilizables, lecturas que no pudieron calcularse, motivo y checkpoint.
+
+## 6. Requisitos de cada lectura
+
+| Pilar | Qué permite calcular y qué se conserva |
+|---|---|
+| P2 | Local y visitante del mismo contrato permiten un edge. Si falta empate en 1X2, puede existir esa lectura del par, pero la cobertura sigue incompleta. Casas, ganador/hándicap, exchange y periodos se comparan solo con sus ingredientes compatibles. |
+| P3 | Over y Under del mismo contrato permiten un edge. Las líneas bastan para medir su separación. Comparar precios entre casas o con el exchange exige la misma línea y periodo. |
+| P4 | Movimiento requiere al menos dos observaciones válidas y endpoint. Un hueco puede permitir el cambio entre extremos y dejar sin cálculo la velocidad global o eficiencia. Una línea nueva no completa la serie de precios de una línea anterior. |
+| P5 | Un vector actual propio de Pinnacle o bet365. En 1X2 exige local/empate/visitante; en Home/Away, local/visitante. La memoria requiere al menos tres eventos elegibles con precios iguales después del redondeo a tres decimales. |
+
+Las relaciones necesitan más ingredientes que una lectura individual. Una casa ausente no elimina el edge de otra; un LAY ausente no elimina el BACK independiente. Un cero calculado es un resultado válido. Un dato que falta conserva su ausencia.
+
+El historial de P4 refleja las líneas y resultados que la recopilación logró reconstruir. El hecho de seleccionar la línea principal actual y consultar su historia no proporciona por sí solo todas las líneas principales del pasado. **No observar una transición no demuestra que la línea real nunca cambiara.**
+
+## 7. Cobertura y estados
+
+### 7.1. Cobertura de ingredientes
+
+`coverage` enumera combinaciones de casa, familia, periodo, línea y lado del exchange, incluidas las ausentes.
+
+| Estado | Lectura |
+|---|---|
+| `COMPLETE` | Están los ingredientes requeridos para esa combinación. |
+| `INCOMPLETE` | Hay datos, pero falta parte del conjunto. |
+| `MISSING` | No hay la lectura requerida. |
+| `INVALID` | Hay valores que no cumplen el contrato. |
+| `AMBIGUOUS` | Más de un candidato impide elegir una lectura única. |
+| `EXCLUDED` | La política no utiliza ese contrato o periodo en esta evaluación. |
+| `NOT_APPLICABLE` | La combinación no corresponde a una capacidad de cálculo. |
+
+`observed_status` conserva la disponibilidad observada antes de excluir un periodo. En P5, Betfair se presenta como diagnóstico; su presencia no añade una señal de memoria.
+
+La cobertura no se transforma en porcentaje de confianza ni en un peso estadístico.
+
+### 7.2. Estado de cada señal
+
+Una `SignalResult` contiene `key`, `status`, `value`, `input_refs`, `contract_refs`, `reason` y `evidence`: identidad, disponibilidad, valor, ingredientes, contratos, explicación y hechos.
+
+| Estado | Significado |
+|---|---|
+| `COMPUTED` | La señal se calculó, incluido cero, una condición falsa o una etiqueta neutral. |
+| `BLOCKED` | No se reunieron sus requisitos. |
+| `ERROR` | Falló su consulta o cálculo. |
+
+Motivos como `MISSING_INPUT`, `INVALID_VALUE`, `AMBIGUOUS_CANDIDATE`, `INCOMPATIBLE_CONTRACT`, `INSUFFICIENT_OBSERVATIONS`, `MISSING_ENDPOINT`, `NON_CONTIGUOUS_GAP` e `INSUFFICIENT_HISTORY` explican el problema local. No significan que todos los cálculos del pilar hayan fallado.
+
+### 7.3. Resultado global
 
 | Estado global | Condición |
 |---|---|
-| `ACTIVE` | Al menos una señal `COMPUTED`, aunque otras estén bloqueadas o hayan fallado. |
-| `INSUFFICIENT_DATA` | Ningún cálculo válido y ningún error de ejecución. |
-| `ERROR` | Ningún cálculo válido y al menos un error de ejecución. |
-| `SKIPPED` | Pilar omitido por configuración. |
+| `ACTIVE` | Hay al menos una señal COMPUTED, aunque otras falten o fallen. |
+| `INSUFFICIENT_DATA` | No hay señal calculada ni error de ejecución. |
+| `ERROR` | No hay señal calculada y existe al menos un error. |
+| `SKIPPED` | El pilar no participó en esa ejecución. |
 
-`execution_status` distingue `COMPLETED`, `COMPLETED_WITH_ERRORS`, `FAILED` y
-`SKIPPED`. Un fallo de persistencia conserva los cálculos disponibles, registra
-`PERSISTENCE_ERROR` y elimina referencias a muestras no persistidas.
-Cada señal usa `COMPUTED`, `BLOCKED` o `ERROR`, valor opcional, referencias y
-códigos estables: `MISSING_INPUT`, `INVALID_VALUE`, `AMBIGUOUS_CANDIDATE`,
-`INCOMPATIBLE_CONTRACT`, `INSUFFICIENT_OBSERVATIONS`, `MISSING_ENDPOINT`,
-`NON_CONTIGUOUS_GAP`, `INSUFFICIENT_HISTORY` o error de lookup/cálculo.
+`execution_status` indica COMPLETED, COMPLETED_WITH_ERRORS, FAILED o SKIPPED: final normal, final con resultados y errores, fallo sin resultados calculados o ausencia de participación.
 
-La cobertura enumera combinaciones esperadas de bookmaker, familia, periodo,
-línea y lado de exchange, incluso ausentes. Usa `COMPLETE`, `INCOMPLETE`,
-`MISSING`, `INVALID`, `AMBIGUOUS`, `EXCLUDED` y `NOT_APPLICABLE`.
-`observed_status` conserva disponibilidad cuando la política excluye un periodo.
-No introduce porcentaje de confianza ni pesos de cobertura.
+«Activo» certifica que hubo algún cálculo, no cobertura completa ni confianza en un pronóstico.
 
-## Auditoría reproducible de P5
+## 8. Paquete de resultado y referencias
 
-La misma definición SQL de elegibilidad aplica precios exactos, shape, bookmaker,
-sport, filtros configurados de competición/temporada/país, corte anterior al
-evento actual, exclusión del evento actual, resultado compatible, scores y
-deduplicación por evento. Se usa toda la población; no se aplica un límite de
-coincidencias ni se materializa en listas Python.
+`EvaluationResult` reúne:
 
-Con mining habilitado, `INSERT … SELECT` congela miembros en
-`p5_memory_sample_members`. El header `p5_memory_samples` conserva query, filtros,
-cutoff, política, versiones, conteos y run propietario. Los conteos principales
-provienen de los miembros capturados. Captura y persistencia del resultado usan
-la misma transacción, con savepoint por lookup independiente.
+| Campo | Significado |
+|---|---|
+| `event_id`, `pillar_id`, `engine_version` | Encuentro, pilar y versión de sus fórmulas. |
+| `payload_schema_version`, `policy_version` | Formato del resultado y política compartida. |
+| `target_minute`, `checkpoint` | Momento elegido y límites de tiempo. P4 añade límites nominal y operativo propios. |
+| `selected_full_time_period`, `selection` | Periodo común y explicación de su elección. |
+| `signals` | Señales independientes con sus estados y referencias. |
+| `inputs` | Ingredientes utilizados y procedencia. |
+| `contracts` | Identidad de los mercados. |
+| `analysis` | Cálculos intermedios organizados por pilar. |
+| `coverage`, `diagnostics`, `evidence` | Disponibilidad, motivos y conteos de señales calculadas o sin requisitos. |
+| `status`, `execution_status` | Disponibilidad global y final de ejecución. |
 
-Repetir la identidad `event + pillar + scope + slot + engine_version` reemplaza
-units y muestras dependientes dentro de la transacción. Otras versiones quedan
-intactas. Un rollback conserva la ejecución anterior y no deja muestras nuevas
-huérfanas. Las claves foráneas eliminan muestras al eliminar su run.
+Las referencias permiten recorrer **señal → ingrediente → observación y contrato**. Una señal derivada de varias fuentes conserva los contratos de todas sus series constituyentes, aunque no tenga una única casa.
 
-El puerto `SampleAuditReader.get_sample_page(sample_id, cursor, page_size)`
-devuelve miembros congelados, metadatos y `next_cursor`. El tamaño predeterminado
-es 100 y el máximo 1.000. El orden es `starts_at DESC, event_id DESC`; el cursor
-usa ambas columnas. Los miembros no dependen de modificaciones posteriores de
-cuotas, resultados o de la vista materializada. No se agrega una interfaz web.
+El registro de diagnóstico de P4 lee el resultado terminado; no vuelve a seleccionar ni a calcular cuotas.
 
-Con mining deshabilitado, P5 consulta agregados SQL y calcula el mismo resumen;
-`sample_id` es nulo y `audit_persisted` es falso. Si `successful_only` descarta
-una ejecución, su captura también se revierte.
+## 9. P5: población histórica y auditoría
 
-## Persistencia y compatibilidad
+P5 compara deporte, casa, familia, periodo, forma de dos/tres resultados y precios redondeados a tres decimales. Puede añadir restricciones de competición, temporada o país cuando participan en la población elegida.
 
-| Pilar | Motor nuevo | Esquema |
-|---|---|---|
-| P2 | `p2-signal-profile-v3` | 4 |
-| P3 | `p3-signal-profile-v3` | 4 |
-| P4 | `p4-signal-profile-v3` | 4 |
-| P5 | `p5_price_memory_v4_0` | 4 |
+Excluye el evento actual; exige inicio histórico anterior al del actual, resultado compatible, ambos marcadores y un evento único después de deduplicar. Utiliza toda la población elegible, sin límite de coincidencias.
 
-Mining normaliza `ACTIVE` a `SUCCESS`. La cobertura incompleta no produce
-`PARTIAL` en resultados nuevos. Los lectores conservan estados/payloads de
-esquemas históricos 1–3; `PillarMiningRepository.get_result(run_id)` reconstruye
-señales v4 desde units/metrics sin reinterpretar datos antiguos. Consultas de
-ejemplo están en `mining-persistence.md`.
+Ese corte por inicio de evento **no reconstruye por sí mismo qué resultados se conocían a la hora del checkpoint**. No debe confundirse con la disponibilidad temporal de la cuota actual.
 
-El legacy retirado incluye los gates globales, selectores/DTOs de P5 anteriores,
-serializadores repetidos, auditoría expandida de P4 y primitivas matemáticas
-duplicadas en P2/P3. Se conservan componentes compartidos utilizados por P1 y
-la lectura de resultados antiguos; no hay backfill automático.
+Cuando se conserva auditoría, `p5_memory_samples` guarda la consulta, corte, política, conteos y ejecución propietaria; `p5_memory_sample_members` guarda los miembros exactos. Los conteos proceden de esos miembros capturados.
 
-## Despliegue y reversión
+Captura y resultado se conservan en una misma transacción: se confirman juntos o se revierten juntos. Cada consulta independiente utiliza un punto de recuperación para que su fallo pueda representarse sin perder consultas anteriores.
 
-Aplicar primero la migración aditiva `20261002_01` y luego el código:
+`SampleAuditReader.get_sample_page(sample_id, cursor, page_size)` devuelve una página de miembros y un cursor para seguir. El tamaño predeterminado es 100, el máximo 1.000; el orden es fecha de inicio e identificador descendentes. Lee la muestra conservada sin rehacer la consulta contra precios posteriores.
 
-```powershell
-.venv/Scripts/python.exe -m alembic upgrade head
-```
+Sin conservación, P5 puede consultar los agregados históricos y calcular el mismo perfil; `sample_id` queda ausente y `audit_persisted` es falso. Si guardar falla, el pipeline elimina referencias a muestras no conservadas y registra PERSISTENCE_ERROR, manteniendo cálculos disponibles.
 
-La migración requiere el esquema existente y tiene como padre `20261001_01`.
-Crea las dos tablas de muestras y sus índices/cascadas.
-La ejecución online también admite tablas creadas previamente fuera de Alembic:
-valida columnas, tipos, nulabilidad, claves primarias, claves foráneas con
-`ON DELETE CASCADE` e índices antes de reconocerlas. Conserva sus filas y crea
-únicamente las tablas o índices faltantes. Una estructura incompatible detiene
-la migración antes del DDL; no se debe resolver con un `stamp` a ciegas ni borrando
-las muestras. La generación SQL offline presupone que las tablas nuevas no existen.
+## 10. Conservación, versiones y fuentes
 
-La reversión operativa consiste en volver a la aplicación anterior dejando las tablas aditivas en su
-lugar. Su downgrade elimina únicamente las tablas nuevas; no es necesario para
-revertir la aplicación. Esta implementación valida migración en SQLite y DDL
-PostgreSQL; su aplicación sobre la base de destino se realiza mediante Alembic.
+P2–P5 usan respectivamente `p2-signal-profile-v3`, `p3-signal-profile-v3`, `p4-signal-profile-v3` y `p5_price_memory_v4_0`, con formato 4.
 
-## Verificación y memoria
+La minería normaliza ACTIVE como SUCCESS y conserva cada señal. Los resultados nuevos no usan PARTIAL global por cobertura incompleta. Los formatos históricos 1–3 conservan sus significados; no se reescriben con reglas nuevas. La [guía de persistencia](mining-persistence.md) explica identidad, reemplazo, muestras y consultas.
 
-Pruebas de fórmulas, selección, contratos, causalidad, adaptadores, auditoría,
-migración, lectores y memoria:
+| Fuente | Responsabilidad |
+|---|---|
+| [market_evaluation.py](../../modules/pillars/market_evaluation.py) | Casas, capacidades, catálogo, periodo seleccionado y cobertura. |
+| [odds_trajectory_context.py](../../modules/pillars/odds_trajectory_context.py) | Organizar cuotas e índice por encuentro. |
+| [trajectory_selection.py](../../modules/pillars/trajectory_selection.py) | Elegir minuto, ventanas y desempate temporal. |
+| [trajectory_sampling.py](../../modules/pillars/trajectory_sampling.py) | Puntos válidos, deduplicación, checkpoints y endpoint. |
+| [market_snapshot_extractor.py](../../modules/pillars/market_snapshot_extractor.py) y [market_candidate_selection.py](../../modules/pillars/market_candidate_selection.py) | Extraer ingredientes e identificar ausencias, valores inválidos y ambigüedades. |
+| [signal_dependencies.py](../../modules/pillars/signal_dependencies.py) y [profile_evaluation.py](../../modules/pillars/profile_evaluation.py) | Requisitos y referencias de señales de P2/P3. |
+| [market_math.py](../../modules/pillars/market_math.py) | Operaciones numéricas comunes. |
+| [evaluation_contracts.py](../../modules/pillars/evaluation_contracts.py) | Señales, cobertura y estados globales. |
+| [market.py](../../modules/pillars/mining/adapters/market.py) | Conservación del formato de mercados. |
+| [Repositorio de memoria P5](../../infrastructure/persistence/repositories/pillar_5_price_memory_repository.py) | Población histórica, captura y lectura de muestras. |
 
-```powershell
-.venv/Scripts/python.exe -m pytest tests/pillars --ignore=tests/pillars/pillar_1_team_structure tests/test_p5_audit_repository.py tests/test_p5_audit_migration.py tests/test_pillar_mining_repository.py tests/test_pre_start_memory_limits.py tests/test_p5_price_memory_view.py tests/test_odds_trajectory_repository.py -q
-.venv/Scripts/python.exe -m pytest tests -q
-```
-
-La comparación offline de P4 usa el mismo fixture de 2.000 filas, incluyendo
-normalización y ejecución, medido con `tracemalloc`: el checkout anterior obtuvo
-15.693.547 bytes de pico y 21.350.641 bytes de payload; esta implementación obtuvo
-14.162.600 bytes y 9.803.444 bytes, respectivamente. Es una medición de ese fixture,
-no una garantía universal del consumo del proceso.
-
-P4 comparte puntos originales y usa vistas pequeñas para derivaciones. P5 tiene
-una prueba con 1.000 y 50.000 miembros generados dentro de SQL que verifica
-conteos exhaustivos y memoria Python acotada; la lectura paginada solo carga
-una página. El pipeline libera las cuotas por evento y conserva los límites de
-lote existentes, sin caches globales de trayectorias ni muestras.
-
-Verificación del 2 de octubre de 2026: la batería centrada en esta refactorización
-pasó sus 177 pruebas. La suite completa registró 993 aprobadas, 4 omitidas y 61
-fallos. Los 61 identificadores de fallo ya estaban entre los 68 del checkout
-original; no apareció un identificador nuevo. Los ocho fallos de P1 coinciden
-con los originales y sus archivos de motor/pruebas no fueron modificados.
-Los fallos restantes pertenecen a proveedores, resolución de eventos,
-normalización, adquisición y filtros fuera de esta refactorización. Los cambios
-simultáneos en descubrimiento/borrado de eventos se conservaron separados.
-
-Verificación de las correcciones del 3 de octubre de 2026: la batería centrada
-en pilares, selección, auditoría, minería y repositorio de trayectorias pasó sus
-199 pruebas. Incluye cuotas recogidas dentro de la tolerancia, separación entre
-tiempo de mercado y disponibilidad, fallback de periodo, una sola observación,
-transición observada frente a endpoint ausente, procedencia de señales derivadas,
-logs y exposición diagnóstica de Betfair en P5. No se repitió la suite global ni
-se ejecutó ingesta contra proveedores o PostgreSQL de producción.
-
-El fixture de memoria de 2.000 filas, después de estas correcciones, obtuvo
-14.091.010 bytes de pico y 9.805.398 bytes de payload, con resultado `ACTIVE`.
-Es una medición local de asignaciones Python, no del RSS del proceso.
+Los detalles de adquisición están en [recopilación previa de cuotas](../providers/pre_start_odds_ingestion.md). Las instrucciones de evolución del esquema se concentran en [persistencia](mining-persistence.md#12-notas-para-mantenimiento-del-esquema). Las mediciones de rendimiento son registros históricos de una revisión concreta, disponibles en la [auditoría de minería](../audits/2026-10-04-pillar-mining-performance.md); no son garantías actuales de consumo.

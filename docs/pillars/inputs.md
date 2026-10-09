@@ -1,612 +1,347 @@
-# Pipeline In-Memory Objects & Context Contracts
+# Entradas y expedientes del flujo de pilares
 
-This document specifies the in-memory contracts used while evaluating an event
-through the pillar pipeline. The main orchestration lives in
-[`pillar_pipeline.py`](../../modules/jobs/pre_start_check_job/pillar_pipeline.py);
-the alert flow reuses the same event context through
-[`alert_pipeline.py`](../../modules/jobs/pre_start_check_job/alert_pipeline.py).
+[Guía funcional del flujo](guia-funcional/00-flujo-principal.md) · [Evaluación de mercados](market-evaluation-v1.md) · [Conservación de resultados](mining-persistence.md)
 
-The pipeline uses these input contracts:
+Documento contrastado con el código el 8 de octubre de 2026. Describe los datos que viajan entre la preparación de un partido y sus pilares. Los nombres del código se conservan para reconocerlos; cada campo se explica en español.
 
-1. `EventContext`: the full, mutable event context accepted by the processor
-   and used directly by P1.
-2. `OddsTrajectoryPoint`: typed rows loaded once from the trajectory repository
-   and passed separately from `EventContext`.
-3. `EventIdentity`: a small, immutable event DTO projected from `EventContext`
-   for P2, P3, P4, P5, and mining persistence.
-4. `OddsTrajectoryContext`: one shared, structured read model built locally from
-   the loaded rows and stamped with the UTC `evaluation_as_of`. All four market
-   pillars receive the same `TargetMinuteSelection` and this same context.
-5. `EventMarketEvaluation`: one shared evaluation plan containing the accepted
-   market contracts, selected full-time period, and selection diagnostics. It
-   references the trajectory context without copying its snapshot histories.
+Un **objeto** es un expediente con campos relacionados. Un **contrato de entrada** define qué contiene ese expediente y cómo debe interpretarse. Un **diccionario** permite localizar datos por una clave, por ejemplo el identificador del partido. `None` o `null` significa «dato no disponible»; una lista vacía significa «ningún elemento». Ninguno de ellos equivale a una puntuación cero.
 
-The trajectory context is assembled once per event. The pillars share that read
-model rather than each loading and rebuilding the event's odds history.
+## 1. Recorrido y responsabilidad de cada expediente
 
----
+El coordinador está en [pillar_pipeline.py](../../modules/jobs/pre_start_check_job/pillar_pipeline.py). El [recorrido de alertas](../../modules/jobs/pre_start_check_job/alert_pipeline.py) comparte el expediente del evento y puede preparar el historial deportivo antes de P1.
 
-## 1. Runtime assembly and ownership
+| Expediente | Función |
+|---|---|
+| `EventContext` | Partido completo, participantes, competición, observaciones y análisis deportivo. P1 lo utiliza directamente. |
+| `OddsTrajectoryPoint` | Una fila de cuota histórica leída de la base de datos. |
+| `EventIdentity` | Ficha breve de identidad del partido. P2–P5 y la minería de mercados la utilizan. |
+| `OddsTrajectoryContext` | Cuotas del partido organizadas por mercado, periodo, línea, casa y resultado. |
+| `TargetMinuteSelection` | Un minuto de mercado elegido para la evaluación compartida. |
+| `EventMarketEvaluation` | Contratos admitidos, periodo de tiempo completo y evidencia de selección para P2–P5. |
 
-The pre-start pillar flow performs these steps:
+El flujo actual hace lo siguiente:
 
-1. Build and enrich `EventContext` from the normalized event. Its
-   `odds_trajectory` field is initialized empty in this production path.
-2. After validating the pillar events, bulk-load one
-   `dict[event_id, list[OddsTrajectoryPoint]]` from PostgreSQL, then capture one
-   UTC `evaluation_as_of` and pass both values to the batch runner. The cutoff
-   therefore includes the snapshots returned by that read.
-3. Each event worker takes its list out of the batch map and builds one local
-   `OddsTrajectoryContext`, using `EventContext.minutes_until_start` as
-   `evaluation_minute`, plus the event kickoff and the shared evaluation time.
-   The context keeps the full trajectory for P4 and projects only snapshots
-   eligible for the configured target windows. If no separate list was passed,
-   the processor can use `EventContext.odds_trajectory` as a compatibility
-   fallback.
-4. Create `EventIdentity` with `EventContext.to_identity()` and select one
-   `TargetMinuteSelection` from the shared trajectory context. Build one
-   `EventMarketEvaluation` with that selection, the context, and event identity.
-   P2, P3, P4, and P5 receive these same objects.
-5. Run P2–P5 with `EventIdentity`, the local trajectory context, and the shared
-   evaluation plan. Release references to the plan, raw rows, and context before
-   P1, which continues to receive the full `EventContext` and `streak_analysis`.
+1. Construye y completa `EventContext`. En este recorrido, `odds_trajectory` comienza vacío.
+2. Carga por lote un diccionario `trajectories_by_event_id`: identificador de evento → lista de `OddsTrajectoryPoint`.
+3. Después de esa lectura fija `evaluation_as_of`, el corte UTC compartido de la evaluación.
+4. Al comenzar un partido, su procesador retira la lista del diccionario del lote y construye un `OddsTrajectoryContext` local. Utiliza inicio, minutos restantes y corte.
+5. Obtiene `EventIdentity` mediante `to_identity()`, elige un `TargetMinuteSelection` y prepara un `EventMarketEvaluation`.
+6. P2, P3, P4 y P5 reciben los mismos objetos compartidos. Cada uno calcula sus lecturas.
+7. Antes de P1 libera las referencias al historial crudo de cuotas. P1 continúa con `EventContext` y `streak_analysis`.
 
-The shared selection is causal: among allowed minutes present and not later than
-the current evaluation minute, it chooses the latest eligible target. A missing
-context, unavailable trajectory, event-id mismatch, or absence of an eligible
-target produces an explicit selection reason. The shared timestamp policy in
-`trajectory_selection.py` defines one target window and one ranking rule;
-`OddsTrajectoryContext` and P4 apply those rules to their respective views.
+Se organiza el historial una vez por partido. Las vistas de los pilares conservan referencias a los datos; no reconstruyen cuatro historias independientes. El contexto de mercado queda local al procesador y no se instala en `EventContext` en este recorrido de producción.
 
----
+## 2. EventContext: expediente completo del encuentro
 
-## 2. `EventContext`
+Definido en [context.py](../../modules/pillars/context.py). Puede completarse durante el recorrido, por ejemplo al obtener metadatos de competición o historia deportiva.
 
-Defined in [`modules/pillars/context.py`](../../modules/pillars/context.py).
-The processor requires this type at its public per-event boundary. Its optional
-trajectory fields remain for compatibility, but the current production path
-passes raw points separately and keeps `OddsTrajectoryContext` local to the
-worker; it does not populate those fields on `EventContext`.
+### Identidad, participantes y tiempo
 
-```python
-@dataclass
-class EventContext:
-    event_id: int
-    custom_id: str | None
-    sport: str
-    season_id: int | None
-    season_name: str | None
-    season_year: int | None
-    starts_at: datetime
-    minutes_until_start: int | None
-    discovery_source: str | None
+| Campo | Significado |
+|---|---|
+| `event_id` | Identificador interno del partido. Debe corresponder al de sus cuotas. |
+| `custom_id` | Identidad auxiliar utilizada para consultar enfrentamientos. |
+| `sport` | Deporte. |
+| `season_id`, `season_name`, `season_year` | Identificador, nombre y año de temporada. |
+| `starts_at` | Inicio con zona horaria, normalizado a UTC. |
+| `minutes_until_start` | Minutos restantes en la evaluación. Un valor negativo indica un instante posterior al inicio. |
+| `discovery_source` | Fuente con la que se descubrió el encuentro. |
+| `home`, `away` | Expedientes del participante local y visitante. |
+| `competition` | Expediente de competición. |
+| `participants_label` | Texto de presentación, por ejemplo «A vs B». |
+| `context_status` | Procedencia de preparación: `normalized`, `mixed` o `legacy_compat`. Describe datos normalizados, mezclados o recuperados por compatibilidad. |
+| `slug` | Nombre preparado para identificar el encuentro en rutas o fuentes. |
+| `gender`, `country`, `round` | Categoría de género, país y fase deportiva. |
+| `created_at`, `updated_at` | Fechas de creación y actualización del registro. |
 
-    home: ParticipantContext
-    away: ParticipantContext
-    competition: CompetitionContext
+### Historia, observaciones y continuidad
 
-    participants_label: str
-    context_status: str
+| Campo | Significado |
+|---|---|
+| `observations` | Datos adicionales del encuentro, como superficie o recinto. |
+| `odds_trajectory` | Historial alternativo para llamadores anteriores. El recorrido por lotes actual pasa las filas por separado. |
+| `odds_trajectory_context`, `ft_1x2_odds_trajectory_context` | Campos de compatibilidad para contextos de cuotas. El recorrido actual mantiene su contexto de mercado local y no los completa. |
+| `streak_analysis` | Historia deportiva preparada: resultados, enfrentamientos, clasificación y referencias de liga. Es la entrada deportiva de P1. |
+| `should_send_streak_alert` | Decisión del recorrido de alertas sobre participación de una alerta de rachas. |
+| `dual_report` | Reporte del análisis de alertas de doble proceso, cuando existe. |
+| `competition_metadata_resolved` | Indica si ya se intentó completar metadatos de competición. |
+| `success` | Si se pudo preparar el expediente para continuar. |
+| `alert_sent` | Si el recorrido correspondiente envió una alerta. |
 
-    slug: str | None = None
-    gender: str | None = None
-    country: str | None = None
-    round: str | None = None
+Las banderas de alertas y preparación no representan probabilidades ni pesos deportivos. El expediente actual **no contiene `odds_response`**: no debe construirse una segunda entrada de cuotas basada en ese campo antiguo.
 
-    observations: list[dict] = field(default_factory=list)
-    odds_response: dict | None = None
-    odds_trajectory: list[dict] = field(default_factory=list)
+## 3. ParticipantContext y CompetitionContext
 
-    odds_trajectory_context: Any | None = None
-    ft_1x2_odds_trajectory_context: Any | None = None
-    streak_analysis: Any | None = None
+### Participante
 
-    should_send_streak_alert: bool = False
-    dual_report: Any | None = None
+`ParticipantContext` se utiliza tanto en `home` como en `away`.
 
-    competition_metadata_resolved: bool = False
-    success: bool = True
-    alert_sent: bool = False
+| Campo | Significado |
+|---|---|
+| `participant_id` | Identidad interna del participante. |
+| `source`, `source_participant_id` | Fuente e identidad del participante en ella. |
+| `name` | Nombre principal. |
+| `slug`, `short_name`, `code_name` | Nombre para rutas, nombre corto y código de presentación. |
+| `source_status` | Estado de resolución de la identidad de fuente. |
+| `snapshot_ranking` | Posición recogida en la preparación del encuentro, cuando existe. |
+| `created_at`, `updated_at` | Fechas del registro. |
 
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-```
+### Competición
 
-### Temporal and status invariants
+`CompetitionContext` reúne identidad de torneo, estructura de temporada y procedencia.
 
-* `starts_at` is a timezone-aware UTC `datetime`, normalized through
-  `shared.temporal.as_utc`. Naive datetimes and legacy local-hour values are not
-  valid at this boundary.
-* `event_id` is the canonical internal event identifier and must match the
-  trajectory context when both are present.
-* `context_status` is `normalized`, `mixed`, or `legacy_compat` and records
-  whether normalized relations or the temporary legacy fallback populated the
-  event metadata.
-* `odds_trajectory` is a compatibility fallback. In the production batch,
-  loaded `OddsTrajectoryPoint` objects travel in a separate event-keyed map.
-* The processor uses a local `OddsTrajectoryContext` for P2–P5 and clears raw
-  odds references before P1; it does not install that context on `EventContext`.
+| Campo | Significado |
+|---|---|
+| `competition_id` | Identidad interna de competición. |
+| `source` | Fuente de los datos. |
+| `source_tournament_id`, `source_unique_tournament_id` | Identidades de torneo y agrupación de torneo en la fuente. |
+| `canonical_name`, `display_name` | Nombre común normalizado y nombre presentado. |
+| `slug`, `unique_slug` | Identidades textuales de torneo y agrupación. |
+| `category_id`, `category_name` | Identificador y nombre de categoría. |
+| `number_of_teams` | Cantidad de equipos. |
+| `number_of_teams_source` | De dónde proviene esa cantidad. |
+| `total_regular_season_games` | Partidos previstos por equipo en temporada regular. P1 Totales construye sus ventanas con este dato. |
+| `standings_grouping` | Organización de clasificación, por ejemplo grupos o tabla conjunta. |
+| `league_config_source` | Procedencia de las reglas descriptivas de la liga. |
+| `has_standings_source_endpoint` | Si la fuente dispone de una consulta de clasificación conocida. |
+| `source_status` | Estado de resolución de la identidad de fuente. |
+| `standings_response` | Clasificación disponible para construir el contexto deportivo. |
+| `source_tournament_name`, `source_unique_tournament_name` | Nombres originales del torneo y su agrupación. |
+| `created_at`, `updated_at` | Fechas del registro. |
 
-### `EventIdentity`: DTO passed to P2–P5
+`NumberOfTeamsSummary` es un resumen informativo adicional: `unique_team_count` cuenta equipos únicos y `inferred_number_of_teams` expresa una posible cantidad inferida. En el pipeline este resumen se conserva para explicación; no sustituye automáticamente el dato oficial de competición ni se presenta como una cantidad inferida aplicada a todo P1.
 
-`EventContext.to_identity()` copies only event identity and timing fields into
-this immutable, slotted DTO. It does not carry participants as full objects,
-competition metadata as a nested object, raw odds, or streak analysis:
+## 4. EventIdentity: ficha breve para P2–P5
 
-```python
-@dataclass(frozen=True, slots=True)
-class EventIdentity:
-    event_id: int
-    participants_label: str
-    starts_at: datetime
-    minutes_until_start: int | None
-    sport: str
-    round: str | None = None
-    competition_id: int | None = None
-    competition_name: str | None = None
-    season_id: int | None = None
-    country: str | None = None
-    context_status: str = "VALID"
-```
+`EventContext.to_identity()` proyecta una ficha inmutable: no se modifica después de crearla. Conserva exactamente estos campos:
 
-P2–P5 accept either `EventIdentity` or `EventContext` at their standalone
-entrypoints, but `EventPillarProcessor` passes `EventIdentity` in the current
-production path. P1 still needs the full `EventContext` for team and competition
-features. This division avoids retaining or passing the large odds payload in
-every pillar call.
+| Campo | Contenido |
+|---|---|
+| `event_id`, `participants_label` | Identidad y texto del encuentro. |
+| `starts_at`, `minutes_until_start` | Inicio y minutos de evaluación. |
+| `sport`, `round` | Deporte y fase. |
+| `competition_id`, `competition_name` | Identidad y nombre de competición. Para el nombre prioriza el presentado y después el canónico. |
+| `season_id`, `country` | Temporada y país. |
+| `context_status` | Procedencia copiada del expediente completo. |
 
-### `ParticipantContext`
+El valor predeterminado del campo `context_status` en una ficha creada directamente es `VALID`; la proyección del pipeline copia el estado de su `EventContext`.
 
-Used by both `home` and `away`:
+Esta ficha no transporta objetos completos de participantes, historia deportiva ni cuotas. P2–P5 también pueden aceptar `EventContext` en sus entradas independientes, pero el procesador actual les entrega `EventIdentity`. P1 necesita el expediente completo.
 
-```python
-@dataclass
-class ParticipantContext:
-    participant_id: int | None
-    source: str | None
-    source_participant_id: int | None
-    name: str
-    slug: str | None
-    short_name: str | None
-    source_status: str
-    code_name: str | None = None
-    snapshot_ranking: int | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-```
+## 5. OddsTrajectoryPoint: fila original del historial
 
-### `CompetitionContext`
+Definido en el [repositorio de trayectorias](../../infrastructure/persistence/repositories/odds_trajectory_repository.py). El repositorio agrupa sus objetos por evento; el constructor de contexto puede leer sus atributos directamente y admite diccionarios de llamadores anteriores.
 
-Carries canonical tournament metadata and its provenance:
+| Campo | Significado |
+|---|---|
+| `event_id` | Encuentro de la observación. |
+| `market_id` | Mercado identificado en la fuente. |
+| `canonical_market_key`, `market_type_id` | Clave e identificador del tipo canónico. |
+| `market_family`, `market_group` | Familia y agrupación de mercado. |
+| `market_display_order`, `market_name` | Orden de presentación y nombre del mercado. |
+| `market_period` | Periodo deportivo. |
+| `line_value` | Línea numérica del contrato; puede faltar en ganador. |
+| `is_live` | Si el contrato corresponde a juego en curso; el valor predeterminado es falso. |
+| `bookie_id`, `bookie_name` | Casa que publica el precio. |
+| `choice_id`, `choice_name`, `choice_display_order` | Identidad, nombre y orden del resultado del contrato. |
+| `quote_id` | Cotización de la que procede la observación. |
+| `source` | Proveedor. |
+| `exchange_side`, `exchange_level` | BACK/LAY y nivel del exchange, cuando corresponde. |
+| `initial_odds` | Precio inicial disponible; no garantiza por sí solo un momento específico como T−120. |
+| `odds_value` | Precio de esta observación. |
+| `snapshot_id` | Identidad de la observación guardada. |
+| `source_collected_at` | Momento informado por el proveedor. |
+| `collected_at` | Momento de recogida asignado a la observación guardada. |
+| `observed_minutes_before_start` | Minutos restantes redondeados para proyección y consumidores anteriores. |
+| `trajectory_minutes_before_start` | Minutos restantes con precisión decimal en el eje del proveedor, usando recogida como alternativa. |
+| `main_line` | Si la cotización fue identificada como línea principal. Puede faltar. |
+| `source_limit` | Límite publicado por la fuente, si existe. |
+| `exchange_size` | Cantidad publicada disponible en ese nivel del exchange. |
 
-```python
-@dataclass
-class CompetitionContext:
-    competition_id: int | None
-    source: str | None
-    source_tournament_id: int | None
-    source_unique_tournament_id: int | None
-    canonical_name: str | None
-    display_name: str
-    slug: str | None
-    unique_slug: str | None
-    category_id: int | None
-    category_name: str | None
-    number_of_teams: int | None
-    number_of_teams_source: str | None
-    total_regular_season_games: int | None
-    standings_grouping: str | None
-    league_config_source: str | None
-    has_standings_source_endpoint: bool | None
-    source_status: str
-    standings_response: list | None = field(default=None, repr=False)
-    source_tournament_name: str | None = None
-    source_unique_tournament_name: str | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-```
+`Decimal` representa cantidades decimales, como cuotas, líneas o minutos precisos. No es un porcentaje por ser decimal.
 
----
+Los minutos precisos de la fila y los del contexto preparado no deben intercambiarse sin considerar sus relojes: el contexto acota el momento del proveedor por la recogida, como se explica en la sección 7.
 
-## 3. Raw trajectory points (`OddsTrajectoryPoint`)
+## 6. OddsTrajectoryContext: historial organizado y compartido
 
-Defined in
-[`odds_trajectory_repository.py`](../../infrastructure/persistence/repositories/odds_trajectory_repository.py).
-The repository returns `OddsTrajectoryPoint` DTOs grouped by event ID. The
-key-moment job passes that map to the batch processor without first serializing
-the objects into `EventContext.odds_trajectory`. The shared context builder
-reads their attributes directly; it also accepts dictionaries for older callers.
+Definido en [odds_trajectory_context.py](../../modules/pillars/odds_trajectory_context.py).
 
-```python
-@dataclass
-class OddsTrajectoryPoint:
-    event_id: int
-    market_id: int | None
-    canonical_market_key: str | None
-    market_family: str | None
-    market_display_order: int | None
-    market_name: str | None
-    market_group: str | None
-    market_period: str | None
-    line_value: Decimal | None
-    bookie_id: int | None
-    bookie_name: str | None
-    choice_id: int | None
-    choice_name: str | None
-    choice_display_order: int | None
-    quote_id: int | None
-    source: str | None
-    exchange_side: str | None
-    exchange_level: int | None
-    initial_odds: Decimal | None
-    odds_value: Decimal | None
-    snapshot_id: int | None
-    source_collected_at: datetime | None
-    collected_at: datetime | None
-    observed_minutes_before_start: int | None
-    trajectory_minutes_before_start: Decimal | None
-    main_line: bool | None = None
-    source_limit: Decimal | None = None
-    exchange_size: Decimal | None = None
-```
+| Campo | Significado |
+|---|---|
+| `available` | Existe alguna observación utilizable en el contexto; no certifica todos los momentos ni todas las lecturas. |
+| `event_id` | Encuentro al que pertenece. |
+| `target_minutes_expected` | Momentos esperados. |
+| `target_minutes_present` | Momentos que tienen alguna lectura proyectada. |
+| `missing_target_minutes` | Esperados sin una lectura proyectada. |
+| `markets` | Árbol de cuotas organizado. |
+| `evaluation_as_of` | Corte de disponibilidad de esta evaluación. |
+| `market_index` | Índice interno para localizar mercados por familia y periodo; no añade información deportiva. |
 
-### Timing fields
-
-* `observed_minutes_before_start` is the rounded integer used by the
-  configured-target projection and legacy consumers.
-* `trajectory_minutes_before_start` is the precise `Decimal` computed from
-  `source_collected_at`, falling back to `collected_at`. It preserves the
-  continuous provider timeline for trajectory-aware consumers.
-* `source_collected_at` is the preferred effective timestamp. The fallback to
-  `collected_at` must remain visible in diagnostics when provenance is mixed.
-
----
-
-## 4. Shared trajectory read model (`OddsTrajectoryContext`)
-
-Defined in
-[`odds_trajectory_context.py`](../../modules/pillars/odds_trajectory_context.py).
-It is built from raw points and exposes a deterministic, exchange-aware market
-tree.
-
-```python
-@dataclass(frozen=True)
-class OddsTrajectoryContext:
-    available: bool
-    event_id: int | None
-    target_minutes_expected: list[int]
-    target_minutes_present: list[int]
-    missing_target_minutes: list[int]
-    markets: dict[
-        str,  # market_group
-        dict[str, dict[str, dict[str, MarketLineOddsTrajectory]]],
-    ] = field(default_factory=dict)
-    evaluation_as_of: datetime | None = None
-```
-
-`available=True` means that at least one valid market snapshot was loaded. It
-does not mean every configured target minute is present.
-
-### Market hierarchy
-
-`markets` is a read-model projection. Market identity is represented by the
-canonical `market_group`, `market_period`, `market_name`, and nullable
-`line_value`; the dictionary key for a null line is `__default__`.
+La estructura es:
 
 ```text
-markets
-└── market_group
-    └── market_period
-        └── market_name
-            └── line_value_key
-                └── MarketLineOddsTrajectory
-                    └── bookies
-                        └── bookie_key
-                            └── BookieOddsTrajectory
-                                └── choices
-                                    └── choice_name
-                                        └── ChoiceOddsTrajectory
+familia → periodo → nombre de mercado → línea
+    → casa y procedencia → resultado
+        → precios por minuto y observaciones históricas
 ```
 
-### `MarketLineOddsTrajectory`
+Cuando no hay línea, la clave de agrupación general es `__default__`. Las vistas específicas de evaluación pueden emplear claves más detalladas para mantener separados contratos y mercados de origen.
 
-```python
-@dataclass(frozen=True)
-class MarketLineOddsTrajectory:
-    market_id: int | None
-    market_name: str
-    market_group: str
-    market_period: str
-    line_value: str | None
-    bookies: dict[str, BookieOddsTrajectory] = field(default_factory=dict)
-```
+### 6.1. Mercado y casa
 
-### `BookieOddsTrajectory`
+`MarketLineOddsTrajectory` contiene `market_id`, `market_name`, `market_group`, `market_period`, `line_value`, `bookies`, `canonical_market_key`, `market_type_id` e `is_live`: mercado, familia, periodo, línea, casas, tipo canónico y condición de juego.
 
-```python
-@dataclass(frozen=True)
-class BookieOddsTrajectory:
-    bookie_id: int | None
-    bookie_name: str
-    source: str | None = "sofascore"
-    exchange_side: str | None = None  # None for bookmakers; back/lay for exchanges
-    exchange_level: int = 0
-    choices: dict[str, ChoiceOddsTrajectory] = field(default_factory=dict)
-```
+`BookieOddsTrajectory` contiene `bookie_id`, `bookie_name`, `source`, `exchange_side`, `exchange_level`, `choices` y `market_id`. El último campo identifica el mercado de origen de esa casa dentro del agrupamiento.
 
-### `ChoiceOddsTrajectory`
+El valor predeterminado de `source` en ese objeto es `sofascore`, pero cada observación preparada puede aportar otra fuente. Ese valor predeterminado no convierte a SofaScore en una casa admitida por P2–P5. `exchange_level` comienza en 0; para una casa ordinaria, `exchange_side` queda ausente.
 
-```python
-@dataclass(frozen=True)
-class ChoiceOddsTrajectory:
-    choice_name: str
-    choice_id: int | None
-    initial_odds: Decimal | None
-    quote_id: int | None = None
-    main_line: bool | None = None
-    odds_values: dict[int, Decimal] = field(default_factory=dict)
-    meta_by_minute: dict[int, OddsPointMeta] = field(default_factory=dict)
-    snapshots: list[OddsSnapshotPoint] = field(default_factory=list)
-```
+### 6.2. Resultado del contrato y dos vistas de sus cuotas
 
-Each choice exposes two deliberately different views:
+`ChoiceOddsTrajectory` contiene:
 
-1. `odds_values` and `meta_by_minute` are the configured target-minute
-   projection. Their keys are only minutes that were projected or observed for
-   the configured schedule (for example `120, 30, 5, 1, 0, -5`).
-2. `snapshots` is the chronological list of observations loaded for this
-   choice. P4 uses it to preserve the available trajectory.
+| Campo | Contenido |
+|---|---|
+| `choice_name`, `choice_id` | Resultado e identidad. |
+| `initial_odds`, `quote_id`, `main_line` | Precio inicial disponible, cotización y condición de línea principal. |
+| `odds_values` | Minuto objetivo → precio elegido. |
+| `meta_by_minute` | Minuto objetivo → procedencia del precio elegido. |
+| `snapshots` | Observaciones del historial de ese resultado. |
 
-### `OddsPointMeta`
+Los mapas por minuto representan checkpoints, por ejemplo 120, 30 y 5. `snapshots` conserva el recorrido disponible, incluidos datos intermedios. P2, P3 y P5 leen la proyección del momento seleccionado; P4 utiliza también el historial temporal.
 
-```python
-@dataclass(frozen=True)
-class OddsPointMeta:
-    snapshot_id: int | None
-    collected_at: datetime | None
-    minutes_before_start: int | None
-    target_minute: int
-    distance_from_target: int | None
-    quote_id: int | None = None
-    changed_at: datetime | None = None
-    exchange_size: Decimal | None = None
-```
+Los mapas se conservan con minutos descendentes. Las observaciones se ordenan por momento efectivo, recogida e identificador de observación. Este orden facilita una salida determinista: los mismos datos producen el mismo orden.
 
-### `OddsSnapshotPoint`
+### 6.3. Procedencia del checkpoint y observación histórica
 
-```python
-@dataclass(frozen=True)
-class OddsSnapshotPoint:
-    snapshot_id: int | None
-    quote_id: int | None
-    odds_value: Decimal
-    collected_at: datetime | None
-    source_collected_at: datetime | None
-    minutes_before_start: Decimal | None
-    source_limit: Decimal | None = None
-    exchange_size: Decimal | None = None
-```
+`OddsPointMeta` conserva:
 
-For a snapshot with a known event start:
+| Campo | Significado |
+|---|---|
+| `snapshot_id`, `quote_id` | Observación y cotización elegidas. |
+| `collected_at`, `changed_at` | Recogida y momento de cambio informado por el proveedor. |
+| `minutes_before_start` | Minutos observados redondeados. |
+| `target_minute` | Checkpoint representado. |
+| `distance_from_target` | Distancia con precisión decimal al checkpoint, en minutos. |
+| `exchange_size` | Cantidad del exchange de esa lectura, si existe. |
 
-```text
-effective_at = (
-    min(source_collected_at, collected_at)
-    if source_collected_at is not None
-    else collected_at
-)
-minutes_before_start = (starts_at - effective_at) / 60 seconds
-```
+La distancia actual es decimal; no debe documentarse como un entero.
 
-When `source_collected_at` is missing, `collected_at` supplies the time. If a
-provider timestamp is later than the stored collection timestamp, the context
-uses `collected_at` for the effective trajectory position.
+`OddsSnapshotPoint` conserva `snapshot_id`, `quote_id`, `odds_value`, `collected_at`, `source_collected_at`, `minutes_before_start`, `source_limit` y `exchange_size`: valor histórico, tiempo preciso y procedencia, con cantidad y límite opcionales.
 
-Snapshots are sorted by effective timestamp (`source_collected_at`, then
-`collected_at`, then `snapshot_id`). Per-choice minute maps are kept in
-descending target-minute order for deterministic serialization and debugging.
+Los filtros `filter_by_market_groups`, `filter_by_market_period` y `filter_by_bookie_ids` obtienen vistas por familia, periodo o casa sin modificar el historial de origen.
 
-The context also provides non-mutating filters used to derive consumer views:
+## 7. Momento elegido y disponibilidad temporal
 
-* `filter_by_market_groups(...)`
-* `filter_by_market_period(...)`
-* `filter_by_bookie_ids(...)`
+La [política común](market-evaluation-v1.md#4-selección-temporal-compartida) explica la regla completa. Sus operaciones esenciales son:
 
----
+**instante nominal = starts_at − target_minute minutos.**
 
-## 5. Consumer boundaries
+**momento efectivo = mínimo(source_collected_at, collected_at)**, cuando hay momento de proveedor; en otro caso, `collected_at`.
 
-### Arguments passed to each pillar
+**minutos precisos del contexto = segundos entre inicio y momento efectivo ÷ 60.**
 
-| Pillar | Event argument from the processor | Other inputs |
-|---|---|---|
-| P1 | Full `EventContext` | `debug_mode`; reads `event_context.streak_analysis`. Raw odds references have already been released. |
-| P2, P3, P4, and P5 | `EventIdentity` | Shared `OddsTrajectoryContext`, `TargetMinuteSelection`, `EventMarketEvaluation`, and `debug_mode`. P5 also receives a `PriceMemoryReader`. |
+`collected_at` define disponibilidad y cercanía al checkpoint. `source_collected_at` sitúa el cambio de mercado, acotado por esa recogida. Una observación sin recogida no se puede situar en el eje compartido.
 
-The processor builds `EventMarketEvaluation` once per event. It contains canonical
-contracts, the common Full Time selection and coverage. `Full Time Including
-Overtime` has priority only when a supported reading can actually be calculated;
-otherwise regulation is considered. All four pillars consume that selection.
-Other supported periods remain independently evaluable.
+`TargetMinuteSelection` reúne `target_minute`, `reason` y `diagnostics`. Entre minutos presentes y permitidos elige el menor que sea mayor o igual a `evaluation_minute`. A T−5 puede elegir 5 o un momento anterior, como 30; no utiliza T−1.
 
-Snapshot readings use `market_snapshot_extractor.py`. Temporal eligibility and
-P4 use the same `TrajectorySamplingPolicy` in
-[`trajectory_sampling.py`](../../modules/pillars/trajectory_sampling.py), including
-validation, deduplication, checkpoint ranking and endpoint bounds. Selection does
-not estimate temporal usability by counting unfiltered snapshots. The sampler
-has no process-wide cache; derived point views share source provenance.
+`SnapshotTargetWindow` reúne `target_minute`, `nominal_at`, `earliest_at` y `latest_at`: etiqueta de momento, instante nominal e inicio/fin de ventana. La ventana incluye la tolerancia y se limita por lo que podía conocerse al evaluar.
 
-### P2 and P3: structural target-minute snapshots
+## 8. EventMarketEvaluation: plan compartido de mercados
 
-P2 (side market) and P3 (totals market) receive the same
-`TargetMinuteSelection`. Their market policies declare a
-`MarketSnapshotRequest` and use [`market_snapshot_extractor.py`](../../modules/pillars/market_snapshot_extractor.py)
-to read:
+| Campo | Significado |
+|---|---|
+| `context` | Historial organizado de origen. |
+| `target_selection` | Momento común. |
+| `lines` | Contratos reconocidos con casas admitidas. |
+| `selected_full_time_period` | Tiempo completo seleccionado, con prórroga o reglamentario. |
+| `selection` | Candidatos, lecturas utilizables, motivos y checkpoint. |
+| `diagnostics` | Explicación de lo que no pudo admitirse. |
+| `rejected_lines` | Contratos no admitidos, conservados para explicar su exclusión. |
 
-* `choice.odds_values[target_minute]` for the price;
-* `choice.meta_by_minute[target_minute]` for quote lineage;
-* `market_line.line_value` for line inputs;
-* `exchange_size` from the same minute metadata when required.
+`view(pillar)` entrega la vista aplicable a un pilar; `contracts(pillar)`, las identidades que puede referenciar; `coverage(pillar)`, la disponibilidad por combinación.
 
-They do not scan arbitrary `snapshots`. Missing, invalid, or ambiguous values
-are reported in the extraction contract rather than silently substituted.
+La selección prioriza tiempo completo con prórroga si permite alguna lectura soportada y actual; en otro caso considera el reglamentario. Todos reciben el elegido. Otros periodos permanecen independientes. El número de antecedentes de P5 no interviene en esta decisión.
 
-### P4: causal temporal trajectory
+## 9. Objetos de extracción de una lectura
 
-P4 receives the same `TargetMinuteSelection` as P2, P3, and P5 through
-[`run_pillar_4.py`](../../modules/pillars/pillar_4/run_pillar_4.py). The shared
-policy in [`trajectory_selection.py`](../../modules/pillars/trajectory_selection.py)
-computes each target window from kickoff, tolerance, and `evaluation_as_of`.
-`OddsTrajectoryContext` uses those windows for its target projections, and
-P4 uses the same windows to bound its trajectory:
+El [extractor común](../../modules/pillars/market_snapshot_extractor.py) obtiene ingredientes de checkpoints sin consultar otra vez el repositorio.
 
-* takes the operative target from the shared selection;
-* takes the UTC evaluation boundary from `OddsTrajectoryContext`;
-* retains historical points through the shared cutoff and uses the configured
-  tolerance window when selecting each checkpoint;
-* keeps only supported/main-line series;
-* normalizes snapshots into shared `TrajectoryPoint` values;
-* selects the eligible snapshot nearest each nominal checkpoint and records its
-  actual distance from that checkpoint; and
-* returns separate adaptive and checkpoint series, ending each adaptive series
-  at its selected operative endpoint.
+| Objeto | Campos y función |
+|---|---|
+| `MarketIdentity` | `market_group`, `market_period`, `market_name`: familia, periodo y nombre solicitado. |
+| `ChoiceRequest` | `key`, `choice_name`, `input_name`, `exchange_size_input_name`: resultado solicitado y nombres de sus ingredientes. |
+| `MarketSnapshotRequest` | `identities`, `bookie_id`, `choices`, `line_input_name`, `exchange_side`, `exchange_level`: lectura que se pide. |
+| `QuotePoint` | `odds_price`, `exchange_size`, `trace`: precio, cantidad opcional y procedencia. |
+| `MarketCandidate` | `market_line`, `bookie`, `line`, `choices`: contrato y casa candidatos con ingredientes disponibles. |
+| `MarketSnapshotExtraction` | `target_minute`, `candidates`, `missing_inputs`, `invalid_inputs`, `ambiguous_inputs`, `container_ambiguities`: candidatos y explicación de disponibilidad. |
 
-The target minute is a scheduling label, not the wall-clock instant when
-acquisition, persistence, and evaluation finish. For example, if kickoff is
-03:10:00 UTC, nominal T−5 is 03:05:00 UTC. A Betfair quote collected at
-03:05:15 UTC may serve as the T−5 endpoint when evaluation occurs at 03:05:16
-UTC, but a quote collected at 03:05:45 cannot be used in that evaluation. The
-result records `nominal_target_as_of`, `evaluation_as_of`, and
-`operative_as_of` separately in `checkpoint`. Legacy callers without an evaluation time use
-the nominal target as the cutoff.
+`QuoteTrace`, el expediente de procedencia, contiene `target_minute`, `snapshot_id`, `collected_at`, `changed_at`, `minutes_before_start`, `quote_id`, `market_group`, `market_period`, `market_name`, `line_value`, `bookie_id`, `bookie_name`, `source`, `exchange_side`, `exchange_level`, `choice_name`, `canonical_market_key`, `market_type_id`, `is_live`, `market_id` y `source_collected_at`.
 
-`collected_at` is the timestamp the persistence contract assigns to the
-snapshot and is the shared axis for checkpoint selection and the evaluation
-cutoff. It can be approximate for reconstructed historical moments, so the
-configured tolerance is applied to it consistently by every pillar.
-`source_collected_at` records the provider's tick time and is used to position
-P4's trajectory; if it is later than `collected_at`, P4 clamps its effective
-time to `collected_at` without discarding the price. A snapshot without
-`collected_at` cannot be placed on the shared timeline and is excluded.
+Son los mismos conceptos de identidad y tiempo descritos arriba, unidos al precio elegido. Permiten explicar de qué observación salió cada ingrediente.
 
-P4 must not query the repository to fill gaps. Adaptive observations satisfy both
-`effective_at <= endpoint.effective_at` and `availability_at <= evaluation_as_of`.
-An old market observation collected after the endpoint remains eligible when it
-was available to the evaluation. Checkpoint projections preserve the selected
-snapshot's effective time. A missing endpoint or a single observation blocks
-movement metrics instead of creating a zero movement.
+## 10. Entradas temporales de P4
 
-P2–P5 use `EvaluationResult` schema 4 and `market-evaluation-v1`:
+El [muestreador compartido](../../modules/pillars/trajectory_sampling.py) define:
 
-* `ACTIVE`: at least one signal is `COMPUTED`, including a genuine neutral value;
-* `INSUFFICIENT_DATA`: no computed signal and no execution error;
-* `ERROR`: no computed signal and at least one error;
-* `SKIPPED`: disabled by configuration.
+| Objeto | Contenido |
+|---|---|
+| `TrajectoryPoint` | Observación temporal con valor, dos relojes, identidades y metadatos opcionales. |
+| `TrajectoryPointValue` | Valor derivado con `original`, `value` y `value_type`; comparte procedencia con el punto original. |
+| `TrajectorySample` | Puntos válidos, checkpoints, vista adaptativa, endpoint y diagnóstico. |
+| `TrajectorySamplingPolicy` | Inicio, hora de evaluación, minuto elegido y ventanas comunes. |
 
-No bookmaker is mandatory for global success. Coverage is independent of this
-status and describes bookmaker/family/period/line/exchange-side combinations.
-Missing bet365 AH history or Betfair data does not downgrade another calculated
-signal. Individual P4 series retain observation counts, missing checkpoints,
-`INSUFFICIENT_DATA` when movement cannot be calculated and null movement values.
-A historical contract with an observed replacement endpoint is diagnosed as
-`CONTRACT_ENDED`; an absent endpoint alone does not prove a line transition.
-`SOURCE_ROLE` describes `REGULAR`, `EXCHANGE` or `DERIVED`, not requiredness.
+Los campos de `TrajectoryPoint` son:
 
-Regular-bookmaker trajectories remain independent. A representative edge needs
-both Pinnacle and bet365; book/exchange comparisons additionally need their
-matching Betfair inputs. Derived signals inherit contract references from their
-constituent series. No global fallback fabricates a missing dependency.
+| Campos | Significado |
+|---|---|
+| `point_id`, `value` | Identidad del punto y cantidad seguida, como cuota o inverso de cuota. |
+| `effective_at`, `availability_at` | Momento del cambio y momento en que la observación estaba disponible. |
+| `minutes_before_start` | Posición temporal precisa frente al inicio. |
+| `snapshot_id`, `quote_id` | Observación y cotización originales. |
+| `collected_at`, `source_collected_at` | Relojes originales conservados. |
+| `source_limit`, `exchange_size` | Límite y cantidad opcionales. |
+| `observation_kind` | Clase de observación; inicialmente `PERSISTED_SNAPSHOT`, una observación guardada. |
+| `target_minute`, `distance_from_target_minutes` | Checkpoint y distancia añadidos al proyectar ese punto. |
 
-**Upstream trajectory contract:** P4 analyses the history supplied by
-`OddsTrajectoryContext`. Under the current OddspAPI ingestion, `/odds` selects the
-current principal line and `/historical-odds` reconstructs the cached outcomes of
-that selected contract. The query admits quotes with `main_line IS TRUE`.
-Consequently, P4 must not assume it received the historical succession of all
-principal lines. No observed line transition does not prove that the real market
-line never changed. Acquisition details belong to the
-[ingestion documentation](../providers/pre_start_odds_ingestion.md).
+`TrajectorySample` reúne `points`, `checkpoints`, `adaptive`, `endpoint`, `invalid`, `excluded_future_count` y `first_after_cutoff_at`: observaciones ordenadas, selección por momento, recorrido hasta el endpoint, explicación de inválidas y datos posteriores al corte. `has_movement` exige endpoint y al menos dos observaciones en una vista temporal disponible.
 
-With `debug_mode=True`, P4 logs the nominal/evaluation/checkpoint boundaries,
-source and market, individual endpoints, observation counts, missing checkpoints
-and movement availability. Logging reads the completed result and does not
-select or recalculate odds. The pipeline adds the common execution summary.
+`TrajectorySamplingPolicy` conserva `event_start`, `evaluation_as_of`, `target_minute` y `windows`. La vista adaptativa termina en el endpoint seleccionado, manteniendo puntos cuyo momento efectivo no lo supera y cuya disponibilidad no supera la evaluación.
 
-### P5: exact-price memory input
+Ejemplo: partido a las 03:10:00, checkpoint T−5 a las 03:05:00 y evaluación a las 03:05:16. Una observación recogida a las 03:05:15 puede representar el endpoint dentro de tolerancia; una recogida a las 03:05:45 queda fuera de lo conocido. Un cambio más antiguo recogido después del endpoint puede entrar si ya estaba disponible antes de las 03:05:16.
 
-P5 uses the selected Full Time contracts and the common snapshot extractor.
-Pinnacle and bet365 each supply their own vector: 1X2 requires Home/Draw/Away;
-Home/Away requires Home/Away. Each independent memory calculation needs at least
-three eligible historical events. The injected `PriceMemoryReader` owns the SQL
-lookup; the pillar does not rebuild the current trajectory.
+El resultado distingue `nominal_target_as_of`, `evaluation_as_of` y `operative_as_of`: nominal, evaluación y límite operativo. Si falta endpoint o solo hay un punto, no se inventa movimiento cero.
 
-Betfair BACK/LAY prices, sizes and quote/snapshot provenance are retained in
-`inputs` with `role=DIAGNOSTIC`. Entries in `diagnostics` with
-`kind=exchange_exposure` reference those inputs, preserve incomplete sides and
-state `participates_in_score=false`. They create no memory signal and cannot
-make P5 successful. SofaScore is not a source for new P5 calculations.
+Los [objetos propios de P4](../../modules/pillars/pillar_4/models.py) añaden `P4SeriesInput`, identidad de la serie y sus puntos/ingredientes, y `P4ExtractionResult`, series y diagnósticos. Que existan series para inspeccionar no garantiza movimiento calculable.
 
----
+## 11. Qué recibe y utiliza cada pilar
 
-## 6. Typed temporal inputs and output references
+| Pilar | Identidad y datos |
+|---|---|
+| P1 | EventContext completo y su streak_analysis. Las cuotas crudas ya se liberaron. |
+| P2 y P3 | EventIdentity, historial organizado, selección temporal y evaluación de mercados. Extraen los ingredientes del checkpoint seleccionado. |
+| P4 | Los mismos objetos compartidos; además transforma las observaciones en series de checkpoints y adaptativas acotadas. |
+| P5 | Los objetos de mercados y un `PriceMemoryReader`, interfaz para consultar memoria histórica de otros encuentros. |
 
-[`trajectory_sampling.py`](../../modules/pillars/trajectory_sampling.py) defines:
+P5 utiliza un vector propio por casa: 1X2 exige local, empate y visitante; Home/Away exige local y visitante. Betfair puede aportar precios, cantidades y procedencia con `role = DIAGNOSTIC` y `participates_in_score = false`; no produce una señal de memoria ni vuelve exitoso el pilar.
 
-* `TrajectoryPoint`: value, effective and recorded collection time, source
-  timestamp, quote/snapshot identity and optional size/limit. A projection adds
-  its target, distance and observation kind without changing effective time.
-* `TrajectoryPointValue`: a derived value sharing its original point's provenance.
-* `TrajectorySample`: ordered points, projected checkpoints, adaptive points,
-  endpoint and invalid/excluded-observation diagnostics. `has_movement` requires
-  an endpoint and at least two observations in an available temporal view.
-* `TrajectorySamplingPolicy`: event start, evaluation boundary, selected target
-  and shared target windows. It is reused as a policy, without a global cache of
-  event data.
+P5 puede consultar otros partidos para su memoria exacta. Esa consulta no reconstruye ni sustituye la trayectoria actual del encuentro.
 
-[`pillar_4/models.py`](../../modules/pillars/pillar_4/models.py) defines the
-P4-specific analytical inputs:
+## 12. Ausencias, estados y lectura posterior
 
-* `P4SeriesInput`: market/bookmaker/outcome identity, view and value type, point
-  references, expected/missing checkpoints, constituent series and endpoint flag.
-* `P4ExtractionResult`: series plus boundary and input diagnostics. `usable`
-  means there are series to inspect; it does not certify calculable movement.
+Las entradas pueden ser:
 
-The canonical result stores `inputs`, `contracts`, `signals` and `analysis`.
-Points and series reference shared inputs instead of serializing a second raw
-profile. Signals retain their own `COMPUTED`, `BLOCKED` or `ERROR` state and
-contract references. The common `EvaluationResult` owns global status; there is
-no second P4 profile/view status aggregator.
+- **Ausentes:** falta mercado, resultado, línea, momento o cantidad requerida.
+- **Inválidas:** existe un valor que no cumple su contrato, como precio no finito o menor o igual a 1.
+- **Ambiguas:** más de un candidato impide identificar una lectura única.
 
----
+El resultado conserva esos motivos y el minuto elegido. Las señales mantienen `input_refs` y `contract_refs` para recorrer su procedencia. P4 conserva también las referencias de series constituyentes.
 
-## 7. Failure and lineage semantics
+P2–P5 usan `EvaluationResult` formato 4. ACTIVE significa alguna señal calculada, incluido cero; INSUFFICIENT_DATA, ninguna calculada sin errores; ERROR, ninguna calculada con errores; SKIPPED, ausencia de participación. La [política de mercados](market-evaluation-v1.md#7-cobertura-y-estados) desarrolla estos estados y la cobertura.
 
-Across the shared extractor and pillar policies, input problems are classified
-as:
+La conservación mantiene ingredientes, contratos, señales y explicaciones. Consulte [mining-persistence.md](mining-persistence.md) para entender cómo se guardan y se vuelven a leer.
 
-* **missing**: the requested market, choice, line, target minute, or exchange
-  size is absent;
-* **invalid**: a present value cannot satisfy the scalar contract (for example,
-  a non-finite price, price <= 1 or negative exchange size); and
-* **ambiguous**: more than one candidate matches a supposedly unique request.
+## 13. Fuentes y lectura relacionada
 
-These classifications are part of the result payload and debug lineage. Consumers preserve the original classification and the selected target minute.
-Global status and coverage follow the shared evaluation contract.
+Fuentes principales: [context.py](../../modules/pillars/context.py), [key_moment_evaluation.py](../../modules/jobs/pre_start_check_job/key_moment_evaluation.py), [pillar_pipeline.py](../../modules/jobs/pre_start_check_job/pillar_pipeline.py), [repositorio de trayectorias](../../infrastructure/persistence/repositories/odds_trajectory_repository.py), [odds_trajectory_context.py](../../modules/pillars/odds_trajectory_context.py), [trajectory_selection.py](../../modules/pillars/trajectory_selection.py), [trajectory_sampling.py](../../modules/pillars/trajectory_sampling.py), [market_evaluation.py](../../modules/pillars/market_evaluation.py) y [market_snapshot_extractor.py](../../modules/pillars/market_snapshot_extractor.py).
 
-The canonical flow is therefore:
-
-```text
-EventContext -----------------------------> P1 (after odds references are released)
-      |
-      +--> to_identity() --> EventIdentity --+--> P2 / P3 / P4 / P5
-
-repository --> dict[event_id, list[OddsTrajectoryPoint]]
-      |
-      +--> one event's rows --> OddsTrajectoryContext (local to its worker)
-                                    |
-                                    +--> TargetMinuteSelection --> EventMarketEvaluation --> P2 / P3 / P4 / P5
-```
-
-Any audit payload may retain raw observations and lineage. Pillars do not reload
-this event's odds to create a competing trajectory. P5 may query its separate
-cross-event exact-price memory; that query does not rebuild the current event's
-`OddsTrajectoryContext`.
+La [guía principal](guia-funcional/00-flujo-principal.md) explica el recorrido completo; [P1](guia-funcional/01-pilar-1-estructura-deportiva.md) desarrolla las entradas deportivas. La [recopilación de cuotas](../providers/pre_start_odds_ingestion.md) explica qué historia entregan los proveedores y por qué no debe suponerse una sucesión completa de todas las líneas del pasado.

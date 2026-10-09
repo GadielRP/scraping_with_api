@@ -129,6 +129,8 @@ The observations package extracts additional metadata about events. For example,
 
 ### Pillars (modules/pillars)
 
+For a Spanish guide to the pre start check flow and all five pillars, written for non-programmers, start with [Guía funcional de los pilares](docs/pillars/guia-funcional/00-flujo-principal.md). It links to a detailed document for each pillar, including the seven P1 side modules and its totals engine.
+
 The pillars package implements specialized analytical and statistical signal engines:
 
 * `context.py`: Defines the typed lifecycle data model (`EventContext`). It encapsulates normalized participants, competition data, trajectory contexts, observations, and prediction reports without relying on unstructured dictionaries. See [`docs/pillars/inputs.md`](docs/pillars/inputs.md).
