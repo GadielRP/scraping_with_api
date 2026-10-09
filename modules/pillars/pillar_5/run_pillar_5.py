@@ -1,5 +1,7 @@
 """Independent P5 profiles using common contracts and aggregated memory."""
 
+import logging
+
 from infrastructure.settings import Config
 from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
 from modules.pillars.market_evaluation import (
@@ -27,6 +29,12 @@ from .memory_score import calculate_memory_profile
 from .exchange_diagnostics import collect_exchange_inputs
 
 ENGINE_VERSION = "p5_price_memory_v4_0"
+logger = logging.getLogger(__name__)
+
+
+def _log_assignment(name, value, *, debug_mode):
+    if debug_mode:
+        logger.info("P5 FORMULA | assignment | %s = %s", name, value)
 
 
 def _population_filters(
@@ -90,7 +98,21 @@ def calculate_pillar_5(
         for book in (PINNACLE, BET365):
             namespace = f"{book.id}:{family}:{selected or 'NO_FT'}"
             refs = tuple(contract_key(line) for line in lines)
+            debug_label = f"{selected or 'NO_FT'}.{family}.{book.name.upper()}"
+            if debug_mode:
+                logger.info(
+                    "P5 FORMULA | %s | begin profile target_minute=%s market_lines=%s",
+                    debug_label,
+                    target_selection.target_minute,
+                    [line.market_name for line in lines],
+                )
             if not lines or target_selection.target_minute is None:
+                if debug_mode:
+                    logger.info(
+                        "P5 FORMULA | %s | unavailable: %s",
+                        debug_label,
+                        "market family absent" if not lines else "target minute absent",
+                    )
                 signals.append(
                     SignalResult(
                         namespace, "BLOCKED", reason="MISSING_INPUT", contract_refs=refs
@@ -122,6 +144,14 @@ def calculate_pillar_5(
                     if choice.ambiguous
                     else "INVALID_VALUE" if choice.invalid else "MISSING_INPUT"
                 )
+                if debug_mode:
+                    logger.info(
+                        "P5 FORMULA | %s | candidate unavailable reason=%s ambiguous=%s invalid=%s",
+                        debug_label,
+                        reason,
+                        choice.ambiguous,
+                        choice.invalid,
+                    )
                 signals.append(
                     SignalResult(
                         namespace, "BLOCKED", reason=reason, contract_refs=refs
@@ -132,6 +162,27 @@ def calculate_pillar_5(
             vector = ThreeWayMarketSnapshot(
                 home=points["1"], draw=points.get("x"), away=points["2"]
             )
+            for name, point in points.items():
+                outcome_name = {"1": "HOME", "x": "DRAW", "2": "AWAY"}.get(
+                    name, name.upper()
+                )
+                _log_assignment(
+                    f"{debug_label}.{outcome_name}_PRICE",
+                    point.odds_price,
+                    debug_mode=debug_mode,
+                )
+            if debug_mode:
+                logger.info(
+                    "P5 FORMULA | %s | current price vector=%s",
+                    debug_label,
+                    {
+                        "HOME": vector.home.odds_price,
+                        "DRAW": (
+                            vector.draw.odds_price if vector.draw is not None else None
+                        ),
+                        "AWAY": vector.away.odds_price,
+                    },
+                )
             input_refs = []
             for name, point in points.items():
                 ref = f"{namespace}:{name}"
@@ -141,6 +192,12 @@ def calculate_pillar_5(
                 }
                 input_refs.append(ref)
             if missing_filters:
+                if debug_mode:
+                    logger.info(
+                        "P5 FORMULA | %s | unavailable: missing population filter values=%s",
+                        debug_label,
+                        list(missing_filters),
+                    )
                 signals.append(
                     SignalResult(
                         namespace,
@@ -157,6 +214,12 @@ def calculate_pillar_5(
                     event_context, vector, expected_bookie_id=book.id
                 )
             except ValueError as exc:
+                if debug_mode:
+                    logger.info(
+                        "P5 FORMULA | %s | invalid historical query input detail=%s",
+                        debug_label,
+                        exc,
+                    )
                 signals.append(
                     SignalResult(
                         namespace,
@@ -168,6 +231,13 @@ def calculate_pillar_5(
                     )
                 )
                 continue
+            if debug_mode:
+                logger.info(
+                    "P5 FORMULA | %s | historical query key=%s population_filters=%s",
+                    debug_label,
+                    key.to_dict(),
+                    population.to_dict(),
+                )
             stage = "HISTORICAL_LOOKUP_ERROR"
             try:
                 sample = build_memory_sample(
@@ -184,6 +254,16 @@ def calculate_pillar_5(
                     "query_key": key.to_dict(),
                     "exclusions": sample.exclusions,
                 }
+                if debug_mode:
+                    logger.info(
+                        "P5 FORMULA | %s | historical sample_size=%s outcomes(home=%s, draw=%s, away=%s) exclusions=%s",
+                        debug_label,
+                        sample.sample_size,
+                        sample.wins_home,
+                        sample.wins_draw,
+                        sample.wins_away,
+                        sample.exclusions,
+                    )
                 stage = "CALCULATION_ERROR"
                 profile = calculate_memory_profile(
                     bookmaker=book.name,
@@ -208,6 +288,13 @@ def calculate_pillar_5(
                     )
                 )
             except Exception as exc:
+                if debug_mode:
+                    logger.exception(
+                        "P5 FORMULA | %s | %s failed error_class=%s",
+                        debug_label,
+                        stage,
+                        type(exc).__name__,
+                    )
                 signals.append(
                     SignalResult(
                         namespace,

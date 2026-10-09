@@ -120,6 +120,14 @@ def calculate_memory_profile(
         },
     }
 
+    _log_formula(
+        f"{bookmaker}.SAMPLE_SUFFICIENCY",
+        "sample_size >= MIN_SAMPLE_SIZE",
+        f"{sample.sample_size} >= {MIN_SAMPLE_SIZE}",
+        sample.sample_size >= MIN_SAMPLE_SIZE,
+        debug_mode=debug_mode,
+    )
+
     if sample.sample_size < MIN_SAMPLE_SIZE:
         logger.info(
             "P5 PROFILE | bookmaker=%s status=INSUFFICIENT_DATA reason=minimum_sample_size_not_met sample_size=%s minimum=%s",
