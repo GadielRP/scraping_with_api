@@ -2,7 +2,9 @@
 
 [Volver a la guía principal](00-flujo-principal.md) · [P1: estructura](01-pilar-1-estructura-deportiva.md) · [P2: lado](02-pilar-2-mercado-de-lado.md) · [P3: totales](03-pilar-3-mercado-de-totales.md) · [P5: memoria](05-pilar-5-memoria-de-precios.md)
 
-P4, motor `p4-signal-profile-v3` revisado el 8 de octubre de 2026, estudia **cómo se movieron precios, líneas y lecturas derivadas hasta el momento evaluado**. Conserva magnitud, dirección, recorrido, cambios de sentido y concentración temporal. No crea un único score de «dinero informado» ni demuestra quién originó un movimiento.
+P4, motor `p4-signal-profile-v3` revisado el 9 de octubre de 2026, estudia **cómo se movieron precios, líneas y lecturas derivadas hasta el momento evaluado**. Conserva magnitud, dirección, recorrido, cambios de sentido y concentración temporal. No crea un único score de «dinero informado» ni demuestra quién originó un movimiento.
+
+Para seguir cómo se utilizan conjuntamente las definiciones y fórmulas, lea el [recorrido integrado del dato al resultado](#recorrido-integrado-del-dato-al-resultado), con pasos, ejemplo y lectura final.
 
 ## 1. De una foto a una película
 
@@ -227,6 +229,102 @@ Es una comparación de edges: POSITIVE representa local en SIDE y Over en TOTALS
 En un tramo, `FROM_POINT_ID` y `TO_POINT_ID` identifican extremos, `ORDINAL` su posición, `CONTIGUOUS_RAW` continuidad y `LEG_ID` el tramo. Los campos START/END indican valores, horas o referencias según su nombre; no contienen otro score.
 
 Los motivos habituales se entienden así: `MISSING_ENDPOINT`, falta la lectura final; `INSUFFICIENT_OBSERVATIONS`, faltan puntos; `NON_CONTIGUOUS_GAP`, el recorrido tiene un hueco; `ZERO_DENOMINATOR`, no se puede dividir; `NOT_APPLICABLE`, la métrica no corresponde a ese valor. Son explicaciones locales, no una política que obligue a invalidar todo P4.
+
+## Recorrido integrado: del dato al resultado
+
+Este recorrido enlaza selección temporal, series, tramos, métricas, patrones, corrección, ventanas, líneas y relaciones. El ejemplo principal utiliza la trayectoria de cuota 2.00 → 1.90 → 1.95 de la sección 5.
+
+### Paso 1. Identificar qué dato cambia y hasta cuándo se conoce
+
+Supongamos un partido a las 20:00 y una evaluación a las 19:55:16, T−5. Se elige la última lectura alrededor de las 19:55, dentro de la ventana admitida. Para el ejemplo, sus horas efectivas y de recogida coinciden.
+
+El extractor reconoce un contrato y resultado concretos, por ejemplo local de Pinnacle en 1X2 de tiempo completo. Conserva mercado, periodo, línea cuando existe, casa, proveedor, resultado y lado/nivel del exchange. Esos datos identifican la serie; no se mezclan precios de contratos diferentes para añadir observaciones.
+
+`TrajectoryPoint` conserva valor, hora efectiva y disponibilidad. La primera sitúa el cambio; la segunda comprueba si ya podía conocerse al evaluar. `TrajectorySample` selecciona checkpoints, recorrido adaptativo y endpoint.
+
+### Paso 2. Formar las dos vistas y los tipos de valor
+
+Para CHECKPOINT_VIEW, tomemos tres puntos:
+
+| Checkpoint | Hora efectiva | Cuota `ODDS_PRICE` |
+|---|---|---|
+| T−120 | 18:00 | 2.00 |
+| T−30 | 19:30 | 1.90 |
+| T−5 | 19:55 | 1.95 |
+
+El punto T−5 es el endpoint operativo. `P4SeriesInput` conserva los puntos, sus identidades, tipo de valor, vista y checkpoints esperados. En este ejemplo los tres checkpoints forman la secuencia esperada y ninguno falta entre ellos.
+
+ADAPTIVE_VIEW puede contener además observaciones intermedias hasta ese endpoint, siempre que estuvieran disponibles al evaluar. Con más puntos puede revelar correcciones que tres checkpoints no muestran. Cada vista produce sus propias métricas.
+
+A partir de las cuotas se puede construir otra serie con `IMPLIED_PROBABILITY_RAW = 1/cuota`. Los límites de fuente y cantidades disponibles generan SOURCE_LIMIT y EXCHANGE_SIZE cuando existen. Sus valores no se suman a la cuota original.
+
+### Paso 3. Convertir puntos en tramos
+
+El motor une puntos consecutivos y obtiene dos tramos:
+
+| Tramo | Delta | Minutos efectivos | Velocidad |
+|---|---|---|---|
+| T−120 → T−30 | 1.90 − 2.00 = −0.10. | 90. | Aproximadamente −0.001111 por minuto. |
+| T−30 → T−5 | 1.95 − 1.90 = +0.05. | 25. | +0.002 por minuto. |
+
+`FROM_POINT_ID` y `TO_POINT_ID` vinculan los extremos; `LEG_ID` identifica el tramo; `ORDINAL` conserva su orden; `CONTIGUOUS_RAW` indica continuidad. Los signos son −1 y +1.
+
+Si se esperaba T−30 pero faltara, el salto T−120 → T−5 no demostraría continuidad. Podría existir cambio entre extremos, pero no la velocidad y eficiencia de un recorrido completo.
+
+### Paso 4. Obtener las métricas del recorrido
+
+Con tres observaciones, dos tramos continuos y endpoint:
+
+- `NET_MOVE_RAW` = 1.95 − 2.00 = **−0.05**.
+- `PATH_LENGTH_RAW` = 0.10 + 0.05 = **0.15**.
+- `PATH_EFFICIENCY_RAW` = 0.05/0.15 ≈ **0.333333**.
+- `ELAPSED_MINUTES_ACTUAL` = **115**.
+- `VELOCITY_RAW` global = −0.05/115 ≈ **−0.000435** por minuto.
+- `NO_MOVEMENT_RAW` = falso y `GAP_PRESENT_RAW` = falso.
+
+La diferencia entre cambio neto y recorrido muestra que hubo ida y vuelta. En la serie de inversos, los mismos precios producen aproximadamente 0.500000 → 0.526316 → 0.512821: su cambio neto es positivo. El signo se interpreta después de leer `VALUE_TYPE`.
+
+Una serie constante completa daría cambio cero y NO_MOVEMENT verdadero; su eficiencia quedaría ausente por denominador cero. Una serie sin endpoint o con un solo punto no se presenta como movimiento cero.
+
+### Paso 5. Reconocer rachas, giro y corrección
+
+El primer tramo forma una racha NEGATIVE y el segundo una POSITIVE. `DIRECTIONAL_RUNS` conserva ambas, con tiempos, puntos, tramos y magnitud. `PATH_PATTERN_RAW` es REVERSAL.
+
+`NET_DIRECTION_RAW` es NEGATIVE, pero `FINAL_RUN_DIRECTION_RAW` es POSITIVE. El punto de cuota 1.90 es un valle, TROUGH, de tipo POINT en `TURNING_STRUCTURE_RAW`. Hay un cambio de signo; no atraviesa una meseta de puntos planos.
+
+La primera racha movió 0.10 y la primera contraria corrigió 0.05. Por tanto, ratio de corrección **0.50**, retención **0.50**, estado CORRECTION, sobrepaso falso y magnitud de sobrepaso cero. Las referencias de `CORRECTION_RAW` permiten volver a esas rachas.
+
+Si la corrección fuera 0.15, el ratio sería 1.50 y habría sobrepaso de 0.05. Esa es otra rama del mismo cálculo, no el resultado del ejemplo principal.
+
+Las velocidades pasan de negativa a positiva. Se registra inversión; aunque aumente su magnitud absoluta, no se clasifica como aceleración en el mismo sentido. Los tramos de igual dirección sí permiten estudiar aceleración o desaceleración según la magnitud de sus velocidades. Para EXCHANGE_SIZE se conservan cambios de cantidad, pero estas medidas de velocidad y aceleración quedan sin valor.
+
+### Paso 6. Localizar dónde ocurrió el movimiento
+
+La asignación utiliza el punto final de cada tramo. El que termina en T−30 pertenece a DEVELOPMENT_WINDOW; el que termina en T−5, a LATE_WINDOW.
+
+El recorrido de desarrollo es 0.10 y su participación **0.10/0.15 = 2/3**. El tardío es 0.05 y su participación **1/3**. No se asigna recorrido a EARLY_WINDOW solo porque el primer punto esté en T−120.
+
+`WINDOWS` conserva cambios, recorrido, puntos, tramos, duración, patrón y referencias por ventana. El primer tramo es dominante por magnitud y la ventana de desarrollo es dominante por recorrido. Si hubiera empate, se conservarían todos los dominantes.
+
+### Paso 7. Añadir líneas y series derivadas comparables
+
+En hándicap o totales, una serie LINE puede seguir una línea única por checkpoint, por ejemplo 2.5 → 3.0. La diferencia +0.5 describe la condición del mercado. Los precios de 2.5 y 3.0 permanecen en series distintas. Una serie antigua sin endpoint puede quedar CONTRACT_ENDED si se reconoce su relevo.
+
+Cuando existen ingredientes en checkpoints comunes, el motor construye SIDE_EDGE u OU_EDGE. Después puede formar BOOK_REP_EDGE, BOOK_INTERNAL_GAP, EXCHANGE_REP_EDGE, EXCHANGE_INTERNAL_GAP y BOOK_EXCHANGE_GAP. Para precios BACK/LAY compatibles también construye BACK_LAY_RELATIVE_SPREAD.
+
+Cada serie derivada conserva `CONSTITUENT_SERIES_IDS` y las referencias originales. Si falta un ingrediente, no inventa una observación. Estas series usan las fórmulas de pares, medias, diferencias y spreads de [P2](02-pilar-2-mercado-de-lado.md) y [P3](03-pilar-3-mercado-de-totales.md), y luego el mismo análisis temporal.
+
+Como ejemplo complementario de relación, si en checkpoints comunes el representante de casas pasa de +0.04 a +0.08 y el del exchange de +0.06 a −0.02, el gap pasa de **0.02 a 0.10**, con cambio **+0.08**. La relación cambia de ALIGNED_POSITIVE a OPPOSED. `STATE_CHANGED_RAW` es verdadero. Son edges comparables; no se compara una cuota con un edge.
+
+### Paso 8. Publicar señales y reconstruir su significado
+
+`P4ExtractionResult` reúne las series y el diagnóstico temporal. Cada `P4SeriesResult` devuelve mercado, puntos, tramos, métricas, señales estructurales, estado y trazabilidad.
+
+El paquete general guarda ingredientes en `inputs`, cálculos por serie en `analysis` y métricas calculadas o motivos locales en `signals`. Añade contratos, cobertura, diagnósticos y límites nominal y operativo. Una métrica imposible puede quedar BLOCKED mientras otras son COMPUTED.
+
+En el ejemplo principal existe movimiento calculable y el resultado general es ACTIVE. La lectura es: **«Hasta T−5, esta cuota bajó 0.10 y recuperó 0.05. Termina por debajo del inicio, con una corrección de la mitad del descenso inicial. Dos tercios del recorrido observado se asignan a desarrollo y un tercio al tramo tardío»**.
+
+Para comprobarlo se sigue **señal → serie y tipo de valor → métrica → tramos → puntos y relojes → contrato original**. En una serie derivada se recorren también sus constituyentes. Los conteos de observaciones, checkpoints faltantes y presencia del endpoint permiten distinguir un patrón observado de una historia incompleta.
 
 ## 13. Fuentes y lectura complementaria
 

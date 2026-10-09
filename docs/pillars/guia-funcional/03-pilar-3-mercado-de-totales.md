@@ -2,9 +2,11 @@
 
 [Volver a la guía principal](00-flujo-principal.md) · [P1: estructura deportiva](01-pilar-1-estructura-deportiva.md) · [P2: lado](02-pilar-2-mercado-de-lado.md) · [P4: movimiento](04-pilar-4-movimiento-temporal.md) · [P5: memoria](05-pilar-5-memoria-de-precios.md)
 
-El motor `p3-signal-profile-v3`, revisado el 8 de octubre de 2026, estudia **cómo el mercado de totales se inclina hacia mayor o menor anotación y cómo coinciden o discrepan sus lecturas**.
+El motor `p3-signal-profile-v3`, revisado el 9 de octubre de 2026, estudia **cómo el mercado de totales se inclina hacia mayor o menor anotación y cómo coinciden o discrepan sus lecturas**.
 
 No calcula los goles o puntos esperados desde resultados deportivos. Esa tarea pertenece a la rama de [totales de P1](01-pilar-1-estructura-deportiva.md). P3 utiliza precios y líneas del mercado.
+
+Para seguir cómo se utilizan conjuntamente las definiciones y fórmulas, lea el [recorrido integrado del dato al resultado](#recorrido-integrado-del-dato-al-resultado), con pasos, ejemplo y lectura final.
 
 ## 1. Qué significa un total
 
@@ -177,6 +179,71 @@ Los nombres de entrada se interpretan por partes. `PIN_FT_OU_LINE` es la línea 
 Cero significa un cálculo neutral válido. `null` significa que no se pudo producir el dato. El pilar puede estar activo por una separación de líneas calculada, aunque no haya representante de precios. «Activo» no equivale a consenso de todas las fuentes.
 
 Lea el perfil deportivo de [P1](01-pilar-1-estructura-deportiva.md) si quiere entender anotación histórica, y [P4](04-pilar-4-movimiento-temporal.md) si quiere entender cambios de precios y líneas. Ninguno reemplaza automáticamente al otro en el coordinador.
+
+## Recorrido integrado: del dato al resultado
+
+El recorrido siguiente utiliza conjuntamente línea, precios, edge, representante, relación, contexto, periodos y trazabilidad. Los números son ilustrativos y se calculan con las fórmulas anteriores.
+
+### Paso 1. Del encuentro al contrato de totales
+
+Supongamos una evaluación T−5 con tiempo reglamentario seleccionado. La identidad sitúa el encuentro; el historial organizado aporta las cuotas; la selección temporal sitúa el checkpoint; la evaluación común indica qué contratos y periodo pueden utilizarse.
+
+La extracción construye `TotalsBookSnapshot` para las casas, `TotalsExchangeSnapshot` para BACK/LAY y un `P3MarketSnapshot` que los reúne por periodo. Antes de comparar, conserva separados los contratos de línea 2.5 y 3.0. Cada ingrediente guarda su `trace` para reconocer mercado, casa, proveedor, resultado, tiempo y observación.
+
+### Paso 2. Obtener la lectura de cada casa
+
+En tiempo completo, ambas casas publican línea 2.5:
+
+| Casa | Over | Under | Edge | Dirección |
+|---|---|---|---|---|
+| Pinnacle | 1.80 | 2.20 | 0.10 | OVER |
+| bet365 | 1.90 | 2.10 | 0.05 | OVER |
+
+Cada `BookOUReading` aplica la diferencia relativa de inversos Over/Under. Guarda también `LINE`, `OVER_ODDS` y `UNDER_ODDS`. Un edge positivo indica inclinación de ese par hacia Over; la cifra 2.5 sigue siendo el umbral del contrato.
+
+### Paso 3. Separar estructura de línea y relación de precios
+
+`LineStructureSignal` obtiene `LINE_DIFF_RAW = 2.5 − 2.5 = 0` y `LINE_GAP = 0`. Como las líneas coinciden, `BookRelationSignal` puede comparar los edges y `RepresentativeSignal` puede formar su media:
+
+- Gap de precios: |0.10 − 0.05| = **0.05**.
+- Edge representativo: (0.10 + 0.05)/2 = **0.075**.
+- Relación: **CONVERGENCE_OVER**.
+- Dirección representativa: **OVER**.
+- `CONTEXT_DIRECTION_RAW`: **OPEN_BIAS**.
+
+`PeriodOUSignal` agrupa todas estas piezas. La etiqueta de contexto procede del representante, no de una resta de líneas.
+
+Si bet365 tuviera línea 3.0, la diferencia sería −0.5 y el gap de línea 0.5. Podrían mantenerse los edges individuales, pero el representante y la relación de sus precios no serían comparables. «Hay separación de líneas» y «los precios discrepan» requieren evidencias distintas.
+
+### Paso 4. Calcular el exchange y compararlo con las casas
+
+Supongamos Betfair a línea 2.5, con BACK Over/Under 1.92/2.08 y LAY 2.04/2.16. `ExchangeOUReading` produce edges 0.04 y aproximadamente 0.028571, ambos OVER.
+
+`ExchangeOUSignal` conserva una relación CONVERGENCE_OVER, gap interno aproximado 0.011429 y representante **0.034286**, OVER. Las cantidades Over/Under acompañan cada lectura; no cambian esas operaciones.
+
+`BookExchangeOUSignal` compara primero las líneas: 2.5 − 2.5 = 0. Como hay igualdad y ambos representantes existen, obtiene gap **|0.075 − 0.034286| ≈ 0.040714**, con coincidencia OVER. Si el exchange tuviera línea 3.0, solo podría calcularse la separación de línea para esa comparación.
+
+Una lectura BACK disponible sigue siendo útil si falta LAY. Las operaciones que necesitan los dos lados conservan su ausencia. Un cero calculado nunca sustituye a ese dato faltante.
+
+### Paso 5. Incorporar primera mitad
+
+Supongamos que, dentro de primera mitad, ambas casas ofrecen línea 1.0. Pinnacle tiene Over/Under 2.20/1.80 y bet365 2.10/1.90. Los edges son −0.10 y −0.05; la media es **−0.075**, UNDER; su relación, CONVERGENCE_UNDER; su contexto, CLOSED_BIAS.
+
+`FT1HSignal` compara el representante 0.075 de tiempo completo con −0.075 de primera mitad. Obtiene separación **0.15** y DIVERGENCE. `FT_1H_OU_STRUCTURE` conserva las direcciones y relaciones originales.
+
+Las líneas 2.5 y 1.0 son distintas porque describen periodos distintos. Esta operación compara orientaciones ya obtenidas dentro de cada periodo; no resta sus umbrales ni deduce un total de segunda mitad.
+
+### Paso 6. Reunir las señales y leer el resultado
+
+`P3SignalProfile` reúne FT, 1H, FT_1H y las lecturas de exchange y casas–exchange por periodo. Los valores se conservan en `analysis` y sus métricas analíticas se publican como señales independientes.
+
+En el ejemplo, las señales de edge, relación y separación tienen estado COMPUTED. El gap de línea cero es un cálculo válido. Si faltara un precio, se conservarían las lecturas que sí pueden calcularse y la señal dependiente quedaría BLOCKED con su motivo.
+
+`inputs` conserva precios y líneas; `contracts`, las condiciones; `coverage`, disponibilidad; `diagnostics`, ausencias o incompatibilidades; `input_refs` y `contract_refs` conectan cada señal con su evidencia. El resultado global es ACTIVE porque existe alguna señal calculada.
+
+La lectura en lenguaje natural es: **«En T−5, las casas y el exchange coinciden hacia Over del tiempo completo a línea 2.5; sus inclinaciones tienen distinta magnitud. En primera mitad, las casas coinciden hacia Under a línea 1.0. El informe conserva esa oposición entre periodos»**.
+
+Para comprobar una conclusión, se localiza primero su señal, después su representante o relación en el perfil y por último sus precios y línea originales. No existe un score global de P3 que sustituya ese recorrido.
 
 ## 11. Fuentes
 

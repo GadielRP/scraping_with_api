@@ -2,7 +2,9 @@
 
 [Volver a la guía principal](00-flujo-principal.md) · [P1: estructura](01-pilar-1-estructura-deportiva.md) · [P2: lado](02-pilar-2-mercado-de-lado.md) · [P3: totales](03-pilar-3-mercado-de-totales.md) · [P4: movimiento](04-pilar-4-movimiento-temporal.md)
 
-P5, motor `p5_price_memory_v4_0` revisado el 8 de octubre de 2026, pregunta **qué resultados tuvieron otros partidos del mismo deporte con el mismo vector de precios de una casa**. Su salida combina predominio histórico y tamaño de muestra. No estima una probabilidad futura calibrada ni analiza el recorrido de la cuota actual.
+P5, motor `p5_price_memory_v4_0` revisado el 9 de octubre de 2026, pregunta **qué resultados tuvieron otros partidos del mismo deporte con el mismo vector de precios de una casa**. Su salida combina predominio histórico y tamaño de muestra. No estima una probabilidad futura calibrada ni analiza el recorrido de la cuota actual.
+
+Para seguir cómo se utilizan conjuntamente las definiciones y fórmulas, lea el [recorrido integrado del dato al resultado](#recorrido-integrado-del-dato-al-resultado), con pasos, ejemplo y lectura final.
 
 ## 1. Qué es un vector de precios
 
@@ -15,7 +17,7 @@ Es el conjunto de cuotas de los resultados de un mercado:
 
 Ejemplo 1X2: local 1.850, empate 3.600 y visitante 4.400. Ejemplo Home/Away: local 1.850 y visitante 2.050.
 
-P5 calcula por **Pinnacle** y **bet365**, separadamente, para el tiempo completo seleccionado en común. No promedia sus memorias para crear una puntuación final del evento.
+P5 calcula perfiles separados para **Pinnacle**, **bet365** y **SofaScore** (`bookie_id=1`), para el tiempo completo seleccionado en común. No promedia sus memorias para crear una puntuación final del evento.
 
 A diferencia de P2, un 1X2 sin empate no permite la consulta de memoria: aquí se exige el vector completo.
 
@@ -185,7 +187,7 @@ La frecuencia observada fue 66.67%, pero el score es 0.30. Son magnitudes distin
 
 P5 puede conservar los precios y cantidades BACK/LAY de Betfair en `inputs` con `role = DIAGNOSTIC`. Las entradas de diagnóstico `exchange_exposure` indican mercado, periodo, lado, disponibilidad y referencias.
 
-`participates_in_score = false` significa que esos datos no participan en las fórmulas ni crean una señal de memoria. Pueden ayudar a revisar el contexto, pero su sola presencia no hace exitoso P5. SofaScore tampoco participa como casa en los cálculos nuevos de este pilar.
+`participates_in_score = false` significa que esos datos no participan en las fórmulas ni crean una señal de memoria. Pueden ayudar a revisar el contexto, pero su sola presencia no hace exitoso P5. SofaScore participa como un perfil independiente, igual que Pinnacle y bet365.
 
 ## 9. La muestra que permite explicar un resultado después
 
@@ -218,6 +220,81 @@ Esto añade reproducibilidad, no un peso al score.
 `PopulationFilters` reúne competición, temporada y país cuando participan como restricciones. `MemoryQueryKey` define la coincidencia. `MemorySample` aporta conteos. `BookmakerMemoryProfile` contiene la interpretación y el score. Esa es la secuencia de objetos.
 
 El resultado general añade `signals`, `coverage`, `inputs`, `contracts`, `analysis` y `diagnostics`. Cada perfil aparece separado por casa, familia y periodo. Los estados comunes están en la [guía principal](00-flujo-principal.md#8-lectura-de-resultados-de-p2p5).
+
+## Recorrido integrado: del dato al resultado
+
+Esta sección conecta vector, cuantización, población, conteos, predominio, factores de muestra, escalones, fuerza y auditoría. Se desarrolla el ejemplo de seis eventos de la sección 7 desde la entrada actual hasta el resultado general.
+
+### Paso 1. Identificar la lectura actual
+
+Supongamos una evaluación T−5 con 1X2 de tiempo reglamentario seleccionado. El historial organizado contiene, para Pinnacle, precios local 1.8504, empate 3.6004 y visitante 4.4004.
+
+La identidad del evento indica encuentro, deporte e inicio. `target_selection` indica el momento actual; `market_evaluation` aporta el periodo y los contratos. P5 comprueba que los tres precios corresponden a la misma casa y mercado y que cada uno es finito y mayor que 1. Un precio de bet365 no completa el empate que pudiera faltar en Pinnacle.
+
+### Paso 2. Transformar el vector en una clave exacta
+
+El redondeo de mitad hacia arriba a `ODDS_QUANTUM = 0.001` produce **1.850 / 3.600 / 4.400**. Con el deporte, casa, familia 1X2, periodo y forma THREE_WAY se construye `MemoryQueryKey`.
+
+Si hubiera una lectura Home/Away, se construiría otra clave con forma TWO_WAY y sin empate. Si se utiliza alguna restricción de competición, temporada o país, `PopulationFilters` la añade a la población consultada.
+
+El T−5 actual identifica de dónde salió el vector. No exige que las observaciones históricas se hayan registrado también en T−5. La coincidencia utiliza los precios cuantizados y los demás campos de la clave.
+
+### Paso 3. Obtener la población y explicar sus conteos
+
+`PriceMemoryReader` consulta eventos anteriores al inicio del actual, con resultado y marcadores compatibles. Retira el evento presente, aplica los filtros elegidos y deduplica por evento. `MemorySample` devuelve todos los miembros elegibles resumidos en conteos.
+
+Supongamos que quedan **seis eventos: cuatro local, uno empate y uno visitante**. Su suma es seis, igual a `sample_size`. Las exclusiones explican qué candidatos no entraron; no se añaden como derrotas ni como ceros a esos seis.
+
+La muestra supera el mínimo de tres. HOME tiene la mayor frecuencia sin empate con otro resultado. Por eso puede continuar el cálculo direccional.
+
+### Paso 4. Convertir predominio en puntuación
+
+Los conteos alimentan esta cadena completa:
+
+| Operación | Sustitución | Resultado |
+|---|---|---|
+| `P_hist_DOMINANT` | 4/6 | Aproximadamente 0.666667. |
+| `BASELINE` | 1/3, porque hay tres resultados. | Aproximadamente 0.333333. |
+| `HIST_EDGE` | (4/6 − 1/3)/(1 − 1/3) | 0.50. |
+| `CONSISTENCY` | 0.5 + 0.5 × 0.50 | 0.75. |
+| `SAMPLE_FACTOR` | mínimo(6/8, 1) | 0.75. |
+| `MSRI_RAW` | 0.50 × 0.75 × 0.75 | 0.28125. |
+| `MSRI_SIGNAL` | Escalón desde 0.20 hasta menos de 0.40. | 0.50. |
+| `SAMPLE_WEIGHT` | Tramo de cinco a siete eventos. | 0.60. |
+| `P5` | 0.50 × 0.60 | **0.30**. |
+| `P5_STRENGTH` | Tramo desde 0.25 hasta menos de 0.50. | **MODERATE**. |
+
+`DOMINANT_RESULT` y `P5_DIRECTION` conservan HOME. `P5_VALID` es verdadero; el perfil queda ACTIVE. `BookmakerMemoryProfile` reúne estos valores, el vector, la clave, los conteos y su explicación.
+
+La frecuencia observada, el contraste histórico y el score son tres magnitudes distintas. El resultado 0.30 expresa la combinación definida por el motor; la frecuencia local observada fue 4/6.
+
+### Paso 5. Procesar las demás casas y los resultados alternativos
+
+El recorrido se repite de forma independiente para Pinnacle, bet365 y SofaScore. Cada casa utiliza sus propios precios y su propia población. Betfair conserva su papel de diagnóstico BACK/LAY, sin aportar un score de memoria.
+
+Para completar el ejemplo, supongamos:
+
+| Otro perfil | Consecuencia |
+|---|---|
+| bet365 tiene cuatro eventos: dos HOME y dos AWAY. | Muestra suficiente con empate máximo: `memory_status = TIE`, válido, dirección NONE y P5 = 0. |
+| SofaScore tiene solo dos eventos coincidentes. | Muestra insuficiente: `P5_VALID = false` y P5 ausente; la señal queda BLOCKED por historial insuficiente. |
+| No hay un vector Home/Away completo. | Esa lectura queda BLOCKED por falta de entrada, sin construir un vector con otra casa o familia. |
+
+Un empate histórico calculado y una muestra insuficiente llegan a salidas distintas. La presencia de precios diagnósticos de Betfair tampoco reemplaza a una muestra insuficiente.
+
+### Paso 6. Vincular la evidencia y producir el resultado general
+
+Cada perfil aparece por casa, familia y periodo en `analysis`. `signals` publica su score o el motivo de indisponibilidad; `inputs` conserva el vector actual y el diagnóstico; `contracts` identifica el mercado; `coverage` describe ingredientes disponibles.
+
+Las referencias de señal permiten volver al vector. Cuando se guarda auditoría, `sample_id` permite volver a los eventos históricos exactos y `audit_persisted` indica esa conservación. El encabezado registra clave, filtros, corte y conteos; los miembros congelados permiten verificar que los cuatro resultados HOME, el empate y el visitante son los que se utilizaron.
+
+Consultar después una página de cien miembros no limita a cien la muestra utilizada. En el ejemplo existen seis; en otro caso se utilizan todos los elegibles, aunque la lectura posterior requiera varias páginas.
+
+El resultado general es **ACTIVE**, porque Pinnacle y el empate válido de bet365 produjeron señales calculadas. No se promedian 0.30, cero y un dato ausente para fabricar un score del encuentro. Si una consulta falla, su ámbito conserva ERROR; los perfiles ya calculados siguen disponibles y el estado de ejecución refleja el error.
+
+La lectura en lenguaje natural es: **«El vector actual de Pinnacle coincide con seis eventos anteriores; cuatro tuvieron resultado local y el motor obtiene 0.30, HOME, MODERATE. bet365 conserva una memoria neutral por empate de frecuencias. SofaScore no alcanza la muestra mínima. Cada conclusión mantiene su población y procedencia»**.
+
+Para revisar el resultado se sigue **señal → perfil → conteos y fórmulas → clave y filtros → miembros de la muestra**, si fueron conservados. Ese camino enlaza todos los conceptos de la guía sin presentar el score como una probabilidad futura.
 
 ## 11. Fuentes y relación con los demás pilares
 

@@ -2,7 +2,9 @@
 
 [Volver a la guía principal](00-flujo-principal.md) · [P1: estructura deportiva](01-pilar-1-estructura-deportiva.md) · [P3: totales](03-pilar-3-mercado-de-totales.md) · [P4: movimiento](04-pilar-4-movimiento-temporal.md) · [P5: memoria](05-pilar-5-memoria-de-precios.md)
 
-Este documento describe el motor `p2-signal-profile-v3` revisado el 8 de octubre de 2026. P2 pregunta **cómo se inclinan los precios hacia el local o el visitante y qué coincidencias o diferencias existen entre lecturas**. No combina resultados deportivos de P1 ni produce un único porcentaje de victoria.
+Este documento describe el motor `p2-signal-profile-v3` revisado el 9 de octubre de 2026. P2 pregunta **cómo se inclinan los precios hacia el local o el visitante y qué coincidencias o diferencias existen entre lecturas**. No combina resultados deportivos de P1 ni produce un único porcentaje de victoria.
+
+Para seguir cómo se utilizan conjuntamente las definiciones y fórmulas, lea el [recorrido integrado del dato al resultado](#recorrido-integrado-del-dato-al-resultado), con pasos, ejemplo y lectura final.
 
 ## 1. Vocabulario de los mercados
 
@@ -188,6 +190,86 @@ Los nombres de entrada se leen por partes: `PIN_AH_HOME_FULL_TIME_ODDS_PRICE` si
 P2 describe el estado actual. [P4](04-pilar-4-movimiento-temporal.md) puede explicar cómo llegó a él. [P1](01-pilar-1-estructura-deportiva.md) describe el rendimiento deportivo y [P5](05-pilar-5-memoria-de-precios.md) los antecedentes de precios iguales. El coordinador no decide automáticamente cuál de estas perspectivas prevalece.
 
 Una señal neutral vale cero; una comparación imposible vale `null`. El pilar puede estar activo con una sola lectura individual aunque falte una comparación entre casas. Los estados comunes se explican en la [guía principal](00-flujo-principal.md#8-lectura-de-resultados-de-p2p5).
+
+## Recorrido integrado: del dato al resultado
+
+Esta sección utiliza los conceptos de las secciones 1–10 en el orden en que se necesita la información. El ejemplo es ilustrativo; cada lectura mantiene su casa, familia, periodo y contrato.
+
+### Paso 1. Situar el encuentro y la lectura
+
+Supongamos que se evalúa un partido en T−5 y que ese checkpoint está disponible. La ficha `EventIdentity` identifica el encuentro; `OddsTrajectoryContext` aporta sus observaciones; `TargetMinuteSelection` indica 5; `EventMarketEvaluation` comunica el tiempo completo elegido. Para este ejemplo se ha seleccionado tiempo reglamentario.
+
+P2 comienza por una vista de familia y periodo. Separa 1X2 de Home/Away y conserva las variantes de línea. Prepara una `MarketSnapshotRequest` con sus `MarketIdentity` y `ChoiceRequest`: qué mercado, casa y resultados desea leer. El extractor devuelve precios `QuotePoint` con su `trace`. Esa procedencia permite comprobar que el par pertenece al mismo contrato y localizar las observaciones utilizadas.
+
+Si el periodo secundario es primera mitad, se presenta como 1H. Cuando se estudian las primeras cinco entradas de béisbol, se identifica como FIRST_FIVE_INNINGS. La operación matemática puede reutilizarse; el periodo deportivo sigue siendo distinto.
+
+### Paso 2. Convertir los precios de cada casa en inclinación
+
+El `P2MarketSnapshot` organiza las lecturas extraídas. En su bloque de ganador de tiempo completo, tomemos:
+
+| Casa | Cuota local | Cuota visitante | Edge obtenido | Dirección |
+|---|---|---|---|---|
+| Pinnacle | 1.80 | 2.20 | 0.10 | HOME |
+| bet365 | 1.90 | 2.10 | 0.05 | HOME |
+
+Para cada fila se calcula **(inverso local − inverso visitante) ÷ suma de inversos**, como en la sección 3. Los precios no se comparan por resta directa.
+
+En 1X2, la cuota de empate se conserva cuando existe, pero no participa en ese contraste del par. Si falta, puede haber edge calculado y cobertura incompleta simultáneamente. Un Home/Away utiliza su propio bloque de dos resultados.
+
+### Paso 3. Construir el representante y la relación entre casas
+
+Los dos edges alimentan `BookMarketSignal`:
+
+- `REP_EDGE` = (0.10 + 0.05)/2 = **0.075**, con dirección HOME.
+- `BOOK_GAP` = |0.10 − 0.05| = **0.05**.
+- `BOOK_RELATION` = **CONVERGENCE_HOME**, porque coinciden las direcciones.
+
+El representante resume la orientación media; el gap conserva la distancia que había entre las casas. Se guardan ambos. Si faltara bet365, seguiría existiendo el edge de Pinnacle, pero no se completaría la comparación con un cero.
+
+### Paso 4. Incorporar hándicap sin perder su línea
+
+Para AH, supongamos que ambas casas ofrecen línea local −0.5. Pinnacle tiene precios 1.92/2.08 y bet365 1.96/2.04. Sus edges son 0.04 y 0.02.
+
+`AsianHandicapSignal` conserva línea y precio por separado:
+
+| Lectura | Resultado |
+|---|---|
+| `LINE_GAP` | 0: las líneas coinciden. |
+| `PRICE_GAP` | Valor absoluto de (0.04 − 0.02) = 0.02. |
+| `REP_EDGE` | (0.04 + 0.02)/2 = 0.03, HOME. |
+| `BOOK_RELATION` | CONVERGENCE_HOME. |
+
+Ahora `PeriodSignal` puede comparar ganador y AH: **|0.075 − 0.03| = 0.045** de separación y coincidencia HOME. Esa es la relación entre mercados; no afirma que ganar y cubrir −0.5 sean el mismo resultado.
+
+Si bet365 publicara −1.5, existiría separación de líneas de 1.0, pero no el representante de precios de esas dos condiciones. El hándicap estándar se procesa en otro bloque, `HANDICAP`, con sus propias líneas, edges y relaciones. No rellena el bloque AH.
+
+### Paso 5. Incorporar BACK, LAY y su relación con las casas
+
+El exchange pasa por el mismo orden: lectura individual, comparación interna y representante. En ganador, por ejemplo, BACK 1.88/2.12 produce edge 0.06; LAY 1.98/2.22 produce aproximadamente 0.057143.
+
+`ExchangeSignal` obtiene representante **0.058571**, gap interno **0.002857** y CONVERGENCE_HOME. Para los precios locales, el spread es (1.98 − 1.88)/1.93 ≈ 0.051813; para los visitantes, (2.22 − 2.12)/2.17 ≈ 0.046083. `SIDE_SPREAD` es su media, aproximadamente 0.048948.
+
+`BOOK_EXCHANGE` compara los representantes: |0.075 − 0.058571| ≈ **0.016429**, con coincidencia hacia HOME. Los cálculos utilizan los valores completos; aquí se muestran redondeados.
+
+Las cantidades `HOME_SIZE` y `AWAY_SIZE` acompañan las observaciones como contexto. No multiplican los edges. Si falta LAY, BACK puede conservarse, mientras que spread, media BACK/LAY y comparación que depende de esa media quedan sin cálculo.
+
+En AH y Handicap del exchange se añade la comprobación de línea. Primero se calcula `LINE_DIFF_RAW` y su magnitud `LINE_GAP` frente a las casas; la comparación de edges requiere además el mismo contrato. Así se usan las líneas antes de producir una relación de precios.
+
+### Paso 6. Relacionar periodos y reunir el perfil
+
+Supongamos que el representante del periodo secundario es −0.025, AWAY. La relación con el 0.075 de tiempo completo es DIVERGENCE y la separación es **0.10**. `FT_1H_STRUCTURE` conserva también las relaciones ganador–hándicap de cada periodo.
+
+`P2SignalProfile` reúne estas lecturas, incluyendo los bloques de casas, exchange, relaciones entre mercados y periodos. Cada familia y variante conserva su ámbito en `analysis`. No se suman las distintas lecturas para producir una nueva puntuación general.
+
+### Paso 7. Leer el resultado y su explicación
+
+Las métricas analíticas se convierten en señales individuales. Un edge de 0.075 o una relación CONVERGENCE_HOME tiene estado COMPUTED; una relación que no pudo formarse tiene estado BLOCKED y un motivo. Una excepción de cálculo produce ERROR en su ámbito.
+
+El paquete devuelve `signals` con valores y estados, `analysis` con el perfil completo, `inputs` con ingredientes, `contracts` con identidad, `coverage` con disponibilidad y `diagnostics` con explicaciones. `input_refs` y `contract_refs` permiten seguir una señal hasta sus precios y mercados.
+
+En este caso hay señales calculadas, por lo que el resultado global es ACTIVE. La lectura en lenguaje natural sería: **«En T−5, el par de precios de tiempo completo se inclina al local en ambas casas y en el exchange. El periodo secundario apunta al visitante. Las diferencias y las relaciones quedan disponibles por separado»**.
+
+Para revisar el cálculo, se sigue el camino inverso: señal → métrica del perfil → fórmula → ingredientes referenciados → observaciones y contrato. Ese recorrido distingue una discrepancia real de una comparación que simplemente no tenía datos.
 
 ## 11. Fuentes de esta explicación
 

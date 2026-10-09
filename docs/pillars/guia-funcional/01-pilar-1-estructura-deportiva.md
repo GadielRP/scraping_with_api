@@ -6,6 +6,8 @@ Este documento explica la implementación revisada el 8 de octubre de 2026. P1 p
 
 P1 es el pilar más extenso. Su análisis de lado contiene siete módulos y una política de combinación; el de totales contiene tres capas direccionales, un análisis separado de variabilidad y una lectura compuesta. Las etiquetas describen perfiles del motor. Un valor 0.40 no equivale a 40 % de probabilidad de victoria.
 
+Para seguir cómo se utilizan conjuntamente las definiciones y fórmulas, lea el [recorrido integrado del dato al resultado](#recorrido-integrado-del-dato-al-resultado), con pasos, ejemplo y lectura final.
+
 ## 1. Ruta de lectura y mapa del pilar
 
 | Sección | Contenido |
@@ -1017,6 +1019,140 @@ Esta tabla cubre todos los campos de `P1TotalsOutput`. Las letras S, T y R remit
 | `raw` | Muestras, ventanas, promedios, referencias, capas, política de umbral y cálculos de ruptura y compuesto. |
 
 Para reconstruir un resultado, siga `raw` en este orden: datos válidos y cantidad equilibrada; tamaños y completitud de ventanas; promedios por equipo; referencias y escalas de liga; señales S/T/R; pesos activos; dirección; variabilidad; base, ruptura, driver y compuesto.
+
+## Recorrido integrado: del dato al resultado
+
+Esta sección conecta los conceptos de todo el documento. El orden general es **expediente deportivo → siete módulos → resultado de lado → ventanas y capas → resultado de totales → entrega de ambas salidas**. Las dos ramas comparten historia, pero seleccionan muestras y producen significados distintos.
+
+### Paso 1. Preparar una historia interpretable
+
+`EventContext` identifica local, visitante, competición, temporada e inicio. `streak_analysis` contiene el `MatchupStreakContext`: partidos de cada equipo, enfrentamientos directos, clasificación y referencias de liga.
+
+Antes de calcular, los marcadores se atribuyen al participante correcto. Un equipo que hoy es local conserva su anotación de un partido en el que fue visitante. Las fechas sitúan la historia; la clasificación aporta puestos, puntos, partidos y registros de temporada. `number_of_teams` ayuda a interpretar posiciones; `total_regular_season_games` permite construir las ventanas de totales.
+
+El expediente llega preparado por el recorrido anterior a P1, explicado en la [sección 2](#2-el-expediente-deportivo-de-entrada). P1 no convierte el historial de cuotas de los otros pilares en resultados deportivos.
+
+### Paso 2. Transformar esa historia en los siete módulos
+
+El motor llama a M1–M7 en ese orden. Cada uno toma la parte de la historia que necesita y devuelve un `ModuleResult`. La siguiente tabla muestra qué conceptos se utilizan y qué resultado pasa al siguiente paso.
+
+| Módulo | Transformación de las entradas | Salida utilizada |
+|---|---|---|
+| [M1: fuerza base](#4-m1-fuerza-base) | Obtiene registros de temporada y márgenes. Compara tasas de victoria, diferencia por partido normalizada por el P75 de liga, dispersión en ventanas acumulativas y potencia de márgenes positivos frente a negativos. Combina sus cuatro componentes con pesos 0.35, 0.35, 0.10 y 0.20 y limita el contraste. | Valor de fuerza base, dirección, intensidad, muestra y procedencia de la escala. |
+| [M2: perfil ofensivo](#5-m2-perfil-ofensivo) | Extrae anotación a favor válida. Compara dispersión, media de las cinco mayores anotaciones, tasa de ceros y tasa de anotaciones de al menos dos. Combina con pesos 0.35, 0.30, 0.20 y 0.15 y limita la suma final. | Contraste ofensivo, con los promedios, frecuencias y aportaciones que lo explican. |
+| [M3: enfrentamiento directo](#6-m3-enfrentamiento-directo) | Utiliza partidos entre los participantes, ya orientados al encuentro actual. Compara resultados, con media unidad por empate, y anotación; después aplica el ajuste por cantidad de enfrentamientos. | Contraste de enfrentamiento y explicación del tamaño de muestra. |
+| [M4: estado inmediato](#7-m4-estado-inmediato-ajustado-por-rival) | Selecciona hasta cinco partidos válidos con posición del rival. Interpreta fuerza y debilidad de ese rival dentro de la liga y compara el estado reciente de los equipos. | Contraste inmediato que después se acota para ajustar el núcleo. |
+| [M5: coste competitivo](#8-m5-coste-competitivo-del-contexto) | Parte de puesto, puntos y partidos restantes. Determina objetivo y régimen, encuentra puntos de corte, mide distancia, urgencia, severidad y multiplicador y obtiene un coste por equipo. Compara los costes mediante diferencia relativa. | Lado y magnitud de presión, con horizonte, objetivo y coste por participante. |
+| [M6: evolución estructural](#9-m6-evolución-estructural) | Ordena márgenes de antiguo a reciente y los divide en cinco bloques. Compara pendiente de sus medias y estabilidad de esos bloques con pesos 0.65 y 0.35. | Contraste de evolución, con vectores, pendientes y dispersiones. |
+| [M7: expectativa del rival](#10-m7-rendimiento-frente-a-la-expectativa-del-rival) | Retira el partido más antiguo. Transforma la posición del rival en expectativa de resultado y margen; obtiene `roe` y `gdoe`, los combina 0.60/0.40 y compara las medias de contexto de ambos equipos. | Contraste frente a expectativa, categorías de partido, agregados y muestra válida. |
+
+Los objetos `ModuleComponentResult` conservan edge, peso y aportación ponderada cuando corresponden. `raw` conserva las operaciones intermedias y su procedencia. Así se puede distinguir un valor realmente neutral de un módulo que no reunió su muestra.
+
+Una media, una desviación, un percentil y una diferencia relativa intervienen en cálculos diferentes. El límite o `clamp` se aplica donde lo define cada fórmula; no se impone un descuento general a todas las señales pequeñas.
+
+### Paso 3. Decidir qué valores de módulo entran en la combinación
+
+El motor consulta el estado de cada módulo. Conserva `raw_value` como salida original y forma `effective_value` para la combinación.
+
+Un módulo utilizable, incluido DEGRADED, conserva su valor. INSUFFICIENT_DATA, INACTIVE o un estado INVALID aporta cero operativo, manteniendo el motivo. Ese cero operativo no afirma igualdad deportiva. Los pesos de los otros módulos no se redistribuyen.
+
+La [sección 11](#11-cómo-se-combinan-los-siete-módulos-de-lado) explica esta combinación. Para seguir un caso completo, retomemos estos valores efectivos ilustrativos, ya obtenidos por los módulos:
+
+| Módulo | Valor efectivo | Papel en la combinación |
+|---|---|---|
+| M1 | +0.20 | Núcleo, peso 0.30. |
+| M2 | +0.10 | Núcleo, peso 0.20. |
+| M3 | +0.30 | Núcleo, peso 0.15. |
+| M4 | +0.20 | Ajuste acotado del núcleo. |
+| M5 | −0.35 | Presión competitiva separada. |
+| M6 | +0.20 | Núcleo, peso 0.20. |
+| M7 | +0.10 | Núcleo, peso 0.15. |
+
+La tabla comienza en las salidas de módulo para mostrar su encadenamiento; los ejemplos y fórmulas de cada módulo explican cómo se producen desde los registros deportivos.
+
+### Paso 4. Pasar del núcleo al resultado final de lado
+
+Primero se suman las cinco aportaciones del núcleo:
+
+**0.30 × 0.20 + 0.20 × 0.10 + 0.15 × 0.30 + 0.20 × 0.20 + 0.15 × 0.10 = 0.180.**
+
+M4 pasa por el límite −0.06/+0.06. Su +0.20 se convierte en **+0.06**, y el núcleo efectivo queda en **0.240: HOME, MEDIUM**.
+
+M5 permanece separado. Su −0.35 significa **presión AWAY, HIGH** según la escala especial de presión. `pressure_relation` queda PRESSURE_CHALLENGES_CORE.
+
+La tabla de decisión combina núcleo MEDIUM con presión HIGH contraria. Produce **`p1_final_state = CONFLICT` y `p1_final_bias = HOME`**. Paralelamente, el balance numérico es 0.240 − 0.350 = **−0.110**, devuelto como `value`.
+
+La lectura correcta es: **«El núcleo deportivo favorece al local con intensidad media; el contexto presiona a favor del visitante. La regla conserva al local y marca conflicto. El balance de evidencia es negativo»**. Para obtenerla se utilizaron pesos, límite de ajuste, intensidad del núcleo, escala de presión, relación y tabla final. El signo de `value` por sí solo no reconstruye esa decisión.
+
+Si el núcleo fuera IGNORE, las mismas reglas evaluarían si hay una ventana de contexto o NO_BET. Si fuera débil y la presión contraria suficiente, podrían establecer una ventana hacia el lado de presión. Son ramas de la tabla, no nuevas sumas.
+
+`modules` permite revisar las fichas originales. `raw.layer_a` conserva núcleo y contribuciones; `raw.layer_b`, ajuste y presión; `raw.final`, entradas de decisión, relación, estado, lado, balance y anomalías. Las listas de módulos utilizables y apartados explican la participación real.
+
+### Paso 5. Construir las muestras y ventanas de totales
+
+Después de lado, el coordinador calcula totales con el mismo expediente deportivo. Selecciona partidos con anotación propia y recibida válida y equilibra las cantidades: `N_AVAIL` es el mínimo entre ambos equipos.
+
+Retomemos diez partidos válidos por lado y temporada de 38. Las proporciones SHORT, RECENT, MID y FULL producen objetivos **6, 13, 23 y 38**. Se usan **6, 10, 10 y 10**, respectivamente. Cada cantidad usada dividida por su objetivo produce completitud; completitud por peso base produce peso temporal efectivo.
+
+Esto utiliza el redondeo de mitad hacia arriba, las ventanas superpuestas y la normalización de pesos descritos en la [sección 12](#12-p1-totales-entradas-y-ventanas). `WINDOWS_USED` conserva los objetivos; los usados y los pesos efectivos quedan en el detalle.
+
+De la liga se obtienen medianas y escalas P75 de distancias respecto a ellas. Esas referencias permiten expresar cuánto se aparta el encuentro de su contexto, en lugar de tratar un mismo total como alto en cualquier deporte o liga.
+
+### Paso 6. Obtener estructura, temporalidad, tendencia y variabilidad
+
+Las cuatro lecturas utilizan las muestras anteriores de formas distintas:
+
+| Lectura | Cómo transforma los datos | Qué entrega |
+|---|---|---|
+| [Estructural](#13-capa-estructural-capacidad-de-anotar-y-recibir) | Cruza anotación a favor de cada equipo con anotación recibida del rival. Suma los entornos ofensivos y normaliza el total frente a mediana y escala de liga. | `EXPECTED_TOTAL_STRUCTURAL` y señal **S**, junto a `STRUCTURAL_ANCHOR` como descriptor. |
+| [Temporal](#14-capa-temporal-nivel-anotador-de-las-ventanas) | Obtiene total por ventana y equipo, combina con pesos efectivos normalizados y promedia ambos equipos. Contrasta ese nivel con la referencia de total de liga. | `MATCHUP_TEMPORAL_TOTAL` y señal **T**. |
+| [Tendencia](#15-capa-de-tendencia-cambio-reciente-frente-al-largo-plazo) | Compara 0.60 SHORT + 0.40 RECENT con 0.60 MID + 0.40 FULL por equipo. Promedia los cambios y los normaliza frente a los cambios de liga. | `MATCHUP_TREND_DELTA` y señal **R**. |
+| [Variabilidad](#16-variabilidad-una-lectura-separada-de-la-dirección) | Obtiene desviaciones de totales por equipo, su media y el contraste frente a la dispersión de liga. Compara su magnitud con P50/P75/P90. | `VOL_EDGE` y categoría de varianza, separados de la dirección. |
+
+Para continuar el ejemplo de la sección 18.3, supongamos que estos cálculos entregan **S = −0.40, T = −0.20 y R = +0.60**. Estructura y nivel temporal están por debajo de sus referencias; el cambio reciente está por encima del cambio de liga.
+
+Como ejemplo complementario de variabilidad, VOL_EDGE = +0.50 frente a umbrales P50 = 0.20, P75 = 0.40 y P90 = 0.80 se clasifica HIGH_VARIANCE. Su signo indica mayor dispersión relativa; su categoría no añade una cuarta señal direccional.
+
+### Paso 7. Formar dirección e interpretar coincidencias
+
+Las tres magnitudes superan 0.05, por lo que las capas están ACTIVE. Sus pesos direccionales son 0.45, 0.30 y 0.25, distintos de los pesos temporales usados dentro de las ventanas.
+
+Las aportaciones son **−0.180, −0.060 y +0.150**. `ACTIVE_WEIGHT_SUM` es 1. La suma normalizada produce **`P1_TOTALS_DIRECTIONAL_SCORE = −0.090`: UNDER_PROFILE, WEAK**.
+
+Los conteos son una capa OVER, dos UNDER, cero IGNORE y tres activas. `ALIGNMENT_SCORE` = (−0.40 − 0.20 + 0.60)/1.20 = **0**: compensación entre señales. No hay consenso de las activas y se cumple HEATING_CONFLICT porque estructura negativa y tendencia positiva se oponen. HIGH_VARIANCE no activa por sí sola CHAOTIC_CONFLICT; esta última también requiere oposición entre estructura y temporalidad, que aquí comparten signo.
+
+`STRUCTURAL_ANCHOR` vale 0.5 + 0.5 × 0.40 = **0.70**. Se conserva como explicación, sin multiplicar las capas.
+
+Si una capa quedara IGNORE, su aportación direccional sería cero y la media se normalizaría por los pesos activos restantes. Su señal original seguiría disponible para los descriptores que la utilizan. Es una política diferente a la combinación de módulos de lado, cuyos pesos no se redistribuyen.
+
+### Paso 8. Calcular ruptura, dominio y compuesto
+
+La cadena continúa con las mismas S, T y R:
+
+| Concepto | Cálculo en este caso | Resultado |
+|---|---|---|
+| `BASE_SIGNAL` | S + T. | −0.60. |
+| `BREAKOUT_CONDITION` | R positiva se opone a base negativa; ambas magnitudes alcanzan 0.05. | Verdadera. |
+| `BREAKOUT_SCORE` | +0.60/(0.60 + 0.60). | +0.50. |
+| `HEATING_PRESSURE` | 0.60 − (−0.60). | 1.20. |
+| `COOLING_PRESSURE` | No se cumple base positiva y R negativa. | 0. |
+| `TREND_DOMINANCE` | Limitar 1.20 entre −1 y +1. | 1. |
+| `P1_TOTALS_DRIVER` | Mayor magnitud de contribución activa: 0.180 frente a 0.060 y 0.150. | STRUCTURAL. |
+| `P1_TOTALS_COMPOSITE` | 0.55 × (−0.09) + 0.30 × 0.50 + 0.15 × 1. | **0.2505**. |
+
+La dirección del compuesto es **OVER_PROFILE** y su fuerza **MODERATE**. La dirección anterior sigue siendo UNDER_PROFILE, WEAK. El compuesto utiliza ruptura y dominio para expresar la tendencia que desafía la base; `ALIGNMENT_SCORE` y varianza permanecen como explicaciones, sin convertirse en términos adicionales.
+
+La lectura completa sería: **«El nivel deportivo direccional mantiene una inclinación débil hacia menor anotación, pero la subida reciente desafía esa base y el compuesto apunta moderadamente a un perfil de mayor anotación. La estructura sigue siendo la mayor aportación direccional y la dispersión relativa es alta»**.
+
+### Paso 9. Entregar ambas salidas y permitir su revisión
+
+`P1TotalsOutput` reúne identidad, estado, campos direccionales, varianza, conteos, capas, ventanas, referencias, ruptura, driver, compuesto y `raw`. Sus nombres se explican en el [diccionario de salida](#19-diccionario-del-resultado-de-totales). Un perfil completo utiliza `status = OK`.
+
+La entrada de P1 devuelve dos elementos: `side` y `totals`. En este ejemplo, lado conserva CONFLICT/HOME y balance −0.110; totales conserva sus dos lecturas direccional y compuesta. Esos valores no se promedian entre sí.
+
+Si totales no puede formar su perfil, devuelve ausencia y lado ya calculado se mantiene. Una ausencia no se interpreta como UNDER ni como cero neutral. La conservación guarda cada salida disponible en un ámbito separado, como explica [persistencia de minería](../mining-persistence.md#7-traducción-que-realiza-cada-adaptador).
+
+Para revisar lado se sigue **resultado final → regla de decisión → núcleo y presión → módulos → componentes y partidos**. Para revisar totales se sigue **campo direccional o compuesto → fórmulas → S/T/R y varianza → ventanas y referencias → partidos y muestras**. Estos recorridos hacen que las definiciones, fórmulas y objetos anteriores expliquen el resultado real.
 
 ## 20. Fuentes y documentación relacionada
 

@@ -2,7 +2,7 @@
 
 [Guía funcional del flujo](guia-funcional/00-flujo-principal.md) · [Entradas y expedientes](inputs.md) · [Conservación de resultados](mining-persistence.md)
 
-Documento contrastado con el código el 8 de octubre de 2026. Explica cómo P2, P3, P4 y P5 acuerdan qué cuotas pueden leer, qué momento representan y qué condiciones de mercado están comparando. La política se identifica como `market-evaluation-v1`; el formato actual de sus resultados es `payload_schema_version = 4`.
+Documento contrastado con el código el 9 de octubre de 2026. Explica cómo P2, P3, P4 y P5 acuerdan qué cuotas pueden leer, qué momento representan y qué condiciones de mercado están comparando. La política se identifica como `market-evaluation-v1`; el formato actual de sus resultados es `payload_schema_version = 4`.
 
 P1 conserva sus propios motores y formatos. Los detalles de cada fórmula están en las guías de [P2](guia-funcional/02-pilar-2-mercado-de-lado.md), [P3](guia-funcional/03-pilar-3-mercado-de-totales.md), [P4](guia-funcional/04-pilar-4-movimiento-temporal.md) y [P5](guia-funcional/05-pilar-5-memoria-de-precios.md).
 
@@ -37,10 +37,11 @@ El registro actual reconoce:
 | Pinnacle | 302 | Lecturas de precios, líneas, movimiento y memoria. |
 | bet365 | 3 | Las mismas familias de lectura que estén soportadas. |
 | Betfair | 4 | Exchange: precios BACK/LAY y cantidades; en P5 es información de diagnóstico. |
+| SofaScore | 1 | Perfil independiente de memoria en P5; no participa en las lecturas de P2–P4. |
 
 Un **mercado de intercambio**, o exchange, permite negociar posiciones entre participantes. BACK representa apoyar un resultado; LAY, tomar la posición contraria. Sus niveles y cantidades se conservan por resultado. Una lectura BACK puede ser válida aunque falte su correspondiente LAY.
 
-SofaScore participa en la recopilación y en el contexto deportivo, pero no es una casa admitida por los cálculos nuevos de esta política. No existe una casa obligatoria para que un pilar tenga algún resultado válido.
+SofaScore participa en recopilación y contexto deportivo; sus precios identificados con `bookie_id = 1` también permiten un perfil independiente de P5. No existe una casa obligatoria para que un pilar tenga algún resultado válido.
 
 ### Familias y periodos reconocidos
 
@@ -166,7 +167,7 @@ Todos los pilares reciben el mismo tiempo completo. Los otros periodos soportado
 | P2 | Local y visitante del mismo contrato permiten un edge. Si falta empate en 1X2, puede existir esa lectura del par, pero la cobertura sigue incompleta. Casas, ganador/hándicap, exchange y periodos se comparan solo con sus ingredientes compatibles. |
 | P3 | Over y Under del mismo contrato permiten un edge. Las líneas bastan para medir su separación. Comparar precios entre casas o con el exchange exige la misma línea y periodo. |
 | P4 | Movimiento requiere al menos dos observaciones válidas y endpoint. Un hueco puede permitir el cambio entre extremos y dejar sin cálculo la velocidad global o eficiencia. Una línea nueva no completa la serie de precios de una línea anterior. |
-| P5 | Un vector actual propio de Pinnacle o bet365. En 1X2 exige local/empate/visitante; en Home/Away, local/visitante. La memoria requiere al menos tres eventos elegibles con precios iguales después del redondeo a tres decimales. |
+| P5 | Un vector actual propio de Pinnacle, bet365 o SofaScore. En 1X2 exige local/empate/visitante; en Home/Away, local/visitante. La memoria requiere al menos tres eventos elegibles con precios iguales después del redondeo a tres decimales. |
 
 Las relaciones necesitan más ingredientes que una lectura individual. Una casa ausente no elimina el edge de otra; un LAY ausente no elimina el BACK independiente. Un cero calculado es un resultado válido. Un dato que falta conserva su ausencia.
 

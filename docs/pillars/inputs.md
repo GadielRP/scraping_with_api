@@ -2,7 +2,7 @@
 
 [Guía funcional del flujo](guia-funcional/00-flujo-principal.md) · [Evaluación de mercados](market-evaluation-v1.md) · [Conservación de resultados](mining-persistence.md)
 
-Documento contrastado con el código el 8 de octubre de 2026. Describe los datos que viajan entre la preparación de un partido y sus pilares. Los nombres del código se conservan para reconocerlos; cada campo se explica en español.
+Documento contrastado con el código el 9 de octubre de 2026. Describe los datos que viajan entre la preparación de un partido y sus pilares. Los nombres del código se conservan para reconocerlos; cada campo se explica en español.
 
 Un **objeto** es un expediente con campos relacionados. Un **contrato de entrada** define qué contiene ese expediente y cómo debe interpretarse. Un **diccionario** permite localizar datos por una clave, por ejemplo el identificador del partido. `None` o `null` significa «dato no disponible»; una lista vacía significa «ningún elemento». Ninguno de ellos equivale a una puntuación cero.
 
@@ -193,7 +193,7 @@ Cuando no hay línea, la clave de agrupación general es `__default__`. Las vist
 
 `BookieOddsTrajectory` contiene `bookie_id`, `bookie_name`, `source`, `exchange_side`, `exchange_level`, `choices` y `market_id`. El último campo identifica el mercado de origen de esa casa dentro del agrupamiento.
 
-El valor predeterminado de `source` en ese objeto es `sofascore`, pero cada observación preparada puede aportar otra fuente. Ese valor predeterminado no convierte a SofaScore en una casa admitida por P2–P5. `exchange_level` comienza en 0; para una casa ordinaria, `exchange_side` queda ausente.
+El valor predeterminado de `source` en ese objeto es `sofascore`, pero cada observación preparada puede aportar otra fuente. Ese valor predeterminado identifica procedencia; no basta para admitir una casa. P5 también acepta precios identificados con `bookie_id = 1` para su perfil SofaScore, mientras P2–P4 mantienen sus propias casas admitidas. `exchange_level` comienza en 0; para una casa ordinaria, `exchange_side` queda ausente.
 
 ### 6.2. Resultado del contrato y dos vistas de sus cuotas
 
@@ -322,7 +322,7 @@ Los [objetos propios de P4](../../modules/pillars/pillar_4/models.py) añaden `P
 | P4 | Los mismos objetos compartidos; además transforma las observaciones en series de checkpoints y adaptativas acotadas. |
 | P5 | Los objetos de mercados y un `PriceMemoryReader`, interfaz para consultar memoria histórica de otros encuentros. |
 
-P5 utiliza un vector propio por casa: 1X2 exige local, empate y visitante; Home/Away exige local y visitante. Betfair puede aportar precios, cantidades y procedencia con `role = DIAGNOSTIC` y `participates_in_score = false`; no produce una señal de memoria ni vuelve exitoso el pilar.
+P5 utiliza un vector propio de Pinnacle, bet365 o SofaScore: 1X2 exige local, empate y visitante; Home/Away exige local y visitante. Betfair puede aportar precios, cantidades y procedencia con `role = DIAGNOSTIC` y `participates_in_score = false`; no produce una señal de memoria ni vuelve exitoso el pilar.
 
 P5 puede consultar otros partidos para su memoria exacta. Esa consulta no reconstruye ni sustituye la trayectoria actual del encuentro.
 

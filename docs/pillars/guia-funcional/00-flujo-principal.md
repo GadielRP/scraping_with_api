@@ -1,6 +1,6 @@
 # Guía funcional del pre start check y de los cinco pilares
 
-Esta colección explica el código revisado el 8 de octubre de 2026 para una persona sin experiencia en programación. Describe qué información entra, cómo se transforma y qué significa cada resultado. Los nombres del código se incluyen para reconocer los datos en un reporte y se explican en español. Los ejemplos son ilustrativos; los pesos, fórmulas y reglas del motor proceden de la implementación.
+Esta colección explica el código revisado el 9 de octubre de 2026 para una persona sin experiencia en programación. Describe qué información entra, cómo se transforma y qué significa cada resultado. Los nombres del código se incluyen para reconocer los datos en un reporte y se explican en español. Los ejemplos son ilustrativos; los pesos, fórmulas y reglas del motor proceden de la implementación.
 
 ## 1. Ruta de lectura
 
@@ -16,6 +16,8 @@ Hay cinco pilares y seis documentos. P1 produce dos análisis, lado y totales, q
 | [Pilar 5: memoria de precios](05-pilar-5-memoria-de-precios.md) | ¿Qué ocurrió en otros partidos con el mismo conjunto de precios? |
 
 Lea primero las secciones 2–7 y después el pilar de interés. P1 es mucho más extenso porque tiene siete motores deportivos y otro motor de totales con sus propias entradas, ventanas y fórmulas.
+
+Cada guía incluye un **recorrido integrado del dato al resultado**. Después de las definiciones y fórmulas, esa sección muestra cómo se encadenan las entradas, los cálculos intermedios y la salida. Puede ir directamente a [P1: lado y totales](01-pilar-1-estructura-deportiva.md#recorrido-integrado-del-dato-al-resultado), [P2: mercado de lado](02-pilar-2-mercado-de-lado.md#recorrido-integrado-del-dato-al-resultado), [P3: mercado de totales](03-pilar-3-mercado-de-totales.md#recorrido-integrado-del-dato-al-resultado), [P4: movimiento temporal](04-pilar-4-movimiento-temporal.md#recorrido-integrado-del-dato-al-resultado) o [P5: memoria](05-pilar-5-memoria-de-precios.md#recorrido-integrado-del-dato-al-resultado).
 
 ## 2. Qué hace el sistema
 
@@ -99,7 +101,7 @@ Un **contrato de mercado** identifica familia, periodo, línea y condición prev
 
 No escoge el periodo con más datos: una lectura válida con prórroga prevalece aunque regulación tenga mayor cobertura. Los antecedentes de P5 no deciden esta selección. Todos los pilares de mercado reciben el mismo tiempo completo, conservando las lecturas independientes de otros periodos soportados.
 
-Las casas reconocidas son Pinnacle, bet365 y Betfair. **Proveedor** y **casa** son conceptos diferentes: Oddspapi puede entregar precios de esas casas. SofaScore interviene en recopilación e historial deportivo, pero no es una casa admitida en las nuevas fórmulas de P2–P5.
+P2–P4 utilizan Pinnacle, bet365 y Betfair. P5 calcula memoria por separado para Pinnacle, bet365 y SofaScore (identificador 1), y conserva Betfair como diagnóstico. **Proveedor** y **casa** son conceptos diferentes: Oddspapi puede entregar precios de otras casas; la procedencia SofaScore, por sí sola, tampoco identifica qué casa publicó una cuota.
 
 ## 7. Recorrido dentro de pillar_pipeline
 
