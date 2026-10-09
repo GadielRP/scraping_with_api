@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -289,3 +291,43 @@ def test_execution_error_keeps_common_ft_and_configuration_skips(monkeypatch):
     assert result["pillar_2"]["status"] == "ERROR"
     assert result["pillar_2"]["selected_full_time_period"] == FT_OT
     assert all(result[f"pillar_{p}"]["status"] == "SKIPPED" for p in (3, 4, 5))
+
+
+def test_pipeline_groups_debug_snapshots_using_loaded_sport_and_competition(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pillar_pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+
+    def unexpected_query():
+        raise AssertionError("Debug snapshot paths must not query the database")
+
+    monkeypatch.setattr(pillar_pipeline.db_manager, "get_session", unexpected_query)
+    event = _event_context()
+    event.sport = "Ice hockey"
+    event.competition.slug = "NHL-Preseason"
+    processor = pillar_pipeline.EventPillarProcessor(
+        event_repo=None, debug_mode=True,
+        enabled_pillars={f"pillar_{number}": False for number in range(1, 6)},
+    )
+    assert processor.process_event(event) is not None
+    directory = tmp_path / "debug" / "pillar_pipeline_objects" / "ice_hockey" / "nhl_preseason" / "4004_Home_vs_Away"
+    assert {path.name for path in directory.iterdir()} == {
+        "4004_event_context.json", "4004_odds_trajectory_context.json",
+    }
+    payload = json.loads((directory / "4004_event_context.json").read_text(encoding="utf-8"))
+    assert payload["sport"] == "Ice hockey"
+    assert payload["participants_label"] == "Home vs Away"
+    assert "competition" not in payload  # Preserve the existing identity snapshot.
+
+
+def test_pillar_snapshot_files_share_the_existing_event_folder(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    event = _event_context().to_identity()
+    pillar_pipeline._save_pillar_debug_snapshots(
+        event_context=event, odds_trajectory_context={"available": True},
+        streak_analysis={"home_streak": 3}, competition_slug="Liga-MX-Apertura",
+    )
+    directory = tmp_path / "debug" / "pillar_pipeline_objects" / "football" / "liga_mx_apertura" / "4004_Home_vs_Away"
+    assert {path.name for path in directory.iterdir()} == {
+        "4004_event_context.json", "4004_odds_trajectory_context.json", "4004_streak_analysis.json",
+    }
+    assert json.loads((directory / "4004_streak_analysis.json").read_text(encoding="utf-8")) == {"home_streak": 3}

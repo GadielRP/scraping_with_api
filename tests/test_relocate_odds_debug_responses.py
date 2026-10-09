@@ -21,6 +21,7 @@ def test_collects_legacy_event_directories_and_canonical_sofascore_filenames(tmp
     grouped = write_response(tmp_path / "sofascore_odds_responses" / "liga_mx_apertura" / "238869_9002_t_5.json")
     write_response(tmp_path / "sofascore_odds_responses" / "16317959_odds_reponse.json")
 
+    write_response(tmp_path / "pillar_pipeline_objects" / "4004_Home_vs_Away" / "4004_event_context.json")
     responses = migration.collect_responses(tmp_path)
     assert {path: event_id for _, path, event_id in responses} == {
         oddspapi: 238868, sofascore: 238868, grouped: 238869,

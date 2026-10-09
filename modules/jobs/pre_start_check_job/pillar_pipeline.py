@@ -79,6 +79,8 @@ from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
 )
 
+from .providers.debug_paths import sport_folder_name
+
 logger = logging.getLogger(__name__)
 
 CANONICAL_SIGNAL_FLOW_ID = "pre_start_signal_profile"
@@ -241,13 +243,21 @@ def _save_pillar_debug_snapshots(
     event_context: Any,
     odds_trajectory_context: Any,
     streak_analysis: Any = None,
+    competition_slug: str | None = None,
 ) -> None:
     try:
         event_id = getattr(event_context, "event_id", "unknown_event")
         participants = getattr(event_context, "participants_label", "unknown_matchup")
 
         safe_participants = _safe_debug_name(participants)
-        debug_dir = Path("debug") / "pillar_pipeline_objects" / f"{event_id}_{safe_participants}"
+        competition_folder = re.sub(
+            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
+        ).strip("_") or "unknown_competition"
+        debug_dir = (
+            Path("debug") / "pillar_pipeline_objects"
+            / sport_folder_name(getattr(event_context, "sport", None))
+            / competition_folder / f"{event_id}_{safe_participants}"
+        )
         debug_dir.mkdir(parents=True, exist_ok=True)
 
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
@@ -439,6 +449,7 @@ class EventPillarProcessor:
             _save_pillar_debug_snapshots(
                 event_context=event_identity,
                 odds_trajectory_context=odds_trajectory_context,
+                competition_slug=event_context.competition.slug,
             )
 
         p2_result = None
@@ -745,6 +756,7 @@ class EventPillarProcessor:
                 event_context=event_identity,
                 odds_trajectory_context=None,
                 streak_analysis=streak_analysis,
+                competition_slug=event_context.competition.slug,
             )
 
         if streak_analysis is None:

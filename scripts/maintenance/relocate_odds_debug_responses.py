@@ -37,10 +37,12 @@ EVENT_DIRECTORY = re.compile(r"^([1-9]\d*)(?:_|$)")
 SOFASCORE_FILENAME = re.compile(r"^([1-9]\d*)_\d+_t_")
 
 
-def collect_responses(debug_directory: Path) -> list[tuple[Path, Path, int]]:
+def collect_responses(
+    debug_directory: Path, *, directories: tuple[str, ...] = PROVIDERS,
+) -> list[tuple[Path, Path, int]]:
     """Collect (provider root, JSON path, canonical event ID) before querying."""
     responses = []
-    for provider in PROVIDERS:
+    for provider in directories:
         root = (debug_directory / provider).resolve()
         if not root.is_dir():
             logger.info("Directory absent: %s", root)
