@@ -504,7 +504,7 @@ def test_shared_debug_flow_exports_from_production_and_simulator(
     assert path.exists() is not excel_fails
     if not excel_fails:
         workbook = load_workbook(path)
-        assert workbook["1X2"]["G4"].value == 2.1
-        assert "T30" in workbook["1X2"]["A2"].value
-        assert "Inicio: 2026-08-31 18:00:00 UTC" in workbook["1X2"]["A1"].value
+        assert workbook["Forma actual 1X2"]["G4"].value == 2.1
+        assert "T30" in workbook["Forma actual 1X2"]["A2"].value
+        assert "Inicio: 2026-08-31 18:00:00 UTC" in workbook["Forma actual 1X2"]["A1"].value
         workbook.close()

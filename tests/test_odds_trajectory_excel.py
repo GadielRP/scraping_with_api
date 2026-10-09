@@ -180,14 +180,24 @@ def test_bookmakers_periods_lines_and_exchange_sides_have_deterministic_order(tm
             current_bookmaker = cell.value.removeprefix("Bookmaker: ")
             if bookmaker_header_count > 1:
                 separator_row = row_number - 1
-                assert trajectory_sheet.cell(separator_row, 1).value is None
+                separator = trajectory_sheet.cell(separator_row, 1)
+                assert separator.value == "BOOKMAKER SEPARATOR"
+                expected_separator_range = (
+                    f"A{separator_row}:"
+                    f"{get_column_letter(TRAJECTORY_SEPARATOR_END_COLUMN)}{separator_row}"
+                )
+                assert expected_separator_range in {
+                    str(merged_range)
+                    for merged_range in trajectory_sheet.merged_cells.ranges
+                }
                 assert trajectory_sheet.row_dimensions[separator_row].height == ROW_HEIGHTS_PT[
                     "bookmaker_separator"
                 ]
-                assert all(
-                    trajectory_sheet.cell(separator_row, column).fill.fgColor.rgb.endswith("FCE4D6")
-                    for column in range(1, TRAJECTORY_SEPARATOR_END_COLUMN + 1)
-                )
+                assert separator.fill.fgColor.rgb.endswith("000000")
+                assert separator.font.color.rgb.endswith("FFFFFF")
+                assert separator.font.bold is True
+                assert separator.font.sz >= 18
+                assert separator.alignment.horizontal == "center"
         elif isinstance(cell.value, str) and "Choice " in cell.value:
             assert cell.value.split(" | ")[2] == current_bookmaker
     workbook.close()
@@ -235,7 +245,7 @@ def test_significant_trajectory_sheet_includes_initial_and_all_changes_by_minute
     assert {str(cell_range) for cell_range in ws.merged_cells.ranges} >= {
         f"A1:{title_end}1", f"A2:{note_end}2",
     }
-    assert "Cada choice tiene su propia secuencia" in ws["A2"].value
+    assert "La gráfica espacia los puntos por orden de cambio" in ws["A2"].value
     sections = {}
     for index, cell in enumerate(ws["A"], start=1):
         if isinstance(cell.value, str) and "Choice " in cell.value:
@@ -269,14 +279,14 @@ def test_significant_trajectory_sheet_includes_initial_and_all_changes_by_minute
         assert chart.anchor.ext.cx == cm_to_EMU(TRAJECTORY_CHART_SIZE_CM["width"])
         assert chart.anchor.ext.cy == cm_to_EMU(TRAJECTORY_CHART_SIZE_CM["height"])
         assert chart.anchor._from.col == ord(TRAJECTORY_CHART_ANCHOR_COLUMN) - ord("A")
-        assert chart.__class__.__name__ == "ScatterChart"
+        assert chart.__class__.__name__ == "LineChart"
         assert chart.series[0].graphicalProperties.line.solidFill.srgbClr == "4472C4"
         assert chart.series[0].graphicalProperties.line.width == TRAJECTORY_CHART_LINE_WIDTH_EMU
+        assert chart.series[0].marker.symbol == "circle"
         assert "1X2" in chart.title.tx.rich.p[0].r[0].t
-        assert chart.x_axis.numFmt.formatCode == "0.###"
-        assert chart.x_axis.scaling.orientation == "maxMin"
-        assert chart.x_axis.scaling.min == 0
-        assert chart.x_axis.scaling.max == 120
+        assert chart.x_axis.title.tx.rich.p[0].r[0].t == "Secuencia de cambios"
+        assert chart.series[0].cat.numRef.f.startswith("'Trayectoria 1X2'!$A$")
+        assert chart.series[0].val.numRef.f.startswith("'Trayectoria 1X2'!$C$")
         assert chart.y_axis.scaling.min == 1
         assert chart.y_axis.scaling.max == 4.5
         chart_rows.append(chart.anchor._from.row)
@@ -287,7 +297,7 @@ def test_significant_trajectory_sheet_includes_initial_and_all_changes_by_minute
     workbook.close()
 
 
-def test_charts_share_odds_scale_but_use_choice_specific_time_ranges(tmp_path):
+def test_charts_share_market_odds_scale_and_use_change_sequence_on_x_axis(tmp_path):
     high_odds = choice("1")
     high_odds.snapshots[1] = replace(
         high_odds.snapshots[1], odds_value=Decimal("8.74"), minutes_before_start=Decimal(240),
@@ -303,11 +313,12 @@ def test_charts_share_odds_scale_but_use_choice_specific_time_ranges(tmp_path):
 
     charts = [chart for sheet in workbook for chart in sheet._charts]
     assert len(charts) == 3
-    time_ranges = {
-        (chart.x_axis.scaling.min, chart.x_axis.scaling.max)
+    assert all(chart.__class__.__name__ == "LineChart" for chart in charts)
+    assert all(
+        chart.x_axis.title.tx.rich.p[0].r[0].t == "Secuencia de cambios"
         for chart in charts
-    }
-    assert time_ranges == {(-0.081, 240), (0, 120)}
+    )
+    assert all("$A$" in chart.series[0].cat.numRef.f for chart in charts)
     assert all(chart.y_axis.scaling.min == 1 for chart in charts)
     title_to_y_max = {
         chart.title.tx.rich.p[0].r[0].t: chart.y_axis.scaling.max

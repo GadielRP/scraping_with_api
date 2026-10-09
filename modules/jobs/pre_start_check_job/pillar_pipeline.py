@@ -266,12 +266,22 @@ def _save_pillar_debug_snapshots(
             _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
             workbook_path = debug_dir / f"{event_id}_odds_trajectory_context.xlsx"
             try:
-                export_odds_trajectory_context_xlsx(
+                saved_workbook_path = export_odds_trajectory_context_xlsx(
                     odds_trajectory_context,
                     workbook_path,
                     event_context=event_context,
-                )
-                logger.info("Odds trajectory debug workbook saved event_id=%s path=%s", event_id, workbook_path)
+                ) or workbook_path
+                if saved_workbook_path != workbook_path:
+                    logger.warning(
+                        "Odds trajectory debug workbook target was locked; saved alternate file "
+                        "event_id=%s path=%s",
+                        event_id, saved_workbook_path,
+                    )
+                else:
+                    logger.info(
+                        "Odds trajectory debug workbook saved event_id=%s path=%s",
+                        event_id, saved_workbook_path,
+                    )
             except Exception as exc:
                 logger.exception(
                     "Failed to save odds trajectory debug workbook event_id=%s path=%s exception_class=%s: %s",

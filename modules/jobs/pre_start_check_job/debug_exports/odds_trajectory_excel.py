@@ -41,7 +41,7 @@ FINAL_COLUMN_WIDTHS = {
     "Periodo": 16,
     "Línea": 6,
     "Bookmaker": 18,
-    "Lado Exchange": 6,
+    "Lado Exchange": 10,
     # Every price column such as "1 Inicial", "X Actual" or "Over Actual".
     "choice_odds": 12,
     # Every timestamp column such as "1 Fecha y hora del cambio (Inicial)".
@@ -72,7 +72,6 @@ TRAJECTORY_CHART_RESERVED_ROWS = 13
 TRAJECTORY_ODDS_AXIS_MIN = Decimal("1.0")
 TRAJECTORY_ODDS_AXIS_MAX_STEP = Decimal("0.5")
 TRAJECTORY_ODDS_AXIS_MIN_RANGE = Decimal("1.5")
-TRAJECTORY_TIME_AXIS_FORMAT = "0.###"
 
 # Row heights are points (pt); 72 pt = 1 inch.
 ROW_HEIGHTS_PT = {
@@ -82,7 +81,7 @@ ROW_HEIGHTS_PT = {
     "trajectory_note": 45,
     "final_header": 36,
     "trajectory_section": 23,
-    "bookmaker_separator": 8,
+    "bookmaker_separator": 32,
     "trajectory_header": 30,
 }
 
@@ -218,23 +217,6 @@ def _shared_trajectory_odds_axis_bounds(
     ).to_integral_value(rounding=ROUND_CEILING) * TRAJECTORY_ODDS_AXIS_MAX_STEP
     axis_max = max(axis_max, TRAJECTORY_ODDS_AXIS_MIN_RANGE)
     return TRAJECTORY_ODDS_AXIS_MIN, axis_max
-
-
-def _trajectory_time_axis_bounds(
-    snapshots: list[OddsSnapshotPoint],
-) -> tuple[Decimal, Decimal]:
-    """Return the time range for one choice's trajectory chart."""
-    minutes = [
-        snapshot.minutes_before_start
-        for snapshot in snapshots
-        if snapshot.minutes_before_start is not None
-    ]
-    min_minutes = min(minutes, default=Decimal(0))
-    max_minutes = max(minutes, default=Decimal(1))
-    if min_minutes == max_minutes:
-        min_minutes -= Decimal("0.5")
-        max_minutes += Decimal("0.5")
-    return min_minutes, max_minutes
 
 
 def _row_sort_key(row: MarketRow) -> tuple:
@@ -407,7 +389,7 @@ def _write_trajectory_sheet(
     market_group: str,
     tables: list[ChoiceTrajectoryTable],
 ) -> None:
-    from openpyxl.chart import Reference, ScatterChart, Series
+    from openpyxl.chart import LineChart, Reference
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     _write_base_title(
@@ -420,7 +402,7 @@ def _write_trajectory_sheet(
     )
     section_fill = PatternFill("solid", fgColor="DCE8F4")
     bookmaker_fill = PatternFill("solid", fgColor="24476A")
-    separator_fill = PatternFill("solid", fgColor="FCE4D6")
+    separator_fill = PatternFill("solid", fgColor="000000")
     header_fill = PatternFill("solid", fgColor="24476A")
     body_fill = PatternFill("solid", fgColor="F7F9FC")
     thin = Side(style="thin", color="D9E2F3")
@@ -438,12 +420,22 @@ def _write_trajectory_sheet(
     for table in tables:
         if table.bookmaker != current_bookmaker:
             if current_bookmaker is not None:
+                worksheet.merge_cells(
+                    start_row=row_number,
+                    start_column=1,
+                    end_row=row_number,
+                    end_column=TRAJECTORY_SEPARATOR_END_COLUMN,
+                )
                 for column in range(1, TRAJECTORY_SEPARATOR_END_COLUMN + 1):
                     separator_cell = worksheet.cell(row_number, column)
                     separator_cell.fill = separator_fill
-                    separator_cell.border = Border(
-                        bottom=Side(style="thin", color="C65911"),
-                    )
+                separator = worksheet.cell(row_number, 1, "BOOKMAKER SEPARATOR")
+                separator.font = Font(bold=True, color="FFFFFF", size=18)
+                separator.alignment = Alignment(horizontal="center", vertical="center")
+                separator.border = Border(
+                    top=Side(style="medium", color="000000"),
+                    bottom=Side(style="medium", color="000000"),
+                )
                 worksheet.row_dimensions[row_number].height = ROW_HEIGHTS_PT["bookmaker_separator"]
                 row_number += 1
             worksheet.merge_cells(
@@ -504,8 +496,7 @@ def _write_trajectory_sheet(
             row_number += 1
 
         data_end_row = row_number - 1
-        chart = ScatterChart()
-        chart.scatterStyle = "lineMarker"
+        chart = LineChart()
         line_label = table.line if table.line is not None else "sin línea"
         chart.title = (
             f"{market_group} · {table.period} · Línea {line_label} · "
@@ -513,28 +504,26 @@ def _write_trajectory_sheet(
         )
         chart.style = 13
         chart.y_axis.title = "Cuota"
-        chart.x_axis.title = "Minutos antes del inicio"
-        chart.x_axis.numFmt = TRAJECTORY_TIME_AXIS_FORMAT
+        chart.x_axis.title = "Secuencia de cambios"
         chart.y_axis.numFmt = "0.###"
         y_min, y_max = axis_bounds_by_market[(table.period, table.line)]
-        x_min, x_max = _trajectory_time_axis_bounds(table.snapshots)
         chart.y_axis.scaling.min = float(y_min)
         chart.y_axis.scaling.max = float(y_max)
-        chart.x_axis.scaling.min = float(x_min)
-        chart.x_axis.scaling.max = float(x_max)
-        chart.x_axis.scaling.orientation = "maxMin"
         chart.legend = None
-        chart.marker = True
         chart.width = TRAJECTORY_CHART_SIZE_CM["width"]
         chart.height = TRAJECTORY_CHART_SIZE_CM["height"]
-        series = Series(
+        chart.add_data(
             Reference(worksheet, min_col=3, min_row=data_start_row - 1, max_row=data_end_row),
-            Reference(worksheet, min_col=2, min_row=data_start_row, max_row=data_end_row),
-            title_from_data=True,
+            titles_from_data=True,
         )
+        chart.set_categories(
+            Reference(worksheet, min_col=1, min_row=data_start_row, max_row=data_end_row),
+        )
+        series = chart.series[0]
+        series.marker.symbol = "circle"
+        series.marker.size = 5
         series.graphicalProperties.line.solidFill = "4472C4"
         series.graphicalProperties.line.width = TRAJECTORY_CHART_LINE_WIDTH_EMU
-        chart.series.append(series)
         worksheet.add_chart(chart, f"{TRAJECTORY_CHART_ANCHOR_COLUMN}{section_row}")
 
         next_after_data = data_end_row + 2
@@ -594,8 +583,8 @@ def export_odds_trajectory_context_xlsx(
         "utilizan source_collected_at (UTC), nunca collected_at."
     )
     trajectory_note = (
-        "Cada choice tiene su propia secuencia: Inicial es la referencia y los cambios "
-        "significativos se enumeran desde 1 en orden descendente de minutes_before_start."
+        "Cada choice conserva Inicial y enumera sus cambios significativos. La gráfica "
+        "espacia los puntos por orden de cambio; la tabla mantiene los minutos reales."
     )
 
     workbook = Workbook()
