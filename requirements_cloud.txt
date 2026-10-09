@@ -37,3 +37,6 @@ pytest>=8.0.0
 
 # Incremental parsing of bulk provider responses
 ijson>=3.3,<4
+
+# Debug trajectory workbook export
+openpyxl>=3.1.5,<4

@@ -93,6 +93,7 @@ csv/
 
 *debug/
 debug*/
+!modules/jobs/pre_start_check_job/debug_exports/
 
 debug_football/
 debug_laliga/

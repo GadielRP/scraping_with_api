@@ -79,6 +79,7 @@ from modules.pillars.pillar_1_team_structure.totals import (
     P1TotalsOutput,
 )
 
+from .debug_exports.odds_trajectory_excel import export_odds_trajectory_context_xlsx
 from .providers.debug_paths import sport_folder_name
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,21 @@ def _save_pillar_debug_snapshots(
         debug_dir.mkdir(parents=True, exist_ok=True)
 
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
-        _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
+        if odds_trajectory_context is not None:
+            _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
+            workbook_path = debug_dir / f"{event_id}_odds_trajectory_context.xlsx"
+            try:
+                export_odds_trajectory_context_xlsx(
+                    odds_trajectory_context,
+                    workbook_path,
+                    event_context=event_context,
+                )
+                logger.info("Odds trajectory debug workbook saved event_id=%s path=%s", event_id, workbook_path)
+            except Exception as exc:
+                logger.exception(
+                    "Failed to save odds trajectory debug workbook event_id=%s path=%s exception_class=%s: %s",
+                    event_id, workbook_path, type(exc).__name__, exc,
+                )
 
         resolved_streak = (
             streak_analysis
