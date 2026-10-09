@@ -79,7 +79,7 @@ def calculate_pillar_4(
     signals, inputs, analysis = [], {}, {}
     contracts = evaluation.contracts(4)
     if extraction.usable:
-        series_results = build_p4_series(extraction)
+        series_results = build_p4_series(extraction, debug_mode=debug_mode)
         accepted_refs = {contract_key(line) for line in evaluation.lines}
         series_contracts = resolve_series_contracts(
             series_results,

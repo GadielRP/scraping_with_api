@@ -28,8 +28,11 @@ class Bookmaker:
 PINNACLE = Bookmaker("pinnacle", 302)
 BET365 = Bookmaker("bet365", 3)
 BETFAIR = Bookmaker("betfair", 4, True)
+SOFASCORE = Bookmaker("sofascore", 1)
 BOOKMAKERS = (PINNACLE, BET365, BETFAIR)
-BOOKMAKER_IDS = frozenset(b.id for b in BOOKMAKERS)
+P5_BOOKMAKERS = (PINNACLE, BET365, SOFASCORE)
+SUPPORTED_BOOKMAKERS = (*BOOKMAKERS, SOFASCORE)
+BOOKMAKER_IDS = frozenset(b.id for b in SUPPORTED_BOOKMAKERS)
 FT = "Full Time"
 FT_OT = "Full Time Including Overtime"
 FIRST_HALF = "1st Half"
@@ -125,14 +128,14 @@ READING_CAPABILITIES = (
         "CURRENT_THREE_WAY_VECTOR",
         ("1X2",),
         ("1", "x", "2"),
-        (PINNACLE.id, BET365.id),
+        tuple(book.id for book in P5_BOOKMAKERS),
     ),
     ReadingCapability(
         5,
         "CURRENT_TWO_WAY_VECTOR",
         ("Home/Away",),
         ("1", "2"),
-        (PINNACLE.id, BET365.id),
+        tuple(book.id for book in P5_BOOKMAKERS),
     ),
 )
 
@@ -269,7 +272,10 @@ class EventMarketEvaluation:
 
         families, periods = CAPABILITIES[pillar]
         cells = []
-        for book in BOOKMAKERS:
+        coverage_bookmakers = (
+            (*BOOKMAKERS, SOFASCORE) if pillar == 5 else BOOKMAKERS
+        )
+        for book in coverage_bookmakers:
             for family in families:
                 for period in periods:
                     observed = [
@@ -480,7 +486,7 @@ def prepare_event_markets(
                     line for line in family_lines if line.line_value == variant
                 ]
                 view = context_view(context, scoped_lines)
-                for book in BOOKMAKERS:
+                for book in SUPPORTED_BOOKMAKERS:
                     supported = [
                         cap
                         for cap in READING_CAPABILITIES

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any, Sequence
 
@@ -11,6 +12,25 @@ from modules.pillars.trajectory_sampling import TrajectoryPoint
 ZERO = Decimal("0")
 ONE = Decimal("1")
 SIXTY = Decimal("60")
+logger = logging.getLogger(__name__)
+
+
+def _fmt(value: object) -> str:
+    return "None" if value is None else str(value)
+
+
+def _log_formula(
+    name: str,
+    formula: str,
+    substitution: str,
+    result: object,
+    *,
+    debug_mode: bool,
+) -> None:
+    if debug_mode:
+        logger.info("P4 FORMULA | %s | formula=%s", name, formula)
+        logger.info("P4 FORMULA | %s | substitution=%s", name, substitution)
+        logger.info("P4 FORMULA | %s | result=%s", name, _fmt(result))
 
 
 def _number(value: Decimal | None) -> float | None:
@@ -46,6 +66,8 @@ def build_legs(
     points: Sequence[TrajectoryPoint],
     *,
     expected_target_minutes: Sequence[int] = (),
+    debug_mode: bool = False,
+    series_id: str = "series",
 ) -> list[dict[str, Any]]:
     target_positions = {
         minute: position for position, minute in enumerate(expected_target_minutes)
@@ -64,6 +86,28 @@ def build_legs(
                 and end_position == start_position + 1
             )
         velocity = None if elapsed <= ZERO or not contiguous else delta / elapsed
+        label = f"{series_id}.LEG_{ordinal}"
+        _log_formula(
+            f"{label}.DELTA",
+            "end.value - start.value",
+            f"{end.value} - {start.value}",
+            delta,
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{label}.ELAPSED_MINUTES",
+            "(end.effective_at - start.effective_at).total_seconds() / 60",
+            f"({end.effective_at.isoformat()} - {start.effective_at.isoformat()}) / 60",
+            elapsed,
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{label}.VELOCITY",
+            "delta / elapsed_minutes when elapsed > 0 and leg is contiguous; otherwise None",
+            f"{delta} / {elapsed} (contiguous={contiguous})",
+            velocity,
+            debug_mode=debug_mode,
+        )
         legs.append(
             {
                 "LEG_ID": f"{start.point_id}__{end.point_id}",
@@ -386,13 +430,36 @@ def build_temporal_features(
     gap_present: bool = False,
     expected_target_minutes: Sequence[int] = (),
     operative_target_minute: int | None = None,
+    debug_mode: bool = False,
+    series_id: str = "series",
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
-    legs = build_legs(points, expected_target_minutes=expected_target_minutes)
+    if debug_mode:
+        logger.info(
+            "P4 FORMULA | %s | begin temporal calculation observations=%s expected_targets=%s gap_present=%s",
+            series_id, len(points), list(expected_target_minutes), gap_present,
+        )
+        for index, point in enumerate(points, start=1):
+            logger.info(
+                "P4 FORMULA | %s | observation_%s point=%s target=%s value=%s effective_at=%s",
+                series_id, index, point.point_id, point.target_minute,
+                point.value, point.effective_at.isoformat(),
+            )
+    legs = build_legs(
+        points,
+        expected_target_minutes=expected_target_minutes,
+        debug_mode=debug_mode,
+        series_id=series_id,
+    )
     public_legs = [
         {key: value for key, value in leg.items() if not key.startswith("_")}
         for leg in legs
     ]
     if not legs:
+        if debug_mode:
+            logger.info(
+                "P4 FORMULA | %s | temporal metrics unavailable: observations=%s; at least two are required",
+                series_id, len(points),
+            )
         features = {
             "OBSERVATION_COUNT": len(points),
             "LEG_COUNT": 0,
@@ -438,9 +505,37 @@ def build_temporal_features(
     elapsed = Decimal(
         str((points[-1].effective_at - points[0].effective_at).total_seconds())
     ) / SIXTY
+    _log_formula(
+        f"{series_id}.NET_MOVE",
+        "last_point.value - first_point.value",
+        f"{points[-1].value} - {points[0].value}",
+        net,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.PATH_LENGTH",
+        "sum(abs(leg.delta) for contiguous legs)",
+        " + ".join(str(leg["_ABS_DELTA"]) for leg in path_legs) or "0",
+        path,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.ELAPSED_MINUTES",
+        "(last_point.effective_at - first_point.effective_at).total_seconds() / 60",
+        f"({points[-1].effective_at.isoformat()} - {points[0].effective_at.isoformat()}) / 60",
+        elapsed,
+        debug_mode=debug_mode,
+    )
     for leg in legs:
         if leg["CONTIGUOUS_RAW"] and path > ZERO:
             leg["MOVE_SHARE_RAW"] = _number(leg["_ABS_DELTA"] / path)
+            _log_formula(
+                f"{series_id}.{leg['LEG_ID']}.MOVE_SHARE",
+                "abs(leg.delta) / path_length",
+                f"{leg['_ABS_DELTA']} / {path}",
+                leg["MOVE_SHARE_RAW"],
+                debug_mode=debug_mode,
+            )
     public_legs = [
         {key: value for key, value in leg.items() if not key.startswith("_")}
         for leg in legs
@@ -458,6 +553,87 @@ def build_temporal_features(
         }
     correction = _correction(runs, complete_path=complete_path)
     velocity_changes, acceleration, deceleration = _velocity_changes(segments)
+    _log_formula(
+        f"{series_id}.DIRECTIONAL_RUNS",
+        "group contiguous legs by non-zero direction; sum leg deltas per run",
+        f"leg_directions={[leg['DIRECTION_BY_SIGN'] for leg in legs]}",
+        runs,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.TURNING_STRUCTURE",
+        "count direction changes between non-zero leg deltas within each contiguous segment",
+        f"leg_directions={[leg['DIRECTION_BY_SIGN'] for leg in legs]}",
+        turning,
+        debug_mode=debug_mode,
+    )
+    if correction["CORRECTION_RATIO_RAW"] is not None:
+        initial = correction["INITIAL_RUN"]
+        corrective = correction["CORRECTION_RUN"]
+        _log_formula(
+            f"{series_id}.CORRECTION_RATIO",
+            "abs(correction_run.delta) / abs(initial_run.delta)",
+            f"{corrective['ABS_DELTA_RAW']} / {initial['ABS_DELTA_RAW']}",
+            correction["CORRECTION_RATIO_RAW"],
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{series_id}.MOVE_RETENTION",
+            "max(0, 1 - correction_ratio)",
+            f"max(0, 1 - {correction['CORRECTION_RATIO_RAW']})",
+            correction["MOVE_RETENTION_RAW"],
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{series_id}.OVERSHOOT_MAGNITUDE",
+            "abs(correction_delta) - abs(initial_delta) when correction_ratio > 1; otherwise 0",
+            f"{corrective['ABS_DELTA_RAW']} - {initial['ABS_DELTA_RAW']}",
+            correction["OVERSHOOT_MAGNITUDE_RAW"],
+            debug_mode=debug_mode,
+        )
+    for index, change in enumerate(velocity_changes, start=1):
+        legs_by_id = {leg["LEG_ID"]: leg for leg in legs}
+        previous = legs_by_id[change["FROM_LEG_ID"]]
+        current = legs_by_id[change["TO_LEG_ID"]]
+        _log_formula(
+            f"{series_id}.VELOCITY_CHANGE_{index}.SIGNED",
+            "current_leg.velocity - previous_leg.velocity",
+            f"{current['_VELOCITY']} - {previous['_VELOCITY']}",
+            change["VELOCITY_CHANGE_RAW"],
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{series_id}.VELOCITY_CHANGE_{index}.MAGNITUDE",
+            "abs(current_leg.velocity) - abs(previous_leg.velocity)",
+            f"abs({current['_VELOCITY']}) - abs({previous['_VELOCITY']})",
+            change["ABS_VELOCITY_CHANGE_RAW"],
+            debug_mode=debug_mode,
+        )
+        _log_formula(
+            f"{series_id}.VELOCITY_CHANGE_{index}.DIRECTION_FLAGS",
+            "compare direction signs; acceleration when same direction and magnitude change > 0; deceleration when < 0; reversal when signs have opposite product",
+            f"previous_sign={previous['DIRECTION_BY_SIGN']} current_sign={current['DIRECTION_BY_SIGN']} magnitude_change={change['ABS_VELOCITY_CHANGE_RAW']}",
+            {
+                "acceleration": change["ACCELERATION_RAW"],
+                "deceleration": change["DECELERATION_RAW"],
+                "reversal": change["REVERSAL_RAW"],
+            },
+            debug_mode=debug_mode,
+        )
+    _log_formula(
+        f"{series_id}.ACCELERATION",
+        "any same-direction absolute velocity change > 0",
+        f"velocity_changes={[(item['ABS_VELOCITY_CHANGE_RAW'], item['ACCELERATION_RAW']) for item in velocity_changes]}",
+        acceleration,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.DECELERATION",
+        "any same-direction absolute velocity change < 0",
+        f"velocity_changes={[(item['ABS_VELOCITY_CHANGE_RAW'], item['DECELERATION_RAW']) for item in velocity_changes]}",
+        deceleration,
+        debug_mode=debug_mode,
+    )
     target = operative_target_minute
     if target is None:
         target = next(
@@ -473,12 +649,70 @@ def build_temporal_features(
         total_path=path,
         operative_target=target,
     )
+    for window in windows:
+        selected_legs = [leg for leg in legs if leg["LEG_ID"] in window["LEG_IDS"]]
+        _log_formula(
+            f"{series_id}.{window['WINDOW']}",
+            "window net=sum(leg.delta); path=sum(abs(leg.delta)); move share=path / total_path",
+            f"deltas={[str(leg['_DELTA']) for leg in selected_legs]} total_path={path}",
+            window,
+            debug_mode=debug_mode,
+        )
     if path_legs:
         maximum = max(leg["_ABS_DELTA"] for leg in path_legs)
         dominant_segments = [leg["LEG_ID"] for leg in path_legs if leg["_ABS_DELTA"] == maximum]
     else:
         dominant_segments = []
+    _log_formula(
+        f"{series_id}.DOMINANT_SEGMENTS",
+        "select contiguous legs whose absolute delta equals the maximum absolute leg delta",
+        f"absolute_deltas={[str(leg['_ABS_DELTA']) for leg in path_legs]}",
+        dominant_segments,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.DOMINANT_WINDOWS",
+        "select windows whose path length equals the maximum window path length",
+        f"window_paths={[(item['WINDOW'], item['WINDOW_PATH_LENGTH_RAW']) for item in windows]}",
+        dominant_windows,
+        debug_mode=debug_mode,
+    )
     pattern = _path_pattern([leg["_DELTA"] for leg in path_legs]) if complete_path else None
+    _log_formula(
+        f"{series_id}.PATH_EFFICIENCY",
+        "abs(net_move) / path_length when path_length > 0 and path is complete",
+        f"abs({net}) / {path} (complete_path={complete_path})",
+        None if not complete_path or path == ZERO else abs(net) / path,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.NET_VELOCITY",
+        "net_move / elapsed_minutes when elapsed > 0 and path is complete",
+        f"{net} / {elapsed} (complete_path={complete_path})",
+        None if not complete_path or elapsed <= ZERO else net / elapsed,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.PATH_PATTERN",
+        "classify non-zero leg signs by number of direction changes",
+        f"deltas={[str(leg['_DELTA']) for leg in path_legs]} (complete_path={complete_path})",
+        pattern,
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.NET_DIRECTION",
+        "sign(net_move)",
+        f"sign({net})",
+        _direction(net),
+        debug_mode=debug_mode,
+    )
+    _log_formula(
+        f"{series_id}.CORRECTION_STATE",
+        "classify initial and first opposite directional run; require complete path",
+        f"state={correction['STATE']} initial={correction['INITIAL_RUN']} correction={correction['CORRECTION_RUN']} complete_path={complete_path}",
+        correction["STATE"],
+        debug_mode=debug_mode,
+    )
     features = {
         "OBSERVATION_COUNT": len(points),
         "LEG_COUNT": len(legs),

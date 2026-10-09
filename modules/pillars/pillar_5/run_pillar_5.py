@@ -5,8 +5,7 @@ import logging
 from infrastructure.settings import Config
 from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
 from modules.pillars.market_evaluation import (
-    PINNACLE,
-    BET365,
+    P5_BOOKMAKERS,
     FT,
     FT_OT,
     prepare_event_markets,
@@ -95,7 +94,7 @@ def calculate_pillar_5(
             for line in evaluation.lines
             if line.market_group == family and line.market_period == selected
         ]
-        for book in (PINNACLE, BET365):
+        for book in P5_BOOKMAKERS:
             namespace = f"{book.id}:{family}:{selected or 'NO_FT'}"
             refs = tuple(contract_key(line) for line in lines)
             debug_label = f"{selected or 'NO_FT'}.{family}.{book.name.upper()}"
