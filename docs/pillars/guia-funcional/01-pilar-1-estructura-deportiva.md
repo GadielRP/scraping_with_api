@@ -332,30 +332,35 @@ El resultado conserva tamaño de liga y fuente; partidos utilizados y descartado
 
 ## 8. M5: coste competitivo del contexto
 
-M5 pregunta: **¿qué presión comparativa representa la distancia a un objetivo de clasificación, dado el tiempo restante?** Modela un coste competitivo a partir de posiciones y puntos. No mide emociones de jugadores ni incorpora directamente forma, diferencia de goles o tasa de puntos por partido.
+M5 pregunta: **en la fase final de temporada, ¿qué presión comparativa representa la distancia a un objetivo de clasificación, dado el tiempo restante?** Modela un coste competitivo a partir de posiciones y puntos. No mide emociones de jugadores ni incorpora directamente forma, diferencia de goles o tasa de puntos por partido. Una posición provisional de descenso al inicio de temporada no basta para activar este análisis.
 
-### 8.1. Tabla, partidos restantes y puntos posibles
+### 8.1. Tabla, madurez de temporada y partidos restantes
 
 Cuenta filas válidas de clasificación: posición positiva y puntos no negativos. Ese conteo es `n_league`. Para cada participante utiliza su clasificación directa válida o busca la fila por nombre.
 
-La duración de temporada utilizada **dentro de M5** sigue esta regla:
+La duración se obtiene de `event_context.competition.total_regular_season_games`: el número de partidos de temporada regular por equipo definido para la competición. M5 ya no presupone 38 partidos por contar 18 o más equipos. Si falta una duración positiva y válida, devuelve INSUFFICIENT_DATA con motivo MISSING_TOTAL_SEASON_GAMES; no inventa una fase de temporada.
 
-- Con 18 o más equipos, presupone 38 partidos por equipo.
-- Con menos de 18, presupone 2 × (n_league − 1).
+`games_played_reference` es el mayor número de partidos disputados entre los participantes y los registros de liga disponibles. No utiliza una cantidad restante diferente para cada participante. Si ninguna fila permite conocer los partidos disputados, devuelve INSUFFICIENT_DATA con motivo MISSING_GAMES_PLAYED. Una referencia válida de cero partidos sí describe el inicio de temporada.
 
-Es una suposición propia del módulo. No toma en esta fórmula `total_regular_season_games`, aunque ese campo sí interviene en P1 Totales.
+Antes de interpretar puestos, objetivos o urgencias, aplica una única política: **al menos el 80 % de la temporada regular debe estar completado y deben quedar partidos por disputar**. Su nombre auditable es `late_season_80_percent_v1`.
 
-`games_played_reference` es el mayor número de partidos disputados entre los participantes y los registros de liga disponibles. No utiliza una cantidad restante diferente para cada participante.
+**madurez = games_played_reference ÷ total_season_games.**
+
+Con 38 partidos, una referencia de 30 representa el 78.95 % y todavía queda fuera; una referencia de 31 representa el 81.58 % y permite evaluar presión. Con 50 partidos, el límite se alcanza exactamente al completar 40. No se redondea la proporción para decidir.
+
+Fuera de la ventana, M5 devuelve INACTIVE con motivo OUTSIDE_LATE_SEASON_WINDOW. No calcula objetivos, regímenes, distancia, urgencia, costes ni componentes. Conserva el contexto original y los diagnósticos de madurez. Su `value` es cero por contrato, pero `raw.m5_edge` es nulo: expresa que no participó, no una conclusión de presión neutral. Si la temporada regular ya terminó, devuelve INACTIVE con motivo NO_REMAINING_SEASON_GAMES.
 
 **games_remaining = máximo entre partidos de temporada − referencia disputada y 0.**
 
 **max_points_remaining = 3 × games_remaining.**
 
-El valor 3 es fijo: representa tres puntos posibles por victoria. En una liga de 20 con referencia de 30 partidos jugados, quedan 38 − 30 = 8 y el horizonte es 24 puntos.
+El valor 3 es fijo: representa tres puntos posibles por victoria. Con una temporada de 38 y referencia de 32 partidos jugados, quedan 6 y el horizonte es 18 puntos. En Valencia–Real Sociedad, evento 303597, la referencia guardada es 7: madurez 7/38 ≈ 18.42 %, 31 partidos restantes y M5 inactivo. El núcleo deportivo ajustado de aproximadamente −0.092481 conserva su dirección AWAY y fuerza LOW.
+
+`raw.season_applicability` registra la política, el origen de la duración, el mínimo 0.80, la proporción observada y si el análisis es temporalmente aplicable. Entrar en la ventana permite intentar el cálculo; las comprobaciones de datos deportivos siguen siendo necesarias.
 
 ### 8.2. Objetivo y régimen
 
-La selección actual del objetivo es:
+Solo después de superar la comprobación de madurez se selecciona el objetivo:
 
 | Situación | `objective_type` |
 |---|---|
@@ -426,9 +431,9 @@ En MIDTABLE, la distancia asignada coincide con todo el horizonte; con horizonte
 
 Si ambos costes son cero, M5 es cero y `m5_pressure_side` es NONE. Si el local tiene mayor coste, HOME; si el visitante lo tiene, AWAY. Si solo uno tiene coste positivo, el contraste llega a ±1: expresa asimetría de costes, no certeza de ganar.
 
-Ejemplo: quedan 24 puntos posibles. El local está en SURVIVAL a seis puntos del corte: urgencia 1 − 6/24 = 0.75; coste 1 × 1.25 × 0.75 = 0.9375. El visitante está en EUROPE con distancia 12: urgencia 0.50; coste 0.70 × 1 × 0.50 = 0.35. El contraste es 0.5875 ÷ 1.2875 ≈ 0.4563 hacia el local.
+Ejemplo dentro de la fase final: quedan 6 partidos de 38, equivalentes a 18 puntos posibles. El local está en SURVIVAL a seis puntos del corte: urgencia 1 − 6/18 ≈ 0.6667; coste 1 × 1.25 × 0.6667 ≈ 0.8333. El visitante está en EUROPE con distancia 9: urgencia 0.50; coste 0.70 × 1 × 0.50 = 0.35. El contraste es aproximadamente 0.4833 ÷ 1.1833 ≈ 0.4085 hacia el local.
 
-Si la información no permite un estado activo, el módulo deja los costes operativos en cero. Conserva, por equipo, posición, puntos, partidos, objetivo, régimen, corte, distancia, urgencia, severidad, multiplicador y coste; además, el horizonte común y la regla de temporada.
+Si la fase de temporada es aplicable pero la información competitiva no permite un estado activo, el módulo deja los costes operativos en cero y explica qué datos faltan. En una ejecución calculada conserva, por equipo, posición, puntos, partidos, objetivo, régimen, corte, distancia, urgencia, severidad, multiplicador y coste; además, el horizonte común y la política de temporada.
 
 Sus componentes de coste local y visitante permiten auditar los dos lados, pero **M5 se calcula mediante la diferencia relativa**, no sumando esas fichas de componentes. La combinación de P1 asigna a M5 una escala de intensidad especial.
 
@@ -546,7 +551,7 @@ El reporte conserva el partido retirado, posiciones y sus fuentes, marcadores, m
 
 ## 11. Cómo se combinan los siete módulos de lado
 
-La combinación utiliza exactamente M1–M7. Su versión es `side_engine_multilayer_v3_0`. Hay un núcleo deportivo, un ajuste inmediato y una comparación de presión competitiva.
+La combinación utiliza exactamente M1–M7. Su versión es `side_engine_multilayer_v3_1`, que identifica la incorporación de la aplicabilidad temporal de M5. Hay un núcleo deportivo, un ajuste inmediato y una comparación de presión competitiva.
 
 ### 11.1. Valor original y efectivo
 
@@ -580,7 +585,9 @@ M4 no puede trasladar toda su magnitud al núcleo. Si su valor es 0.80, el ajust
 
 ### 11.4. M5: presión y escala especial
 
-`m5_edge` es el valor efectivo de M5. `m5_pressure_side` conserva su lado de presión o lo obtiene del signo: HOME, AWAY o NONE.
+`m5_edge` es el valor efectivo de M5. Si el módulo es utilizable, `m5_pressure_side` conserva su lado de presión o lo obtiene del signo: HOME, AWAY o NONE.
+
+Si M5 está INACTIVE, INSUFFICIENT_DATA o en un estado INVALID, el combinador lo excluye: su aportación numérica es cero, su lado de presión es NONE y su intensidad conserva el estado de indisponibilidad. No clasifica ese cero como presión LOW ni utiliza un lado HOME o AWAY que pudiera permanecer en los datos del módulo. La relación queda NO_PRESSURE. El núcleo deportivo operativo conserva su lado y recibe el estado CONFIRMED; si el núcleo es IGNORE, el resultado es NO_BET. La falta de participación de M5 no crea una ventana contextual ni degrada el núcleo.
 
 La magnitud de presión usada **por la combinación** se clasifica así:
 
@@ -1042,7 +1049,7 @@ El motor llama a M1–M7 en ese orden. Cada uno toma la parte de la historia que
 | [M2: perfil ofensivo](#5-m2-perfil-ofensivo) | Extrae anotación a favor válida. Compara dispersión, media de las cinco mayores anotaciones, tasa de ceros y tasa de anotaciones de al menos dos. Combina con pesos 0.35, 0.30, 0.20 y 0.15 y limita la suma final. | Contraste ofensivo, con los promedios, frecuencias y aportaciones que lo explican. |
 | [M3: enfrentamiento directo](#6-m3-enfrentamiento-directo) | Utiliza partidos entre los participantes, ya orientados al encuentro actual. Compara resultados, con media unidad por empate, y anotación; después aplica el ajuste por cantidad de enfrentamientos. | Contraste de enfrentamiento y explicación del tamaño de muestra. |
 | [M4: estado inmediato](#7-m4-estado-inmediato-ajustado-por-rival) | Selecciona hasta cinco partidos válidos con posición del rival. Interpreta fuerza y debilidad de ese rival dentro de la liga y compara el estado reciente de los equipos. | Contraste inmediato que después se acota para ajustar el núcleo. |
-| [M5: coste competitivo](#8-m5-coste-competitivo-del-contexto) | Parte de puesto, puntos y partidos restantes. Determina objetivo y régimen, encuentra puntos de corte, mide distancia, urgencia, severidad y multiplicador y obtiene un coste por equipo. Compara los costes mediante diferencia relativa. | Lado y magnitud de presión, con horizonte, objetivo y coste por participante. |
+| [M5: coste competitivo](#8-m5-coste-competitivo-del-contexto) | Primero exige al menos un 80 % de temporada regular completada y partidos restantes. Si aplica, parte de puesto y puntos, determina objetivo y régimen, encuentra puntos de corte, mide distancia, urgencia, severidad y multiplicador y obtiene un coste por equipo. Compara los costes mediante diferencia relativa. | Estado de aplicabilidad y, cuando corresponde, lado y magnitud de presión, con horizonte, objetivo y coste por participante. |
 | [M6: evolución estructural](#9-m6-evolución-estructural) | Ordena márgenes de antiguo a reciente y los divide en cinco bloques. Compara pendiente de sus medias y estabilidad de esos bloques con pesos 0.65 y 0.35. | Contraste de evolución, con vectores, pendientes y dispersiones. |
 | [M7: expectativa del rival](#10-m7-rendimiento-frente-a-la-expectativa-del-rival) | Retira el partido más antiguo. Transforma la posición del rival en expectativa de resultado y margen; obtiene `roe` y `gdoe`, los combina 0.60/0.40 y compara las medias de contexto de ambos equipos. | Contraste frente a expectativa, categorías de partido, agregados y muestra válida. |
 

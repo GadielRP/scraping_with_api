@@ -1,8 +1,9 @@
 """M5 - Contextual Competitive Cost Engine.
 
-This module measures how expensive it would be competitively not to add points
-in the current match. It does not use recent form, goal difference, odds, H2H,
-PPG, streaks, or market signals.
+After at least 80% of the regular season has been played, this module measures
+how expensive it would be competitively not to add points in the current match.
+It does not use recent form, goal difference, odds, H2H, PPG, streaks, or market
+signals.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 POINTS_PER_WIN = 3
 EUROPE_CUTOFF_RANK = 7
 SURVIVAL_DANGER_PLACES = 3
+LATE_SEASON_MIN_COMPLETION_RATIO = 0.80
 
 BASE_SEVERITY = {
     "EUROPE": 0.70,
@@ -579,19 +581,28 @@ def _serialize_team_raw(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _league_total_games(n_league: Optional[int]) -> Optional[int]:
-    if n_league is None:
-        return None
-    if n_league >= 18:
-        return 38
-    return max((n_league - 1) * 2, 0)
-
-
-def _games_played_reference(values: Iterable[Optional[int]]) -> int:
+def _games_played_reference(values: Iterable[Optional[int]]) -> Optional[int]:
     numeric_values = [value for value in values if value is not None and value >= 0]
     if not numeric_values:
-        return 0
+        return None
     return max(numeric_values)
+
+
+def _determine_season_applicability(
+    total_season_games: Optional[int],
+    games_played_reference: Optional[int],
+) -> Tuple[str, str, Optional[float]]:
+    """One policy: at least 80% completed, with regular-season games remaining."""
+    if total_season_games is None or total_season_games <= 0:
+        return "INSUFFICIENT_DATA", "MISSING_TOTAL_SEASON_GAMES", None
+    if games_played_reference is None:
+        return "INSUFFICIENT_DATA", "MISSING_GAMES_PLAYED", None
+    completion_ratio = games_played_reference / total_season_games
+    if games_played_reference >= total_season_games:
+        return "INACTIVE", "NO_REMAINING_SEASON_GAMES", completion_ratio
+    if completion_ratio < LATE_SEASON_MIN_COMPLETION_RATIO:
+        return "INACTIVE", "OUTSIDE_LATE_SEASON_WINDOW", completion_ratio
+    return "ACTIVE", "active", completion_ratio
 
 
 def calculate_contextual_competitive_cost_engine(
@@ -618,23 +629,84 @@ def calculate_contextual_competitive_cost_engine(
     away_standing = _resolve_team_standing(current_standings, away_team, away_direct_standing)
 
     n_league = _count_valid_standings(current_standings)
-    total_season_games = _league_total_games(n_league)
+    total_season_games = _coerce_int(
+        getattr(event_context.competition, "total_regular_season_games", None)
+    )
     games_played_home = _extract_games_played(home_standing)
     games_played_away = _extract_games_played(away_standing)
-    games_played_max = 0
-    if isinstance(current_standings, (dict, list)):
-        for _, standing in _standings_items(current_standings):
-            standing_gp = _extract_games_played(standing)
-            if standing_gp is not None and standing_gp > games_played_max:
-                games_played_max = standing_gp
-    games_played_max_value = games_played_max if games_played_max > 0 else None
-    games_played_reference = _games_played_reference([games_played_home, games_played_away, games_played_max_value])
+    games_played_reference = _games_played_reference([
+        games_played_home,
+        games_played_away,
+        *(_extract_games_played(standing) for _, standing in _standings_items(current_standings)),
+    ])
 
     games_remaining: Optional[int] = None
     max_points_remaining: Optional[float] = None
-    if total_season_games is not None:
+    if total_season_games is not None and total_season_games > 0 and games_played_reference is not None:
         games_remaining = max(total_season_games - games_played_reference, 0)
         max_points_remaining = float(games_remaining * POINTS_PER_WIN)
+
+    season_status, season_reason, completion_ratio = _determine_season_applicability(
+        total_season_games, games_played_reference,
+    )
+    context_raw = {
+        "event_id": event_id,
+        "participants": participants,
+        "home_team": home_team,
+        "away_team": away_team,
+        "competition_name": competition_name,
+        "competition_slug": competition_slug,
+        "season_id": season_id,
+        "season_name": season_name,
+        "n_league": n_league,
+        "points_per_win": POINTS_PER_WIN,
+        "total_season_games": total_season_games,
+        "games_played_reference": games_played_reference,
+        "games_remaining": games_remaining,
+        "max_points_remaining": max_points_remaining,
+        "season_applicability": {
+            "policy": "late_season_80_percent_v1",
+            "total_season_games_source": "competition.total_regular_season_games",
+            "minimum_completion_ratio": LATE_SEASON_MIN_COMPLETION_RATIO,
+            "completion_ratio": completion_ratio,
+            "is_applicable": season_status == "ACTIVE",
+        },
+        "current_standings_count": n_league,
+        "home_team_current_standing": home_standing,
+        "away_team_current_standing": away_standing,
+        "home_team_current_rank": home_rank_direct,
+        "away_team_current_rank": away_rank_direct,
+        "current_standings": current_standings,
+    }
+
+    if debug_mode or season_status != "ACTIVE":
+        logger.info(
+            "M5 applicability | event=%s status=%s reason=%s games_played_reference=%s "
+            "total_season_games=%s games_remaining=%s completion_ratio=%s minimum=%s",
+            event_id, season_status, season_reason, games_played_reference,
+            total_season_games, games_remaining, completion_ratio,
+            LATE_SEASON_MIN_COMPLETION_RATIO,
+        )
+    if season_status != "ACTIVE":
+        return ModuleResult(
+            pillar_id="pillar_1_team_structure",
+            module_id="M5",
+            module_name="Contextual Competitive Cost Engine",
+            event_id=event_id,
+            participants=participants,
+            value=0.0,
+            bias="NONE",
+            strength=season_status,
+            raw={
+                **context_raw,
+                "m5_edge": None,
+                "m5_abs_edge": None,
+                "m5_pressure_side": "NONE",
+                "m5_strength": season_status,
+                "m5_status": season_status,
+                "m5_status_reason": season_reason,
+            },
+        )
 
     if debug_mode:
         _debug_section("Propósito del módulo")
@@ -814,26 +886,7 @@ def calculate_contextual_competitive_cost_engine(
     ]
 
     raw = {
-        "event_id": event_id,
-        "participants": participants,
-        "home_team": home_team,
-        "away_team": away_team,
-        "competition_name": competition_name,
-        "competition_slug": competition_slug,
-        "season_id": season_id,
-        "season_name": season_name,
-        "n_league": n_league,
-        "points_per_win": POINTS_PER_WIN,
-        "total_season_games": total_season_games,
-        "games_played_reference": games_played_reference,
-        "games_remaining": games_remaining,
-        "max_points_remaining": max_points_remaining,
-        "current_standings_count": n_league,
-        "home_team_current_standing": home_standing,
-        "away_team_current_standing": away_standing,
-        "home_team_current_rank": home_rank_direct,
-        "away_team_current_rank": away_rank_direct,
-        "current_standings": current_standings,
+        **context_raw,
         "home": _serialize_team_raw(home_metrics),
         "away": _serialize_team_raw(away_metrics),
         "m5_numerator": m5_numerator,
@@ -850,6 +903,7 @@ def calculate_contextual_competitive_cost_engine(
             "m5_edge": "(FINAL_COST_HOME - FINAL_COST_AWAY) / (abs(FINAL_COST_HOME) + abs(FINAL_COST_AWAY))",
         },
         "sealed_rules": [
+            "M5 applies only after at least 80% of the regular season, with games remaining.",
             "M5 measures contextual competitive cost.",
             "M5 does not measure emotional motivation.",
             "M5 does not measure team strength.",

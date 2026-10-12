@@ -32,7 +32,7 @@ from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engin
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "side_engine_multilayer_v3_0"
+_ENGINE_VERSION = "side_engine_multilayer_v3_1"
 _LAYER_A_WEIGHTS: Dict[str, float] = {
     "M1": 0.30,
     "M2": 0.20,
@@ -352,18 +352,20 @@ def _aggregate_multilayer_side_engine_v3(module_results):
 
     m5_module = results_by_id["M5"]
     m5_edge = _effective_module_value(m5_module)
-    m5_strength = _classify_m5_strength(m5_edge)
-    m5_pressure_side = (
-        str(m5_module.raw.get("m5_pressure_side"))
-        if isinstance(getattr(m5_module, "raw", None), dict) and m5_module.raw.get("m5_pressure_side")
-        else _pressure_side_from_edge(m5_edge)
-    )
+    m5_usable = _is_module_usable(m5_module)
+    m5_strength = _classify_m5_strength(m5_edge) if m5_usable else _module_status(m5_module)
+    m5_pressure_side = "NONE"
+    if m5_usable:
+        m5_pressure_side = (
+            str(m5_module.raw.get("m5_pressure_side"))
+            if isinstance(getattr(m5_module, "raw", None), dict) and m5_module.raw.get("m5_pressure_side")
+            else _pressure_side_from_edge(m5_edge)
+        )
 
     p1_final_context_balance = p1_effective_core + m5_edge
-    pressure_relation = _resolve_pressure_relation(
-        core_strength,
-        core_bias,
-        m5_pressure_side,
+    pressure_relation = (
+        _resolve_pressure_relation(core_strength, core_bias, m5_pressure_side)
+        if m5_usable else "NO_PRESSURE"
     )
     p1_final_state, p1_final_bias, anomalies = _resolve_final_state_and_bias(
         core_strength,
