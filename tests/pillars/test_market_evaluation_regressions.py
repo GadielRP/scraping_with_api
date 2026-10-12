@@ -134,9 +134,37 @@ def test_debug_logging_explains_timing_source_and_endpoint(caplog):
     assert "P4 timing" in caplog.text
     assert "nominal=" in caplog.text and "latest checkpoint=" in caplog.text
     assert "book=book (3)" in caplog.text
-    assert "status=INSUFFICIENT_DATA | observations=1" in caplog.text
-    assert "endpoint price=" in caplog.text and "net move=None" in caplog.text
+    assert "'INSUFFICIENT_DATA':" in caplog.text
+    assert "observations_min=1 | observations_max=1" in caplog.text
+    assert "P4 example point" in caplog.text and "delta=end-start=" in caplog.text
     assert "P4 coverage" in caplog.text
+
+
+def test_p4_logging_keeps_one_worked_example_as_series_count_grows(caplog):
+    counts = []
+    for line_count in (1, 20):
+        rows = []
+        for index in range(line_count):
+            for minute, price in ((120, "2.2"), (30, "2.1"), (5, "2.0")):
+                rows += quotes("Over/Under", minute=minute, price=price,
+                               line=str(index + .5), market_id=70 + index)
+        caplog.clear()
+        quiet_result, _ = run_p4(rows)
+        with caplog.at_level(logging.INFO):
+            logged_result, _ = run_p4(rows, debug_mode=True)
+        assert logged_result == quiet_result
+        messages = [record.getMessage() for record in caplog.records]
+        assert sum(message.startswith("P4 example |") for message in messages) == 1
+        assert sum(message.startswith("P4 example point |") for message in messages) == 3
+        assert sum(message.startswith("P4 example leg |") for message in messages) == 2
+        assert messages[0].startswith("P4 timing |")
+        assert "'COMPLETE':" in caplog.text
+        assert "'MISSING':" in caplog.text
+        assert "P4 observations" in caplog.text
+        assert not any("P4 FORMULA" in message for message in messages)
+        counts.append(len(messages))
+    assert counts[1] <= counts[0] + 2
+    assert counts[1] < 60
 
 
 @pytest.mark.parametrize("regular", [True, False])

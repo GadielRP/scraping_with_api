@@ -120,23 +120,124 @@ def _is_pillar_competition_in_scope(competition_id) -> bool:
     )
 
 
-def _log_market_result(participants, result):
+def _format_result_fields(fields, indent=2):
+    """Render named values as aligned rows, with nested sections for metric paths."""
+    tree = {}
+    for name, value in fields.items():
+        parts = str(name).split(".")
+        branch = tree
+        for part in parts[:-1]:
+            branch = branch.setdefault(part, {})
+        branch[parts[-1]] = value
+
+    width = max((len(name) for name in tree), default=0)
+    padding = " " * indent
+    lines = []
+    for name, value in tree.items():
+        if isinstance(value, dict) and value:
+            lines.append(f"{padding}{name}:")
+            lines.append(_format_result_fields(value, indent + 2))
+        elif isinstance(value, list) and value:
+            lines.append(f"{padding}{name}:")
+            for index, item in enumerate(value, start=1):
+                lines.append(_format_result_fields({f"[{index}]": item}, indent + 2))
+        else:
+            if value is None:
+                display = "no disponible"
+            elif isinstance(value, (dict, list)):
+                display = "ninguno"
+            elif isinstance(value, bool):
+                display = "true" if value else "false"
+            else:
+                display = str(value)
+            lines.append(f"{padding}{name:<{width}} : {display}")
+    return "\n".join(lines)
+
+
+def _log_result_block(title, context, sections):
+    # One record keeps each block together when events run concurrently.
     logger.info(
-        "Market result pillar=%s participants=%s status=%s target=%s FT=%s reason=%s computed=%s blocked=%s",
-        result.get("pillar_id"),
-        participants,
-        result.get("status"),
-        result.get("target_minute"),
-        result.get("selected_full_time_period"),
-        result.get("selection", {}).get("reason"),
-        result.get("evidence", {}).get("computed_signals"),
-        dict(
-            Counter(
+        "%s\n%s\n  %s",
+        title,
+        _format_result_fields(_to_json_safe({"Contexto": context, **sections})),
+        "-" * 72,
+    )
+
+
+def _log_market_values(result):
+    """Show every computed reading once, grouped by its analytical scope."""
+    groups = {}
+    for signal in result.get("signals", []):
+        if signal.get("status") != "COMPUTED":
+            continue
+        evidence = signal.get("evidence", {})
+        if "metric" in evidence:
+            scope, name = evidence["scope"], evidence["metric"]
+        else:
+            scope, _, name = signal["key"].rpartition(":")
+            scope = scope or "global"
+        groups.setdefault(scope, {})[name] = signal["value"]
+
+    for scope, values in groups.items():
+        market = result.get("analysis", {}).get(scope, {}).get("market", {})
+        context = {"Pilar": result.get("pillar_id"), "Evento": result.get("event_id")}
+        if market:
+            context.update({
+                "Bookmaker": f"{market['BOOKIE_NAME']} ({market['BOOKIE_ID']})",
+                "Mercado": f"{market['MARKET_GROUP']} / {market['MARKET_PERIOD']}",
+                "Línea": market["CHOICE_GROUP"] if market["CHOICE_GROUP"] is not None else "sin línea",
+                "Elección": market["CHOICE_NAME"],
+                "Vista": market["VIEW"],
+                "Tipo de valor": market["VALUE_TYPE"],
+                "Fuente": market["SOURCE"],
+                "Lado exchange": market["EXCHANGE_SIDE"] or "no aplica",
+                "Nivel de exchange (0 es el valor default)": market["EXCHANGE_LEVEL"],
+                "Serie": scope,
+            })
+        else:
+            context["Ámbito"] = scope
+        _log_result_block(
+            "🏁 Market values — RESULTADOS CALCULADOS",
+            context,
+            {"Variables finales": values},
+        )
+
+
+def _log_market_result(participants, result):
+    if result.get("pillar_id") == "pillar_5":
+        for scope, profile in result.get("analysis", {}).items():
+            if "P5_STATUS" in profile:
+                _log_result_block(
+                    "🏁 P5 PROFILE RESULT — MEMORIA DE PRECIOS",
+                    {"Evento": result.get("event_id"), "Ámbito": scope},
+                    {"Variables finales": {
+                        name: value for name, value in profile.items()
+                        if name not in {"diagnostics", "sample_id"}
+                    }},
+                )
+    else:
+        _log_market_values(result)
+    _log_result_block(
+        "🏁 Market result — RESUMEN FINAL",
+        {"Pilar": result.get("pillar_id"), "Evento": result.get("event_id"), "Participantes": participants},
+        {
+            "Ejecución": {
+                "status": result.get("status"),
+                "execution_status": result.get("execution_status"),
+                "target_minute": result.get("target_minute"),
+                "selected_full_time_period": result.get("selected_full_time_period"),
+                "selection_reason": result.get("selection", {}).get("reason"),
+                "computed_signals": result.get("evidence", {}).get("computed_signals"),
+            },
+            "Cálculos no disponibles (cantidad por motivo)": dict(Counter(
                 signal.get("reason")
                 for signal in result.get("signals", [])
                 if signal.get("status") in ("BLOCKED", "ERROR")
-            )
-        ),
+            )),
+            "Cobertura (cantidad por estado)": dict(Counter(
+                cell["status"] for cell in result.get("coverage", [])
+            )),
+        },
     )
 
 
@@ -519,7 +620,7 @@ class EventPillarProcessor:
                 skipped=True,
             ).to_dict()
             logger.info(
-                "Pillar 2 (Side Market Signal Engine) skipped for %s (disabled by toggle)",
+                "🏁 Pillar 2 (Side Market Signal Engine) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -565,7 +666,7 @@ class EventPillarProcessor:
                 skipped=True,
             ).to_dict()
             logger.info(
-                "Pillar 3 (Over/Under Market Signal Engine) skipped for %s (disabled by toggle)",
+                "🏁 Pillar 3 (Over/Under Market Signal Engine) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -609,7 +710,7 @@ class EventPillarProcessor:
                 skipped=True,
             ).to_dict()
             logger.info(
-                "Pillar 4 (Temporal Market Drift) skipped for %s (disabled by toggle)",
+                "🏁 Pillar 4 (Temporal Market Drift) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -628,6 +729,7 @@ class EventPillarProcessor:
                                 session=session, capture=True
                             ),
                         )
+                        _log_market_result(event_context.participants_label, p5_result)
                         if not self.mining_service.persist(
                             "pillar_5", event_identity, p5_result, session=session
                         ):
@@ -644,6 +746,7 @@ class EventPillarProcessor:
                             db_manager.SessionLocal
                         ),
                     )
+                    _log_market_result(event_context.participants_label, p5_result)
             except Exception as exc:
                 logger.exception(
                     "Error calculating P5 for event %s (%s): %s",
@@ -679,8 +782,7 @@ class EventPillarProcessor:
                     p5_result["execution_status"] = (
                         "COMPLETED_WITH_ERRORS" if computed else "FAILED"
                     )
-
-            _log_market_result(event_context.participants_label, p5_result)
+                _log_market_result(event_context.participants_label, p5_result)
         else:
             p5_result = EvaluationResult(
                 event_identity.event_id,
@@ -693,7 +795,7 @@ class EventPillarProcessor:
                 skipped=True,
             ).to_dict()
             logger.info(
-                "Pillar 5 (Exact Price Memory) skipped for %s (disabled by toggle)",
+                "🏁 Pillar 5 (Exact Price Memory) skipped for %s (disabled by toggle)",
                 event_context.participants_label,
             )
 
@@ -756,7 +858,7 @@ class EventPillarProcessor:
         # If Pillar 1 is disabled, return results calculated so far
         if not self._is_pillar_enabled("pillar_1"):
             logger.info(
-                "Pillar 1 (Team Structure) skipped for %s (disabled by toggle)",
+                "🏁 Pillar 1 (Team Structure) skipped for %s (disabled by toggle)",
                 participants,
             )
             return {
@@ -786,7 +888,7 @@ class EventPillarProcessor:
 
         if streak_analysis is None:
             logger.info(
-                "Pillar pipeline: no streak_analysis for event %s (%s), returning P2, P3, P4 and P5 only",
+                "🏁 P1 RESULT | event=%s | participants=%s | status=SKIPPED | reason=no streak_analysis",
                 event_id,
                 participants,
             )
@@ -834,7 +936,7 @@ class EventPillarProcessor:
             p1_totals_result = p1_output["totals"]
         except Exception as exc:
             logger.error(
-                "Error calculating P1 for event %s (%s): %s",
+                "🏁 P1 RESULT | event=%s | participants=%s | status=ERROR | reason=%s",
                 event_id,
                 participants,
                 exc,
@@ -993,26 +1095,7 @@ class EventPillarProcessor:
                 comp.get("strength", "?"),
             )
 
-        p1_final_raw = p1_result.get("raw", {}).get("final", {})
-        logger.info(
-            "P1/SIDE calculated for %s: value=%.3f, bias=%s, strength=%s, context_state=%s",
-            participants,
-            p1_result.get("value", 0),
-            p1_result.get("raw", {}).get("final", {}).get("p1_final_bias", p1_result.get("bias", "N/A")),
-            p1_result.get("raw", {}).get("final", {}).get("p1_final_strength", p1_result.get("strength", "N/A")),
-            p1_final_raw.get("p1_context_state", "N/A"),
-        )
-
         if p1_totals_result is not None:
-            logger.info(
-                "P1/P1_TOTALS Totals calculated for %s: directional_score=%.3f, direction=%s, strength=%s, variance_state=%s, status=%s",
-                participants,
-                p1_totals_result.P1_TOTALS_DIRECTIONAL_SCORE,
-                p1_totals_result.P1_TOTALS_DIRECTION,
-                p1_totals_result.P1_TOTALS_STRENGTH,
-                p1_totals_result.P1_TOTALS_VARIANCE_STATE,
-                p1_totals_result.status,
-            )
             for layer in p1_totals_result.active_layers:
                 logger.info(
                     "   - active layer: %s raw_signal=%s final_signal=%s weighted=%s",
@@ -1031,7 +1114,7 @@ class EventPillarProcessor:
                 )
         else:
             logger.info(
-                "P1/P1_TOTALS Totals skipped for %s: unavailable",
+                "🏁 P1/P1_TOTALS Totals skipped for %s: unavailable",
                 participants,
             )
 
@@ -1060,12 +1143,43 @@ class EventPillarProcessor:
             if p1_totals_result is not None
             else None
         )
+        p1_final_raw = p1_result.get("raw", {}).get("final", {})
+        p1_variables = {
+            "value": p1_result.get("value"),
+            "bias": p1_result.get("bias"),
+            "strength": p1_result.get("strength"),
+            **{
+                name: value for name, value in p1_result.get("raw", {}).items()
+                if name in {
+                    "p1_core_side", "m4_context_adj", "p1_effective_core",
+                    "core_bias", "core_strength", "m5_edge", "m5_strength", "m5_pressure_side",
+                }
+            },
+            **p1_final_raw,
+        }
+        _log_result_block(
+            "🏁 P1/SIDE RESULT — PERFIL DE LADO",
+            {"Evento": event_id, "Participantes": participants},
+            {"Variables finales": p1_variables},
+        )
+
         self._persist_mining_result(
             "pillar_1_team_structure_side",
             event_identity,
             p1_result,
         )
         if p1_totals_serialized is not None:
+            _log_result_block(
+                "🏁 P1/P1_TOTALS RESULT — PERFIL DE TOTALES",
+                {"Evento": event_id, "Participantes": participants},
+                {"Ejecución": {
+                    "status": p1_totals_result.status,
+                    "status_reason": p1_totals_serialized.get("status_reason"),
+                }, "Variables finales": {
+                    name: value for name, value in p1_totals_serialized.items()
+                    if name.isupper()
+                }},
+            )
             self._persist_mining_result(
                 "pillar_1_team_structure_totals",
                 event_identity,

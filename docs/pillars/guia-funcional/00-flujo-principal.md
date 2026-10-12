@@ -165,6 +165,16 @@ La **minería de resultados**, `mining`, significa guardar salidas y evidencias 
 
 En P5, la muestra guardada permite reconstruir qué partidos históricos entraron en esa ejecución. Si falla la conservación, un cálculo puede seguir disponible, pero no debe presentar una muestra inexistente como guardada. Los problemas de un pilar no invalidan automáticamente los resultados de los demás.
 
+### Orden de los logs
+
+En cada pilar, los logs de entradas, cálculos y observaciones aparecen antes del cierre. Los resultados finales llevan **🏁** y se muestran inmediatamente antes de guardar el resultado en minería. El mensaje de resultado describe el cálculo; la confirmación posterior de minería indica si se guardó. Un cierre también puede indicar que el pilar se omitió o terminó con error.
+
+El bloque final presenta secciones de contexto, variables finales y resumen, con una variable por línea y columnas alineadas. Los campos anidados se muestran con sangría: `STRUCTURAL.NET_DIRECTION_RAW`, por ejemplo, aparece como `NET_DIRECTION_RAW` dentro de la sección `STRUCTURAL`. Conserva los nombres originales y la precisión de los valores; muestra ausencias como «no disponible» y listas vacías como «ninguno». Cada bloque se emite como un único registro para evitar que otros eventos intercalen líneas dentro de él.
+
+P2 y P3 agrupan todas sus señales `COMPUTED` por ámbito de mercado; P4 las agrupa por trayectoria e identifica casa, mercado, periodo, línea, elección, vista y tipo de valor. Estas salidas son lecturas independientes: el conteo `computed_signals` no es su puntuación. P5 muestra las variables de cada perfil, incluidos `P5`, dirección, fuerza, muestra, probabilidad histórica, ventaja, consistencia y pesos. P1 muestra sus variables de combinación y decisión de lado, y todas las variables del perfil de totales. Los cálculos bloqueados o con error conservan sus motivos en el resumen, sin presentar un valor calculado.
+
+Con el diagnóstico activado, P4 resume las trayectorias por vista y tipo de valor, agrupa las fuentes y muestra todos los estados de cobertura. Después desarrolla una sola trayectoria de cuotas por checkpoints: puntos, tramos, recorrido, giros, corrección, ventanas y dominancia. Prefiere una trayectoria activa y sin checkpoints ausentes. Los contratos con problemas muestran hasta tres ejemplos por estado; el detalle completo permanece en el resultado. P5 muestra sus perfiles finales en el bloque 🏁 antes de conservarlos.
+
 ## 10. Referencias
 
 Las explicaciones de cada pilar están enlazadas en la sección 1. Para profundizar en contratos o almacenamiento:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import timezone
 from decimal import Decimal
@@ -20,15 +19,6 @@ from .models import P4SeriesInput
 from modules.pillars.trajectory_sampling import TrajectoryPoint
 from modules.pillars.market_evaluation import PINNACLE, BET365
 from .periods import EXCHANGE_BOOKIE_ID, REGULAR_BOOKIE_IDS, normalize_token
-
-logger = logging.getLogger(__name__)
-
-
-def _log_formula(name: str, formula: str, substitution: str, result: object, *, debug_mode: bool) -> None:
-    if debug_mode:
-        logger.info("P4 FORMULA | %s | formula=%s", name, formula)
-        logger.info("P4 FORMULA | %s | substitution=%s", name, substitution)
-        logger.info("P4 FORMULA | %s | result=%s", name, result)
 
 
 def _timestamp(value) -> float:
@@ -94,7 +84,6 @@ def _combine(
     preserve_bookie_identity: bool = True,
     source: str | None = "derived",
     exchange_side: str | None = None,
-    debug_mode: bool = False,
 ) -> P4SeriesInput | None:
     left_points = _point_map(left)
     right_points = _point_map(right)
@@ -130,13 +119,6 @@ def _combine(
             if value is not None
         ]
         calculated_value = formula(left_point.value, right_point.value)
-        _log_formula(
-            f"{series_id}.TARGET_{target}",
-            f"{formula.__name__}(left, right)",
-            f"{formula.__name__}({left_point.value}, {right_point.value})",
-            calculated_value,
-            debug_mode=debug_mode,
-        )
         points.append(
             TrajectoryPoint(
                 point_id=(
@@ -192,7 +174,7 @@ def _combine(
     )
 
 
-def _edge_series(price_series: Sequence[P4SeriesInput], *, debug_mode: bool) -> list[P4SeriesInput]:
+def _edge_series(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput]:
     groups: dict[tuple[Any, ...], dict[str, list[P4SeriesInput]]] = {}
     for series in price_series:
         role = _role(series.domain, series.choice_name)
@@ -228,14 +210,13 @@ def _edge_series(price_series: Sequence[P4SeriesInput], *, debug_mode: bool) -> 
             formula=side_edge if left.domain == "SIDE" else ou_edge,
             source=left.source,
             exchange_side=left.exchange_side,
-            debug_mode=debug_mode,
         )
         if edge is not None:
             result.append(edge)
     return result
 
 
-def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) -> list[P4SeriesInput]:
+def _aggregate_edges(edge_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput]:
     groups: dict[tuple[Any, ...], list[P4SeriesInput]] = {}
     for series in edge_series:
         key = (
@@ -272,7 +253,6 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) 
                 formula=pair_mean,
                 bookie_name="BOOKS_REPRESENTATIVE",
                 preserve_bookie_identity=False,
-                debug_mode=debug_mode,
             )
             book_gap = _combine(
                 books[PINNACLE.id],
@@ -283,7 +263,6 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) 
                 formula=absolute_gap,
                 bookie_name="BOOKS",
                 preserve_bookie_identity=False,
-                debug_mode=debug_mode,
             )
             result.extend(item for item in (book_rep, book_gap) if item is not None)
         if "back" in exchange and "lay" in exchange:
@@ -299,7 +278,6 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) 
                 preserve_bookie_identity=False,
                 source="derived",
                 exchange_side="representative",
-                debug_mode=debug_mode,
             )
             exchange_gap = _combine(
                 exchange["back"],
@@ -313,7 +291,6 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) 
                 preserve_bookie_identity=False,
                 source="derived",
                 exchange_side="back_lay_gap",
-                debug_mode=debug_mode,
             )
             result.extend(
                 item for item in (exchange_rep, exchange_gap) if item is not None
@@ -328,14 +305,13 @@ def _aggregate_edges(edge_series: Sequence[P4SeriesInput], *, debug_mode: bool) 
                 formula=absolute_gap,
                 bookie_name="BOOK_EXCHANGE",
                 preserve_bookie_identity=False,
-                debug_mode=debug_mode,
             )
             if cross_gap is not None:
                 result.append(cross_gap)
     return result
 
 
-def _exchange_spreads(price_series: Sequence[P4SeriesInput], *, debug_mode: bool) -> list[P4SeriesInput]:
+def _exchange_spreads(price_series: Sequence[P4SeriesInput]) -> list[P4SeriesInput]:
     groups: dict[tuple[Any, ...], dict[str, list[P4SeriesInput]]] = {}
     for series in price_series:
         side = normalize_token(series.exchange_side)
@@ -367,7 +343,6 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput], *, debug_mode: bool
             bookie_name="Betfair",
             source="derived",
             exchange_side="back_lay",
-            debug_mode=debug_mode,
         )
         if spread is not None:
             result.append(spread)
@@ -376,19 +351,17 @@ def _exchange_spreads(price_series: Sequence[P4SeriesInput], *, debug_mode: bool
 
 def build_checkpoint_semantic_series(
     series_inputs: Iterable[P4SeriesInput],
-    *,
-    debug_mode: bool = False,
 ) -> tuple[P4SeriesInput, ...]:
     prices = tuple(
         series
         for series in series_inputs
         if series.view == "CHECKPOINT_VIEW" and series.value_type == "ODDS_PRICE"
     )
-    edges = _edge_series(prices, debug_mode=debug_mode)
+    edges = _edge_series(prices)
     return tuple((
         *edges,
-        *_aggregate_edges(edges, debug_mode=debug_mode),
-        *_exchange_spreads(prices, debug_mode=debug_mode),
+        *_aggregate_edges(edges),
+        *_exchange_spreads(prices),
     ))
 
 

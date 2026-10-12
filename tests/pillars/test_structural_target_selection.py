@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from contextlib import contextmanager
 
 import pytest
 
@@ -148,6 +150,71 @@ def _run_pipeline(monkeypatch, selection_spy=None, mining_service=None, debug_mo
     )
     result = processor.process_event(_event_context())
     return result, captured
+
+
+def test_all_pillar_final_logs_follow_observations_and_precede_mining(monkeypatch, caplog):
+    monkeypatch.setattr(pillar_pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+    monkeypatch.setattr(pillar_pipeline, "build_odds_trajectory_context", lambda *a, **k: _trajectory_context())
+    monkeypatch.setattr(pillar_pipeline, "Pillar5PriceMemoryRepository", lambda *a, **k: object())
+
+    @contextmanager
+    def session():
+        yield SimpleNamespace(rollback=lambda: None)
+
+    monkeypatch.setattr(pillar_pipeline.db_manager, "get_session", session)
+
+    def calculator(pillar_id):
+        def calculate(*args, **kwargs):
+            pillar_pipeline.logger.info("%s observation: inputs and calculations", pillar_id)
+            analysis = {"pinnacle": {"P5_STATUS": "ACTIVE", "P5": .5, "P5_DIRECTION": "HOME"}} if pillar_id == "pillar_5" else {}
+            return EvaluationResult(
+                4004, pillar_id, "test", 5, kwargs["market_evaluation"].selection,
+                (SignalResult("neutral", "COMPUTED", 0),), (), analysis=analysis,
+            ).to_dict()
+        return calculate
+
+    for number, pillar_id in (
+        (2, "pillar_2_side_market"), (3, "pillar_3_totals_market_context"),
+        (4, "pillar_4_temporal_market_drift"), (5, "pillar_5"),
+    ):
+        monkeypatch.setattr(pillar_pipeline, f"calculate_pillar_{number}", calculator(pillar_id))
+
+    layer = SimpleNamespace(layer="example", raw_signal=.2, final_signal=.2, weighted_signal=.1)
+    totals = SimpleNamespace(
+        P1_TOTALS_DIRECTIONAL_SCORE=.2, P1_TOTALS_DIRECTION="OVER", P1_TOTALS_STRENGTH="LOW",
+        P1_TOTALS_VARIANCE_STATE="NORMAL", status="ACTIVE", active_layers=[layer], ignored_layers=[],
+    )
+    monkeypatch.setattr(pillar_pipeline, "resolve_matchup_streak_analysis", lambda **k: (object(), False))
+    monkeypatch.setattr(pillar_pipeline, "summarize_number_of_teams_from_streak_analysis",
+                        lambda *a: SimpleNamespace(inferred_number_of_teams=20, unique_team_count=20))
+    monkeypatch.setattr(pillar_pipeline, "calculate_pillar_1_team_structure",
+                        lambda **k: {"side": {"value": .1, "modules": []}, "totals": totals})
+    monkeypatch.setattr(pillar_pipeline, "_serialize_p1_totals_output", vars)
+
+    persisted = []
+
+    def persist(pillar_id, *args, **kwargs):
+        messages = [record.getMessage() for record in caplog.records]
+        assert messages[-1].startswith("🏁"), messages[-1]
+        persisted.append(pillar_id)
+        pillar_pipeline.logger.info("MINING %s", pillar_id)
+        return True
+
+    processor = pillar_pipeline.EventPillarProcessor(
+        None, mining_service=SimpleNamespace(enabled=True, persist=persist),
+    )
+    with caplog.at_level(logging.INFO):
+        processor.process_event(_event_context())
+    assert persisted == [
+        "pillar_2_side_market", "pillar_3_totals_market_context", "pillar_4_temporal_market_drift",
+        "pillar_5", "pillar_1_team_structure_side", "pillar_1_team_structure_totals",
+    ]
+    messages = [record.getMessage() for record in caplog.records]
+    assert sum(message.startswith("🏁 Market result") for message in messages) == 4
+    assert sum(message.startswith("🏁 P5 PROFILE RESULT") for message in messages) == 1
+    layer_index = next(i for i, message in enumerate(messages) if "active layer:" in message)
+    side_index = next(i for i, message in enumerate(messages) if message.startswith("🏁 P1/SIDE RESULT"))
+    assert layer_index < side_index
 
 
 def test_pipeline_selects_target_once_and_injects_same_object(monkeypatch) -> None:

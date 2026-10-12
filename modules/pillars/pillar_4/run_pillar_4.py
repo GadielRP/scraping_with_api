@@ -8,7 +8,7 @@ from modules.pillars.market_evaluation import prepare_event_markets, contract_ke
 from .periods import P4_PILLAR_ID
 from .signal_engine import ENGINE_VERSION, build_p4_series
 from .trajectory_policy import extract_p4_trajectory_inputs
-from .diagnostics import log_trajectory_diagnostics
+from .diagnostics import log_trajectory_inputs, log_trajectory_diagnostics
 from .provenance import resolve_series_contracts
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,8 @@ def calculate_pillar_4(
     extraction = extract_p4_trajectory_inputs(
         event_context, evaluation.view(4), target_selection
     )
+    if debug_mode:
+        log_trajectory_inputs(logger, extraction, evaluation.selection)
     signals, inputs, analysis = [], {}, {}
     contracts = evaluation.contracts(4)
     if extraction.usable:

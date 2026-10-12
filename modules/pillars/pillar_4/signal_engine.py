@@ -17,9 +17,7 @@ def build_p4_series(extraction, *, debug_mode=False):
         ),
         *build_trajectory_features(
             (*extraction.checkpoint_series,
-             *build_checkpoint_semantic_series(
-                 extraction.checkpoint_series, debug_mode=debug_mode
-             )),
+             *build_checkpoint_semantic_series(extraction.checkpoint_series)),
             apply_relations=True,
             debug_mode=debug_mode,
         ),

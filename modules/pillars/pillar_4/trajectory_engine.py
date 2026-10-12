@@ -13,14 +13,12 @@ from .signal_models import P4SeriesResult
 logger = logging.getLogger(__name__)
 
 
-def _series_result(series: P4SeriesInput, *, debug_mode: bool) -> P4SeriesResult:
+def _series_result(series: P4SeriesInput) -> P4SeriesResult:
     gap_present = bool(series.missing_target_minutes)
     legs, features, signals = build_temporal_features(
         series.points,
         gap_present=gap_present,
         expected_target_minutes=series.expected_target_minutes,
-        debug_mode=debug_mode,
-        series_id=series.series_id,
     )
     if series.value_type == "EXCHANGE_SIZE":
         legs = [{**leg, "VELOCITY_RAW": None} for leg in legs]
@@ -89,7 +87,7 @@ def build_trajectory_features(
     results = []
     for series in series_inputs:
         try:
-            results.append(_series_result(series, debug_mode=debug_mode))
+            results.append(_series_result(series))
         except Exception as exc:
             if debug_mode:
                 logger.exception(
@@ -128,9 +126,7 @@ def build_trajectory_features(
             for result in results
             if result.status != "ERROR"
         ]
-        relation_by_series = build_book_exchange_relation_changes(
-            payloads, debug_mode=debug_mode
-        )
+        relation_by_series = build_book_exchange_relation_changes(payloads)
         updated: list[P4SeriesResult] = []
         for result in results:
             signals = dict(result.structural_signals)

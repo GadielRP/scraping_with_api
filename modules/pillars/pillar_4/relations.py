@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any, Iterable
 
-logger = logging.getLogger(__name__)
 
 def _edge_direction(value: Decimal) -> str:
     return "POSITIVE" if value > 0 else "NEGATIVE" if value < 0 else "ZERO"
@@ -33,8 +31,6 @@ def _points(series: dict[str, Any]) -> dict[int, Decimal]:
 
 def build_book_exchange_relation_changes(
     series_payloads: Iterable[dict[str, Any]],
-    *,
-    debug_mode: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Compare canonical representative edge series, never raw unrelated prices."""
     payloads = tuple(series_payloads)
@@ -78,29 +74,6 @@ def build_book_exchange_relation_changes(
         gap_change = final_gap - initial_gap
         initial_relation = _relation(initial_book, initial_exchange)
         final_relation = _relation(final_book, final_exchange)
-        if debug_mode:
-            label = f"{book['SERIES_ID']}__{exchange['SERIES_ID']}"
-            logger.info(
-                "P4 FORMULA | %s | common_targets=%s | selected endpoints=%s -> %s",
-                label, common, first, last,
-            )
-            logger.info(
-                "P4 FORMULA | %s | initial_gap | formula=abs(book_edge - exchange_edge) | substitution=abs(%s - %s) | result=%s",
-                label, initial_book, initial_exchange, initial_gap,
-            )
-            logger.info(
-                "P4 FORMULA | %s | final_gap | formula=abs(book_edge - exchange_edge) | substitution=abs(%s - %s) | result=%s",
-                label, final_book, final_exchange, final_gap,
-            )
-            logger.info(
-                "P4 FORMULA | %s | gap_change | formula=final_gap - initial_gap | substitution=%s - %s | result=%s",
-                label, final_gap, initial_gap, gap_change,
-            )
-            logger.info(
-                "P4 FORMULA | %s | relation_state | initial=%s final=%s changed=%s",
-                label, initial_relation, final_relation,
-                initial_relation != final_relation,
-            )
         relation = {
             "BOOK_SERIES_ID": book["SERIES_ID"],
             "EXCHANGE_SERIES_ID": exchange["SERIES_ID"],

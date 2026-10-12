@@ -129,12 +129,6 @@ def calculate_memory_profile(
     )
 
     if sample.sample_size < MIN_SAMPLE_SIZE:
-        logger.info(
-            "P5 PROFILE | bookmaker=%s status=INSUFFICIENT_DATA reason=minimum_sample_size_not_met sample_size=%s minimum=%s",
-            bookmaker,
-            sample.sample_size,
-            MIN_SAMPLE_SIZE,
-        )
         return BookmakerMemoryProfile(
             **common,
             p5_status="INSUFFICIENT_DATA",
@@ -185,12 +179,6 @@ def calculate_memory_profile(
     )
 
     if len(dominant) != 1:
-        logger.info(
-            "P5 PROFILE | bookmaker=%s status=ACTIVE memory_status=TIE dominant_results=%s wins=%s",
-            bookmaker,
-            dominant,
-            wins_dominant,
-        )
         return BookmakerMemoryProfile(
             **common,
             p5_status="ACTIVE",
@@ -257,14 +245,6 @@ def calculate_memory_profile(
         f"{signal} * {weighted_sample}",
         score,
         debug_mode=debug_mode,
-    )
-    logger.info(
-        "P5 PROFILE | bookmaker=%s status=ACTIVE direction=%s score=%s strength=%s sample_size=%s",
-        bookmaker,
-        direction,
-        score,
-        profile_strength(score),
-        sample.sample_size,
     )
 
     return BookmakerMemoryProfile(
