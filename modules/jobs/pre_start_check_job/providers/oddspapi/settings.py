@@ -39,7 +39,9 @@ class OddspapiPreStartSettings:
     # Historical opening quotes must span at least this many minutes to count.
     initial_odds_min_span_minutes: float = 60.0
 
-    significant_change_min_magnitude_pct: float = 15.0
+    # magnitud necesaria
+    significant_change_min_magnitude_pct: float = 10.0
+    # historial necesario en horas
     significant_change_min_history_hours: float = 20.0
     significant_change_flash_reversal_minutes: float = 3.0
     significant_change_min_price: float = 1.01

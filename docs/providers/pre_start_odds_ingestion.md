@@ -1038,7 +1038,7 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
 | `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | `true` | Selects the adaptive significant-change strategy for live historical ingestion when an explicit kickoff is present. Forced moments select it explicitly even if this global flag is `false`; the flag does not enable persistence by itself. |
 | `deduplicate_historical_current_snapshots` | `true` | Suppresses a primary historical `current` snapshot only when an attached moment references the exact same provider tick at the same logical extraction minute. The adapter decides; the repository only obeys the canonical flag. |
-| `significant_change_min_magnitude_pct` | `15.0` | Minimum absolute movement from the adaptive anchor. Must be finite and positive. |
+| `significant_change_min_magnitude_pct` | `10.0` | Minimum absolute movement from the adaptive anchor. Must be finite and positive. represents the change pct |
 | `significant_change_min_history_hours` | `20.0` | Minimum sanitized history span from first valid tick to kickoff. Must be finite and non-negative. Shorter series use the configured fixed-moment fallback. |
 | `significant_change_flash_reversal_minutes` | `3.0` | Reversal confirmation window for candidates before the closing window (relative to effective observation cutoff). Must be finite and non-negative. |
 | `significant_change_min_price` | `1.01` | Strict price floor for detector sanitation (`price > value`). Must be finite and at least `1.01`. |
