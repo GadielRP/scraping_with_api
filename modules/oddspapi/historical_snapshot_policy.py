@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
@@ -22,55 +21,6 @@ def provider_instant(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
-
-
-def _moment_value(value: Any) -> Decimal | None:
-    """Parse a logical minutes-until-start value without losing precision."""
-    if value in (None, "") or isinstance(value, bool):
-        return None
-    try:
-        return Decimal(str(value).strip())
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-
-
-def should_persist_current_snapshot(
-    player: dict,
-    *,
-    deduplicate: bool,
-    current_moment_minutes: int | float | None = None,
-) -> bool:
-    """Return False only for the same tick at the same extraction checkpoint.
-
-    ``createdAt`` identifies the provider tick, while ``minutesUntilStart``
-    identifies the historical checkpoint represented by a moment quote.  A
-    current snapshot from T-0 must therefore not be deduplicated merely because
-    it shares a carried T-5 tick with a T-5 moment quote.
-    """
-    if not deduplicate:
-        return True
-
-    extraction_minute = _moment_value(current_moment_minutes)
-    if extraction_minute is None:
-        # Without the logical extraction checkpoint, retaining current is the
-        # only safe behavior.  The caller may be a direct historical reader or
-        # a backfill that has no candidate timing context.
-        return True
-
-    current_instant = provider_instant(player.get("changedAt"))
-    if current_instant is None:
-        return True
-
-    moment_quotes = player.get("momentQuotes")
-    if not isinstance(moment_quotes, list):
-        return True
-
-    return not any(
-        isinstance(moment, dict)
-        and _moment_value(moment.get("minutesUntilStart")) == extraction_minute
-        and provider_instant(moment.get("createdAt")) == current_instant
-        for moment in moment_quotes
-    )
 
 
 _CURRENT_OBSERVATION_FIELDS = (
@@ -100,8 +50,7 @@ def select_latest_current_player(
         base_player.get("changedAt") or base_player.get("sourceCollectedAt")
     )
     historical_instant = provider_instant(
-        historical_player.get("changedAt")
-        or historical_player.get("sourceCollectedAt")
+        historical_player.get("changedAt") or historical_player.get("sourceCollectedAt")
     )
 
     if base_instant is None or historical_instant is None:

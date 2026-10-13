@@ -213,8 +213,7 @@ def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
         assert len(snapshots) == 4
         assert all(snapshot.quote_id is not None for snapshot in snapshots)
         assert all(
-            snapshot.quote.choice_id == choice.choice_id
-            for snapshot in snapshots
+            snapshot.quote.choice_id == choice.choice_id for snapshot in snapshots
         )
         assert [
             (snapshot.quote.exchange_side, float(snapshot.odds_value))
@@ -227,9 +226,7 @@ def test_back_and_lay_quotes_become_current_state_at_t5(tmp_path):
         ]
         assert {snapshot.quote_id for snapshot in snapshots[:3]} == {back.quote_id}
         assert snapshots[3].quote_id == lay.quote_id
-        assert not any(
-            snapshot.quote.exchange_side is None for snapshot in snapshots
-        )
+        assert not any(snapshot.quote.exchange_side is None for snapshot in snapshots)
 
 
 def test_partial_arrival_current_only_then_initial_backfilled_later(tmp_path):
@@ -260,7 +257,9 @@ def test_partial_arrival_current_only_then_initial_backfilled_later(tmp_path):
         assert float(quote.initial_odds) == 1.80
 
 
-def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(tmp_path):
+def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(
+    tmp_path,
+):
     manager = _make_manager(tmp_path, "query-budget.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
     choices = [
@@ -322,7 +321,9 @@ def test_existing_batch_uses_constant_select_budget_independent_of_choice_count(
     # Existing markets, canonical catalog, choices and source quotes are read
     # in a constant number of set-based queries; there is no SELECT per choice.
     assert len(select_statements) == 5
-    assert sum("market_choice_quotes" in statement for statement in select_statements) == 1
+    assert (
+        sum("market_choice_quotes" in statement for statement in select_statements) == 1
+    )
 
 
 def test_opening_gate_side_and_level_prefers_explicit_exchange_side():
@@ -421,7 +422,9 @@ def test_opening_snapshot_gate_uses_exchange_side_quote_not_null_row(tmp_path):
         assert opening_ticks == 1
 
 
-def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_path):
+def test_historical_ticks_use_batch_observation_time_and_source_replay_identity(
+    tmp_path,
+):
     manager = _make_manager(tmp_path, "moments.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
     moment_at = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
@@ -431,7 +434,7 @@ def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_pat
             "minutesUntilStart": 120,
             "price": 1.95,
             "createdAt": "2026-06-20T16:00:00Z",
-            "collectedAt": moment_at,
+            "targetAt": moment_at,
             "limit": None,
         }
     ]
@@ -455,35 +458,34 @@ def test_moment_quotes_write_snapshots_with_their_collected_at_and_dedup(tmp_pat
             session.query(MarketChoiceSnapshot)
             .filter(
                 MarketChoiceSnapshot.quote_id == quote.quote_id,
-                MarketChoiceSnapshot.collected_at == moment_at,
+                MarketChoiceSnapshot.source_collected_at
+                == datetime(2026, 6, 20, 16, tzinfo=timezone.utc),
             )
             .all()
         )
         assert len(moment_ticks) == 1
         assert float(moment_ticks[0].odds_value) == 1.95
+        assert moment_ticks[0].collected_at > moment_at
     assert first.snapshots_saved >= 2
     assert second.snapshots_saved == 1
 
 
-def test_canonical_flag_can_suppress_current_snapshot(
+def test_current_and_historical_same_tick_are_one_observation_per_batch(
     tmp_path,
 ):
     manager = _make_manager(tmp_path, "current-moment.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
     batches = _batch(current_odds=2.10)
     batches[0]["bookie_id"] = bookie_id
-    current_source_time = batches[0]["markets"][0]["choices"][0][
-        "sourceCollectedAt"
-    ]
+    current_source_time = batches[0]["markets"][0]["choices"][0]["sourceCollectedAt"]
     batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
         {
             "minutesUntilStart": 5,
             "price": 2.10,
             "createdAt": current_source_time,
-            "collectedAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
+            "targetAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
         }
     ]
-    batches[0]["markets"][0]["choices"][0]["persistCurrentSnapshot"] = False
 
     with patch(
         "infrastructure.persistence.repositories.market_repository.db_manager",
@@ -498,13 +500,14 @@ def test_canonical_flag_can_suppress_current_snapshot(
     with manager.get_session() as session:
         assert session.query(MarketChoiceSnapshot).count() == 1
         snapshot = session.query(MarketChoiceSnapshot).one()
-        assert snapshot.collected_at == datetime(
+        assert snapshot.source_collected_at == datetime(
             2026, 6, 20, 11, 55, tzinfo=timezone.utc
         )
+        assert snapshot.collected_at > snapshot.source_collected_at
     assert result.snapshots_saved == 1
 
 
-def test_repository_does_not_infer_current_deduplication_from_provider_fields(
+def test_equal_prices_with_different_source_ticks_are_preserved(
     tmp_path,
 ):
     manager = _make_manager(tmp_path, "current-moment-different-tick.db")
@@ -515,10 +518,8 @@ def test_repository_does_not_infer_current_deduplication_from_provider_fields(
         {
             "minutesUntilStart": 5,
             "price": 2.10,
-            "createdAt": batches[0]["markets"][0]["choices"][0][
-                "sourceCollectedAt"
-            ],
-            "collectedAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
+            "createdAt": "2026-06-20T11:54:00Z",
+            "targetAt": datetime(2026, 6, 20, 11, 55, tzinfo=timezone.utc),
         }
     ]
 
@@ -540,10 +541,11 @@ def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_times
     manager = _make_manager(tmp_path, "subsecond.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
     base = datetime(2026, 6, 20, 10, tzinfo=timezone.utc)
+    source_base = datetime(2026, 6, 20, 16, tzinfo=timezone.utc)
     moments = [
         {
             "price": price,
-            "collectedAt": base.replace(microsecond=micros) if dynamic_timestamp else base,
+            "targetAt": base.replace(microsecond=micros) if dynamic_timestamp else base,
             "createdAt": f"2026-06-20T16:00:00.{micros:06d}Z",
         }
         for micros, price in [(100000, 2.4), (200000, 2.9), (900000, 3.5)]
@@ -554,55 +556,83 @@ def test_replay_keeps_all_source_ticks_within_one_second(tmp_path, dynamic_times
     choices[0]["momentQuotes"] = moments + [moments[0]]
     choices.append(dict(choices[0], name="2"))
     selects = []
+
     def record(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().upper().startswith("SELECT") and "market_choice_snapshots" in statement:
+        if (
+            statement.lstrip().upper().startswith("SELECT")
+            and "market_choice_snapshots" in statement
+        ):
             selects.append(statement)
 
     sqlalchemy_event.listen(manager.engine, "before_cursor_execute", record)
-    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
-        first = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
-        second = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ):
+        first = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+        second = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
     sqlalchemy_event.remove(manager.engine, "before_cursor_execute", record)
-    assert first.snapshots_saved == 8  # Two current observations plus 3 ticks per choice.
+    assert (
+        first.snapshots_saved == 8
+    )  # Two current observations plus 3 ticks per choice.
     assert second.snapshots_saved == 2  # Ordinary current snapshots are unchanged.
-    assert len(selects) == 2  # One projected lookup per batch, independent of tick count.
-    assert all("market_choice_snapshots.collected_at >=" in sql for sql in selects)
-    assert all("market_choice_snapshots.collected_at <" in sql for sql in selects)
+    assert (
+        len(selects) == 2
+    )  # One projected lookup per batch, independent of tick count.
+    assert all(
+        "market_choice_snapshots.source_collected_at >=" in sql for sql in selects
+    )
+    assert all(
+        "market_choice_snapshots.source_collected_at <=" in sql for sql in selects
+    )
     with manager.get_session() as session:
-        rows = session.query(MarketChoiceSnapshot).filter(
-            MarketChoiceSnapshot.collected_at >= base,
-            MarketChoiceSnapshot.collected_at < base + timedelta(seconds=1),
-        ).all()
+        rows = (
+            session.query(MarketChoiceSnapshot)
+            .filter(
+                MarketChoiceSnapshot.source_collected_at >= source_base,
+                MarketChoiceSnapshot.source_collected_at
+                < source_base + timedelta(seconds=1),
+            )
+            .all()
+        )
         assert len(rows) == 6
         assert len({row.quote_id for row in rows}) == 2
-        assert {row.source_collected_at.microsecond for row in rows} == {100000, 200000, 900000}
-        if dynamic_timestamp:
-            # The two timestamps describe different clocks: collected_at is our
-            # observation instant, source_collected_at is the provider instant.
-            # UTC storage must not reinterpret either one as Mexico wall time.
-            assert {row.collected_at.hour for row in rows} == {10}
-            assert {row.source_collected_at.hour for row in rows} == {16}
+        assert {row.source_collected_at.microsecond for row in rows} == {
+            100000,
+            200000,
+            900000,
+        }
+        assert all(row.collected_at > row.source_collected_at for row in rows)
 
 
 @pytest.mark.parametrize("missing_first", [True, False])
-def test_moment_dedup_preserves_missing_source_timestamp_wildcard(tmp_path, missing_first):
+def test_missing_source_timestamp_is_not_a_replay_wildcard(tmp_path, missing_first):
     manager = _make_manager(tmp_path, "missing-source.db")
     event_id, bookie_id = _seed_event_and_bookie(manager)
     moment = {
         "price": 2.5,
-        "collectedAt": datetime(2026, 6, 20, 10, tzinfo=timezone.utc),
+        "targetAt": datetime(2026, 6, 20, 10, tzinfo=timezone.utc),
     }
     source_time = "2026-06-20T16:00:00Z"
     moment["createdAt"] = None if missing_first else source_time
     batches = _batch(current_odds=2.5)
     batches[0]["bookie_id"] = bookie_id
     batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [moment]
-    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
-        first = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ):
+        first = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
         moment["createdAt"] = source_time if missing_first else None
-        second = MarketRepository.save_canonical_bookmaker_batches(event_id, batches, source="oddspapi")
-    assert first.snapshots_saved == 2
-    assert second.snapshots_saved == 1
+        second = MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+    assert first.snapshots_saved == (1 if missing_first else 2)
+    assert second.snapshots_saved == (2 if missing_first else 1)
 
 
 def test_oddspapi_missing_changed_at_still_writes_live_current(tmp_path):
@@ -654,14 +684,14 @@ def test_oddspapi_live_current_uses_this_ingest_not_source_clock_order(tmp_path)
     event_id, bookie_id = _seed_event_and_bookie(manager)
     newer = _batch(current_odds=1.645)
     newer[0]["bookie_id"] = bookie_id
-    newer[0]["markets"][0]["choices"][0]["sourceCollectedAt"] = (
-        "2026-08-17T23:14:00.000Z"
-    )
+    newer[0]["markets"][0]["choices"][0][
+        "sourceCollectedAt"
+    ] = "2026-08-17T23:14:00.000Z"
     older = _batch(current_odds=1.628)
     older[0]["bookie_id"] = bookie_id
-    older[0]["markets"][0]["choices"][0]["sourceCollectedAt"] = (
-        "2026-08-17T23:03:08.245Z"
-    )
+    older[0]["markets"][0]["choices"][0][
+        "sourceCollectedAt"
+    ] = "2026-08-17T23:03:08.245Z"
 
     with patch(
         "infrastructure.persistence.repositories.market_repository.db_manager",
@@ -785,29 +815,56 @@ def test_selected_line_can_return_and_cleans_preexisting_ambiguous_lines(tmp_pat
     event_id, bookie_id = _seed_event_and_bookie(manager)
 
     def batches(lines):
-        return [{"bookie_id": bookie_id, "markets": [
-                {"canonicalMarketKey": "asian_handicap_full_time",
-                 "marketName": "Asian Handicap Full Time", "marketGroup": "Asian Handicap",
-                 "marketPeriod": "Full Time", "lineValue": line,
-             "choices": [{"name": side, "currentOdds": 1.95, "mainLine": True}
-                         for side in ("1", "2")]}
-            for line in lines
-        ]}]
+        return [
+            {
+                "bookie_id": bookie_id,
+                "markets": [
+                    {
+                        "canonicalMarketKey": "asian_handicap_full_time",
+                        "marketName": "Asian Handicap Full Time",
+                        "marketGroup": "Asian Handicap",
+                        "marketPeriod": "Full Time",
+                        "lineValue": line,
+                        "choices": [
+                            {"name": side, "currentOdds": 1.95, "mainLine": True}
+                            for side in ("1", "2")
+                        ],
+                    }
+                    for line in lines
+                ],
+            }
+        ]
 
     def flags():
         with manager.get_session() as session:
-            return {market.line_value: {quote.main_line for choice in market.choices for quote in choice.quotes}
-                    for market in session.query(Market).all()}
+            return {
+                market.line_value: {
+                    quote.main_line
+                    for choice in market.choices
+                    for quote in choice.quotes
+                }
+                for market in session.query(Market).all()
+            }
 
-    with patch("infrastructure.persistence.repositories.market_repository.db_manager", manager):
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ):
         # Simulate the old ambiguous state, including new choices in one batch.
-        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5", "1.5"]), source="oddspapi")
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches(["-1.5", "1.5"]), source="oddspapi"
+        )
         assert flags() == {Decimal("-1.5"): {True}, Decimal("1.5"): {True}}
-        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["1.5"]), source="oddspapi")
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches(["1.5"]), source="oddspapi"
+        )
         assert flags() == {Decimal("-1.5"): {False}, Decimal("1.5"): {True}}
-        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-1.5"]), source="oddspapi")
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches(["-1.5"]), source="oddspapi"
+        )
         assert flags() == {Decimal("-1.5"): {True}, Decimal("1.5"): {False}}
-        MarketRepository.save_canonical_bookmaker_batches(event_id, batches(["-0.5"]), source="oddspapi")
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches(["-0.5"]), source="oddspapi"
+        )
         assert flags() == {
             Decimal("-1.5"): {False},
             Decimal("1.5"): {False},
@@ -818,3 +875,130 @@ def test_selected_line_can_return_and_cleans_preexisting_ambiguous_lines(tmp_pat
         # Selection changes must preserve the history on demoted quotes.
         assert session.query(MarketChoiceSnapshot).count() == 10
 
+
+@pytest.mark.parametrize("source", ["sofascore", "oddspapi"])
+def test_missing_provider_time_stays_null_and_current_observations_survive(
+    tmp_path, source
+):
+    manager = _make_manager(tmp_path, "unclocked-observations.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(current_odds=2.1)
+    batches[0]["bookie_id"] = bookie_id
+    del batches[0]["markets"][0]["choices"][0]["sourceCollectedAt"]
+    first_time = datetime(2026, 10, 13, 18, tzinfo=timezone.utc)
+    second_time = first_time + timedelta(minutes=5)
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ):
+        with patch(
+            "infrastructure.persistence.repositories.market_repository.utc_now",
+            return_value=first_time,
+        ):
+            MarketRepository.save_canonical_bookmaker_batches(
+                event_id, batches, source=source
+            )
+        with patch(
+            "infrastructure.persistence.repositories.market_repository.utc_now",
+            return_value=second_time,
+        ):
+            MarketRepository.save_canonical_bookmaker_batches(
+                event_id, batches, source=source
+            )
+    with manager.get_session() as session:
+        rows = (
+            session.query(MarketChoiceSnapshot)
+            .order_by(MarketChoiceSnapshot.snapshot_id)
+            .all()
+        )
+        assert [row.collected_at for row in rows] == [first_time, second_time]
+        assert all(row.source_collected_at is None for row in rows)
+        assert (
+            session.query(MarketChoiceQuote).one().current_updated_at == first_time
+        )  # Unchanged price cache.
+
+
+def test_opening_current_and_history_share_real_batch_time(tmp_path):
+    manager = _make_manager(tmp_path, "batch-clock.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(initial_odds=1.9, current_odds=2.1)
+    batches[0]["bookie_id"] = bookie_id
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [
+        {
+            "price": 2.0,
+            "targetAt": datetime(2026, 6, 20, 11, tzinfo=timezone.utc),
+            "createdAt": "2026-06-20T10:59:59.123456Z",
+        }
+    ]
+    observed = datetime(2026, 10, 13, 18, tzinfo=timezone.utc)
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ), patch(
+        "infrastructure.persistence.repositories.market_repository.utc_now",
+        return_value=observed,
+    ):
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+    with manager.get_session() as session:
+        rows = session.query(MarketChoiceSnapshot).all()
+        assert len(rows) == 3
+        assert all(row.collected_at == observed for row in rows)
+        assert {row.source_collected_at.microsecond for row in rows} == {0, 123456}
+        assert session.query(MarketChoiceQuote).one().current_updated_at == observed
+
+
+def test_exchange_seed_uses_batch_clock_for_current_and_source_clock_for_snapshot(
+    tmp_path,
+):
+    manager = _make_manager(tmp_path, "exchange-batch-clock.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(
+        initial_odds=1.9,
+        exchange_quotes=[{"side": "back", "level": 0, "price": 1.9, "size": 42}],
+    )
+    batches[0]["bookie_id"] = bookie_id
+    observed = datetime(2026, 10, 13, 18, tzinfo=timezone.utc)
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ), patch(
+        "infrastructure.persistence.repositories.market_repository.utc_now",
+        return_value=observed,
+    ):
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+    with manager.get_session() as session:
+        assert session.query(MarketChoiceQuote).one().current_updated_at == observed
+        assert all(
+            row.collected_at == observed for row in session.query(MarketChoiceSnapshot)
+        )
+        assert all(
+            row.source_collected_at == datetime(2026, 6, 20, 10, tzinfo=timezone.utc)
+            for row in session.query(MarketChoiceSnapshot)
+        )
+
+
+def test_historical_material_change_is_not_discarded_as_same_tick(tmp_path):
+    manager = _make_manager(tmp_path, "material-tick.db")
+    event_id, bookie_id = _seed_event_and_bookie(manager)
+    batches = _batch(current_odds=2.1)
+    batches[0]["bookie_id"] = bookie_id
+    moment = {"price": 2.0, "createdAt": "2026-06-20T11:00:00Z", "limit": 100}
+    batches[0]["markets"][0]["choices"][0]["momentQuotes"] = [moment]
+    with patch(
+        "infrastructure.persistence.repositories.market_repository.db_manager", manager
+    ):
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+        moment["limit"] = 101
+        MarketRepository.save_canonical_bookmaker_batches(
+            event_id, batches, source="oddspapi"
+        )
+    with manager.get_session() as session:
+        rows = (
+            session.query(MarketChoiceSnapshot)
+            .filter(MarketChoiceSnapshot.odds_value == 2)
+            .all()
+        )
+        assert {row.source_limit for row in rows} == {Decimal("100"), Decimal("101")}

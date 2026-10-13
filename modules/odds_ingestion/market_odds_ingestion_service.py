@@ -19,7 +19,9 @@ from infrastructure.persistence.repositories import (
     MarketMappingRepository,
     MarketRepository,
 )
-from infrastructure.persistence.repositories.market_mapping_repository import MarketMappingIndex
+from infrastructure.persistence.repositories.market_mapping_repository import (
+    MarketMappingIndex,
+)
 from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import (
     OddspapiMainlineCacheRepository,
 )
@@ -173,8 +175,7 @@ class MarketOddsIngestionService:
                     "source_bookie_name": bookmaker.source_name,
                     "source_bookie_slug": bookmaker.source_slug,
                     "markets": [
-                        market.as_repository_dict()
-                        for market in bookmaker.markets
+                        market.as_repository_dict() for market in bookmaker.markets
                     ],
                 }
             )
@@ -240,7 +241,6 @@ class MarketOddsIngestionService:
             reason=None if save_result.markets_saved > 0 else "no markets saved",
         )
 
-
     @staticmethod
     def _payload_has_main_line_flags(odds_response: dict) -> bool:
         bookmaker_odds = odds_response.get("bookmakerOdds")
@@ -290,8 +290,6 @@ class MarketOddsIngestionService:
         mainline_outcome_ids_by_bookmaker: Mapping[str, Collection[str]] | None = None,
         mainline_fallback_bookmakers: Sequence[str] | None = None,
         debug_mode: bool = False,
-        deduplicate_historical_current_snapshots: bool = True,
-        current_moment_minutes: int | float | None = None,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
         if dry_run:
@@ -344,8 +342,10 @@ class MarketOddsIngestionService:
         )
         should_use_cache = use_mainline_cache
         if should_use_cache is None:
-            should_use_cache = not MarketOddsIngestionService._payload_has_main_line_flags(
-                odds_response if isinstance(odds_response, dict) else {}
+            should_use_cache = (
+                not MarketOddsIngestionService._payload_has_main_line_flags(
+                    odds_response if isinstance(odds_response, dict) else {}
+                )
             )
         if (
             resolved_mainline_ids is None
@@ -375,10 +375,6 @@ class MarketOddsIngestionService:
             use_mainline_cache=bool(should_use_cache),
             persist_main_line_only=persist_main_line_only,
             require_active_quotes=require_active_quotes,
-            deduplicate_historical_current_snapshots=(
-                deduplicate_historical_current_snapshots
-            ),
-            current_moment_minutes=current_moment_minutes,
         )
         # Historical payloads are already preselected before the reader.  The
         # shared post-adapter filter remains intentionally as a compatibility
@@ -412,7 +408,9 @@ class MarketOddsIngestionService:
         for decision in diagnostics.get("line_selection", []):
             selected = decision.get("selected")
             report_selection = (
-                debug_mode or decision.get("discarded") or selected is None
+                debug_mode
+                or decision.get("discarded")
+                or selected is None
                 or not selected.get("providerMainLine")
             )
             if report_selection:
@@ -429,7 +427,9 @@ class MarketOddsIngestionService:
                     decision.get("sourceMarketId"),
                 )
         bookmakers = adapted.get("bookmakers", [])
-        markets_detected = sum(len(bookmaker.get("markets", [])) for bookmaker in bookmakers)
+        markets_detected = sum(
+            len(bookmaker.get("markets", [])) for bookmaker in bookmakers
+        )
         choices_detected = sum(
             len(market.get("choices", []))
             for bookmaker in bookmakers
@@ -456,11 +456,7 @@ class MarketOddsIngestionService:
                 len(odds_response.get("bookmakerOdds") or {}),
                 len(bookmakers),
                 markets_detected,
-                {
-                    key: len(value or [])
-                    for key, value in diagnostics.items()
-                    if value
-                },
+                {key: len(value or []) for key, value in diagnostics.items() if value},
             )
             return MarketIngestionResult(
                 event_id=resolution.canonical_event_id,
@@ -524,7 +520,10 @@ class MarketOddsIngestionService:
                         allow_create=False,
                         session=reference_session,
                     )
-                    if not resolution_result.resolved or resolution_result.bookie is None:
+                    if (
+                        not resolution_result.resolved
+                        or resolution_result.bookie is None
+                    ):
                         logger.warning(
                             "Skipping unresolved OddsPapi bookmaker slug=%s name=%s",
                             bookmaker.get("slug"),
@@ -569,8 +568,10 @@ class MarketOddsIngestionService:
                     resolution.canonical_event_id,
                     len(bookmakers),
                 )
-                dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(
-                    resolution.canonical_event_id
+                dual_process_available = (
+                    DualProcessOddsRepository.event_has_dual_process_odds(
+                        resolution.canonical_event_id
+                    )
                 )
                 return MarketIngestionResult(
                     event_id=resolution.canonical_event_id,
@@ -593,8 +594,10 @@ class MarketOddsIngestionService:
                     diagnostics=diagnostics,
                 )
 
-            dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(
-                resolution.canonical_event_id
+            dual_process_available = (
+                DualProcessOddsRepository.event_has_dual_process_odds(
+                    resolution.canonical_event_id
+                )
             )
             return MarketIngestionResult(
                 event_id=resolution.canonical_event_id,
@@ -695,7 +698,9 @@ class MarketOddsIngestionService:
         source: str = "sofascore",
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "sofascore")
-        adapted_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(odds_map_entry)
+        adapted_response = SofaScoreMarketAdapter.from_dropping_odds_map_entry(
+            odds_map_entry
+        )
         canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(
             adapted_response
         )
@@ -710,7 +715,9 @@ class MarketOddsIngestionService:
         source: str = "sofascore",
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "sofascore")
-        adapted_response = SofaScoreMarketAdapter.from_daily_odds_entry(daily_odds_entry)
+        adapted_response = SofaScoreMarketAdapter.from_daily_odds_entry(
+            daily_odds_entry
+        )
         canonical_response = CanonicalMarketNormalizer.normalize_sofascore_response(
             adapted_response
         )
@@ -719,17 +726,23 @@ class MarketOddsIngestionService:
         )
 
     @staticmethod
-    def _save_normalized(event_id: int, normalized_response: Dict, source: str) -> MarketIngestionResult:
+    def _save_normalized(
+        event_id: int, normalized_response: Dict, source: str
+    ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "sofascore")
         diagnostics = (normalized_response or {}).get("diagnostics") or {}
         unmapped_markets = len(diagnostics.get("unmapped_markets") or [])
         unmapped_choices = len(diagnostics.get("unmapped_choices") or [])
-        skipped_missing_line_value = len(diagnostics.get("skipped_missing_line_value") or [])
+        skipped_missing_line_value = len(
+            diagnostics.get("skipped_missing_line_value") or []
+        )
         markets = (normalized_response or {}).get("markets") or []
         choices_detected = sum(len(market.get("choices") or []) for market in markets)
         if not normalized_response or not normalized_response.get("markets"):
             reason = "no normalized markets found"
-            logger.info("Skipped market odds ingestion for event %s: %s", event_id, reason)
+            logger.info(
+                "Skipped market odds ingestion for event %s: %s", event_id, reason
+            )
             return MarketIngestionResult(
                 event_id=event_id,
                 source=source,
@@ -750,7 +763,9 @@ class MarketOddsIngestionService:
                 [{"bookie_id": 1, "markets": markets}],
                 source=source,
             )
-            dual_process_available = DualProcessOddsRepository.event_has_dual_process_odds(event_id)
+            dual_process_available = (
+                DualProcessOddsRepository.event_has_dual_process_odds(event_id)
+            )
 
             result = MarketIngestionResult(
                 event_id=event_id,
@@ -794,7 +809,12 @@ class MarketOddsIngestionService:
 
             return result
         except Exception as exc:
-            logger.error("Error ingesting market odds for event %s (%s): %s", event_id, source, exc)
+            logger.error(
+                "Error ingesting market odds for event %s (%s): %s",
+                event_id,
+                source,
+                exc,
+            )
             return MarketIngestionResult(
                 event_id=event_id,
                 source=source,

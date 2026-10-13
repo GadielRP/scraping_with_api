@@ -149,6 +149,68 @@ def test_forced_key_moment_routes_non_live_candidate_to_significant_change(monke
     assert calls[0]["force_significant_changes"] is True
 
 
+@pytest.mark.parametrize("minute,use_cache", [(120, False), (5, True), (0, True)])
+def test_historical_acquisition_keeps_mainline_cache_through_ingestion(
+    monkeypatch, minute, use_cache
+):
+    from modules.odds_ingestion.market_odds_ingestion_service import (
+        MarketIngestionResult,
+    )
+
+    monkeypatch.setattr(
+        batch_module,
+        "ODDSPAPI_PRE_START_SETTINGS",
+        replace(
+            batch_module.ODDSPAPI_PRE_START_SETTINGS,
+            significant_change_forced_moments=(5,),
+        ),
+    )
+    # Historical prices have no mainLine flags; the stored cache supplies identity.
+    payload = {
+        "fixtureId": "fixture-1",
+        "sportId": "10",
+        "bookmakerOdds": {
+            "pinnacle": {
+                "markets": {
+                    "101": {
+                        "outcomes": {
+                            outcome: {"players": {"0": {"price": price}}}
+                            for outcome, price in (
+                                ("101", 2.8),
+                                ("102", 3.4),
+                                ("103", 2.5),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    }
+    monkeypatch.setattr(
+        OddspapiPreStartOddsAcquisitionService,
+        "acquire",
+        lambda *args, **kwargs: OddspapiOddsAcquisitionResult(payload=payload),
+    )
+    ingestion_calls = []
+
+    def ingest(response, **kwargs):
+        ingestion_calls.append(kwargs)
+        return MarketIngestionResult(event_id=101, source="oddspapi", markets_saved=1)
+
+    monkeypatch.setattr(
+        batch_module.MarketOddsIngestionService, "save_from_oddspapi_response", ingest
+    )
+    summary = _process(
+        replace(
+            _candidate(),
+            minutes_until_start=minute,
+            starts_at=datetime(2026, 9, 4, 12, tzinfo=timezone.utc),
+        )
+    )
+    assert summary.events_ingested == 1
+    assert ingestion_calls[0]["use_mainline_cache"] is use_cache
+
+
 def test_forced_key_moment_bypasses_closing_only_gate(monkeypatch):
     monkeypatch.setattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", True)
     monkeypatch.setattr(

@@ -52,6 +52,9 @@ class OddsTrajectoryPoint:
     exchange_size: Optional[Decimal] = None
     market_type_id: Optional[int] = None
     is_live: bool = False
+    source_market_id: Optional[str] = None
+    source_outcome_id: Optional[str] = None
+    bookmaker_outcome_id: Optional[str] = None
 
     def to_dict(self) -> Dict:
         return {
@@ -85,6 +88,14 @@ class OddsTrajectoryPoint:
             "observed_minutes_before_start": self.observed_minutes_before_start,
             "trajectory_minutes_before_start": self.trajectory_minutes_before_start,
             "source_limit": self.source_limit,
+            **{
+                name: getattr(self, name)
+                for name in (
+                    "source_market_id",
+                    "source_outcome_id",
+                    "bookmaker_outcome_id",
+                )
+            },
         }
 
 
@@ -94,6 +105,14 @@ class OddsTrajectoryRepository:
         data = dict(row)
         return OddsTrajectoryPoint(
             event_id=data["event_id"],
+            **{
+                name: data.get(name)
+                for name in (
+                    "source_market_id",
+                    "source_outcome_id",
+                    "bookmaker_outcome_id",
+                )
+            },
             market_id=data.get("market_id"),
             market_type_id=data.get("market_type_id"),
             is_live=bool(data.get("is_live", False)),

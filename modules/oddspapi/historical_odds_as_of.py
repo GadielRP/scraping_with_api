@@ -37,7 +37,7 @@ class OddspapiHistoricalOddsAsOf:
         start_time: datetime | None,
         moments: Sequence[int],
     ) -> list[tuple[int, datetime, datetime]]:
-        """Return ``(minutes, target_utc, collected_at_utc)`` for non-negative moments."""
+        """Return ``(minutes, target_utc, target_at_utc)`` for non-negative moments."""
         if start_time is None:
             return []
         start_utc = cls.start_time_as_utc(start_time)
@@ -85,7 +85,7 @@ class OddspapiHistoricalOddsAsOf:
                     "minutesUntilStart": quote.minutes_until_start,
                     "price": quote.price,
                     "createdAt": quote.created_at,
-                    "collectedAt": quote.collected_at,
+                    "targetAt": quote.target_at,
                     "limit": quote.limit,
                     "active": quote.active,
                 }
@@ -141,7 +141,7 @@ class OddspapiHistoricalOddsAsOf:
         tick_index = 0
         current: tuple[datetime, dict] | None = None
         ordered_targets = sorted(targets, key=lambda item: item[1])
-        for minutes, target_utc, collected_at in ordered_targets:
+        for minutes, target_utc, target_at in ordered_targets:
             while tick_index < len(ticks) and ticks[tick_index][0] <= target_utc:
                 tick = ticks[tick_index]
                 if not require_active_quotes or tick[1].get("active") is not False:
@@ -163,7 +163,7 @@ class OddspapiHistoricalOddsAsOf:
                     minutes_until_start=minutes,
                     price=price,
                     created_at=str(quote.get("createdAt") or ""),
-                    collected_at=collected_at,
+                    target_at=target_at,
                     limit=quote.get("limit"),
                     active=quote.get("active"),
                 )

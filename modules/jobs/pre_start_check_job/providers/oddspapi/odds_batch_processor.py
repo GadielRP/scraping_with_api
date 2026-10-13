@@ -1053,12 +1053,8 @@ class OddspapiPreStartOddsBatchProcessor:
                         market_mapping_index=market_mapping_index,
                         persist_main_line_only=persist_main_line_only,
                         require_active_quotes=require_active_quotes,
-                        use_mainline_cache=is_live,
+                        use_mainline_cache=is_live or force_significant_changes,
                         mainline_fallback_bookmakers=mainline_fallback_bookmakers,
-                        deduplicate_historical_current_snapshots=(
-                            ODDSPAPI_PRE_START_SETTINGS.deduplicate_historical_current_snapshots
-                        ),
-                        current_moment_minutes=candidate.minutes_until_start,
                         debug_mode=debug_mode,
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)
@@ -1074,7 +1070,7 @@ class OddspapiPreStartOddsBatchProcessor:
                             for item in fallbacks
                         )
                         cache_used_detail = f"fallback:{fallback_details}"
-                    elif is_live:
+                    elif is_live or force_significant_changes:
                         cache_used_detail = "own_cache"
 
                     logger.info(

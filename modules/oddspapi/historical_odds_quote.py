@@ -16,6 +16,6 @@ class HistoricalOddsAsOfQuote:
     minutes_until_start: int | float
     price: float
     created_at: str
-    collected_at: datetime
+    target_at: datetime
     limit: Any = None
     active: Any = None

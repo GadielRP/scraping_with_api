@@ -103,3 +103,18 @@ recrean después de la migración. La vista obsoleta
 La conversión in-place exige una ventana de mantenimiento porque PostgreSQL
 puede tomar locks exclusivos durante `ALTER COLUMN TYPE`. Antes de repetirla
 en otro entorno se deben detener writers antiguos y tomar un respaldo.
+
+
+## Snapshots de cuotas: reconstrucción por fuente (2026-10-13)
+
+- `collected_at`: instante UTC real del lote de observación/persistencia. No es el COMMIT exacto ni una fecha simulada.
+- `source_collected_at`: hora del proveedor o NULL, incluido SofaScore.
+- Cada checkpoint alcanzado selecciona el último tick del instrumento con fuente <= objetivo, sin caducidad por antigüedad. Desempates: fuente, observación e ID.
+- Sin tick admisible con fuente, se utiliza una observación sin fuente dentro de la tolerancia y hasta `evaluation_as_of`. No se arrastra a checkpoints distantes anteriores.
+- La adquisición de inputs se limita por su captura real y `collected_at <= evaluation_as_of`. Tampoco se admiten fuentes posteriores al corte; no se alteran sus fechas para admitirlas.
+- CHECKPOINT_VIEW sitúa la reconstrucción en su objetivo; ADAPTIVE_VIEW mantiene las horas originales y añade un cierre lógico cuando corresponde. Los timestamps originales se preservan.
+- El mismo precio en T-30 y T-5 produce 25 minutos sin cambio entre checkpoints; describe los estados conservados, sin demostrar cobertura completa de fluctuaciones descartadas.
+- `target_at`/`targetAt` es metadata de selección histórica y nunca altera la adquisición.
+- Los snapshots existentes con fuente válida se reutilizan sin frontera de IDs ni reescritura. Su `collected_at` antiguo no demuestra la adquisición real en aquel checkpoint.
+- Las evaluaciones nuevas conservan su frontera real actual. Las originales permanecen inmutables; no se permite presentar una reconstrucción nueva como evaluación productiva original.
+- No se añaden columnas, backfills ni comprobaciones del resultado deportivo de P5. Las versiones temporales nuevas identifican esta política con `v3-source-reconstruction`.

@@ -62,7 +62,7 @@ OddspAPI now has a second, independent persistence path for **API-account usage 
 | `modules/odds_ingestion/provider_odds_phase.py` | Shared contract: eligibility, `restrict_candidates_to_tracked_competitions`, `ProviderOddsSummary`, `run_provider_odds_phase`, 404 marking. |
 | `modules/odds_ingestion/market_odds_ingestion_service.py` | Canonical persist (`save_from_sofascore_response`, `save_from_oddspapi_response`, `save_from_oddsportal_data`). |
 | `modules/odds_ingestion/adapters/sofascore_market_adapter.py` | SofaScore payload → markets/choices (`mainLine=True`, `sourceMarketId` from catalog `marketId`). |
-| `modules/odds_ingestion/adapters/oddspapi_market_adapter.py` | OddspAPI payload → markets/choices (`mainLine` from API/cache, exchange quotes) and provider-owned snapshot policy → canonical `persistCurrentSnapshot` instruction. |
+| `modules/odds_ingestion/adapters/oddspapi_market_adapter.py` | OddspAPI payload → markets/choices (`mainLine` from API/cache, exchange quotes). |
 | `modules/odds_ingestion/adapters/oddsportal_market_adapter.py` | OddsPortal scrape → canonical DTOs (`mainLine=True`). |
 | `modules/odds_ingestion/canonical_market_normalizer.py` | SofaScore canonical keys/choice names; keeps `mainLine` / `sourceMarketId`. |
 | `modules/odds_ingestion/fetch_result.py` | Provider-neutral `OddsFetchResult` (`SUCCESS` / empty / `ENDPOINT_NOT_FOUND`). |
@@ -86,13 +86,13 @@ OddspAPI now has a second, independent persistence path for **API-account usage 
 | `modules/oddspapi/historical_odds_normalizer.py` | Orders ticks and derives ordinary opening/latest canonical prices. |
 | `modules/oddspapi/historical_odds_as_of.py` | Fixed-moment fallback and attachment of as-of observations to `momentQuotes`. |
 | `modules/oddspapi/historical_odds_change_detector.py` | Pure adaptive significant-change detector for sufficiently long sanitized series. |
-| `modules/oddspapi/historical_snapshot_policy.py` | Pure OddspAPI policies for newest-current selection and current-vs-moment deduplication. It has no persistence responsibility. |
+| `modules/oddspapi/historical_snapshot_policy.py` | Pure OddspAPI policies for newest-current selection. It has no persistence responsibility. |
 | `modules/oddspapi/exceptions.py` | Transport exceptions, including `OddsPapiQuotaExhaustedError` when no eligible key remains. |
 | `infrastructure/persistence/models.py` (`OddspapiApiKeyUsage`) | Durable non-secret account/quota state in `oddspapi_api_key_usage`. |
 | `infrastructure/persistence/repositories/oddspapi_api_key_usage_repository.py` | SQLAlchemy adapter for usage snapshots/statuses and atomic PostgreSQL request increments. |
 | `infrastructure/scheduler/job_scheduler.py` | Registers periodic account refresh and invokes its due-check before pre-start odds ingestion. |
 | `infrastructure/persistence/market_write_policy.py` | Per-source write ownership (OddsPortal opening-only). |
-| `infrastructure/persistence/repositories/market_repository.py` | Provider-neutral canonical persistence. It obeys `persistCurrentSnapshot`; it does not interpret OddspAPI timestamps, forced moments, or historical strategies. |
+| `infrastructure/persistence/repositories/market_repository.py` | Provider-neutral canonical persistence. It preserves real observation times and deduplicates historical ticks by source identity and material values. |
 | `infrastructure/persistence/repositories/market/market_choice_quote_writer.py` | Upserts `market_choice_quotes` by `(choice_id, source, exchange_side, exchange_level)`. |
 | `infrastructure/persistence/repositories/market/market_choice_snapshot_writer.py` | Appends ticks; copies lineage from the quote. |
 
@@ -686,7 +686,7 @@ Configured key moments are `PRE_START_ODDS_MOMENTS` (versioned default in `Confi
 With `ODDSPAPI_PRE_START_CLOSING_ONLY=false` and `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`:
 1. OddspAPI fetches `/odds` at each allowed positive moment (T−5 by default under `[5]`), populating `oddspapi_mainline_outcome_cache` and persisting canonical quotes and snapshots. Because minute `5` is listed in `significant_change_forced_moments`, it executes the hybrid sequence `/odds` → cache → `/historical-odds` instead of the ordinary-only route.
 2. $T-1$ is skipped in real time.
-3. At $T-0$, requests only occur if `0` is explicitly added to `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` via environment override. In that case, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. Under the versioned default `[5]`, $T-0$ is skipped. When significant changes are enabled and an explicit kickoff is available, each sanitized series uses the adaptive detector or its configured-moment fallback. Replay deduplication uses `source_collected_at` together with the temporal snapshot key. Current-vs-moment deduplication is a separate global OddspAPI adapter policy described in §6.1.3 and §6.2.1.
+3. At $T-0$, requests only occur if `0` is explicitly added to `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` via environment override. In that case, OddspAPI calls `/v4/historical-odds` and `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` reconstructs historical observations. Under the versioned default `[5]`, $T-0$ is skipped. When significant changes are enabled and an explicit kickoff is available, each sanitized series retains its canonical checkpoint ticks and adds the qualifying adaptive changes. Replay deduplication uses the exact provider timestamp and material tick values within each instrument.
 
 HTTP `/odds` is **not** filtered by market key at the provider request boundary. The client sends `fixtureId`, `bookmakers`, `oddsFormat=decimal`, `language`, `verbosity=3`. After adaptation, the optional ingestion filters (`allowed_market_keys`, `allowed_market_groups`, and `allowed_market_periods`) still apply.
 
@@ -735,7 +735,7 @@ When a candidate arrives at a non-live moment configured in `significant_change_
              │      └──> Significant probability/price jumps across trajectory
              │
              └──> _combine_as_of_quotes()
-                    ├── Deduplicate shared (collected_at, price) points
+                    ├── Deduplicate identical target associations; persist exact source ticks once
                     ├── Sort chronologically
                     └── Yield merged momentQuotes list
 ```
@@ -750,11 +750,18 @@ For each primary OddspAPI choice, opening, current, and historical moments are c
 
 1. `OddspapiHistoricalOddsReader` excludes every tick later than `available_through_utc` and excludes configured targets that have not occurred by that boundary. A T−5 request therefore cannot manufacture T−1 or T−0 snapshots by carrying the T−5 price forward.
 2. In a forced production acquisition, `historical_snapshot_policy.select_latest_current_player` compares `/odds.changedAt` with `/historical-odds.changedAt` per matching instrument before the adapter is called. Equal timestamps prefer the base `/odds` representation; a missing timestamp keeps the base safely because recency cannot be proven. Bounded simulations intentionally use the historical view at their explicit boundary instead.
-3. `historical_snapshot_policy.should_persist_current_snapshot` compares the normalized provider instant in `player.changedAt` with every `momentQuotes[].createdAt` and compares `momentQuotes[].minutesUntilStart` with the candidate's `current_moment_minutes`. When both match and `deduplicate_historical_current_snapshots=true`, the adapter emits `persistCurrentSnapshot=false`. Without the logical extraction minute, it keeps `current` as the safe default.
-4. `MarketRepository` treats that value as a canonical persistence instruction and skips only the primary current snapshot. It neither knows nor infers OddspAPI moments. Opening, exchange-side snapshots, and historical `momentQuotes` retain their normal policies.
-5. Existing historical moments are independently protected against replay by temporal identity plus `source_collected_at`.
+3. Current observations are preserved for every acquisition, even when a price did
+   not change. The adapter does not suppress them using a theoretical checkpoint.
+4. The repository deduplicates equivalent current/historical ticks within a batch.
+   Historical replay identity is quote instrument, exact provider timestamp, price,
+   source limit and exchange size. Distinct provider instants remain distinct.
+5. Historical lookup is restricted by event, source, incoming instruments and source
+   timestamp interval. Missing timestamps are not wildcard replay matches. Historical
+   ticks without a valid provider timestamp are not filed as reconstructed changes.
 
-Consequently, at T−5 fallback the configured T−5 moment and `current` collapse to one persisted observation only when both reference the exact same provider tick and the ingestion checkpoint is T−5. At T−0, a carried T−5 moment and `current` remain separate even when their provider timestamp matches. Price equality alone is insufficient: equal prices observed at different provider instants remain separate evidence. Likewise, equal carried prices at different already-elapsed configured moments remain distinct moment observations; only future targets are forbidden. This current-vs-moment rule is global for OddspAPI historical payloads and is not conditional on `force_significant_changes`.
+Current observations from different acquisitions remain separate evidence. A carried
+historical tick selected for multiple configured targets is stored once; all new
+snapshots use real batch observation time. Missing checkpoints are not fabricated.
 
 Not persisted as OddspAPI prices:
 
@@ -854,24 +861,48 @@ blocker; persisted aggregate diagnostic fields retain their existing contract.
 | `limit` / `initialLimit` | stake/size | quote `source_limit`; snapshot `source_limit` / `exchange_size` |
 | `exchangeQuotes` | derived top back + best lay | extra quote rows `exchange_side=back\|lay` |
 | `momentQuotes` | live or forced historical as-of reconstruction | extra snapshot rows on the primary quote |
-| `persistCurrentSnapshot` | `historical_snapshot_policy.should_persist_current_snapshot`, controlled by `deduplicate_historical_current_snapshots` | provider-neutral instruction to omit only the duplicate primary current snapshot |
 
 Canonical identity of a `markets` row: `(event_id, bookie_id, market_type_id, line_value, is_live)`. `line_value` is nullable for non-line markets. Names, groups, and periods are read from `canonical_market_types`; prices never live on `markets`.
 
 ### 6.4.1 Timestamp semantics
 
-OddspAPI exposes provider timestamps with seconds (and sometimes sub-second precision). The persistence layer keeps that precision in `source_collected_at` after normalizing the provider instant to the project timezone; it does not round provider time to the configured minute.
+`collected_at` is always the real aware UTC batch observation/persistence instant,
+shared with current quote updates. Historical requests never replace it with a
+provider tick or `start_time - minutesUntilStart`. It is not the COMMIT timestamp.
 
-| Observation | `collected_at` persisted | `source_collected_at` persisted |
-|---|---|---|
-| Ordinary `/odds` opening | Aware UTC instant captured once for the batch | `initialChangedAt` from OddspAPI, parsed and normalized to UTC; nullable if absent |
-| Ordinary `/odds` current | Same aware UTC batch instant | `sourceCollectedAt` or `changedAt`, parsed and normalized to UTC; nullable if absent |
-| Historical normalized opening/current | The acquisition lane decides whether these fields replace or enrich the `/odds` base; if persisted as ordinary snapshots, they use the same aware UTC batch instant | Historical `createdAt` selected by the normalizer, parsed and normalized to UTC |
-| Significant-change `momentQuote` | The actual provider tick time converted to project-local time | The same tick's `createdAt`, converted to project-local time |
-| Fixed fallback `momentQuote` | The theoretical target (`start_time - minutesUntilStart`) in project-local time | The actual tick carried forward to that target, converted from its `createdAt` |
-| Exchange current/moment | Batch now for current, target/tick time for moments | Resolved provider observation timestamp; side/level remains part of `quote_id` |
+`source_collected_at` preserves the provider's `initialChangedAt`, `changedAt` or
+historical `createdAt`, including microseconds. Missing provider timestamps remain
+NULL; this also applies to SofaScore. There are no additional snapshot timestamp columns.
 
-`minutesUntilStart` is a logical checkpoint label. It is not a replacement for `source_collected_at`, and in a fallback quote it intentionally may disagree with the provider tick's actual minute because the quote was carried forward.
+Historical transport uses `targetAt` for the requested reconstruction instant and
+`minutesUntilStart` for its logical label. These are selection metadata, not claims
+of original system availability. Multiple targets selecting the same provider tick
+do not require multiple persisted copies.
+
+Market trajectories order source time, with observation time as the fallback.
+Each reached checkpoint selects the last admissible provider tick at or before
+its target, with no age tolerance. Without an admissible source tick, only a
+missing-source observation inside the configured tolerance can represent it.
+Availability is bounded independently by real capture/evaluation time. Existing
+source-valid histories are reused unchanged; old collection dates do not prove
+original checkpoint acquisitions.
+
+The context and P4 sampler share this selection. CHECKPOINT_VIEW places source
+reconstructions at their targets; ADAPTIVE_VIEW retains source changes and adds
+a logical closing point when needed. This closure is never persisted as an
+observation. Canonical ticks come from the full admissible history before
+significant-change reduction, preserving small changes and transient checkpoint
+prices. Existing activity, cache identity and price filters remain in force.
+The forced non-live T-5 historical flow also uses the mainline cache during final
+adaptation, not just during historical preselection. Historical prices omit
+`mainLine`; disabling cache because the event is not live would drop moneylines
+while the line selector still recovers totals/handicaps. A past-event replay with
+an empty current `/odds` response exercises this case. The cache retains identity,
+not the original live exchange ladder: historical back prices do not recreate LAY.
+
+Historical deduplication uses instrument, full provider timestamp, price, limit
+and size, never the target or new collection time. Separate ordinary acquisitions
+remain separate observations even when price and provider time are unchanged.
 
 ### 6.5 Tables and columns involved in OddspAPI ingest
 
@@ -994,12 +1025,12 @@ Each snapshot points at **one** quote. It does not repeat source/side; that live
 | `snapshot_id` | surrogate PK | |
 | `quote_id` | parent quote | Exact instrument (source + side + level). |
 | `odds_value` | decimal price | The tick. Opening uses `initial_odds`; current uses `price`; exchange uses that side's `price`; moment quotes use reconstructed key-moment price. |
-| `collected_at` | job local now for ordinary opening/current ticks; theoretical target time for fixed fallback moments; actual local provider tick time (including microseconds) for dynamic detector moments | When the tick is filed in project time. |
+| `collected_at` | Real aware UTC batch observation/persistence instant for ordinary and historical snapshots. | When our system observed/filed this snapshot. |
 | `source_collected_at` | `initialChangedAt` / `changedAt` / moment `createdAt` | Provider clock (UTC converted for OddspAPI). |
 | `source_limit` | `limit` / `initialLimit` | Stake at that tick. |
 | `exchange_size` | same as limit on exchange sides; NULL on regular bookies | Betfair size. Regular quotes must not set this. |
 
-Dedup: moment snapshots are indexed by `(quote_id, collected_at)` at whole-second SQL precision, while the in-memory/provider timestamp set retains every associated `source_collected_at`. A replay skips the tick when its provider timestamp matches an existing one (or a legacy timestamp-less row acts as a wildcard); a different provider timestamp at the same temporal key is inserted.
+Dedup: historical replay compares the exact source timestamp and material values per quote. Current observations from different acquisitions are preserved.
 
 ### 6.6 Persist call chain
 
@@ -1008,10 +1039,10 @@ Dedup: moment snapshots are indexed by `(quote_id, collected_at)` at whole-secon
 1. Resolve canonical event from the fixture payload (`OddspapiEventResolver`).
 2. Load `MarketMappingIndex` (`source='oddspapi'`). Empty index → skip, no writes.
 3. Optionally load mainline outcome ids (live, or when payload has no `mainLine` flags).
-4. Adapt via `OddspapiMarketAdapter`; the OddspAPI snapshot policy emits the canonical `persistCurrentSnapshot` instruction when historical moments are attached.
+4. Adapt via `OddspapiMarketAdapter`; persist real observations and deduplicate equivalent current/historical ingredients within the batch by provider tick identity.
 5. Optional market-key/group/period allowlists (currently empty).
 6. Resolve canonical bookies (no create).
-7. `MarketRepository.save_canonical_bookmaker_batches(..., source="oddspapi")` in one transaction: upsert market shells, upsert choice identities, merge quotes, and append snapshots while obeying canonical flags. The repository contains no OddspAPI-specific deduplication decision.
+7. `MarketRepository.save_canonical_bookmaker_batches(..., source="oddspapi")` in one transaction: upsert market shells, upsert choice identities, merge quotes, and append real observations under the write policy, deduplicating historical ticks by instrument, full provider timestamp and material values.
 
 The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a caller label only; the quote `source` written to the DB is `oddspapi`.
 
@@ -1037,7 +1068,6 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. Skipped for tracked competitions. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
 | `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | `true` | Selects the adaptive significant-change strategy for live historical ingestion when an explicit kickoff is present. Forced moments select it explicitly even if this global flag is `false`; the flag does not enable persistence by itself. |
-| `deduplicate_historical_current_snapshots` | `true` | Suppresses a primary historical `current` snapshot only when an attached moment references the exact same provider tick at the same logical extraction minute. The adapter decides; the repository only obeys the canonical flag. |
 | `significant_change_min_magnitude_pct` | `10.0` | Minimum absolute movement from the adaptive anchor. Must be finite and positive. represents the change pct |
 | `significant_change_min_history_hours` | `20.0` | Minimum sanitized history span from first valid tick to kickoff. Must be finite and non-negative. Shorter series use the configured fixed-moment fallback. |
 | `significant_change_flash_reversal_minutes` | `3.0` | Reversal confirmation window for candidates before the closing window (relative to effective observation cutoff). Must be finite and non-negative. |
@@ -1100,7 +1130,6 @@ Write ownership (`market_write_policy_for_source`):
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | When `false` (default), disables the dedicated T-1 critical scheduler job. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | When `true` (default), reconstructs and persists all non-negative key-moment snapshots at T-0 with source dedup. |
 | `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | When `true`, uses adaptive significant-change `momentQuotes` for live/ historical series meeting the configured history span; forced moments select the detector explicitly. Requires an explicit kickoff and does not enable persistence by itself. |
-| `deduplicate_historical_current_snapshots` | Versioned global OddspAPI policy. Current value is `true`; exact provider-tick equality plus equal logical extraction minute suppresses only the current snapshot. Missing extraction context keeps current. |
 | `significant_change_min_magnitude_pct` | Minimum finite positive percentage movement from the current anchor. Current versioned value is `15.0`. |
 | `significant_change_min_history_hours` | Minimum finite non-negative span from the first sanitized tick to kickoff. Current versioned value is `20.0`; shorter series use fixed-moment fallback. |
 | `significant_change_flash_reversal_minutes` | Finite non-negative reversal window (default `3.0`). |

@@ -148,6 +148,9 @@ def build_pre_start_trajectory_query() -> TextClause:
                 source_mapped.initial_odds,
                 source_mapped.quote_id,
                 source_mapped.source,
+                source_mapped.source_market_id,
+                source_mapped.source_outcome_id,
+                source_mapped.bookmaker_outcome_id,
                 source_mapped.exchange_side,
                 source_mapped.exchange_level
             FROM source_mapped
@@ -181,6 +184,9 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.choice_display_order,
             canonical.quote_id,
             canonical.source,
+            canonical.source_market_id,
+            canonical.source_outcome_id,
+            canonical.bookmaker_outcome_id,
             canonical.exchange_side,
             canonical.exchange_level,
             canonical.initial_odds,
@@ -218,6 +224,9 @@ def build_pre_start_trajectory_query() -> TextClause:
             canonical.line_value NULLS FIRST,
             canonical.bookie_name,
             canonical.source,
+            canonical.source_market_id,
+            canonical.source_outcome_id,
+            canonical.bookmaker_outcome_id,
             CASE canonical.exchange_side
                 WHEN 'back' THEN 1
                 WHEN 'lay' THEN 2

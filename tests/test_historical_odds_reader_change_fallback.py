@@ -9,15 +9,26 @@ from tests.test_historical_odds_change_detector import KICKOFF, tick
 
 
 def payload(ticks):
-    return {"fixtureId": "test", "bookmakers": {"bet365": {"markets": {
-        "131": {"outcomes": {"131": {"players": {"0": [q for _, q in ticks]}}}}
-    }}}}
+    return {
+        "fixtureId": "test",
+        "bookmakers": {
+            "bet365": {
+                "markets": {
+                    "131": {
+                        "outcomes": {"131": {"players": {"0": [q for _, q in ticks]}}}
+                    }
+                }
+            }
+        },
+    }
 
 
 def read(ticks, **kwargs):
     options = dict(
         source_sport_id="13",
-        as_of_targets=OddspapiHistoricalOddsAsOf.targets_from_start(KICKOFF, [120, 30, 5, 1, 0]),
+        as_of_targets=OddspapiHistoricalOddsAsOf.targets_from_start(
+            KICKOFF, [120, 30, 5, 1, 0]
+        ),
         require_active_quotes=False,
         enable_significant_changes=True,
         kickoff_utc=KICKOFF,
@@ -27,16 +38,24 @@ def read(ticks, **kwargs):
 
 
 def player(result):
-    return result.normalized_payload["bookmakerOdds"]["bet365"]["markets"]["131"]["outcomes"]["131"]["players"]["0"]
+    return result.normalized_payload["bookmakerOdds"]["bet365"]["markets"]["131"][
+        "outcomes"
+    ]["131"]["players"]["0"]
 
 
 def test_insufficient_history_falls_back_using_strict_ticks_everywhere():
-    ticks = [tick(2000, 1), tick(200, 2), tick(60, 8, active=False), tick(0, 1.01), tick(-1, 9)]
+    ticks = [
+        tick(2000, 1),
+        tick(200, 2),
+        tick(60, 8, active=False),
+        tick(0, 1.01),
+        tick(-1, 9),
+    ]
     result = read(ticks)
     assert [q.minutes_until_start for q in result.as_of_quotes] == [120, 30, 5, 1, 0]
     assert all(q.price == 2 for q in result.as_of_quotes)
     assert all(
-        q.collected_at == KICKOFF - timedelta(minutes=q.minutes_until_start)
+        q.target_at == KICKOFF - timedelta(minutes=q.minutes_until_start)
         for q in result.as_of_quotes
     )
     assert all(q.created_at == ticks[1][1]["createdAt"] for q in result.as_of_quotes)
@@ -46,7 +65,9 @@ def test_insufficient_history_falls_back_using_strict_ticks_everywhere():
 
 
 def test_disabled_mode_keeps_inactive_and_sentinel_legacy_behavior():
-    result = read([tick(200, 2), tick(0, 1, active=False)], enable_significant_changes=False)
+    result = read(
+        [tick(200, 2), tick(0, 1, active=False)], enable_significant_changes=False
+    )
     assert result.as_of_quotes[-1].price == 1
     assert player(result)["price"] == 1
 
@@ -96,31 +117,46 @@ def test_custom_min_price_is_shared_with_opening_and_fallback():
 
 def test_each_series_chooses_its_own_strategy_and_excludes_invalid_timestamps():
     raw = payload([tick(1440, 2), tick(30, 2.5)])
-    players = raw["bookmakers"]["bet365"]["markets"]["131"]["outcomes"]["131"]["players"]
+    players = raw["bookmakers"]["bet365"]["markets"]["131"]["outcomes"]["131"][
+        "players"
+    ]
     players["0"].append({"price": 9, "createdAt": "invalid"})
     players["1"] = [tick(200, 2)[1]]
     result = OddspapiHistoricalOddsReader.read(
-        raw, source_sport_id="13", enable_significant_changes=True, kickoff_utc=KICKOFF,
+        raw,
+        source_sport_id="13",
+        enable_significant_changes=True,
+        kickoff_utc=KICKOFF,
         as_of_targets=OddspapiHistoricalOddsAsOf.targets_from_start(KICKOFF, [120, 0]),
     )
     assert [(q.player_id, q.minutes_until_start) for q in result.as_of_quotes] == [
-        ("0", 120), ("0", 30), ("0", 0), ("1", 120), ("1", 0)
+        ("0", 120),
+        ("0", 30),
+        ("0", 0),
+        ("1", 120),
+        ("1", 0),
     ]
 
 
 def test_fractional_timestamp_survives_attach_and_no_targets_are_required():
     ticks = [tick(1440, 2), tick(1.123456, 2.5)]
     result = read(ticks, as_of_targets=())
-    OddspapiHistoricalOddsAsOf.attach_to_normalized_payload(result.normalized_payload, result.as_of_quotes)
+    OddspapiHistoricalOddsAsOf.attach_to_normalized_payload(
+        result.normalized_payload, result.as_of_quotes
+    )
     quote = player(result)["momentQuotes"][0]
     assert quote["minutesUntilStart"] == result.as_of_quotes[0].minutes_until_start
-    assert quote["collectedAt"].microsecond == ticks[1][0].microsecond
+    assert quote["targetAt"].microsecond == ticks[1][0].microsecond
 
 
 def test_order_and_timestamp_ties_follow_existing_normalizer():
     same_time = KICKOFF - timedelta(minutes=30)
     result = read(
-        [tick(30, 2.5), tick(1440, 2), (same_time, {"price": 2.6, "createdAt": same_time.isoformat()})],
+        [
+            tick(30, 2.5),
+            tick(1440, 2),
+            (same_time, {"price": 2.6, "createdAt": same_time.isoformat()}),
+        ],
         as_of_targets=(),
     )
     # Existing ties process the later payload entry first.
@@ -139,5 +175,27 @@ def test_available_through_utc_passes_to_detector_closing_window():
     ]
     result = read(ticks, available_through_utc=available_through)
     assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [
-        (120, 2.0), (30, 2.0), (9.0, 2.5), (6.0, 3.2), (5, 3.2)
+        (120, 2.0),
+        (30, 2.0),
+        (9.0, 2.5),
+        (6.0, 3.2),
+        (5, 3.2),
     ]
+
+
+def test_canonical_checkpoints_survive_significant_change_reduction():
+    # Both small moves and a flash reversal are real states at their checkpoints.
+    ticks = [tick(1440, 2), tick(120, 2.1), tick(30, 2.8), tick(29, 2.1), tick(5, 2.15)]
+    result = read(ticks)
+    canonical = {
+        q.minutes_until_start: q
+        for q in result.as_of_quotes
+        if q.minutes_until_start in (120, 30, 5)
+    }
+    assert {minute: q.price for minute, q in canonical.items()} == {
+        120: 2.1,
+        30: 2.8,
+        5: 2.15,
+    }
+    assert canonical[30].created_at == ticks[2][1]["createdAt"]
+    assert not any(q.minutes_until_start == 29 for q in result.as_of_quotes)

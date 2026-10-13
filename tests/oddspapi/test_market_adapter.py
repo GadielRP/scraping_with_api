@@ -130,6 +130,29 @@ def test_moneyline_home_draw_away_and_bookmaker_catalog():
     assert [choice["name"] for choice in bookmaker["markets"][0]["choices"]] == ["1", "x", "2"]
 
 
+def test_historical_moneyline_without_flags_uses_cached_mainline_identity():
+    payload = response(
+        {
+            "101": {
+                "outcomes": {
+                    outcome: {"players": {"0": {"price": price, "active": True}}}
+                    for outcome, price in (("101", 2.8), ("102", 3.4), ("103", 2.5))
+                }
+            }
+        }
+    )
+    adapted = OddspapiMarketAdapter.from_odds_response(
+        payload,
+        market_mapping_index=mapped_index(),
+        use_mainline_cache=True,
+        mainline_outcome_ids_by_bookmaker={"pinnacle": {"101", "102", "103"}},
+        persist_main_line_only=True,
+    )
+    choices = adapted["bookmakers"][0]["markets"][0]["choices"]
+    assert [choice["name"] for choice in choices] == ["1", "x", "2"]
+    assert all(choice["mainLine"] is True for choice in choices)
+
+
 def test_moneyline_without_draw_is_kept():
     adapted = OddspapiMarketAdapter.from_odds_response(
         response({"100": market([player("home", 1.6), player("away", 2.3)])}),

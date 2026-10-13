@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Mapping, TypeVar
 
 from shared.temporal import as_utc
 
@@ -37,19 +36,6 @@ class SnapshotTargetWindow:
     earliest_at: datetime
     latest_at: datetime
 
-    def contains(self, collected_at: datetime | None) -> bool:
-        """Whether a snapshot timestamp falls in this common target window."""
-        if collected_at is None:
-            return False
-        instant = as_utc(collected_at, field_name="snapshot collection time")
-        return self.earliest_at <= instant <= self.latest_at
-
-    def is_after_cutoff(self, collected_at: datetime | None) -> bool:
-        if collected_at is None:
-            return False
-        instant = as_utc(collected_at, field_name="snapshot collection time")
-        return instant > self.latest_at
-
 
 def snapshot_time_error(
     *,
@@ -64,12 +50,12 @@ def effective_snapshot_timestamp(
     collected_at: datetime,
     source_collected_at: datetime | None,
 ) -> datetime:
-    """Use provider time when plausible; clamp it to the stored snapshot time."""
+    """Use the provider clock, or actual observation time when it is absent."""
     collected = as_utc(collected_at, field_name="snapshot collection time")
     if source_collected_at is None:
         return collected
     source = as_utc(source_collected_at, field_name="source snapshot time")
-    return min(source, collected)
+    return source
 
 
 def build_snapshot_target_window(
@@ -129,25 +115,76 @@ def build_snapshot_target_windows(
     }
 
 
-def snapshot_target_rank(
-    *,
-    distance_seconds: float,
-    available_at: datetime,
-    source_collected_at: datetime | None,
-    snapshot_id: int | None,
-) -> tuple[float, float, float, int]:
-    """Rank candidates identically for projected markets and P4 endpoints."""
-    available = as_utc(available_at, field_name="snapshot collection time")
-    source_time = effective_snapshot_timestamp(
-        collected_at=available,
-        source_collected_at=source_collected_at,
+Snapshot = TypeVar("Snapshot")
+
+
+def select_checkpoint_snapshots(
+    snapshots: Iterable[Snapshot],
+    windows: Mapping[int, SnapshotTargetWindow],
+) -> dict[int, Snapshot]:
+    """Project one instrument's source states, falling back to nearby observations.
+
+    Inputs have already passed their consumer's evaluation availability checks.
+    Source ticks advance once over chronological checkpoints. Missing-source
+    observations are considered only inside the checkpoint tolerance window.
+    """
+    sourced, observed = [], []
+    for snapshot in snapshots:
+        if snapshot.collected_at is None:
+            continue
+        (sourced if snapshot.source_collected_at is not None else observed).append(
+            snapshot
+        )
+    sourced.sort(
+        key=lambda item: (
+            item.source_collected_at,
+            item.collected_at,
+            item.snapshot_id if item.snapshot_id is not None else -1,
+        )
     )
-    return (
-        float(distance_seconds),
-        -source_time.timestamp(),
-        -available.timestamp(),
-        -(int(snapshot_id) if snapshot_id is not None else -1),
+    observed.sort(
+        key=lambda item: (
+            item.collected_at,
+            item.snapshot_id if item.snapshot_id is not None else -1,
+        )
     )
+    selected = {}
+    source_index = observation_index = 0
+    last_source = None
+    for target, window in sorted(windows.items(), key=lambda item: item[1].nominal_at):
+        if window.latest_at < window.nominal_at:
+            continue  # The checkpoint has not been reached by this evaluation.
+        while (
+            source_index < len(sourced)
+            and sourced[source_index].source_collected_at <= window.nominal_at
+        ):
+            last_source = sourced[source_index]
+            source_index += 1
+        if last_source is not None:
+            selected[target] = last_source
+            continue
+        while (
+            observation_index < len(observed)
+            and observed[observation_index].collected_at < window.earliest_at
+        ):
+            observation_index += 1
+        best = None
+        index = observation_index
+        while (
+            index < len(observed) and observed[index].collected_at <= window.latest_at
+        ):
+            candidate = observed[index]
+            rank = (
+                abs(candidate.collected_at - window.nominal_at),
+                -candidate.collected_at.timestamp(),
+                -(candidate.snapshot_id if candidate.snapshot_id is not None else -1),
+            )
+            if best is None or rank < best[0]:
+                best = (rank, candidate)
+            index += 1
+        if best is not None:
+            selected[target] = best[1]
+    return selected
 
 
 def select_target_minute(
@@ -186,9 +223,7 @@ def select_target_minute(
         if allowed_target_minutes is None
         else {int(minute) for minute in allowed_target_minutes}
     )
-    current_minute = (
-        None if evaluation_minute is None else int(evaluation_minute)
-    )
+    current_minute = None if evaluation_minute is None else int(evaluation_minute)
     candidates = [
         int(minute)
         for minute in context.target_minutes_present
@@ -202,7 +237,9 @@ def select_target_minute(
             {
                 "flow_id": flow_id,
                 "target_minutes_present": list(context.target_minutes_present),
-                "allowed_target_minutes": sorted(allowed) if allowed is not None else None,
+                "allowed_target_minutes": (
+                    sorted(allowed) if allowed is not None else None
+                ),
                 "evaluation_minute": current_minute,
             },
         )
@@ -225,5 +262,5 @@ __all__ = [
     "effective_snapshot_timestamp",
     "select_target_minute",
     "snapshot_time_error",
-    "snapshot_target_rank",
+    "select_checkpoint_snapshots",
 ]

@@ -20,12 +20,13 @@ from .trajectory_selection import (
     SnapshotTargetWindow,
     build_snapshot_target_windows,
     effective_snapshot_timestamp,
-    snapshot_target_rank,
+    select_checkpoint_snapshots,
     snapshot_time_error,
 )
 
-def _number(value: Decimal | None) -> float | None:
-    return None if value is None else float(value)
+
+def _number(value: Decimal | None) -> Decimal | None:
+    return value
 
 
 def _timestamp(value: datetime | None) -> str | None:
@@ -50,6 +51,9 @@ class TrajectoryPoint:
     distance_from_target_minutes: Decimal | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        time_basis = "SOURCE" if self.source_collected_at is not None else "OBSERVATION"
+        if self.target_minute is not None and self.source_collected_at is not None:
+            time_basis = "CHECKPOINT_TARGET"
         return {
             "POINT_ID": self.point_id,
             "VALUE": _number(self.value),
@@ -60,6 +64,7 @@ class TrajectoryPoint:
             "QUOTE_ID": self.quote_id,
             "COLLECTED_AT": _timestamp(self.collected_at),
             "SOURCE_COLLECTED_AT": _timestamp(self.source_collected_at),
+            "TIME_BASIS": time_basis,
             "SOURCE_LIMIT": _number(self.source_limit),
             "EXCHANGE_SIZE": _number(self.exchange_size),
             "OBSERVATION_KIND": self.observation_kind,
@@ -109,45 +114,23 @@ def _normalize_snapshot(
     invalid: list[str],
     evaluation_as_of: datetime | None = None,
 ) -> tuple[TrajectoryPoint | None, bool]:
-    """Normalise a raw snapshot into a TrajectoryPoint.
-
-    When ``evaluation_as_of`` is provided, the stored ``collected_at`` must not
-    be later than that evaluation boundary, and the
-    provider's market timestamp must not be later than the target window.
-
-    ``collected_at`` is the timestamp recorded for the observation. For a
-    reconstructed historical key moment, ingestion deliberately records the
-    target moment there; it is not necessarily the physical PostgreSQL insert
-    time. ``evaluation_as_of`` therefore bounds recorded timestamps, while the
-    fact that a row was actually loaded comes from the trajectory query itself.
-
-    When no evaluation boundary is provided, the nominal
-    ``target_window.is_after_cutoff(collected_at)`` logic applies.
-    """
+    """Keep source observation time separate from actual ingestion availability."""
     collected_at = snapshot.collected_at
     source_at = snapshot.source_collected_at
-    availability_at = collected_at
+    availability_at = snapshot.collected_at
     time_error = snapshot_time_error(
         collected_at=collected_at,
     )
     if time_error is not None:
         invalid.append(f"snapshot:{snapshot.snapshot_id}:{time_error}")
         return None, False
-    if evaluation_as_of is not None:
-        # Phase 1: recorded observation time must be within the run's boundary.
-        # This is not a physical insert-time check for reconstructed moments.
-        if availability_at is not None and timestamp_value(
-            availability_at
-        ) > timestamp_value(evaluation_as_of):
-            return None, True
-        # Phase 2: prevent market observations after the permitted target window.
-        effective_at_pre = effective_snapshot_timestamp(
-            collected_at=availability_at,
-            source_collected_at=source_at,
-        )
-        if timestamp_value(effective_at_pre) > timestamp_value(target_window.latest_at):
-            return None, True
-    elif target_window.is_after_cutoff(availability_at):
+    effective_at = effective_snapshot_timestamp(
+        collected_at=collected_at,
+        source_collected_at=source_at,
+    )
+    if evaluation_as_of is not None and availability_at > evaluation_as_of:
+        return None, True
+    if effective_at > target_window.latest_at:
         return None, True
     try:
         odds = Decimal(snapshot.odds_value)
@@ -155,14 +138,8 @@ def _normalize_snapshot(
         invalid.append(f"snapshot:{snapshot.snapshot_id}:invalid_odds")
         return None, False
     if not odds.is_finite() or odds <= 1:
-        invalid.append(
-            f"snapshot:{snapshot.snapshot_id}:non_positive_odds"
-        )
+        invalid.append(f"snapshot:{snapshot.snapshot_id}:non_positive_odds")
         return None, False
-    effective_at = effective_snapshot_timestamp(
-        collected_at=availability_at,
-        source_collected_at=source_at,
-    )
     point_id = (
         f"SNAPSHOT_{snapshot.snapshot_id}"
         if snapshot.snapshot_id is not None
@@ -173,9 +150,7 @@ def _normalize_snapshot(
         if value is None:
             return None
         if not value.is_finite() or value < 0:
-            invalid.append(
-                f"snapshot:{snapshot.snapshot_id}:invalid_{name}"
-            )
+            invalid.append(f"snapshot:{snapshot.snapshot_id}:invalid_{name}")
             return None
         return value
 
@@ -225,50 +200,40 @@ def _project_checkpoints(
     points: Iterable[TrajectoryPoint],
     *,
     event_start: datetime,
-    target_minutes: Iterable[int],
     target_windows: Mapping[int, SnapshotTargetWindow],
 ) -> dict[int, TrajectoryPoint]:
-    projected: dict[int, TrajectoryPoint] = {}
-    candidates = tuple(points)
-    for target in target_minutes:
-        window = target_windows[target]
-        best = None
-        for point in candidates:
-            if not window.contains(point.availability_at):
-                continue
-            distance = abs(
-                timestamp_value(point.availability_at)
-                - timestamp_value(window.nominal_at)
-            )
-            rank = snapshot_target_rank(
-                distance_seconds=distance,
-                available_at=point.availability_at,
-                source_collected_at=point.source_collected_at,
-                snapshot_id=point.snapshot_id,
-            )
-            if best is None or rank < best[0]:
-                best = (rank, point)
-        if best is None:
-            continue
-        selected_rank, selected = best
-        selected_distance = selected_rank[0]
-        projected[target] = replace(
-            selected,
-            point_id=f"{selected.point_id}_TARGET_{target}",
-            # Select by the recorded collection time, but preserve when this
-            # price actually became effective in the market.
-            effective_at=selected.effective_at,
-            minutes_before_start=minutes_before_start(
-                event_start,
-                selected.effective_at,
+    selected = select_checkpoint_snapshots(points, target_windows)
+    operative_target = min(target_windows)
+    return {
+        target: replace(
+            point,
+            point_id=f"{point.point_id}_TARGET_{target}",
+            effective_at=(
+                target_windows[target].nominal_at
+                if point.source_collected_at is not None
+                else point.effective_at
+            ),
+            minutes_before_start=(
+                Decimal(target)
+                if point.source_collected_at is not None
+                else point.minutes_before_start
             ),
             observation_kind=(
-                "OPERATIVE_ENDPOINT" if target == min(target_minutes) else "CHECKPOINT"
+                "OPERATIVE_ENDPOINT"
+                if target == operative_target
+                else (
+                    "RECONSTRUCTED_CHECKPOINT"
+                    if point.source_collected_at is not None
+                    else "CHECKPOINT"
+                )
             ),
             target_minute=target,
-            distance_from_target_minutes=Decimal(str(selected_distance / 60)),
+            distance_from_target_minutes=abs(
+                minutes_before_start(event_start, point.effective_at) - Decimal(target)
+            ),
         )
-    return projected
+        for target, point in selected.items()
+    }
 
 
 def _adaptive_with_endpoint(
@@ -276,23 +241,12 @@ def _adaptive_with_endpoint(
     endpoint: TrajectoryPoint,
     *,
     target_minute: int,
-    event_start: datetime,
     evaluation_as_of: datetime | None = None,
 ) -> tuple[TrajectoryPoint, ...]:
     operative = replace(
-        endpoint,
-        point_id=f"{endpoint.point_id}_OPERATIVE_{target_minute}",
-        # The endpoint defines the market cutoff through its source/effective
-        # timestamp. Its recorded collection time remains a separate axis.
-        effective_at=endpoint.effective_at,
-        minutes_before_start=minutes_before_start(
-            event_start,
-            endpoint.effective_at,
-        ),
-        observation_kind="OPERATIVE_ENDPOINT",
-        target_minute=target_minute,
-        distance_from_target_minutes=endpoint.distance_from_target_minutes,
+        endpoint, point_id=f"{endpoint.point_id}_OPERATIVE_{target_minute}"
     )
+    # Preserve the original tick and append a logical endpoint when its time differs.
     # The operative endpoint sets the market-state boundary. Independently,
     # evaluation_as_of bounds recorded collection timestamps.
     market_cutoff = timestamp_value(operative.effective_at)
@@ -315,6 +269,7 @@ def _adaptive_with_endpoint(
             or (
                 point.snapshot_id is not None
                 and point.snapshot_id == endpoint.snapshot_id
+                and point.effective_at == endpoint.effective_at
             )
             or (
                 point.snapshot_id is None
@@ -379,7 +334,11 @@ class TrajectorySamplingPolicy:
             else None
         )
         targets = sorted(
-            {int(value) for value in context.target_minutes_expected if int(value) >= target}
+            {
+                int(value)
+                for value in context.target_minutes_expected
+                if int(value) >= target
+            }
             | {target},
             reverse=True,
         )
@@ -423,7 +382,6 @@ class TrajectorySamplingPolicy:
         checkpoints = _project_checkpoints(
             ordered,
             event_start=self.event_start,
-            target_minutes=tuple(self.windows),
             target_windows=self.windows,
         )
         endpoint = checkpoints.get(self.target_minute)
@@ -434,13 +392,17 @@ class TrajectorySamplingPolicy:
                 ordered,
                 endpoint,
                 target_minute=self.target_minute,
-                event_start=self.event_start,
                 evaluation_as_of=self.evaluation_as_of,
             )
         )
         return TrajectorySample(
-            ordered, checkpoints, adaptive, endpoint,
-            tuple(invalid), excluded, first_future,
+            ordered,
+            checkpoints,
+            adaptive,
+            endpoint,
+            tuple(invalid),
+            excluded,
+            first_future,
         )
 
 

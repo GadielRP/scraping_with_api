@@ -63,9 +63,9 @@ def _series_result(series: P4SeriesInput) -> P4SeriesResult:
         traceability={
             "BASE_SERIES_ID": series.base_series_id,
             "TRAJECTORY_SOURCE_MODE": (
-                "PERSISTED_SNAPSHOTS"
+                "PERSISTED_SNAPSHOTS_WITH_LOGICAL_ENDPOINT"
                 if series.view == "ADAPTIVE_VIEW"
-                else "FIXED_CHECKPOINTS"
+                else "SOURCE_STATES_OR_NEARBY_OBSERVATIONS"
             ),
             "EXPECTED_TARGET_MINUTES": list(series.expected_target_minutes),
             "MISSING_TARGET_MINUTES": list(series.missing_target_minutes),

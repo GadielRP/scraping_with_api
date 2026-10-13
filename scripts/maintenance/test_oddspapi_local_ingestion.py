@@ -373,7 +373,7 @@ def _load_db_context(event_id: int, trajectory_market_groups, trajectory_market_
         event_ids=[event_id],
     )
     trajectory_rows = [point.to_dict() for point in trajectory_rows_by_event_id.get(event_id, [])]
-    trajectory_context = build_odds_trajectory_context(trajectory_rows)
+    trajectory_context = build_odds_trajectory_context(trajectory_rows, event_starts_at=event.starts_at)
     filtered_trajectory_context = trajectory_context
     if trajectory_market_groups:
         filtered_trajectory_context = filtered_trajectory_context.filter_by_market_groups(

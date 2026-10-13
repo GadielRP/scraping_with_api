@@ -29,7 +29,7 @@ Hay dos vistas:
 
 Un **endpoint operativo** es la observación que representa el último momento evaluado para esa serie. Sin endpoint no se informa movimiento calculado. Se necesitan al menos dos observaciones para una métrica temporal calculable.
 
-La selección utiliza cuándo se recogieron los datos. Las duraciones conservan cuándo fueron efectivos en el mercado. Si el proveedor informa un momento posterior a la recogida, no se coloca el precio después de esa recogida. Esto distingue la hora del cambio de la hora en que el programa pudo conocerlo.
+La selección reconstruye cada checkpoint con el último tick de fuente anterior o igual al objetivo. Sin tick admisible con fuente, utiliza una observación sin fuente dentro de la tolerancia. CHECKPOINT_VIEW sitúa la reconstrucción en el objetivo; ADAPTIVE_VIEW mantiene el cambio original y añade un cierre lógico cuando corresponde. Los timestamps originales permanecen intactos. La disponibilidad se limita por la captura real de la evaluación.
 
 En la vista adaptativa, el endpoint delimita hasta qué estado del mercado se observa; la hora de evaluación delimita qué datos recogidos estaban disponibles.
 
@@ -240,7 +240,7 @@ Supongamos un partido a las 20:00 y una evaluación a las 19:55:16, T−5. Se el
 
 El extractor reconoce un contrato y resultado concretos, por ejemplo local de Pinnacle en 1X2 de tiempo completo. Conserva mercado, periodo, línea cuando existe, casa, proveedor, resultado y lado/nivel del exchange. Esos datos identifican la serie; no se mezclan precios de contratos diferentes para añadir observaciones.
 
-`TrajectoryPoint` conserva valor, hora efectiva y disponibilidad. La primera sitúa el cambio; la segunda comprueba si ya podía conocerse al evaluar. `TrajectorySample` selecciona checkpoints, recorrido adaptativo y endpoint.
+`TrajectoryPoint` conserva valor, hora efectiva y disponibilidad. La hora efectiva sitúa el cambio en ADAPTIVE_VIEW y el objetivo reconstruido en CHECKPOINT_VIEW; la disponibilidad limita los inputs capturados al evaluar. `TrajectorySample` selecciona checkpoints, recorrido adaptativo y endpoint.
 
 ### Paso 2. Formar las dos vistas y los tipos de valor
 
@@ -332,3 +332,17 @@ Para comprobarlo se sigue **señal → serie y tipo de valor → métrica → tr
 
 La [guía principal](00-flujo-principal.md) explica el origen de los datos y los estados globales. [P2](02-pilar-2-mercado-de-lado.md) y [P3](03-pilar-3-mercado-de-totales.md) explican las inclinaciones cuyo movimiento también observa P4.
 
+
+
+## Reconstrucción desde un lote tardío
+
+Un tick de las 17:24, adquirido a las 17:55, puede representar T-30=17:30 y
+T-5=17:55. CHECKPOINT_VIEW mide 25 minutos sin cambio entre ambos. ADAPTIVE_VIEW
+mantiene el tick a las 17:24 y añade su cierre a las 17:55. `TIME_BASIS=CHECKPOINT_TARGET`
+y `OBSERVATION_KIND` distinguen las proyecciones de los snapshots originales.
+Fuente, adquisición e ID se conservan; no se guarda una adquisición ficticia.
+
+No se utiliza un cambio posterior al checkpoint ni se extiende una observación
+sin fuente distante. El último cambio válido no caduca por antigüedad. Los huecos
+sin ingredientes admisibles permanecen. La estabilidad entre estados conservados
+no demuestra cobertura completa de fluctuaciones que la ingestión haya descartado.

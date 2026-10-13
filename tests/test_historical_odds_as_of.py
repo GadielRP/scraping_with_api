@@ -152,7 +152,7 @@ def test_reader_reconstructs_moment_zero():
     by_moment = {quote.minutes_until_start: quote for quote in result.as_of_quotes}
     assert 0 in by_moment
     assert by_moment[0].price == 1.4
-    assert by_moment[0].collected_at == datetime(
+    assert by_moment[0].target_at == datetime(
         2026, 7, 28, 20, 1, 0, tzinfo=timezone.utc
     )
 

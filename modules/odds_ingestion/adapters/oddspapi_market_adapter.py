@@ -11,9 +11,6 @@ from infrastructure.persistence.repositories.market_mapping_repository import (
 )
 from modules.oddspapi.exchange_quotes import best_exchange_quotes
 from modules.oddspapi.format_utils import format_line, normalize_source_id
-from modules.oddspapi.historical_snapshot_policy import (
-    should_persist_current_snapshot,
-)
 from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
 from modules.oddspapi.quote_activity import should_skip_inactive_market
 from modules.odds_ingestion.oddspapi_line_selection import (
@@ -75,7 +72,10 @@ class OddspapiMarketAdapter:
 
     @staticmethod
     def _is_exchange_bookmaker(slug: str, exchange_meta: Any) -> bool:
-        return isinstance(exchange_meta, dict) or slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
+        return (
+            isinstance(exchange_meta, dict)
+            or slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
+        )
 
     @staticmethod
     def _append_diagnostic(diagnostics: dict, key: str, payload: dict) -> None:
@@ -111,8 +111,6 @@ class OddspapiMarketAdapter:
         use_mainline_cache: bool = False,
         persist_main_line_only: bool = False,
         require_active_quotes: bool = True,
-        deduplicate_historical_current_snapshots: bool = True,
-        current_moment_minutes: int | float | None = None,
     ) -> dict:
         if market_mapping_index is None:
             raise ValueError("market_mapping_index is required")
@@ -139,7 +137,9 @@ class OddspapiMarketAdapter:
             "mainline_cache_fallbacks_used": [],
         }
 
-        bookmaker_items = OddspapiMarketAdapter._catalog_items(bookmaker_catalog, "bookmakers")
+        bookmaker_items = OddspapiMarketAdapter._catalog_items(
+            bookmaker_catalog, "bookmakers"
+        )
         bookmaker_index = {
             str(item.get("slug") or "").strip().lower(): item
             for item in bookmaker_items
@@ -200,11 +200,15 @@ class OddspapiMarketAdapter:
                 )
                 for decision in selection.diagnostics:
                     OddspapiMarketAdapter._append_diagnostic(
-                        diagnostics, "line_selection", {"bookmakerSlug": slug, **decision},
+                        diagnostics,
+                        "line_selection",
+                        {"bookmakerSlug": slug, **decision},
                     )
 
             grouped_markets: dict[tuple, dict] = {}
-            for source_market_id, market_data in OddspapiMarketAdapter._entries(markets_data):
+            for source_market_id, market_data in OddspapiMarketAdapter._entries(
+                markets_data
+            ):
                 if should_skip_inactive_market(
                     market_data,
                     require_active_quotes=require_active_quotes,
@@ -347,13 +351,6 @@ class OddspapiMarketAdapter:
                             "changedAt": player.get("changedAt"),
                             "mainLine": main_line,
                             "limit": player.get("limit"),
-                            "persistCurrentSnapshot": should_persist_current_snapshot(
-                                player,
-                                deduplicate=(
-                                    deduplicate_historical_current_snapshots
-                                ),
-                                current_moment_minutes=current_moment_minutes,
-                            ),
                         }
                         moment_quotes = player.get("momentQuotes")
                         if isinstance(moment_quotes, list) and moment_quotes:
@@ -369,7 +366,9 @@ class OddspapiMarketAdapter:
                                     back_size=player.get("limit"),
                                     exchange_meta=exchange_meta,
                                 )
-                            elif slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS:
+                            elif (
+                                slug in OddspapiMarketAdapter._EXCHANGE_BOOKMAKER_SLUGS
+                            ):
                                 # /historical-odds identifies the exchange bookmaker
                                 # but deliberately omits exchangeMeta. Its single
                                 # price can therefore only represent the back
@@ -390,8 +389,7 @@ class OddspapiMarketAdapter:
                     market_resolution.mapping_id,
                 )
                 detected_choice_names = {
-                    str(choice_name)
-                    for choice_name in available_choice_names
+                    str(choice_name) for choice_name in available_choice_names
                 }
                 missing_choice_names = sorted(
                     expected_choice_names - detected_choice_names
@@ -417,9 +415,7 @@ class OddspapiMarketAdapter:
                 normalized_market = grouped_markets.setdefault(
                     market_key,
                     {
-                        "canonicalMarketKey": (
-                            market_resolution.canonical_market_key
-                        ),
+                        "canonicalMarketKey": (market_resolution.canonical_market_key),
                         "marketName": market_resolution.canonical_market_name,
                         "marketGroup": market_resolution.canonical_market_group,
                         "marketPeriod": market_resolution.canonical_market_period,
@@ -429,8 +425,7 @@ class OddspapiMarketAdapter:
                     },
                 )
                 existing_choice_names = {
-                    str(choice["name"])
-                    for choice in normalized_market["choices"]
+                    str(choice["name"]) for choice in normalized_market["choices"]
                 }
                 normalized_market["choices"].extend(
                     choice
@@ -438,12 +433,16 @@ class OddspapiMarketAdapter:
                     if str(choice["name"]) not in existing_choice_names
                 )
 
-            markets = [market for market in grouped_markets.values() if market["choices"]]
+            markets = [
+                market for market in grouped_markets.values() if market["choices"]
+            ]
             if markets:
                 normalized_bookmakers.append(
                     {
                         "slug": slug,
-                        "name": OddspapiMarketAdapter._bookmaker_name(slug, bookmaker_index),
+                        "name": OddspapiMarketAdapter._bookmaker_name(
+                            slug, bookmaker_index
+                        ),
                         "markets": markets,
                     }
                 )

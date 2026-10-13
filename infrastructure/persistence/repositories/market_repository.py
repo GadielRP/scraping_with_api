@@ -2,9 +2,8 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy import and_
 from sqlalchemy.orm import selectinload
 
 from infrastructure.persistence.models import (
@@ -96,10 +95,6 @@ class MarketRepository:
         return as_utc(parsed, field_name="market source timestamp")
 
     @staticmethod
-    def _requires_provider_timestamp(source: str | None) -> bool:
-        return str(source or "").strip().lower().startswith("oddspapi")
-
-    @staticmethod
     def _numeric_or_none(value):
         if value in (None, ""):
             return None
@@ -149,32 +144,23 @@ class MarketRepository:
         return float(normalized) if normalized is not None else None
 
     @staticmethod
-    def _snapshot_collected_at_key(collected_at: datetime) -> datetime:
-        return as_utc(
-            collected_at,
-            field_name="snapshot collected_at",
-        ).replace(microsecond=0)
-
-    @staticmethod
     def _existing_moment_snapshot_source_keys(
         session,
         *,
         event_id: int,
         source: str,
+        quote_ids: set[int],
         earliest: datetime,
         latest: datetime,
-    ) -> dict[tuple[int, datetime], set[datetime | None]]:
-        """Load all source ticks per second, restricted to the incoming interval.
-
-        A single value per key loses earlier ticks within the same second and
-        makes their next replay insert duplicates. None remains a wildcard for
-        legacy rows without provider timestamps.
-        """
+    ) -> set[tuple]:
+        """Read exact provider ticks for the incoming instruments and interval."""
         rows = (
             session.query(
                 MarketChoiceSnapshot.quote_id,
-                MarketChoiceSnapshot.collected_at,
                 MarketChoiceSnapshot.source_collected_at,
+                MarketChoiceSnapshot.odds_value,
+                MarketChoiceSnapshot.source_limit,
+                MarketChoiceSnapshot.exchange_size,
             )
             .join(
                 MarketChoiceQuote,
@@ -185,21 +171,13 @@ class MarketRepository:
             .filter(
                 Market.event_id == int(event_id),
                 MarketChoiceQuote.source == source,
-                MarketChoiceSnapshot.collected_at >= earliest,
-                MarketChoiceSnapshot.collected_at < latest + timedelta(seconds=1),
+                MarketChoiceSnapshot.quote_id.in_(quote_ids),
+                MarketChoiceSnapshot.source_collected_at >= earliest,
+                MarketChoiceSnapshot.source_collected_at <= latest,
             )
             .yield_per(1000)
         )
-        result: dict[tuple[int, datetime], set[datetime | None]] = {}
-        for quote_id, collected_at, source_collected_at in rows:
-            if quote_id is None or collected_at is None:
-                continue
-            key = (
-                int(quote_id),
-                MarketRepository._snapshot_collected_at_key(collected_at),
-            )
-            result.setdefault(key, set()).add(source_collected_at)
-        return result
+        return set(rows)
 
     @staticmethod
     def save_canonical_bookmaker_batches(
@@ -264,7 +242,9 @@ class MarketRepository:
                     row.canonical_market_key: row
                     for row in (
                         session.query(CanonicalMarketType)
-                        .filter(CanonicalMarketType.canonical_market_key.in_(canonical_keys))
+                        .filter(
+                            CanonicalMarketType.canonical_market_key.in_(canonical_keys)
+                        )
                         .all()
                     )
                 }
@@ -299,9 +279,9 @@ class MarketRepository:
                     canonical_types.append(row)
 
             def resolve_catalog_type(market_data):
-                canonical_key = str(
-                    market_data.get("canonicalMarketKey") or ""
-                ).strip().lower()
+                canonical_key = (
+                    str(market_data.get("canonicalMarketKey") or "").strip().lower()
+                )
                 if canonical_key:
                     return canonical_types_by_key.get(canonical_key)
                 normalized = tuple(
@@ -360,12 +340,14 @@ class MarketRepository:
                     or "unknown"
                 )
                 for market_data in batch.get("markets") or []:
-                    canonical_market_key = str(
-                        market_data.get("canonicalMarketKey") or ""
-                    ).strip().lower()
+                    canonical_market_key = (
+                        str(market_data.get("canonicalMarketKey") or "").strip().lower()
+                    )
                     canonical_market_type = resolve_catalog_type(market_data)
                     if canonical_market_type is not None and not canonical_market_key:
-                        canonical_market_key = canonical_market_type.canonical_market_key
+                        canonical_market_key = (
+                            canonical_market_type.canonical_market_key
+                        )
                     if canonical_market_type is None:
                         skipped_market_count += 1
                         operation_logger.error(
@@ -390,7 +372,9 @@ class MarketRepository:
                         # OddsPortalMarketAdapter._build_betfair_exchange_markets,
                         # Fase 3). Dedupe on (name, exchangeSide) so lay isn't
                         # silently dropped as a "duplicate" of back.
-                        choice_side = str(choice_data.get("exchangeSide") or "").strip().lower()
+                        choice_side = (
+                            str(choice_data.get("exchangeSide") or "").strip().lower()
+                        )
                         dedupe_key = (choice_name, choice_side)
                         if not choice_name or dedupe_key in seen_choice_sides:
                             continue
@@ -594,8 +578,7 @@ class MarketRepository:
             prepared_choices = []
             for market, eligible_choices in prepared_markets:
                 existing_choices = {
-                    choice.choice_name: choice
-                    for choice in market.choices
+                    choice.choice_name: choice for choice in market.choices
                 }
                 for choice_data in eligible_choices:
                     choice_name = MarketRepository._normalize_string_or_none(
@@ -633,9 +616,7 @@ class MarketRepository:
                         initial_was_set = initial_odds is not None
                     else:
                         gate_side, gate_level = (
-                            MarketRepository._opening_gate_side_and_level(
-                                choice_data
-                            )
+                            MarketRepository._opening_gate_side_and_level(choice_data)
                         )
                         existing_quote = quote_index.get(
                             MarketChoiceQuoteWriter.identity_key(
@@ -679,57 +660,64 @@ class MarketRepository:
             # Assign IDs to all new choices in one flush, then append snapshots
             # and refresh the current-state MarketChoiceQuote cache.
             session.flush()
-            requires_provider_timestamp = MarketRepository._requires_provider_timestamp(
-                source
-            )
-            existing_snapshot_keys = set()
-            moment_snapshot_source_keys: dict[
-                tuple[int, datetime], set[datetime | None]
-            ] = {}
-            earliest_moment = latest_moment = None
-            for _, _, choice_data, _, _, _ in prepared_choices:
-                moments = choice_data.get("momentQuotes")
+            # Historical replay identity is provider time plus material tick values.
+            # Observation time is always the real batch instant and is never a key.
+            moment_snapshot_source_keys = set()
+            earliest_source = latest_source = None
+            incoming_choice_ids = set()
+            for _, choice, data, _, _, _ in prepared_choices:
+                moments = data.get("momentQuotes")
                 if not isinstance(moments, list):
                     continue
+                incoming_choice_ids.add(choice.choice_id)
                 for moment in moments:
                     if not isinstance(moment, dict):
                         continue
-                    moment_at = MarketRepository._parse_source_datetime(
-                        moment.get("collectedAt")
+                    instant = MarketRepository._parse_source_datetime(
+                        moment.get("createdAt")
                     )
-                    if moment_at is None:
-                        continue
-                    moment_at = MarketRepository._snapshot_collected_at_key(moment_at)
-                    earliest_moment = (
-                        moment_at if earliest_moment is None
-                        else min(earliest_moment, moment_at)
-                    )
-                    latest_moment = (
-                        moment_at if latest_moment is None
-                        else max(latest_moment, moment_at)
-                    )
-            if earliest_moment is not None:
+                    if instant is not None:
+                        earliest_source = (
+                            instant
+                            if earliest_source is None
+                            else min(earliest_source, instant)
+                        )
+                        latest_source = (
+                            instant
+                            if latest_source is None
+                            else max(latest_source, instant)
+                        )
+            if earliest_source is not None:
+                quote_ids = {
+                    q.quote_id
+                    for q in quote_index.values()
+                    if q.quote_id is not None and q.choice_id in incoming_choice_ids
+                }
                 moment_snapshot_source_keys = (
                     MarketRepository._existing_moment_snapshot_source_keys(
                         session,
                         event_id=event_id,
                         source=source,
-                        earliest=earliest_moment,
-                        latest=latest_moment,
+                        quote_ids=quote_ids,
+                        earliest=earliest_source,
+                        latest=latest_source,
                     )
                 )
-            for market, choice, choice_data, current_odds, initial_odds, initial_was_set in prepared_choices:
+            for (
+                market,
+                choice,
+                choice_data,
+                current_odds,
+                initial_odds,
+                initial_was_set,
+            ) in prepared_choices:
                 initial_source_collected_at = MarketRepository._parse_source_datetime(
                     choice_data.get("initialChangedAt"),
                 )
                 current_source_collected_at = MarketRepository._parse_source_datetime(
-                    choice_data.get("sourceCollectedAt") or choice_data.get("changedAt"),
+                    choice_data.get("sourceCollectedAt")
+                    or choice_data.get("changedAt"),
                 )
-                if (
-                    current_source_collected_at is None
-                    and not requires_provider_timestamp
-                ):
-                    current_source_collected_at = collected_at
                 quotes_by_identity = MarketRepository._upsert_choice_quotes(
                     session,
                     quote_index=quote_index,
@@ -742,12 +730,13 @@ class MarketRepository:
                     current_odds=current_odds,
                     current_captured_at=collected_at,
                 )
+                if choice_data.get("momentQuotes") and any(
+                    q.quote_id is None for q in quotes_by_identity.values()
+                ):
+                    session.flush()
                 # A returned quote row means this ingest supplied an initial
                 # or current price candidate that is represented in storage.
                 result.quotes_persisted += len(quotes_by_identity)
-                persist_current_snapshot = (
-                    choice_data.get("persistCurrentSnapshot", True) is not False
-                )
 
                 exchange_quotes = choice_data.get("exchangeQuotes")
                 explicit_exchange_quotes = {
@@ -755,9 +744,9 @@ class MarketRepository:
                     for identity, quote in quotes_by_identity.items()
                     if identity[0] is not None
                 }
-                explicit_side = str(
-                    choice_data.get("exchangeSide") or ""
-                ).strip().lower()
+                explicit_side = (
+                    str(choice_data.get("exchangeSide") or "").strip().lower()
+                )
                 primary_identity = (
                     ("back", 0)
                     if ("back", 0) in explicit_exchange_quotes
@@ -795,6 +784,19 @@ class MarketRepository:
                             else None
                         ),
                     )
+                    moment_snapshot_source_keys.add(
+                        (
+                            opening_quote.quote_id,
+                            initial_source_collected_at,
+                            MarketRepository._numeric_or_none(initial_odds),
+                            initial_limit,
+                            (
+                                initial_limit
+                                if opening_quote.exchange_side is not None
+                                else None
+                            ),
+                        )
+                    )
                     result.snapshots_saved += 1
 
                 if (
@@ -808,9 +810,7 @@ class MarketRepository:
                         quote_price = MarketRepository._float_or_none(
                             quote_data.get("price")
                         )
-                        quote_side = str(
-                            quote_data.get("side") or ""
-                        ).strip().lower()
+                        quote_side = str(quote_data.get("side") or "").strip().lower()
                         try:
                             quote_level = int(quote_data.get("level"))
                         except (TypeError, ValueError):
@@ -826,11 +826,6 @@ class MarketRepository:
                                 f"choice_id={choice.choice_id}, "
                                 f"identity={(quote_side, quote_level)}"
                             )
-                        if (
-                            not persist_current_snapshot
-                            and (quote_side, quote_level) == primary_identity
-                        ):
-                            continue
                         MarketChoiceSnapshotWriter.append(
                             session,
                             quote=persisted_quote,
@@ -850,11 +845,26 @@ class MarketRepository:
                                 quote_data.get("size")
                             ),
                         )
+                        moment_snapshot_source_keys.add(
+                            (
+                                persisted_quote.quote_id,
+                                MarketRepository._resolve_exchange_observation_time(
+                                    current_odds=current_odds,
+                                    initial_captured_at=initial_source_collected_at,
+                                    current_captured_at=current_source_collected_at,
+                                ),
+                                MarketRepository._numeric_or_none(quote_price),
+                                MarketRepository._numeric_or_none(
+                                    choice_data.get("limit")
+                                ),
+                                MarketRepository._numeric_or_none(
+                                    quote_data.get("size")
+                                ),
+                            )
+                        )
                         result.snapshots_saved += 1
                 elif (
-                    write_policy.persist_current_snapshots
-                    and current_odds is not None
-                    and persist_current_snapshot
+                    write_policy.persist_current_snapshots and current_odds is not None
                 ):
                     current_quote = quotes_by_identity.get(primary_identity)
                     if current_quote is None:
@@ -873,15 +883,15 @@ class MarketRepository:
                         ),
                     )
                     result.snapshots_saved += 1
-                    if current_quote.quote_id is not None:
-                        existing_snapshot_keys.add(
-                            (
-                                int(current_quote.quote_id),
-                                MarketRepository._snapshot_collected_at_key(
-                                    collected_at
-                                ),
-                            )
+                    moment_snapshot_source_keys.add(
+                        (
+                            current_quote.quote_id,
+                            current_source_collected_at,
+                            MarketRepository._numeric_or_none(current_odds),
+                            MarketRepository._numeric_or_none(choice_data.get("limit")),
+                            None,
                         )
+                    )
 
                 moment_quotes = choice_data.get("momentQuotes")
                 if (
@@ -895,8 +905,6 @@ class MarketRepository:
                             "Moment snapshot has no matching quote for "
                             f"choice_id={choice.choice_id}, identity={primary_identity}"
                         )
-                    if moment_quote_row.quote_id is None:
-                        session.flush()
                     for moment_quote in moment_quotes:
                         if not isinstance(moment_quote, dict):
                             continue
@@ -904,48 +912,34 @@ class MarketRepository:
                             moment_quote.get("price")
                             or moment_quote.get("decimalValue")
                         )
-                        moment_collected_at = moment_quote.get("collectedAt")
-                        if not isinstance(moment_collected_at, datetime):
-                            moment_collected_at = (
-                                MarketRepository._parse_source_datetime(
-                                    moment_collected_at,
-                                )
-                            )
-                        if moment_odds is None or moment_collected_at is None:
+                        source_at = MarketRepository._parse_source_datetime(
+                            moment_quote.get("createdAt")
+                        )
+                        if moment_odds is None or source_at is None:
                             continue
+                        limit = MarketRepository._numeric_or_none(
+                            moment_quote.get("limit")
+                        )
+                        size = (
+                            limit
+                            if moment_quote_row.exchange_side is not None
+                            else None
+                        )
                         snapshot_key = (
                             int(moment_quote_row.quote_id),
-                            MarketRepository._snapshot_collected_at_key(
-                                moment_collected_at
-                            ),
-                        )
-                        incoming_src_ts_for_write = MarketRepository._parse_source_datetime(
-                            moment_quote.get("createdAt"),
+                            source_at,
+                            MarketRepository._numeric_or_none(moment_odds),
+                            limit,
+                            size,
                         )
                         if snapshot_key in moment_snapshot_source_keys:
-                            # A snapshot for this theoretical moment already exists.
-                            # Only skip if the bookmaker timestamp is identical
-                            # (same tick = same price). A different source_collected_at
-                            # means the bookmaker updated the price; insert a new row.
-                            existing_src_times = moment_snapshot_source_keys[snapshot_key]
-                            if (
-                                incoming_src_ts_for_write is None
-                                or None in existing_src_times
-                                or incoming_src_ts_for_write in existing_src_times
-                            ):
-                                # No bookmaker timestamp available on one side,
-                                # or both timestamps match: same tick, skip.
-                                continue
-                            # Different source_collected_at: the book moved, persist.
-                        elif snapshot_key in existing_snapshot_keys:
-                            # Covered by the regular (non-moment) snapshot dedup.
                             continue
                         MarketChoiceSnapshotWriter.append(
                             session,
                             quote=moment_quote_row,
                             odds_value=moment_odds,
-                            collected_at=moment_collected_at,
-                            source_collected_at=incoming_src_ts_for_write,
+                            collected_at=collected_at,
+                            source_collected_at=source_at,
                             source_limit=MarketRepository._numeric_or_none(
                                 moment_quote.get("limit")
                             ),
@@ -957,9 +951,7 @@ class MarketRepository:
                                 else None
                             ),
                         )
-                        moment_snapshot_source_keys.setdefault(snapshot_key, set()).add(
-                            incoming_src_ts_for_write
-                        )
+                        moment_snapshot_source_keys.add(snapshot_key)
                         result.snapshots_saved += 1
 
             MarketRepository._demote_superseded_mainlines(
@@ -970,9 +962,7 @@ class MarketRepository:
             )
 
             if result.quotes_persisted:
-                mapping_source = MarketRepository._event_source_mapping_source(
-                    source
-                )
+                mapping_source = MarketRepository._event_source_mapping_source(source)
                 if mapping_source is not None:
                     EventSourceMappingRepository.mark_odds_available(
                         [int(event_id)],
@@ -985,6 +975,7 @@ class MarketRepository:
             # INSERTs by FK dependency without a per-choice round trip.
             session.flush()
             from .reporting_refresh_repository import invalidate_reporting
+
             invalidate_reporting(session)
 
         operation_logger.info(
@@ -1029,6 +1020,7 @@ class MarketRepository:
         lines, preserve that ambiguity instead of inventing an order-based winner.
         All state is already loaded; this is linear work with no extra queries.
         """
+
         def family(market):
             return (market.bookie_id, market.market_type_id, market.is_live)
 
@@ -1049,7 +1041,10 @@ class MarketRepository:
             if quote_source != source or market is None or quote.main_line is not True:
                 continue
             selected = selected_lines.get(family(market), set())
-            if len(selected) == 1 and MarketRepository._market_line_value(market) not in selected:
+            if (
+                len(selected) == 1
+                and MarketRepository._market_line_value(market) not in selected
+            ):
                 quote.main_line = False
 
     @staticmethod
@@ -1106,9 +1101,13 @@ class MarketRepository:
                 exchange_level=0,
                 initial_price=initial_odds,
                 initial_captured_at=initial_captured_at,
-                current_price=current_odds if write_policy.persist_current_odds else None,
+                current_price=(
+                    current_odds if write_policy.persist_current_odds else None
+                ),
                 current_captured_at=current_captured_at,
-                source_limit=MarketRepository._numeric_or_none(choice_data.get("limit")),
+                source_limit=MarketRepository._numeric_or_none(
+                    choice_data.get("limit")
+                ),
                 explicit_change=choice_data.get("change"),
                 overwrite_initial=write_policy.overwrite_initial_odds,
                 **common_source_fields,
@@ -1163,13 +1162,6 @@ class MarketRepository:
 
         if not normalized_exchange_quotes:
             return quotes_by_identity
-        exchange_current_captured_at = (
-            MarketRepository._resolve_exchange_observation_time(
-                current_odds=current_odds,
-                initial_captured_at=initial_captured_at,
-                current_captured_at=current_captured_at,
-            )
-        )
         for quote, quote_price, quote_side, quote_level in normalized_exchange_quotes:
             # Only the top-of-book back quote carries a meaningful "opening"
             # value today (mirrors the legacy MarketChoiceSnapshot behaviour
@@ -1192,7 +1184,7 @@ class MarketRepository:
                 initial_price=side_initial_price,
                 initial_captured_at=side_initial_captured_at,
                 current_price=quote_price,
-                current_captured_at=exchange_current_captured_at,
+                current_captured_at=current_captured_at,
                 source_limit=MarketRepository._numeric_or_none(quote.get("size")),
                 explicit_change=choice_data.get("change"),
                 overwrite_initial=write_policy.overwrite_initial_odds,
@@ -1260,7 +1252,9 @@ class MarketRepository:
     def get_market_count(event_id: int) -> int:
         try:
             with db_manager.get_session() as session:
-                count = session.query(Market).filter(Market.event_id == event_id).count()
+                count = (
+                    session.query(Market).filter(Market.event_id == event_id).count()
+                )
                 return count
         except Exception:
             return 0

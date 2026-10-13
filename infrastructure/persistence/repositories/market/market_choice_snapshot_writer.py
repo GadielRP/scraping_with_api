@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from shared.temporal import as_utc
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -68,8 +69,12 @@ class MarketChoiceSnapshotWriter:
         snapshot = MarketChoiceSnapshot(
             quote=quote,
             odds_value=odds_value,
-            collected_at=collected_at,
-            source_collected_at=source_collected_at,
+            collected_at=as_utc(collected_at, field_name="snapshot observation time"),
+            source_collected_at=(
+                as_utc(source_collected_at, field_name="snapshot source time")
+                if source_collected_at is not None
+                else None
+            ),
             source_limit=source_limit,
             exchange_size=exchange_size,
         )

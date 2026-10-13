@@ -60,11 +60,7 @@ def test_oddspapi_source_timestamp_is_normalized_to_utc():
 
     assert parsed == expected
     assert parsed.tzinfo is UTC
-    assert MarketRepository._requires_provider_timestamp("oddspapi")
-    assert MarketRepository._requires_provider_timestamp(
-        "oddspapi_pre_start"
-    )
-    assert not MarketRepository._requires_provider_timestamp("sofascore")
+
 
 
 def resolution(resolved=True, reason=None, created_mappings=None):

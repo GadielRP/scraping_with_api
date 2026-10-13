@@ -1295,7 +1295,7 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
     monkeypatch.setattr(
         pre_start_odds_simulation,
         "build_pre_start_event_candidates",
-        lambda scheduler, events, timings, source_states: (
+        lambda scheduler, events, timings, source_states, **kwargs: (
             calls.append(("candidate_builder", events, source_states))
             or SimpleNamespace(
                 candidates=[event_info],
@@ -1343,8 +1343,6 @@ def test_manual_simulator_uses_production_provider_processors(monkeypatch):
         30,
         [30],
         debug_mode=True,
-        show_persistence_report=False,
-        log_persisted_market_odds=lambda *_args: None,
     )
 
     assert [call[0] for call in calls] == [

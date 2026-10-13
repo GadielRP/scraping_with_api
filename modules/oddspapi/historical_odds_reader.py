@@ -56,7 +56,9 @@ class OddspapiHistoricalOddsReader:
             bookmakers = {}
 
         if enable_significant_changes and kickoff_utc is None:
-            logger.warning("Significant-change extraction disabled: missing kickoff_utc")
+            logger.warning(
+                "Significant-change extraction disabled: missing kickoff_utc"
+            )
             enable_significant_changes = False
         # A historical response is an as-of view of the provider at the time
         # it was requested.  Do not carry its last known tick into configured
@@ -69,9 +71,7 @@ class OddspapiHistoricalOddsReader:
             as_of_targets = tuple(
                 target
                 for target in as_of_targets
-                if OddspapiHistoricalOddsReader._is_available(
-                    target[1], cutoff
-                )
+                if OddspapiHistoricalOddsReader._is_available(target[1], cutoff)
             )
 
         extract_as_of = bool(as_of_targets) or enable_significant_changes
@@ -124,6 +124,8 @@ class OddspapiHistoricalOddsReader:
                                 kickoff_utc=kickoff_utc,
                                 min_price=min_price,
                             )
+                        # Canonical selections use all admissible ticks before
+                        # the significant-change detector reduces this history.
                         player_key = str(player_id)
                         normalized = (
                             OddspapiHistoricalOddsNormalizer.from_ordered_ticks(
@@ -152,26 +154,28 @@ class OddspapiHistoricalOddsReader:
                                     )
                                 )
 
-                            significant_quotes: list[HistoricalOddsAsOfQuote] | None = None
+                            significant_quotes: list[HistoricalOddsAsOfQuote] | None = (
+                                None
+                            )
                             if enable_significant_changes:
-                                significant_quotes = (
-                                    OddspapiHistoricalOddsChangeDetector.detect_significant_changes(
-                                        ticks,
-                                        kickoff_utc=kickoff_utc,
-                                        bookmaker_slug=as_of_slug,
-                                        source_market_id=source_market_id,
-                                        source_outcome_id=source_outcome_id,
-                                        player_id=player_key,
-                                        min_change_magnitude_pct=min_change_magnitude_pct,
-                                        min_history_hours=min_history_hours,
-                                        flash_reversal_minutes=flash_reversal_minutes,
-                                        observation_cutoff_utc=available_through_utc,
-                                    )
+                                significant_quotes = OddspapiHistoricalOddsChangeDetector.detect_significant_changes(
+                                    ticks,
+                                    kickoff_utc=kickoff_utc,
+                                    bookmaker_slug=as_of_slug,
+                                    source_market_id=source_market_id,
+                                    source_outcome_id=source_outcome_id,
+                                    player_id=player_key,
+                                    min_change_magnitude_pct=min_change_magnitude_pct,
+                                    min_history_hours=min_history_hours,
+                                    flash_reversal_minutes=flash_reversal_minutes,
+                                    observation_cutoff_utc=available_through_utc,
                                 )
 
-                            combined = OddspapiHistoricalOddsReader._combine_as_of_quotes(
-                                canonical_quotes,
-                                significant_quotes,
+                            combined = (
+                                OddspapiHistoricalOddsReader._combine_as_of_quotes(
+                                    canonical_quotes,
+                                    significant_quotes,
+                                )
                             )
                             as_of_quotes.extend(combined)
 
@@ -220,25 +224,32 @@ class OddspapiHistoricalOddsReader:
         if not canonical_quotes:
             return list(significant_quotes)
 
-        # Merge both and deduplicate by (collected_at, price)
-        seen_collected_at: set[tuple[datetime, float]] = set()
+        # Preserve target associations here; persistence deduplicates source ticks.
+        seen_ticks: set[tuple] = set()
         combined: list[HistoricalOddsAsOfQuote] = []
 
         all_quotes = sorted(
             (*canonical_quotes, *significant_quotes),
             key=lambda q: (
-                q.collected_at if q.collected_at.tzinfo is not None
-                else q.collected_at.replace(tzinfo=timezone.utc)
+                q.target_at
+                if q.target_at.tzinfo is not None
+                else q.target_at.replace(tzinfo=timezone.utc)
             ),
         )
 
         for quote in all_quotes:
-            c_at = quote.collected_at
+            c_at = quote.target_at
             if c_at.tzinfo is None:
                 c_at = c_at.replace(tzinfo=timezone.utc)
-            key = (c_at, float(quote.price))
-            if key not in seen_collected_at:
-                seen_collected_at.add(key)
+            key = (
+                c_at,
+                quote.created_at,
+                float(quote.price),
+                str(quote.limit),
+                quote.active,
+            )
+            if key not in seen_ticks:
+                seen_ticks.add(key)
                 combined.append(quote)
 
         return combined

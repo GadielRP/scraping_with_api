@@ -132,7 +132,7 @@ class OddspapiHistoricalOddsChangeDetector:
                     minutes_until_start=(kickoff_utc - created_at).total_seconds() / 60,
                     price=round(price, 3),
                     created_at=str(quote.get("createdAt") or ""),
-                    collected_at=created_at,
+                    target_at=created_at,
                     limit=quote.get("limit"),
                     active=quote.get("active"),
                 )

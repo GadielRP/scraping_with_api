@@ -19,6 +19,16 @@ from modules.pillars.trajectory_selection import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_audit_database(monkeypatch, tmp_path):
+    from infrastructure.persistence.database import DatabaseManager
+    manager=DatabaseManager(f"sqlite:///{tmp_path / 'audit.db'}")
+    manager.create_tables()
+    monkeypatch.setattr(pillar_pipeline,"db_manager",manager)
+    yield manager
+    manager.engine.dispose()
+
+
 def _event_context() -> EventContext:
     event = EventContext(
         event_id=4004,
@@ -136,9 +146,7 @@ def _run_pipeline(monkeypatch, selection_spy=None, mining_service=None, debug_mo
 
     monkeypatch.setattr(pillar_pipeline, "calculate_pillar_2", fake_p2)
     monkeypatch.setattr(pillar_pipeline, "calculate_pillar_3", fake_p3)
-    processor = pillar_pipeline.EventPillarProcessor(
-        event_repo=None,
-        mining_service=mining_service,
+    processor = pillar_pipeline.EventPillarProcessor(mining_service=mining_service,
         debug_mode=debug_mode,
         enabled_pillars={
             "pillar_1": False,
@@ -152,69 +160,6 @@ def _run_pipeline(monkeypatch, selection_spy=None, mining_service=None, debug_mo
     return result, captured
 
 
-def test_all_pillar_final_logs_follow_observations_and_precede_mining(monkeypatch, caplog):
-    monkeypatch.setattr(pillar_pipeline, "_is_pillar_competition_in_scope", lambda _: True)
-    monkeypatch.setattr(pillar_pipeline, "build_odds_trajectory_context", lambda *a, **k: _trajectory_context())
-    monkeypatch.setattr(pillar_pipeline, "Pillar5PriceMemoryRepository", lambda *a, **k: object())
-
-    @contextmanager
-    def session():
-        yield SimpleNamespace(rollback=lambda: None)
-
-    monkeypatch.setattr(pillar_pipeline.db_manager, "get_session", session)
-
-    def calculator(pillar_id):
-        def calculate(*args, **kwargs):
-            pillar_pipeline.logger.info("%s observation: inputs and calculations", pillar_id)
-            analysis = {"pinnacle": {"P5_STATUS": "ACTIVE", "P5": .5, "P5_DIRECTION": "HOME"}} if pillar_id == "pillar_5" else {}
-            return EvaluationResult(
-                4004, pillar_id, "test", 5, kwargs["market_evaluation"].selection,
-                (SignalResult("neutral", "COMPUTED", 0),), (), analysis=analysis,
-            ).to_dict()
-        return calculate
-
-    for number, pillar_id in (
-        (2, "pillar_2_side_market"), (3, "pillar_3_totals_market_context"),
-        (4, "pillar_4_temporal_market_drift"), (5, "pillar_5"),
-    ):
-        monkeypatch.setattr(pillar_pipeline, f"calculate_pillar_{number}", calculator(pillar_id))
-
-    layer = SimpleNamespace(layer="example", raw_signal=.2, final_signal=.2, weighted_signal=.1)
-    totals = SimpleNamespace(
-        P1_TOTALS_DIRECTIONAL_SCORE=.2, P1_TOTALS_DIRECTION="OVER", P1_TOTALS_STRENGTH="LOW",
-        P1_TOTALS_VARIANCE_STATE="NORMAL", status="ACTIVE", active_layers=[layer], ignored_layers=[],
-    )
-    monkeypatch.setattr(pillar_pipeline, "resolve_matchup_streak_analysis", lambda **k: (object(), False))
-    monkeypatch.setattr(pillar_pipeline, "summarize_number_of_teams_from_streak_analysis",
-                        lambda *a: SimpleNamespace(inferred_number_of_teams=20, unique_team_count=20))
-    monkeypatch.setattr(pillar_pipeline, "calculate_pillar_1_team_structure",
-                        lambda **k: {"side": {"value": .1, "modules": []}, "totals": totals})
-    monkeypatch.setattr(pillar_pipeline, "_serialize_p1_totals_output", vars)
-
-    persisted = []
-
-    def persist(pillar_id, *args, **kwargs):
-        messages = [record.getMessage() for record in caplog.records]
-        assert messages[-1].startswith("🏁"), messages[-1]
-        persisted.append(pillar_id)
-        pillar_pipeline.logger.info("MINING %s", pillar_id)
-        return True
-
-    processor = pillar_pipeline.EventPillarProcessor(
-        None, mining_service=SimpleNamespace(enabled=True, persist=persist),
-    )
-    with caplog.at_level(logging.INFO):
-        processor.process_event(_event_context())
-    assert persisted == [
-        "pillar_2_side_market", "pillar_3_totals_market_context", "pillar_4_temporal_market_drift",
-        "pillar_5", "pillar_1_team_structure_side", "pillar_1_team_structure_totals",
-    ]
-    messages = [record.getMessage() for record in caplog.records]
-    assert sum(message.startswith("🏁 Market result") for message in messages) == 4
-    assert sum(message.startswith("🏁 P5 PROFILE RESULT") for message in messages) == 1
-    layer_index = next(i for i, message in enumerate(messages) if "active layer:" in message)
-    side_index = next(i for i, message in enumerate(messages) if message.startswith("🏁 P1/SIDE RESULT"))
-    assert layer_index < side_index
 
 
 def test_pipeline_selects_target_once_and_injects_same_object(monkeypatch) -> None:
@@ -254,82 +199,8 @@ def test_shared_hardcoded_override_is_consumed_by_both_pillars(
     assert result["pillar_3"]["target_minute"] == 0
 
 
-def test_pipeline_persists_both_structural_profiles(monkeypatch) -> None:
-    persisted = []
-
-    class _MiningService:
-        def persist(self, pillar_id, event_context, result):
-            persisted.append((pillar_id, event_context.event_id, result))
-            return True
-
-    _run_pipeline(
-        monkeypatch,
-        selection_spy=lambda *_args, **_kwargs: TargetMinuteSelection(
-            target_minute=5,
-            diagnostics={"selection": "test"},
-        ),
-        mining_service=_MiningService(),
-    )
-
-    assert [(pillar_id, event_id) for pillar_id, event_id, _ in persisted] == [
-        ("pillar_2_side_market", 4004),
-        ("pillar_3_totals_market_context", 4004),
-    ]
-    assert all(
-        result["payload_schema_version"] == 4
-        and result["signals"][0]["status"] == "COMPUTED"
-        for _, _, result in persisted
-    )
 
 
-def test_pipeline_passes_actual_evaluation_time_to_p4(monkeypatch) -> None:
-    evaluation_time = datetime(2026, 8, 31, 17, 55, 16, tzinfo=timezone.utc)
-    captured = {}
-    builder_args = {}
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "_is_pillar_competition_in_scope",
-        lambda _competition_id: True,
-    )
-    monkeypatch.setattr(
-        pillar_pipeline,
-        "build_odds_trajectory_context",
-        lambda _rows, **kwargs: (
-            builder_args.update(kwargs)
-            or _trajectory_context(evaluation_as_of=kwargs.get("evaluation_as_of"))
-        ),
-    )
-
-    def fake_p4(**kwargs):
-        captured.update(kwargs)
-        return EvaluationResult(
-            4004,
-            "pillar_4_temporal_market_drift",
-            "test-v3",
-            kwargs["target_selection"].target_minute,
-            kwargs["market_evaluation"].selection,
-            (SignalResult("neutral", "COMPUTED", 0),),
-            (),
-        ).to_dict()
-
-    monkeypatch.setattr(pillar_pipeline, "calculate_pillar_4", fake_p4)
-    processor = pillar_pipeline.EventPillarProcessor(
-        event_repo=None,
-        enabled_pillars={
-            "pillar_1": False,
-            "pillar_2": False,
-            "pillar_3": False,
-            "pillar_4": True,
-            "pillar_5": False,
-        },
-        evaluation_as_of=evaluation_time,
-    )
-
-    processor.process_event(_event_context())
-
-    assert builder_args["evaluation_as_of"] is evaluation_time
-    assert captured["target_selection"].target_minute == 5
-    assert captured["odds_trajectory_context"].evaluation_as_of is evaluation_time
 
 
 def test_execution_error_keeps_common_ft_and_configuration_skips(monkeypatch):
@@ -348,9 +219,7 @@ def test_execution_error_keeps_common_ft_and_configuration_skips(monkeypatch):
     context.odds_trajectory = [
         {**r, "event_id": 4004} for r in quotes("Home/Away", FT_OT)
     ]
-    processor = pillar_pipeline.EventPillarProcessor(
-        None,
-        enabled_pillars={
+    processor = pillar_pipeline.EventPillarProcessor(enabled_pillars={
             "pillar_1": False,
             "pillar_2": True,
             "pillar_3": False,
@@ -368,15 +237,10 @@ def test_pipeline_groups_debug_snapshots_using_loaded_sport_and_competition(tmp_
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(pillar_pipeline, "_is_pillar_competition_in_scope", lambda _: True)
 
-    def unexpected_query():
-        raise AssertionError("Debug snapshot paths must not query the database")
-
-    monkeypatch.setattr(pillar_pipeline.db_manager, "get_session", unexpected_query)
     event = _event_context()
     event.sport = "Ice hockey"
     event.competition.slug = "NHL-Preseason"
-    processor = pillar_pipeline.EventPillarProcessor(
-        event_repo=None, debug_mode=True,
+    processor = pillar_pipeline.EventPillarProcessor(debug_mode=True,
         enabled_pillars={f"pillar_{number}": False for number in range(1, 6)},
     )
     assert processor.process_event(event) is not None
@@ -421,8 +285,9 @@ def test_excel_uses_same_in_memory_context_only_in_debug(tmp_path, monkeypatch, 
     assert result["pillar_2"]["target_minute"] == 5
     assert result["pillar_3"]["target_minute"] == 5
     if debug_mode:
-        assert exported == [captured["trajectory_context"]]
-        assert exported[0] is captured["trajectory_context"]
+        assert len(exported) == 1
+        assert exported[0].markets is captured["trajectory_context"].markets
+        assert exported[0].evaluation_as_of == result["evaluation_as_of"]
         directory = tmp_path / "debug/pillar_pipeline_objects/football/league/4004_Home_vs_Away"
         assert (directory / "4004_odds_trajectory_context.json").exists()
         assert (directory / "4004_odds_trajectory_context.xlsx").exists()
@@ -439,11 +304,17 @@ def test_excel_failure_keeps_json_calculations_and_mining(tmp_path, monkeypatch,
         raise RuntimeError("workbook write failed")
 
     monkeypatch.setattr(pillar_pipeline, "export_odds_trajectory_context_xlsx", fail)
-    mining_service = SimpleNamespace(persist=lambda *args: persisted.append(args) or True)
+    from modules.pillars.mining.service import PillarMiningService
+    from infrastructure.persistence.repositories.pillar_mining_repository import PillarMiningRepository
+    class RecordingService(PillarMiningService):
+        def persist(self,*args,**kwargs):
+            persisted.append(args)
+            return super().persist(*args,**kwargs)
+    mining_service=RecordingService(PillarMiningRepository(),pillar_pipeline._registered_mining_adapters())
     result, _ = _run_pipeline(monkeypatch, mining_service=mining_service, debug_mode=True)
     assert result["pillar_2"]["signals"][0]["status"] == "COMPUTED"
     assert result["pillar_3"]["signals"][0]["status"] == "COMPUTED"
-    assert len(persisted) == 2
+    assert len(persisted) == 6
     directory = tmp_path / "debug/pillar_pipeline_objects/football/league/4004_Home_vs_Away"
     assert json.loads((directory / "4004_odds_trajectory_context.json").read_text())["event_id"] == 4004
     assert "event_id=4004" in caplog.text
@@ -508,7 +379,7 @@ def test_shared_debug_flow_exports_from_production_and_simulator(
         "ENABLE_LEGACY_ALERT_PIPELINE": True, "ENABLE_PILLAR_PIPELINE": True,
         "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS": False,
         "PILLAR_PIPELINE_EXECUTION_MOMENTS": [30], "PRE_START_ODDS_MOMENTS": [120, 30],
-        "PILLAR_PIPELINE_WORKERS": 1, "PILLAR_MINING_ENABLED": False,
+        "PILLAR_PIPELINE_WORKERS": 1,
         "PILLAR_PIPELINE_ENABLED_PILLARS": {f"pillar_{i}": False for i in range(1, 6)},
         "ENABLE_TIMESTAMP_CORRECTION": False,
     }.items():

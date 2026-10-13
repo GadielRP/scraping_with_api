@@ -8,7 +8,7 @@ Los umbrales y la política versionada de producto están centralizados en `Odds
 - `significant_change_min_magnitude_pct = 15.0`: magnitud mínima de cambio relativo respecto al ancla vigente (15%).
 - `significant_change_min_history_hours = 20.0`: historial mínimo requerido desde el primer tick válido hasta el kickoff (20 horas).
 - `significant_change_flash_reversal_minutes = 3.0`: ventana de confirmación para descartar reversiones transitorias (3 minutos).
-- `significant_change_min_price = 1.01`: precio mínimo admisible para la sanitización (`price >= 1.01`).
+- `significant_change_min_price = 1.01`: precio mínimo admisible para la sanitización (`price > 1.01`).
 - `significant_change_forced_moments = (5,)`: momentos clave no-live que ejecutan deliberadamente el flujo híbrido `/odds` → caché de líneas principales → `/historical-odds` con evaluación de cambios significativos.
 
 Estos umbrales se aplican individualmente a cada combinación bookmaker / mercado / outcome / jugador.
@@ -23,22 +23,24 @@ El detector (`OddspapiHistoricalOddsChangeDetector`) recibe la conversión horar
 - La reversión debe volver a una diferencia estrictamente menor al umbral antes de completar la ventana. Revertir exactamente al final no invalida el candidato. Los microticks en la nueva zona no requieren precio idéntico.
 - Un tick se considera vigente hasta el siguiente válido; no se exige una frecuencia de actualizaciones para confirmar permanencia.
 - En el tramo posterior a `kickoff - ventana`, solo se evalúa el último tick válido hasta kickoff. Se emite sin confirmación si cambia al menos el umbral respecto al ancla vigente. No se registra un cierre estable automáticamente.
-- El reader combina los momentos canónicos configurados (`as_of_targets`) junto con los cambios significativos detectados en una sola pasada en memoria, deduplicando por timestamp de recolección y precio. Si no hay cambios significativos o el historial es insuficiente (< 20 horas), se conservan íntegros los momentos canónicos.
-- Los cambios dinámicos conservan microsegundos en `collected_at`, fecha del proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`. La consulta analítica sigue devolviendo minutos enteros por compatibilidad.
+- Los momentos canónicos se seleccionan del historial válido completo antes de reducir los cambios significativos. Una reversión breve o un cambio pequeño siguen siendo precios legítimos en su checkpoint.
+- El reader combina los momentos canónicos configurados (`as_of_targets`) junto con los cambios significativos detectados en una sola pasada en memoria, conservando asociaciones de selección distintas; el repositorio deduplica ticks por fuente y valores materiales. Si no hay cambios significativos o el historial es insuficiente (< 20 horas), se conservan íntegros los momentos canónicos.
+- Los cambios dinámicos conservan microsegundos en `source_collected_at`, momento seleccionado en `targetAt`, fecha del proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`. La consulta conserva por separado minutos de observación y minutos de mercado.
 
 Los snapshots ordinarios de apertura y cuota actual continúan existiendo; esta estrategia combina la proyección canónica fija con la detección adaptativa de eventos intermedios.
 
 ## Persistencia y coste
 
-La deduplicación conserva todos los timestamps de proveedor por identidad de
-cuota y segundo, incluido el comodín de timestamp ausente del contrato previo.
-Una consulta proyectada, filtrada por evento, proveedor e intervalo entrante,
-sustituye las dos consultas anteriores. Sus filas se leen en bloques y las
-claves se actualizan en memoria mientras se escribe el lote.
+La deduplicación histórica usa identidad de cuota, timestamp completo del proveedor,
+precio, límite y cantidad del exchange. No usa momentos teóricos ni comodines NULL.
+Una consulta filtrada por evento, proveedor, instrumentos e intervalo de fuente
+carga las claves relevantes. El lote actual actualiza esas claves mientras escribe.
 
-No hay cambios DDL. La idempotencia cubre reejecuciones secuenciales de
-`momentQuotes`; no añade exclusión entre transacciones concurrentes ni elimina
-duplicados históricos. Los snapshots ordinarios conservan su política previa.
+`collected_at` siempre es el instante UTC real del lote. `source_collected_at` conserva
+el momento del proveedor o NULL. Un mismo tick seleccionado para varios objetivos se
+persiste una vez. Los actuales de distintas adquisiciones siguen siendo observaciones
+independientes. La idempotencia cubre reejecuciones secuenciales; no se añade un índice
+ni exclusión entre transacciones concurrentes. No se corrigen filas históricas.
 
 La sanitización conserva referencias a los ticks originales; los reductores
 de apertura/cierre y momentos ya no copian listas completas. El detector

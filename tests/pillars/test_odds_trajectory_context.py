@@ -6,6 +6,8 @@ from decimal import Decimal
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
 from modules.pillars.trajectory_selection import select_target_minute
 
+START = datetime(2026, 1, 1, 10, 1, tzinfo=timezone.utc)
+
 
 def _make_rows() -> list[dict[str, object]]:
     return [
@@ -62,7 +64,9 @@ def _make_rows() -> list[dict[str, object]]:
 
 
 def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
+    )
 
     filtered = context.filter_by_bookie_ids({1})
 
@@ -70,12 +74,12 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
     assert filtered.target_minutes_present == [1]
     assert filtered.missing_target_minutes == []
 
-    original_bookies = (
-        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
-    )
-    filtered_bookies = (
-        filtered.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
-    )
+    original_bookies = context.markets["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ].bookies
+    filtered_bookies = filtered.markets["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ].bookies
 
     assert set(original_bookies.keys()) == {
         "1:sofascore:single:0",
@@ -90,7 +94,9 @@ def test_filter_by_bookie_ids_keeps_only_requested_bookie() -> None:
 
 
 def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
+    )
 
     meta = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -104,7 +110,9 @@ def test_meta_by_minute_exposes_source_collected_at_as_changed_at() -> None:
 
 
 def test_persisted_snapshot_instants_remain_aware_utc_in_domain() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
+    )
 
     snapshot = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -118,7 +126,9 @@ def test_persisted_snapshot_instants_remain_aware_utc_in_domain() -> None:
 
 
 def test_choice_context_preserves_main_line() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
+    )
 
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -128,8 +138,9 @@ def test_choice_context_preserves_main_line() -> None:
 
     assert choice.main_line is True
     assert (
-        context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]
-        ["__default__"]["bookies"]["1:sofascore:single:0"]["choices"]["1"]["main_line"]
+        context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"][
+            "__default__"
+        ]["bookies"]["1:sofascore:single:0"]["choices"]["1"]["main_line"]
         is True
     )
 
@@ -149,17 +160,27 @@ def test_exchange_size_is_kept_in_exchange_snapshot_metadata_only() -> None:
         }
     ]
 
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        rows, target_minutes_expected=[1], event_starts_at=START
+    )
     market_line = context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
-    regular = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]["bookies"]["1:sofascore:single:0"]
-    exchange = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]["bookies"]["9:oddspapi:back:0"]
+    regular = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ]["bookies"]["1:sofascore:single:0"]
+    exchange = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ]["bookies"]["9:oddspapi:back:0"]
 
-    assert market_line.bookies["9:oddspapi:back:0"].choices["1"].meta_by_minute[1].exchange_size == Decimal("25.500")
+    assert market_line.bookies["9:oddspapi:back:0"].choices["1"].meta_by_minute[
+        1
+    ].exchange_size == Decimal("25.500")
     assert "exchange_side" not in regular
     assert "exchange_level" not in regular
     assert exchange["exchange_side"] == "back"
     assert exchange["exchange_level"] == 0
-    assert exchange["choices"]["1"]["meta_by_minute"][1]["exchange_size"] == Decimal("25.500")
+    assert exchange["choices"]["1"]["meta_by_minute"][1]["exchange_size"] == Decimal(
+        "25.500"
+    )
 
 
 def test_minute_maps_are_serialized_in_descending_order() -> None:
@@ -168,8 +189,8 @@ def test_minute_maps_are_serialized_in_descending_order() -> None:
         rows.append(
             {
                 **_make_rows()[0],
-                "target_minute": minute,
-                "minutes_before_start": minute,
+                "collected_at": START - timedelta(minutes=minute),
+                "source_collected_at": START - timedelta(minutes=minute),
                 "snapshot_id": 2000 + minute,
                 "quote_id": 3000 + minute,
                 "choice_id": 4000 + minute,
@@ -178,8 +199,7 @@ def test_minute_maps_are_serialized_in_descending_order() -> None:
         )
 
     context = build_odds_trajectory_context(
-        rows,
-        target_minutes_expected=[120, 30, 5, 1, -5],
+        rows, target_minutes_expected=[120, 30, 5, 1, -5], event_starts_at=START
     )
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -191,8 +211,12 @@ def test_minute_maps_are_serialized_in_descending_order() -> None:
     assert list(choice.odds_values) == [120, 30, 5, 1, -5]
 
 
-def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches() -> None:
-    context = build_odds_trajectory_context(_make_rows(), target_minutes_expected=[1])
+def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches() -> (
+    None
+):
+    context = build_odds_trajectory_context(
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
+    )
 
     filtered = context.filter_by_bookie_ids({999})
 
@@ -202,7 +226,9 @@ def test_filter_by_bookie_ids_returns_unavailable_context_when_no_bookie_matches
     assert filtered.missing_target_minutes == [1]
 
 
-def test_market_group_and_period_filters_still_preserve_shape_and_availability() -> None:
+def test_market_group_and_period_filters_still_preserve_shape_and_availability() -> (
+    None
+):
     rows = _make_rows() + [
         {
             "event_id": 1,
@@ -252,9 +278,13 @@ def test_market_group_and_period_filters_still_preserve_shape_and_availability()
         },
     ]
 
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
+    context = build_odds_trajectory_context(
+        rows, target_minutes_expected=[1], event_starts_at=START
+    )
 
-    filtered = context.filter_by_market_groups({"1X2"}).filter_by_market_period({"Full Time"})
+    filtered = context.filter_by_market_groups({"1X2"}).filter_by_market_period(
+        {"Full Time"}
+    )
 
     assert filtered.available is True
     assert set(filtered.markets.keys()) == {"1X2"}
@@ -283,8 +313,12 @@ def test_multi_source_exchange_series_do_not_collide() -> None:
             )
             quote_id += 1
 
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[1])
-    bookies = context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"].bookies
+    context = build_odds_trajectory_context(
+        rows, target_minutes_expected=[1], event_starts_at=START
+    )
+    bookies = context.markets["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ].bookies
 
     assert set(bookies) == {
         "9:oddspapi:back:0",
@@ -299,8 +333,7 @@ def test_multi_source_exchange_series_do_not_collide() -> None:
         503,
     }
     assert {
-        bookie.choices["1"].meta_by_minute[1].quote_id
-        for bookie in bookies.values()
+        bookie.choices["1"].meta_by_minute[1].quote_id for bookie in bookies.values()
     } == {500, 501, 502, 503}
 
 
@@ -333,6 +366,7 @@ def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> Non
         rows,
         target_minutes_expected=[5],
         tolerance_minutes=0,
+        event_starts_at=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
     )
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -343,11 +377,11 @@ def test_choice_keeps_all_snapshots_and_projects_best_configured_target() -> Non
     assert [snapshot.snapshot_id for snapshot in choice.snapshots] == [2101, 2102]
     assert choice.odds_values == {5: Decimal("2.200")}
     assert choice.meta_by_minute[5].snapshot_id == 2102
-    assert choice.snapshots[0].minutes_before_start == Decimal("20.5041666667")
+    assert choice.snapshots[0].minutes_before_start == Decimal("20")
     assert choice.snapshots[0].source_limit == Decimal("100.500")
-    serialized = context.to_dict()["markets"]["1X2"]["Full Time"][
-        "1X2 Full Time"
-    ]["__default__"]["bookies"]["2:oddspapi:single:0"]["choices"]["1"]
+    serialized = context.to_dict()["markets"]["1X2"]["Full Time"]["1X2 Full Time"][
+        "__default__"
+    ]["bookies"]["2:oddspapi:single:0"]["choices"]["1"]
     assert len(serialized["snapshots"]) == 2
     assert serialized["snapshots"][1]["snapshot_id"] == 2102
     assert "source_minutes_before_start" not in serialized["snapshots"][0]
@@ -364,14 +398,14 @@ def test_target_projection_uses_only_snapshots_available_inside_shared_window() 
             "snapshot_id": snapshot_id,
             "odds_value": odds,
             "collected_at": nominal + timedelta(seconds=seconds),
-            "source_collected_at": nominal + timedelta(seconds=seconds - 5),
+            "source_collected_at": None,
             "observed_minutes_before_start": 5,
             "trajectory_minutes_before_start": str(5 - seconds / 60),
         }
         for snapshot_id, odds, seconds in (
-            (8101, "1.901", 15),   # inside tolerance and available by evaluation
-            (8102, "1.902", 45),   # also eligible, but farther from the target
-            (8103, "1.903", 90),   # inside tolerance, but after evaluation_as_of
+            (8101, "1.901", 15),  # inside tolerance and available by evaluation
+            (8102, "1.902", 45),  # also eligible, but farther from the target
+            (8103, "1.903", 90),  # inside tolerance, but after evaluation_as_of
             (8104, "1.904", 181),  # outside the configured tolerance
         )
     ]
@@ -396,7 +430,7 @@ def test_target_projection_uses_only_snapshots_available_inside_shared_window() 
         evaluation_minute=5,
     )
 
-    assert len(choice.snapshots) == 4  # Keep full history for P4 trajectories.
+    assert len(choice.snapshots) == 2  # Only observations known by the boundary.
     assert context.evaluation_as_of == evaluation_as_of
     assert choice.odds_values == {5: Decimal("1.901")}
     assert choice.meta_by_minute[5].snapshot_id == 8101
@@ -434,6 +468,7 @@ def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> Non
         rows,
         target_minutes_expected=[5],
         tolerance_minutes=0,
+        event_starts_at=datetime(2026, 5, 19, 17, 5, tzinfo=timezone.utc),
     )
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -449,16 +484,15 @@ def test_projection_prefers_fresher_provider_tick_before_ingestion_time() -> Non
 def test_snapshot_minutes_and_target_projection_use_independent_time_axes() -> None:
     row = {
         **_make_rows()[0],
-        "observed_minutes_before_start": 5,
+        "collected_at": START - timedelta(minutes=5),
+        "source_collected_at": START - timedelta(minutes=20, seconds=30.25),
         "trajectory_minutes_before_start": "20.5041666667",
         "minutes_before_start": None,
         "odds_value": "1.875",
     }
 
     context = build_odds_trajectory_context(
-        [row],
-        target_minutes_expected=[5],
-        tolerance_minutes=0,
+        [row], target_minutes_expected=[5], tolerance_minutes=0, event_starts_at=START
     )
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -466,31 +500,10 @@ def test_snapshot_minutes_and_target_projection_use_independent_time_axes() -> N
         .choices["1"]
     )
 
-    assert choice.snapshots[0].minutes_before_start == Decimal("20.5041666667")
+    assert choice.snapshots[0].minutes_before_start == Decimal(
+        "20.50416666666666666666666667"
+    )
     assert choice.odds_values == {5: Decimal("1.875")}
-    assert choice.meta_by_minute[5].minutes_before_start == 5
-
-
-def test_previous_payload_prefers_source_minutes_for_snapshot_timeline() -> None:
-    row = {
-        **_make_rows()[0],
-        "minutes_before_start": 5,
-        "source_minutes_before_start": "20.25",
-        "odds_value": "1.875",
-    }
-
-    context = build_odds_trajectory_context(
-        [row],
-        target_minutes_expected=[5],
-        tolerance_minutes=0,
-    )
-    choice = (
-        context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
-        .bookies["1:sofascore:single:0"]
-        .choices["1"]
-    )
-
-    assert choice.snapshots[0].minutes_before_start == Decimal("20.25")
     assert choice.meta_by_minute[5].minutes_before_start == 5
 
 
@@ -499,7 +512,8 @@ def test_evaluation_minute_excludes_later_configured_targets() -> None:
         {
             **_make_rows()[0],
             "snapshot_id": 3000 + minute,
-            "minutes_before_start": minute,
+            "collected_at": START - timedelta(minutes=minute),
+            "source_collected_at": START - timedelta(minutes=minute),
             "odds_value": str(Decimal("2") + Decimal(minute) / 100),
         }
         for minute in (5, 0, -5)
@@ -510,6 +524,7 @@ def test_evaluation_minute_excludes_later_configured_targets() -> None:
         target_minutes_expected=[5, 0, -5],
         tolerance_minutes=0,
         evaluation_minute=5,
+        event_starts_at=START,
     )
     choice = (
         context.markets["1X2"]["Full Time"]["1X2 Full Time"]["__default__"]
@@ -525,8 +540,7 @@ def test_evaluation_minute_excludes_later_configured_targets() -> None:
 
 def test_filtered_context_copies_snapshot_lists() -> None:
     context = build_odds_trajectory_context(
-        _make_rows(),
-        target_minutes_expected=[1],
+        _make_rows(), target_minutes_expected=[1], event_starts_at=START
     )
     filtered = context.filter_by_bookie_ids({1})
     original_choice = (

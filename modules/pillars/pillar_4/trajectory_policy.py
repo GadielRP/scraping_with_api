@@ -17,8 +17,12 @@ from shared.temporal import as_utc
 
 from .models import P4ExtractionResult, P4SeriesInput
 from modules.pillars.trajectory_sampling import (
-    TrajectoryPoint, TrajectoryPointValue, TrajectorySamplingPolicy,
-    select_line_checkpoints, timestamp_value, minutes_before_start,
+    TrajectoryPoint,
+    TrajectoryPointValue,
+    TrajectorySamplingPolicy,
+    select_line_checkpoints,
+    timestamp_value,
+    minutes_before_start,
 )
 from .periods import (
     SUPPORTED_BOOKIE_IDS,
@@ -66,7 +70,9 @@ def _series_id(base: str, view: str, value_type: str) -> str:
     return f"{base}_{_slug(view)}_{_slug(value_type)}"
 
 
-def _derived_points(points: Iterable[TrajectoryPoint], value_type: str) -> tuple[TrajectoryPoint, ...]:
+def _derived_points(
+    points: Iterable[TrajectoryPoint], value_type: str
+) -> tuple[TrajectoryPoint, ...]:
     if value_type == "ODDS_PRICE":
         return tuple(points)
     derived: list[TrajectoryPoint] = []
@@ -154,7 +160,8 @@ def _line_series(
     for key, related in sorted(groups.items(), key=lambda item: str(item[0])):
         selected, conflicts = select_line_checkpoints(
             ((item["line_value"], item["projected"]) for item in related),
-            target_minute, expected_targets,
+            target_minute,
+            expected_targets,
         )
         label = "|".join(str(part) for part in key)
         ambiguous.extend(
@@ -169,7 +176,7 @@ def _line_series(
                 key=lambda point: timestamp_value(point.availability_at),
             )
             availability = anchor.availability_at
-            effective = availability
+            effective = anchor.effective_at
             points.append(
                 TrajectoryPoint(
                     point_id=f"LINE_TARGET_{target}",
@@ -187,10 +194,7 @@ def _line_series(
                         else "CHECKPOINT"
                     ),
                     target_minute=target,
-                    distance_from_target_minutes=abs(
-                        minutes_before_start(event_start, availability)
-                        - Decimal(target)
-                    ),
+                    distance_from_target_minutes=anchor.distance_from_target_minutes,
                 )
             )
         if not any(point.target_minute == target_minute for point in points):
@@ -283,7 +287,8 @@ def extract_p4_trajectory_inputs(
         observed_as_of = as_utc(observed_as_of, field_name="evaluation time")
     sampling = TrajectorySamplingPolicy.for_context(
         context or OddsTrajectoryContext(False, event_context.event_id, [], [], []),
-        target, start,
+        target,
+        start,
     )
     target_window = sampling.target_window
     nominal_target_as_of = target_window.nominal_at
@@ -365,9 +370,13 @@ def extract_p4_trajectory_inputs(
                                 exchange_level=bookie.exchange_level,
                                 quote_id=choice.quote_id,
                             )
-                            sample = prepared.pop((id(market_line), id(bookie), id(choice)))
+                            sample = prepared.pop(
+                                (id(market_line), id(bookie), id(choice))
+                            )
                             safe_points, projected = sample.points, sample.checkpoints
-                            invalid.extend(f"{base}:{issue}" for issue in sample.invalid)
+                            invalid.extend(
+                                f"{base}:{issue}" for issue in sample.invalid
+                            )
                             excluded_future += sample.excluded_future_count
                             if line_value is not None and projected:
                                 line_observations.append(
@@ -445,7 +454,8 @@ def extract_p4_trajectory_inputs(
                                             ),
                                             "first_after_cutoff_at": (
                                                 sample.first_after_cutoff_at.isoformat()
-                                                if sample.first_after_cutoff_at else None
+                                                if sample.first_after_cutoff_at
+                                                else None
                                             ),
                                         }
                                     )

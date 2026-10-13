@@ -113,8 +113,30 @@ def test_event_scope_precedes_complete_snapshot_history(monkeypatch):
     assert "trajectory_minutes_before_start" in session.statement
     assert "COALESCE(" in session.statement
     assert "canonical.starts_at - snapshots.collected_at" in session.statement
+    ordering = session.statement.rsplit("ORDER BY", 1)[1]
+    assert ordering.index(
+        "COALESCE(snapshots.source_collected_at, snapshots.collected_at)"
+    ) < ordering.index("snapshots.collected_at,\n")
+    canonical_projection = session.statement.split("canonical_quotes AS (", 1)[1].split(
+        "FROM source_mapped", 1
+    )[0]
+    for column in ("source_market_id", "source_outcome_id", "bookmaker_outcome_id"):
+        assert f"source_mapped.{column}," in canonical_projection
     assert session.params["event_ids"] == [1]
     assert set(session.params) == {"event_ids"}
+
+
+def test_source_identifiers_survive_row_conversion_and_serialization():
+    source_identity = {
+        "source_market_id": "market-12",
+        "source_outcome_id": "outcome-34",
+        "bookmaker_outcome_id": "bookmaker-56",
+    }
+    point = OddsTrajectoryRepository._from_row({"event_id": 1, **source_identity})
+    payload = point.to_dict()
+    for name, value in source_identity.items():
+        assert getattr(point, name) == value
+        assert payload[name] == value
 
 
 class _FailingSession:

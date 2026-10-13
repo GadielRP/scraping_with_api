@@ -9,7 +9,7 @@ from infrastructure.settings import Config
 from modules.pillars.trajectory_selection import (
     build_snapshot_target_windows,
     effective_snapshot_timestamp,
-    snapshot_target_rank,
+    select_checkpoint_snapshots,
 )
 from shared.temporal import as_utc
 
@@ -108,21 +108,6 @@ def _datetime_sort_value(value: Optional[datetime]) -> float:
         return float("-inf")
 
 
-def _candidate_rank(meta: "OddsPointMeta") -> tuple[float, float, float, int]:
-    if meta.distance_from_target is None or meta.collected_at is None:
-        return (float("inf"), float("inf"), float("inf"), 0)
-    return snapshot_target_rank(
-        distance_seconds=float(meta.distance_from_target * Decimal(60)),
-        available_at=meta.collected_at,
-        source_collected_at=meta.changed_at,
-        snapshot_id=meta.snapshot_id,
-    )
-
-
-def _is_better_candidate(candidate: "OddsPointMeta", current: "OddsPointMeta") -> bool:
-    return _candidate_rank(candidate) < _candidate_rank(current)
-
-
 def _normalize_line_value_key(line_value: Optional[str]) -> str:
     if line_value is None:
         return "__default__"
@@ -135,13 +120,21 @@ def _normalize_market_period_key(value: str) -> str:
     return " ".join(str(value).replace("-", " ").casefold().split())
 
 
-def _is_exchange_bookie(bookie_name: Optional[str], exchange_side: Optional[str]) -> bool:
+def _is_exchange_bookie(
+    bookie_name: Optional[str], exchange_side: Optional[str]
+) -> bool:
     """Identify exchange bookmakers from persisted quote/bookie references."""
     return bool(exchange_side) or "exchange" in str(bookie_name or "").casefold()
 
 
-def _normalize_expected_minutes(target_minutes_expected: Optional[List[int]]) -> List[int]:
-    source = Config.PRE_START_ODDS_MOMENTS if target_minutes_expected is None else target_minutes_expected
+def _normalize_expected_minutes(
+    target_minutes_expected: Optional[List[int]],
+) -> List[int]:
+    source = (
+        Config.PRE_START_ODDS_MOMENTS
+        if target_minutes_expected is None
+        else target_minutes_expected
+    )
     normalized: List[int] = []
     seen: set[int] = set()
     for item in source:
@@ -171,24 +164,6 @@ def _row_val(row: Any, key: str, default: Any = None) -> Any:
     return getattr(row, key, default)
 
 
-def _resolve_snapshot_minutes(
-    row: Any,
-) -> tuple[Optional[int], Optional[Decimal]]:
-    """Separate observation checkpoints from the provider trajectory axis."""
-    observed = _coerce_int(_row_val(row, "observed_minutes_before_start"))
-    trajectory = _coerce_decimal(_row_val(row, "trajectory_minutes_before_start"))
-
-    # Keep direct formatter callers using the former repository payload valid.
-    legacy_minutes = _row_val(row, "minutes_before_start")
-    if observed is None:
-        observed = _coerce_int(legacy_minutes)
-    if trajectory is None:
-        trajectory = _coerce_decimal(_row_val(row, "source_minutes_before_start"))
-    if trajectory is None:
-        trajectory = _coerce_decimal(legacy_minutes)
-    return observed, trajectory
-
-
 def _snapshot_sort_key(snapshot: "OddsSnapshotPoint") -> tuple[float, float, float]:
     effective_at = (
         effective_snapshot_timestamp(
@@ -199,9 +174,7 @@ def _snapshot_sort_key(snapshot: "OddsSnapshotPoint") -> tuple[float, float, flo
         else None
     )
     snapshot_id = (
-        float("inf")
-        if snapshot.snapshot_id is None
-        else float(snapshot.snapshot_id)
+        float("inf") if snapshot.snapshot_id is None else float(snapshot.snapshot_id)
     )
     return (
         _datetime_sort_value(effective_at),
@@ -221,7 +194,9 @@ def _sort_choice_minute_maps_descending(
                     for bookie in market_line.bookies.values():
                         for choice in bookie.choices.values():
                             choice.snapshots.sort(key=_snapshot_sort_key)
-                            ordered_minutes = sorted(choice.meta_by_minute, reverse=True)
+                            ordered_minutes = sorted(
+                                choice.meta_by_minute, reverse=True
+                            )
                             ordered_meta = {
                                 minute: choice.meta_by_minute[minute]
                                 for minute in ordered_minutes
@@ -307,9 +282,12 @@ class OddsTrajectoryContext:
     target_minutes_expected: List[int]
     target_minutes_present: List[int]
     missing_target_minutes: List[int]
-    markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = field(default_factory=dict)
+    markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = (
+        field(default_factory=dict)
+    )
     evaluation_as_of: Optional[datetime] = None
     market_index: dict = field(default_factory=dict, repr=False, compare=False)
+    availability_diagnostics: dict = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a compact exchange-aware representation of this context."""
@@ -320,6 +298,7 @@ class OddsTrajectoryContext:
             "target_minutes_present": list(self.target_minutes_present),
             "missing_target_minutes": list(self.missing_target_minutes),
             "evaluation_as_of": self.evaluation_as_of,
+            "availability_diagnostics": self.availability_diagnostics,
             "markets": {
                 market_group: {
                     market_period: {
@@ -354,7 +333,8 @@ class OddsTrajectoryContext:
         filtered_markets = _filter_market_tree(
             self.markets,
             keep_group=lambda _group: True,
-            keep_period=lambda period: _normalize_market_period_key(period) in allowed_set,
+            keep_period=lambda period: _normalize_market_period_key(period)
+            in allowed_set,
         )
         return _build_filtered_context(self, filtered_markets)
 
@@ -363,9 +343,7 @@ class OddsTrajectoryContext:
         allowed_bookie_ids: set[int] | list[int] | tuple[int, ...] = (1,),
     ) -> OddsTrajectoryContext:
         allowed_set = {
-            int(bookie_id)
-            for bookie_id in allowed_bookie_ids
-            if bookie_id is not None
+            int(bookie_id) for bookie_id in allowed_bookie_ids if bookie_id is not None
         }
         filtered_markets = _filter_market_tree(
             self.markets,
@@ -377,13 +355,17 @@ class OddsTrajectoryContext:
 
 
 def _filter_market_tree(
-    source_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
+    source_markets: Dict[
+        str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]
+    ],
     *,
     keep_group: Callable[[str], bool],
     keep_period: Callable[[str], bool] | None = None,
     keep_bookie: Callable[[BookieOddsTrajectory], bool] | None = None,
 ) -> Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]]:
-    filtered_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]] = {}
+    filtered_markets: Dict[
+        str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]
+    ] = {}
 
     for group, periods in source_markets.items():
         if not keep_group(group):
@@ -471,7 +453,9 @@ def _market_tree_has_snapshots(
 
 def _build_filtered_context(
     source: OddsTrajectoryContext,
-    filtered_markets: Dict[str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]],
+    filtered_markets: Dict[
+        str, Dict[str, Dict[str, Dict[str, MarketLineOddsTrajectory]]]
+    ],
 ) -> OddsTrajectoryContext:
     if not filtered_markets:
         return OddsTrajectoryContext(
@@ -493,9 +477,7 @@ def _build_filtered_context(
                             present_minutes.update(choice.odds_values.keys())
 
     target_minutes_present = [
-        minute
-        for minute in source.target_minutes_expected
-        if minute in present_minutes
+        minute for minute in source.target_minutes_expected if minute in present_minutes
     ]
     missing_target_minutes = [
         minute
@@ -512,6 +494,7 @@ def _build_filtered_context(
         target_minutes_present=target_minutes_present,
         missing_target_minutes=missing_target_minutes,
         evaluation_as_of=source.evaluation_as_of,
+        availability_diagnostics=source.availability_diagnostics,
         markets=filtered_markets,
     )
 
@@ -705,10 +688,26 @@ def _get_choice_container(
     ):
         choice = ChoiceOddsTrajectory(
             choice_name=choice.choice_name,
-            choice_id=choice_id if choice.choice_id is None and choice_id is not None else choice.choice_id,
-            quote_id=quote_id if choice.quote_id is None and quote_id is not None else choice.quote_id,
-            initial_odds=initial_odds if choice.initial_odds is None and initial_odds is not None else choice.initial_odds,
-            main_line=main_line if choice.main_line is None and main_line is not None else choice.main_line,
+            choice_id=(
+                choice_id
+                if choice.choice_id is None and choice_id is not None
+                else choice.choice_id
+            ),
+            quote_id=(
+                quote_id
+                if choice.quote_id is None and quote_id is not None
+                else choice.quote_id
+            ),
+            initial_odds=(
+                initial_odds
+                if choice.initial_odds is None and initial_odds is not None
+                else choice.initial_odds
+            ),
+            main_line=(
+                main_line
+                if choice.main_line is None and main_line is not None
+                else choice.main_line
+            ),
             odds_values=choice.odds_values,
             meta_by_minute=choice.meta_by_minute,
             snapshots=choice.snapshots,
@@ -729,8 +728,8 @@ def build_odds_trajectory_context(
     """Build one full history and causally eligible configured-minute projections.
 
     Raw snapshots remain available for trajectory calculations. Target
-    projections are selected here with the same target-window and ranking
-    policy used by P4, so each pillar interprets timestamps consistently.
+    Source states and nearby missing-source observations use the same selector
+    as P4. Nonempty histories require the actual event start to anchor targets.
     """
     expected_minutes = _normalize_expected_minutes(target_minutes_expected)
     tolerance = _normalize_tolerance(tolerance_minutes)
@@ -781,11 +780,31 @@ def build_odds_trajectory_context(
     event_id: Optional[int] = None
     present_minutes: set[int] = set()
     available = False
+    availability_diagnostics = {"unknown_availability": 0, "after_evaluation_as_of": 0}
+
+    if normalized_start is None:
+        raise ValueError("event_starts_at is required to reconstruct checkpoints")
 
     for row in odds_trajectory:
         if row is None:
             continue
 
+        availability = _coerce_snapshot_instant(
+            _row_val(row, "collected_at"), field_name="snapshot observation time"
+        )
+        source_at = _coerce_snapshot_instant(
+            _row_val(row, "source_collected_at"), field_name="snapshot source time"
+        )
+        if normalized_as_of is not None:
+            if availability is None:
+                availability_diagnostics["unknown_availability"] += 1
+                continue
+            if availability > normalized_as_of:
+                availability_diagnostics["after_evaluation_as_of"] += 1
+                continue
+            if source_at is not None and source_at > normalized_as_of:
+                availability_diagnostics["after_evaluation_as_of"] += 1
+                continue
         market_group = _coerce_text(_row_val(row, "market_group"))
         market_period = _coerce_text(_row_val(row, "market_period"))
         market_name = _coerce_text(_row_val(row, "market_name"))
@@ -810,7 +829,9 @@ def build_odds_trajectory_context(
         bookie_name = _coerce_text(_row_val(row, "bookie_name")) or "__unknown__"
         bookie_id = _coerce_int(_row_val(row, "bookie_id"))
         source = (_coerce_text(_row_val(row, "source")) or "unknown").lower()
-        exchange_side = (_coerce_text(_row_val(row, "exchange_side")) or "").lower() or None
+        exchange_side = (
+            _coerce_text(_row_val(row, "exchange_side")) or ""
+        ).lower() or None
         exchange_level = _coerce_int(_row_val(row, "exchange_level")) or 0
         bookie_identity = str(bookie_id) if bookie_id is not None else bookie_name
         bookie_key = (
@@ -850,19 +871,10 @@ def build_odds_trajectory_context(
 
         quote_id = _coerce_int(_row_val(row, "quote_id"))
         snapshot_id = _coerce_int(_row_val(row, "snapshot_id"))
-        collected_at = _coerce_snapshot_instant(
-            _row_val(row, "collected_at"),
-            field_name="market_choice_snapshots.collected_at",
-        )
-        source_collected_at = _coerce_snapshot_instant(
-            _row_val(row, "source_collected_at"),
-            field_name="market_choice_snapshots.source_collected_at",
-        )
-        (
-            observed_minutes_before_start,
-            trajectory_minutes_before_start,
-        ) = _resolve_snapshot_minutes(row)
-        if normalized_start is not None and collected_at is not None:
+        collected_at = availability
+        source_collected_at = source_at
+        trajectory_minutes_before_start = None
+        if collected_at is not None:
             effective_at = effective_snapshot_timestamp(
                 collected_at=collected_at,
                 source_collected_at=source_collected_at,
@@ -885,44 +897,45 @@ def build_odds_trajectory_context(
         choice.snapshots.append(snapshot)
         available = True
 
-        if observed_minutes_before_start is None and not target_windows:
-            continue
-        for target_minute in projectable_minutes:
-            if target_windows:
-                window = target_windows[target_minute]
-                if not window.contains(collected_at):
-                    continue
-                assert collected_at is not None
-                distance_from_target = Decimal(
-                    str(abs((collected_at - window.nominal_at).total_seconds()))
-                ) / Decimal(60)
-            else:
-                distance_minutes = abs(observed_minutes_before_start - target_minute)
-                if distance_minutes > tolerance:
-                    continue
-                distance_from_target = Decimal(distance_minutes)
-            meta = OddsPointMeta(
-                quote_id=quote_id,
-                snapshot_id=snapshot_id,
-                collected_at=collected_at,
-                changed_at=source_collected_at,
-                minutes_before_start=observed_minutes_before_start,
-                target_minute=target_minute,
-                distance_from_target=distance_from_target,
-                exchange_size=(
-                    exchange_size
-                    if _is_exchange_bookie(bookie_name, exchange_side)
-                    else None
-                ),
-            )
-            existing_meta = choice.meta_by_minute.get(target_minute)
-            if (
-                existing_meta is None
-                or _is_better_candidate(meta, existing_meta)
-            ):
-                choice.odds_values[target_minute] = odds_value
-                choice.meta_by_minute[target_minute] = meta
-                present_minutes.add(target_minute)
+    for periods in markets.values():
+        for names in periods.values():
+            for lines in names.values():
+                for line in lines.values():
+                    for bookie in line.bookies.values():
+                        for choice in bookie.choices.values():
+                            selected = select_checkpoint_snapshots(
+                                choice.snapshots, target_windows
+                            )
+                            for target, snapshot in selected.items():
+                                collected = snapshot.collected_at
+                                reference = snapshot.source_collected_at or collected
+                                observed_minutes = (
+                                    normalized_start - collected
+                                ).total_seconds() / 60
+                                distance_seconds = abs(
+                                    (
+                                        reference - target_windows[target].nominal_at
+                                    ).total_seconds()
+                                )
+                                choice.odds_values[target] = snapshot.odds_value
+                                choice.meta_by_minute[target] = OddsPointMeta(
+                                    quote_id=snapshot.quote_id,
+                                    snapshot_id=snapshot.snapshot_id,
+                                    collected_at=collected,
+                                    changed_at=snapshot.source_collected_at,
+                                    minutes_before_start=int(round(observed_minutes)),
+                                    target_minute=target,
+                                    distance_from_target=Decimal(str(distance_seconds))
+                                    / Decimal(60),
+                                    exchange_size=(
+                                        snapshot.exchange_size
+                                        if _is_exchange_bookie(
+                                            bookie.bookie_name, bookie.exchange_side
+                                        )
+                                        else None
+                                    ),
+                                )
+                                present_minutes.add(target)
 
     _sort_choice_minute_maps_descending(markets)
     target_minutes_present = [
@@ -934,6 +947,7 @@ def build_odds_trajectory_context(
 
     return OddsTrajectoryContext(
         available=available,
+        availability_diagnostics=availability_diagnostics,
         event_id=event_id,
         target_minutes_expected=expected_minutes,
         target_minutes_present=target_minutes_present,
