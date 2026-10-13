@@ -318,7 +318,7 @@ def observe_operation(name):
     with _LOCK:
         _OPERATIONS[key] = operation
         _STATE['active_operations'] = [dict(item) for item in _OPERATIONS.values()]
-    logger.info('Operation started %s process_rss_mb=%s', operation, start_rss)
+    logger.info('⏳ Operation started %s process_rss_mb=%s', operation, start_rss)
     try:
         yield
     finally:

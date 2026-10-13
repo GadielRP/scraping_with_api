@@ -56,7 +56,7 @@ class DiscoveryFilters:
 class SofascoreDiscoverySettings:
     filters: DiscoveryFilters = field(default_factory=DiscoveryFilters)
     round_filter_enabled: bool = True
-    allowed_rounds: frozenset[str] = frozenset({"regular-season"})
+    allowed_rounds: frozenset[str] = frozenset({"regular-season"}) # default value regular-season
     tennis_ranking_filter_enabled: bool = False
     tennis_ranking_cutoff: int = 120  # Reject when any known participant rank >= cutoff.
     dropping_interval_hours: int = 6
@@ -127,7 +127,7 @@ def _validate_times(times):
 # Each provider owns its switches and can override the shared audited lists.
 SOFASCORE = SofascoreDiscoverySettings(
     round_filter_enabled=True,
-    allowed_rounds=frozenset({"regular-season"}),
+    allowed_rounds=frozenset({"regular-season", "knockouts/playoffs"}),
     # Optional tennis policy enabled explicitly; the constructor defaults to disabled.
     tennis_ranking_filter_enabled=True,
     tennis_ranking_cutoff=120,
@@ -148,7 +148,7 @@ SOFASCORE = SofascoreDiscoverySettings(
 )
 ODDSPAPI = OddspapiDiscoverySettings(
     scheduled_times=("17:47",),
-    reconciliation_enabled=True,
+    reconciliation_enabled=False,
     catchup_lookback_hours=36,
     max_catchup_runs=2,
     filters=DiscoveryFilters(

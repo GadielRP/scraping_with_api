@@ -55,8 +55,24 @@ LEFT JOIN event_source_mappings esm
     ON e.id = esm.event_id
 WHERE esm.source = 'oddspapi'
   AND e.competition_id IN (
-      176, 318, 129, 167, 88, 168, 50, 171, 172,
-      2192, 328, 429, 525, 180, 5153, 310, 2476, 261
+      176,  -- NBA
+      318,  -- Brasileirao Serie A
+      129,  -- MLB
+      167,  -- LaLiga
+      88,   -- Serie A
+      168,  -- Premier League
+      50,   -- Saudi Pro League
+      171,  -- Bundesliga
+      172,  -- Ligue 1
+      2192, -- Liga MX Clausura
+      328,  -- Liga MX Apertura
+      429,  -- Euroleague
+      525,  -- Liiga (turned off in tracked_competitions.py)
+      180,  -- SHL (turned off in tracked_competitions.py)
+      5153, -- NFL
+      310,  -- Liga profesional de futbol argentino Clausura
+      2476, -- Liga profesional de futbol argentino Apertura
+      261  -- Liga Portugal
   )
 ORDER BY e.starts_at DESC;
 ```
@@ -219,8 +235,10 @@ SELECT
     m.line_value AS line,
     b.name AS bookie,
     mc.choice_name AS choice,
+    COUNT(mcs.snapshot_id) OVER (PARTITION BY mc.choice_id) AS total_snapshots_for_choice,
     e.starts_at,
-    mcs.collected_at AS snapshot_time,
+    mcs.collected_at AS snapshot_collected_time,
+    mcs.source_collected_at AS provider_collected_time,
     ROUND((EXTRACT(EPOCH FROM (e.starts_at - mcs.collected_at)) / 60.0)::numeric, 1) AS minutes_before_start,
     (e.starts_at - mcs.collected_at) AS time_before_start,
     mcq.source,
@@ -253,7 +271,7 @@ ORDER BY
     mcs.collected_at ASC;
 ```
 
-Ideal for reviewing historical odds points, especially before kickoff or during live updates.
+Each returned row is one persisted snapshot; `total_snapshots_for_choice` counts all snapshot rows for that choice across its quotes. The query does not select only the initial or current snapshot. If only those appear, those may be the only snapshots persisted for that choice: dynamic `momentQuote` snapshots are recorded only when the configured change detection selects them.
 
 ### Stale or delayed snapshots
 
@@ -335,6 +353,4 @@ Helps locate quotes that are no longer attached to valid choices or are missing 
 - Use `WHERE` filters early to reduce query costs when scanning large tables.
 - For time-series checks, compare `collected_at`, `current_updated_at`, and `source_collected_at` together to identify delayed or partial ingestion.
 - If you are debugging a specific source, add `mcq.source = '...'` or a `bookie_id` filter to narrow the result set.
-
-
 

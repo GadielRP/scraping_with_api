@@ -44,6 +44,9 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(5153, "NFL", "American football"),
     TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
     TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
+
+    # KNOCKOUT COMPETITIONS, WE DONT SUPPORT FOR NOW BUT MIGHT IN THE FUTURE
+    #
 )
 
 TRACKED_COMPETITIONS_BY_ID: Final[Mapping[int, TrackedCompetition]] = (
