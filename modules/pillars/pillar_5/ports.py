@@ -5,6 +5,10 @@ from typing import Protocol
 from .calculation_models import MemoryQueryKey, MemorySample, PopulationFilters
 
 
+class MemorySamplePersistenceError(RuntimeError):
+    """The audit sample could not be captured; the evaluation must roll back."""
+
+
 class PriceMemoryReader(Protocol):
     def summarize(
         self,

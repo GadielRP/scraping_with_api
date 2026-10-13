@@ -1,13 +1,12 @@
 """Independent P5 profiles using common contracts and aggregated memory."""
 
 import logging
+from dataclasses import dataclass
 
 from infrastructure.settings import Config
 from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
 from modules.pillars.market_evaluation import (
     P5_BOOKMAKERS,
-    FT,
-    FT_OT,
     prepare_event_markets,
     context_view,
     contract_key,
@@ -22,9 +21,9 @@ from modules.pillars.market_candidate_selection import select_market_candidate
 from modules.pillars.context import EventContext, EventIdentity
 from .calculation_models import PopulationFilters
 from .models import ThreeWayMarketSnapshot
-from .ports import PriceMemoryReader
+from .ports import PriceMemoryReader, MemorySamplePersistenceError
 from .memory_sample import build_memory_query_key, build_memory_sample
-from .memory_score import calculate_memory_profile
+from .memory_score import calculate_memory_profile, MIN_SAMPLE_SIZE
 from .exchange_diagnostics import collect_exchange_inputs
 
 ENGINE_VERSION = "p5_price_memory_v4_0"
@@ -73,7 +72,7 @@ def _population_filters(
     )
 
 
-def calculate_pillar_5(
+def prepare_pillar_5(
     event_context,
     odds_trajectory_context,
     *,
@@ -86,7 +85,7 @@ def calculate_pillar_5(
         odds_trajectory_context, target_selection, event_context
     )
     population, enabled, missing_filters = _population_filters(event_context)
-    signals, inputs, profiles = [], {}, {}
+    signals, inputs, profiles, calculations = [], {}, {}, []
     selected = evaluation.selected_full_time_period
     for family in ("1X2", "Home/Away"):
         lines = [
@@ -186,7 +185,7 @@ def calculate_pillar_5(
             for name, point in points.items():
                 ref = f"{namespace}:{name}"
                 inputs[ref] = {
-                    "value": float(point.odds_price),
+                    "value": point.odds_price,
                     "trace": point.trace.to_dict(),
                 }
                 input_refs.append(ref)
@@ -237,7 +236,6 @@ def calculate_pillar_5(
                     key.to_dict(),
                     population.to_dict(),
                 )
-            stage = "HISTORICAL_LOOKUP_ERROR"
             try:
                 sample = build_memory_sample(
                     memory_repository,
@@ -263,52 +261,32 @@ def calculate_pillar_5(
                         sample.wins_away,
                         sample.exclusions,
                     )
-                stage = "CALCULATION_ERROR"
-                profile = calculate_memory_profile(
-                    bookmaker=book.name,
-                    target_minute=target_selection.target_minute,
-                    sample=sample,
-                    debug_mode=debug_mode,
+                calculations.append(
+                    (namespace, book.name, sample, tuple(input_refs), refs)
                 )
-                profiles[namespace] = profile.to_dict()
-                signals.append(
-                    SignalResult(
-                        namespace,
-                        "COMPUTED" if profile.p5_valid else "BLOCKED",
-                        float(profile.p5) if profile.p5_valid else None,
-                        None if profile.p5_valid else "INSUFFICIENT_HISTORY",
-                        tuple(input_refs),
-                        refs,
-                        {
-                            "sample_size": sample.sample_size,
-                            "sample_id": sample.sample_id,
-                            "direction": profile.p5_direction,
-                        },
-                    )
-                )
+            except MemorySamplePersistenceError:
+                raise
             except Exception as exc:
                 if debug_mode:
                     logger.exception(
                         "P5 FORMULA | %s | %s failed error_class=%s",
                         debug_label,
-                        stage,
+                        "HISTORICAL_LOOKUP_ERROR",
                         type(exc).__name__,
                     )
                 signals.append(
                     SignalResult(
                         namespace,
                         "ERROR",
-                        reason=stage,
+                        reason="HISTORICAL_LOOKUP_ERROR",
                         input_refs=tuple(input_refs),
                         contract_refs=refs,
                         evidence={"error_class": type(exc).__name__},
                     )
                 )
     exchange_diagnostics = collect_exchange_inputs(evaluation, inputs)
-    return EvaluationResult(
+    return PreparedP5Inputs(
         event_context.event_id,
-        "pillar_5",
-        ENGINE_VERSION,
         target_selection.target_minute,
         evaluation.selection,
         tuple(signals),
@@ -316,16 +294,100 @@ def calculate_pillar_5(
         inputs,
         evaluation.contracts(5),
         profiles,
+        tuple(calculations),
         (
             *evaluation.diagnostics,
             *exchange_diagnostics,
-            {
-                "population_filters": population.to_dict(),
-                "enabled_filters": enabled,
-                "audit_persisted": any(p.get("sample_id") for p in profiles.values()),
-            },
+            {"population_filters": population.to_dict(), "enabled_filters": enabled},
         ),
+    )
+
+
+@dataclass(frozen=True)
+class PreparedP5Inputs:
+    event_id: int
+    target_minute: int | None
+    selection: dict
+    signals: tuple
+    coverage: tuple
+    inputs: dict
+    contracts: dict
+    profiles: dict
+    calculations: tuple
+    diagnostics: tuple
+
+
+def calculate_pillar_5(
+    event_context=None,
+    odds_trajectory_context=None,
+    *,
+    target_selection=None,
+    memory_repository=None,
+    debug_mode=False,
+    market_evaluation=None,
+    prepared_inputs=None,
+):
+    prepared = prepared_inputs or prepare_pillar_5(
+        event_context,
+        odds_trajectory_context,
+        target_selection=target_selection,
+        memory_repository=memory_repository,
+        debug_mode=debug_mode,
+        market_evaluation=market_evaluation,
+    )
+    signals, profiles = list(prepared.signals), dict(prepared.profiles)
+    for namespace, bookmaker, sample, input_refs, refs in prepared.calculations:
+        try:
+            profile = calculate_memory_profile(
+                bookmaker=bookmaker,
+                target_minute=prepared.target_minute,
+                sample=sample,
+                debug_mode=debug_mode,
+            )
+            profiles[namespace] = profile.to_dict()
+            signals.append(
+                SignalResult(
+                    namespace,
+                    "COMPUTED" if profile.p5_valid else "BLOCKED",
+                    profile.p5 if profile.p5_valid else None,
+                    None if profile.p5_valid else "INSUFFICIENT_OBSERVATIONS",
+                    input_refs,
+                    refs,
+                    {
+                        "sample_size": sample.sample_size,
+                        "required_observations": MIN_SAMPLE_SIZE,
+                        "sample_id": sample.sample_id,
+                        "direction": profile.p5_direction,
+                    },
+                )
+            )
+        except Exception as exc:
+            signals.append(
+                SignalResult(
+                    namespace,
+                    "ERROR",
+                    reason="CALCULATION_ERROR",
+                    input_refs=input_refs,
+                    contract_refs=refs,
+                    evidence={
+                        "error_class": type(exc).__name__,
+                        "sample_id": sample.sample_id,
+                    },
+                )
+            )
+    return EvaluationResult(
+        prepared.event_id,
+        "pillar_5",
+        ENGINE_VERSION,
+        prepared.target_minute,
+        prepared.selection,
+        tuple(signals),
+        prepared.coverage,
+        prepared.inputs,
+        prepared.contracts,
+        profiles,
+        prepared.diagnostics,
     ).to_dict()
 
 
-__all__ = ["ENGINE_VERSION", "calculate_pillar_5"]
+__all__ = ["ENGINE_VERSION", "prepare_pillar_5", "calculate_pillar_5"]

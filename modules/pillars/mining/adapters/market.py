@@ -4,9 +4,7 @@ from decimal import Decimal
 from hashlib import sha256
 from modules.pillars.evaluation_contracts import PAYLOAD_SCHEMA_VERSION
 from ..contracts import PillarMiningRun, PillarMiningUnit, PillarMiningMetric
-from ..execution_slot import build_execution_slot
-from ..serialization import to_json_value
-from ..status_policy import normalize_status
+from ..serialization import to_json_value, numeric_metrics
 
 
 class MarketMiningAdapter:
@@ -15,18 +13,23 @@ class MarketMiningAdapter:
 
     def build(self, event_context, result):
         if result.get("payload_schema_version") != PAYLOAD_SCHEMA_VERSION:
-            raise ValueError(
-                "market writers require schema v4; historical payloads must not be rewritten"
-            )
-        producer, canonical = normalize_status(result["status"])
+            raise ValueError("market writers require the current instrumented schema")
+        status = result["status"]
         target = result["target_minute"]
         evaluation = getattr(event_context, "minutes_until_start", None)
         units = [
             PillarMiningUnit(
                 "summary",
                 "summary",
-                producer,
-                canonical,
+                status,
+                metrics=(
+                    *numeric_metrics(result.get("analysis", {}), prefix="analysis"),
+                    *numeric_metrics(
+                        result.get("calculation_trace", {}),
+                        prefix="calculation_trace",
+                        group="intermediate",
+                    ),
+                ),
                 payload={"result_ref": "run.output_payload"},
                 target_minute=target,
             )
@@ -34,18 +37,12 @@ class MarketMiningAdapter:
         output = {
             key: value
             for key, value in result.items()
-            if key not in {"inputs", "signals"}
+            if key not in {"inputs", "signals", "diagnostics"}
         }
         output["signal_unit_refs"] = []
         for ordinal, signal in enumerate(result["signals"], 1):
             key = "signal_" + sha256(signal["key"].encode()).hexdigest()
             output["signal_unit_refs"].append(key)
-            status = {
-                "COMPUTED": "ACTIVE",
-                "BLOCKED": "INSUFFICIENT_DATA",
-                "ERROR": "ERROR",
-            }[signal["status"]]
-            source_status, unit_status = normalize_status(status)
             value = signal["value"]
             metric = ()
             if isinstance(value, bool):
@@ -89,8 +86,7 @@ class MarketMiningAdapter:
                 PillarMiningUnit(
                     "signal",
                     key,
-                    source_status,
-                    unit_status,
+                    signal["status"],
                     parent_unit_key="summary",
                     ordinal=ordinal,
                     is_valid=signal["status"] == "COMPUTED",
@@ -104,7 +100,13 @@ class MarketMiningAdapter:
                     or market.get("MARKET_GROUP"),
                     market_period=contract.get("market_period")
                     or market.get("MARKET_PERIOD"),
-                    line_value=contract.get("line_value") or market.get("CHOICE_GROUP"),
+                    line_value=(
+                        contract["line_value"]
+                        if contract.get("line_value") is not None
+                        else market.get("CHOICE_GROUP")
+                    ),
+                    choice_name=trace_common("choice_name")
+                    or market.get("CHOICE_NAME"),
                     dimensions={
                         "contract_refs": refs,
                         "market_type_id": contract.get("market_type_id"),
@@ -130,11 +132,9 @@ class MarketMiningAdapter:
             event_id=event_context.event_id,
             pillar_id=self.pillar_id,
             result_scope=self.result_scope,
-            execution_slot=build_execution_slot(evaluation, target),
             engine_version=result["engine_version"],
             payload_schema_version=PAYLOAD_SCHEMA_VERSION,
-            producer_status=producer,
-            canonical_status=canonical,
+            status=status,
             sport=event_context.sport,
             evaluation_minute=evaluation,
             target_minute=target,
@@ -148,5 +148,6 @@ class MarketMiningAdapter:
             ),
             inputs=to_json_value(result["inputs"]),
             output_payload=to_json_value(output),
+            diagnostics=to_json_value(result["diagnostics"]),
             units=tuple(units),
         )

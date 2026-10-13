@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from modules.pillars import market_snapshot_extractor
@@ -15,6 +15,8 @@ from modules.pillars.trajectory_selection import (
     HARDCODED_TARGET_MINUTE_BY_FLOW,
     select_target_minute,
 )
+
+START = datetime(2026, 8, 27, 18, tzinfo=timezone.utc)
 
 
 def _row(
@@ -44,8 +46,8 @@ def _row(
         "quote_id": 7001 if choice_name == "over" else 7002,
         "odds_value": price,
         "snapshot_id": 9000 + target_minute,
-        "collected_at": datetime(2026, 8, 27, 17, 59, tzinfo=timezone.utc),
-        "source_collected_at": datetime(2026, 8, 27, 17, 58, tzinfo=timezone.utc),
+        "collected_at": START - timedelta(minutes=target_minute),
+        "source_collected_at": START - timedelta(minutes=target_minute + 2),
         "minutes_before_start": target_minute,
         "target_minute": target_minute,
         "distance_from_target": 0,
@@ -78,7 +80,9 @@ def test_shared_extractor_supports_arbitrary_future_market_and_bookie() -> None:
         _row("over", 1.88, target_minute=0),
         _row("under", 2.02, target_minute=0),
     ]
-    context = build_odds_trajectory_context(rows, target_minutes_expected=[5, 0])
+    context = build_odds_trajectory_context(
+        rows, target_minutes_expected=[5, 0], event_starts_at=START
+    )
 
     selection = select_target_minute(context, flow_id="future_pillar")
     extraction = extract_market_snapshot(
@@ -118,6 +122,7 @@ def test_target_selection_does_not_cross_evaluation_boundary() -> None:
             _row("over", 1.87, target_minute=-5),
         ],
         target_minutes_expected=[30, 5, 0, -5],
+        event_starts_at=START,
     )
 
     at_five = select_target_minute(
@@ -140,6 +145,7 @@ def test_target_override_is_per_flow_and_strict(monkeypatch) -> None:
     context = build_odds_trajectory_context(
         [_row("over", 1.88, target_minute=0)],
         target_minutes_expected=[5, 0],
+        event_starts_at=START,
     )
     monkeypatch.setitem(
         HARDCODED_TARGET_MINUTE_BY_FLOW,
@@ -177,7 +183,7 @@ def test_market_identity_is_an_exact_canonical_triple() -> None:
             market_group="Over/Under",
         ),
     ]
-    context = build_odds_trajectory_context(crossed_rows, [0])
+    context = build_odds_trajectory_context(crossed_rows, [0], event_starts_at=START)
 
     extraction = extract_market_snapshot(
         context,
@@ -200,7 +206,7 @@ def test_duplicate_source_containers_are_reported_as_ambiguous() -> None:
         _row("over", 1.87, target_minute=0, source="source-b"),
         _row("under", 2.03, target_minute=0, source="source-b"),
     ]
-    context = build_odds_trajectory_context(rows, [0])
+    context = build_odds_trajectory_context(rows, [0], event_starts_at=START)
 
     extraction = extract_market_snapshot(
         context,

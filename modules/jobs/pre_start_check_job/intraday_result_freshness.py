@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from shared.temporal import utc_now
 from shared.concurrency import bounded_results
 from shared.execution_context import WorkDeferred, check_execution_budget
 from typing import Dict, List, Set, Tuple
@@ -115,6 +116,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             sofascore_event_id = resolve_sofascore_event_id(event_id)
             try:
                 response = api_client.request_json(f"/event/{sofascore_event_id}")
+                received_at = utc_now()
             except SofaScoreNotFoundException:
                 logger.info(
                     "Intraday result freshness: event %s queued for batch deletion "
@@ -176,6 +178,10 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
                 return {"api_checked": 1, "not_finished": 1}
 
             result_data = parsed.result
+            result_data["_outcome_observation"] = {
+                "source": "sofascore", "source_event_id": str(sofascore_event_id),
+                "received_at": received_at, "payload": raw_event,
+            }
             return {
                 "api_checked": 1,
                 "upsert_data": (event_id, result_data),

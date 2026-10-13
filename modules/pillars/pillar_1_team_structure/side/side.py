@@ -30,6 +30,8 @@ from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engin
     calculate_m7_opponent_expectation_engine,
 )
 
+from modules.pillars.instrumentation import record_calculation
+
 logger = logging.getLogger(__name__)
 
 _ENGINE_VERSION = "side_engine_multilayer_v3_1"
@@ -478,36 +480,43 @@ def calculate_p1_side(
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m1_result))
     m2_result = calculate_performance_profile(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m2_result))
     m3_result = calculate_direct_matchup_profile(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m3_result))
     m4_result = calculate_quality_adjusted_immediate_state_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m4_result))
     m5_result = calculate_contextual_competitive_cost_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m5_result))
     m6_result = calculate_structural_drift_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m6_result))
     m7_result = calculate_m7_opponent_expectation_engine(
         streak_analysis,
         event_context=event_context,
         debug_mode=debug_mode,
     )
+    record_calculation("side_module", result=_serialize_module_result(m7_result))
 
     pillar_value, aggregation_raw = _aggregate_multilayer_side_engine_v3(
         [

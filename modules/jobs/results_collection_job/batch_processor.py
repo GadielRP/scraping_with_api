@@ -14,6 +14,7 @@ from modules.sofascore import api_client
 from modules.sofascore.event_details import fetch_authoritative_event_response, result_from_response
 from modules.sofascore.event_normalizer import normalize_event_payload
 from shared.execution_context import WorkDeferred, check_execution_budget
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ def collect_batch(events, job_name):
                 canonical_event_id=event.id,
                 deferred_deletion_event_ids=deletions,
             )
+            received_at = utc_now()
             if not response:
                 stats["failed"] += int(event.id not in deletions)
                 outcomes[ResultOutcome.PROVIDER_ERROR.value] += int(event.id not in deletions)
@@ -76,6 +78,10 @@ def collect_batch(events, job_name):
             metadata.append(normalized)
             expected_ids[str(source_id)] = event.id
             if result:
+                result["_outcome_observation"] = {
+                    "source": "sofascore", "source_event_id": str(source_id),
+                    "received_at": received_at, "payload": response["event"],
+                }
                 results[str(source_id)] = result
             else:
                 stats["deferred"] += 1

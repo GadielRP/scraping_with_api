@@ -53,13 +53,13 @@ def test_canonical_1x2_example_scores_point_two() -> None:
     assert payload["P5_STATUS"] == "ACTIVE"
     assert payload["P5_VALID"] is True
     assert payload["P5_DIRECTION"] == "HOME"
-    assert payload["P5"] == pytest.approx(0.20)
+    assert payload["P5"] == pytest.approx(Decimal("0.20"))
     assert payload["P5_STRENGTH"] == "WEAK"
-    assert payload["HIST_EDGE"] == pytest.approx(0.625)
-    assert payload["CONSISTENCY"] == pytest.approx(0.8125)
-    assert payload["MSRI_RAW"] == pytest.approx(0.25390625)
-    assert payload["MSRI_SIGNAL"] == pytest.approx(0.50)
-    assert payload["SAMPLE_WEIGHT"] == pytest.approx(0.40)
+    assert payload["HIST_EDGE"] == pytest.approx(Decimal("0.625"))
+    assert payload["CONSISTENCY"] == pytest.approx(Decimal("0.8125"))
+    assert payload["MSRI_RAW"] == pytest.approx(Decimal("0.25390625"))
+    assert payload["MSRI_SIGNAL"] == pytest.approx(Decimal("0.50"))
+    assert payload["SAMPLE_WEIGHT"] == pytest.approx(Decimal("0.40"))
 
 
 def test_two_way_uses_half_baseline_and_never_counts_draw() -> None:
@@ -71,8 +71,8 @@ def test_two_way_uses_half_baseline_and_never_counts_draw() -> None:
 
     assert profile["market_shape"] == "TWO_WAY"
     assert profile["wins_draw"] == 0
-    assert profile["BASELINE"] == pytest.approx(0.5)
-    assert profile["P5"] == pytest.approx(0.1)
+    assert profile["BASELINE"] == pytest.approx(Decimal("0.5"))
+    assert profile["P5"] == pytest.approx(Decimal("0.1"))
     assert profile["P5_DIRECTION"] == "HOME"
 
 

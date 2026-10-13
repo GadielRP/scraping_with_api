@@ -4,11 +4,15 @@ from __future__ import annotations
 from contextlib import nullcontext
 from datetime import datetime
 from uuid import uuid4
+from shared.temporal import utc_now
+from modules.pillars.mining.serialization import to_json_value
 from sqlalchemy import Numeric, bindparam, text
+from sqlalchemy.exc import SQLAlchemyError
 from infrastructure.persistence.models import P5MemorySample, P5MemorySampleMember
 from infrastructure.persistence.types import UTCDateTime
 from modules.pillars.evaluation_contracts import POLICY_VERSION
 from modules.pillars.pillar_5.calculation_models import MemorySample
+from modules.pillars.pillar_5.ports import MemorySamplePersistenceError
 
 
 class Pillar5PriceMemoryRepository:
@@ -82,101 +86,110 @@ class Pillar5PriceMemoryRepository:
             if self._session is not None
             else self._session_factory()
         )
-        with scope as session:
-            if self._capture and session.get_bind().dialect.name == "sqlite":
-                connection = session.connection()
-                if not connection.connection.driver_connection.in_transaction:
-                    connection.exec_driver_sql("BEGIN")
-            # Per-profile savepoints isolate a failing lookup without discarding other profiles.
-            with session.begin_nested():
-                sample_id = str(uuid4()) if self._capture else None
-                if sample_id:
-                    header = P5MemorySample(
-                        sample_id=sample_id,
-                        cutoff=current_starts_at,
-                        policy_version=POLICY_VERSION,
-                        query={
-                            "key": key.to_dict(),
-                            "filters": population_filters.to_dict(),
-                            "event_id": current_event_id,
-                        },
-                        sample_size=0,
-                        wins_home=0,
-                        wins_draw=0,
-                        wins_away=0,
-                    )
-                    session.add(header)
-                    session.flush()
+        try:
+            with scope as session:
+                if self._capture and session.get_bind().dialect.name == "sqlite":
+                    connection = session.connection()
+                    if not connection.connection.driver_connection.in_transaction:
+                        connection.exec_driver_sql("BEGIN")
+                # Per-profile savepoints isolate a failing lookup without discarding other profiles.
+                with session.begin_nested():
+                    sample_id = str(uuid4()) if self._capture else None
+                    if sample_id:
+                        header = P5MemorySample(
+                            sample_id=sample_id,
+                            cutoff=current_starts_at,
+                            policy_version=POLICY_VERSION,
+                            query={
+                                "key": to_json_value(key.to_dict()),
+                                "filters": population_filters.to_dict(),
+                                "event_id": current_event_id,
+                            },
+                            sample_size=0,
+                            wins_home=0,
+                            wins_draw=0,
+                            wins_away=0,
+                        )
+                        session.add(header)
+                        session.flush()
 
-                    # INSERT…SELECT bypasses ORM datetime bind processors. Keep
-                    # SQLite's frozen timestamps in the same microsecond format
-                    # used by UTCDateTime cursor binds; PostgreSQL has typed timestamps.
-                    def timestamp_column(name):
-                        if session.get_bind().dialect.name != "sqlite":
-                            return name
-                        return f"substr(replace(replace({name},'T',' '),'+00:00','') || CASE WHEN instr({name},'.')=0 THEN '.000000' ELSE '000000' END,1,26)"
+                        # INSERT…SELECT bypasses ORM datetime bind processors. Keep
+                        # SQLite's frozen timestamps in the same microsecond format
+                        # used by UTCDateTime cursor binds; PostgreSQL has typed timestamps.
+                        def timestamp_column(name):
+                            if session.get_bind().dialect.name != "sqlite":
+                                return name
+                            return f"substr(replace(replace({name},'T',' '),'+00:00','') || CASE WHEN instr({name},'.')=0 THEN '.000000' ELSE '000000' END,1,26)"
 
-                    starts_column = timestamp_column("starts_at")
-                    sync_column = timestamp_column("last_sync_at")
-                    session.execute(
-                        self._statement(
+                        starts_column = timestamp_column("starts_at")
+                        sync_column = timestamp_column("last_sync_at")
+                        session.execute(
+                            self._statement(
+                                sql
+                                + """INSERT INTO p5_memory_sample_members
+                            (sample_id,event_id,starts_at,competition_id,season_id,country,odds_home,odds_draw,odds_away,
+                             home_score,away_score,winner_side,outcome,last_sync_at)
+                            SELECT :sample_id,event_id,"""
+                                + starts_column
+                                + """,competition_id,season_id,country,odds_home,odds_draw,odds_away,
+                                   home_score,away_score,winner_side,outcome,"""
+                                + sync_column
+                                + " FROM eligible"
+                            ),
+                            {**params, "sample_id": sample_id},
+                        )
+                        counts_sql = "SELECT COUNT(*) AS n, SUM(CASE WHEN outcome='HOME' THEN 1 ELSE 0 END) AS home, SUM(CASE WHEN outcome='DRAW' THEN 1 ELSE 0 END) AS draw, SUM(CASE WHEN outcome='AWAY' THEN 1 ELSE 0 END) AS away FROM p5_memory_sample_members WHERE sample_id=:sample_id"
+                        counts = (
+                            session.execute(text(counts_sql), {"sample_id": sample_id})
+                            .mappings()
+                            .one()
+                        )
+                        (
+                            header.sample_size,
+                            header.wins_home,
+                            header.wins_draw,
+                            header.wins_away,
+                        ) = (int(counts[k] or 0) for k in ("n", "home", "draw", "away"))
+                    else:
+                        counts_sql = (
                             sql
-                            + """INSERT INTO p5_memory_sample_members
-                        (sample_id,event_id,starts_at,competition_id,season_id,country,odds_home,odds_draw,odds_away,
-                         home_score,away_score,winner_side,outcome,last_sync_at)
-                        SELECT :sample_id,event_id,"""
-                            + starts_column
-                            + """,competition_id,season_id,country,odds_home,odds_draw,odds_away,
-                               home_score,away_score,winner_side,outcome,"""
-                            + sync_column
-                            + " FROM eligible"
-                        ),
-                        {**params, "sample_id": sample_id},
-                    )
-                    counts_sql = "SELECT COUNT(*) AS n, SUM(CASE WHEN outcome='HOME' THEN 1 ELSE 0 END) AS home, SUM(CASE WHEN outcome='DRAW' THEN 1 ELSE 0 END) AS draw, SUM(CASE WHEN outcome='AWAY' THEN 1 ELSE 0 END) AS away FROM p5_memory_sample_members WHERE sample_id=:sample_id"
-                    counts = (
-                        session.execute(text(counts_sql), {"sample_id": sample_id})
+                            + "SELECT COUNT(*) AS n, SUM(CASE WHEN outcome='HOME' THEN 1 ELSE 0 END) AS home, SUM(CASE WHEN outcome='DRAW' THEN 1 ELSE 0 END) AS draw, SUM(CASE WHEN outcome='AWAY' THEN 1 ELSE 0 END) AS away FROM eligible"
+                        )
+                        counts = (
+                            session.execute(self._statement(counts_sql), params)
+                            .mappings()
+                            .one()
+                        )
+                    if sample_id:
+                        header.acquired_at = utc_now()
+                        session.flush()
+                    excluded = (
+                        session.execute(
+                            self._statement(
+                                sql
+                                + """SELECT
+                        (SELECT COUNT(*) FROM candidates WHERE outcome IS NULL) AS incompatible_result,
+                        (SELECT COUNT(*) FROM candidates WHERE outcome IS NOT NULL AND (home_score IS NULL OR away_score IS NULL)) AS missing_score,
+                        (SELECT COUNT(*) FROM valid_rows WHERE rn > 1) AS duplicate_event"""
+                            ),
+                            params,
+                        )
                         .mappings()
                         .one()
                     )
-                    (
-                        header.sample_size,
-                        header.wins_home,
-                        header.wins_draw,
-                        header.wins_away,
-                    ) = (int(counts[k] or 0) for k in ("n", "home", "draw", "away"))
-                else:
-                    counts_sql = (
-                        sql
-                        + "SELECT COUNT(*) AS n, SUM(CASE WHEN outcome='HOME' THEN 1 ELSE 0 END) AS home, SUM(CASE WHEN outcome='DRAW' THEN 1 ELSE 0 END) AS draw, SUM(CASE WHEN outcome='AWAY' THEN 1 ELSE 0 END) AS away FROM eligible"
+                    return MemorySample(
+                        key=key,
+                        sample_size=int(counts["n"]),
+                        wins_home=int(counts["home"] or 0),
+                        wins_draw=int(counts["draw"] or 0),
+                        wins_away=int(counts["away"] or 0),
+                        exclusions=dict(excluded),
+                        sample_id=sample_id,
                     )
-                    counts = (
-                        session.execute(self._statement(counts_sql), params)
-                        .mappings()
-                        .one()
-                    )
-                excluded = (
-                    session.execute(
-                        self._statement(
-                            sql + """SELECT
-                    (SELECT COUNT(*) FROM candidates WHERE outcome IS NULL) AS incompatible_result,
-                    (SELECT COUNT(*) FROM candidates WHERE outcome IS NOT NULL AND (home_score IS NULL OR away_score IS NULL)) AS missing_score,
-                    (SELECT COUNT(*) FROM valid_rows WHERE rn > 1) AS duplicate_event"""
-                        ),
-                        params,
-                    )
-                    .mappings()
-                    .one()
-                )
-                return MemorySample(
-                    key=key,
-                    sample_size=int(counts["n"]),
-                    wins_home=int(counts["home"] or 0),
-                    wins_draw=int(counts["draw"] or 0),
-                    wins_away=int(counts["away"] or 0),
-                    exclusions=dict(excluded),
-                    sample_id=sample_id,
-                )
+        except SQLAlchemyError as exc:
+            if self._capture:
+                raise MemorySamplePersistenceError("P5 sample capture failed") from exc
+            raise
 
     def get_sample_page(self, sample_id, cursor=None, page_size=100):
         if (
@@ -237,6 +250,7 @@ class Pillar5PriceMemoryRepository:
                 "run_id": sample.run_id,
                 "query": sample.query,
                 "cutoff": sample.cutoff.isoformat(),
+                "acquired_at": sample.acquired_at.isoformat(),
                 "policy_version": sample.policy_version,
                 "engine_version": sample.query["engine_version"],
                 "payload_schema_version": sample.query["payload_schema_version"],

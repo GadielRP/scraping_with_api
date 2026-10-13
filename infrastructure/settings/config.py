@@ -98,17 +98,6 @@ def _parse_env_bool_alias(primary_name, alias_name, default_value=False):
     return _parse_env_bool(alias_name, default_value)
 
 
-def _parse_env_choice(env_name, default_value, allowed_values):
-    """Parse and validate a case-insensitive finite-choice setting."""
-    raw_value = os.getenv(env_name, default_value)
-    value = str(raw_value).strip().lower()
-    allowed = {str(item).strip().lower() for item in allowed_values}
-    if value not in allowed:
-        expected = ', '.join(sorted(allowed))
-        raise ValueError(f"{env_name} must be one of: {expected}; got {raw_value!r}")
-    return value
-
-
 def _parse_pillar_toggle_map(
     env_prefix="PILLAR_PIPELINE",
     pillar_keys=("pillar_1", "pillar_2", "pillar_3", "pillar_4", "pillar_5"),
@@ -249,7 +238,7 @@ class Config:
     )
     _CONFIGURED_PRE_START_ODDS_MOMENTS = _parse_env_int_list(
         "PRE_START_ODDS_MOMENTS",
-        [120, 30, 5, PRE_START_CLOSING_ODDS_MINUTE, 0, -5],
+        [360, 120, 30, 5, PRE_START_CLOSING_ODDS_MINUTE, 0, -5],
     )
     # Keep zero as a real configured moment. The sign of each moment is used
     # by the provider policies: positive values are pre-kickoff, zero is the
@@ -602,27 +591,6 @@ class Config:
     # pillar calculations without coupling infrastructure to pillar code.
     PILLAR_PIPELINE_ENABLED_PILLARS = _parse_pillar_toggle_map()
     ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
-    PILLAR_MINING_ENABLED = _parse_env_bool('PILLAR_MINING_ENABLED', True)
-    PILLAR_MINING_STATUS_MODE = _parse_env_choice(
-        'PILLAR_MINING_STATUS_MODE',
-        'all',
-        {'all', 'successful_only'},
-    )
-    # P5 historical population is sport-wide by default. These opt-in filters
-    # deliberately narrow the population and therefore form part of its audit
-    # contract whenever enabled.
-    P5_PRICE_MEMORY_FILTER_BY_COMPETITION = _parse_env_bool(
-        'P5_PRICE_MEMORY_FILTER_BY_COMPETITION',
-        False,
-    )
-    P5_PRICE_MEMORY_FILTER_BY_SEASON = _parse_env_bool(
-        'P5_PRICE_MEMORY_FILTER_BY_SEASON',
-        False,
-    )
-    P5_PRICE_MEMORY_FILTER_BY_COUNTRY = _parse_env_bool(
-        'P5_PRICE_MEMORY_FILTER_BY_COUNTRY',
-        False,
-    )
     ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
         'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
         True,

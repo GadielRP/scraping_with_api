@@ -242,6 +242,7 @@ def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
     context = build_odds_trajectory_context(
         rows,
         target_minutes_expected=TARGET_MINUTES,
+        event_starts_at=_event_context().starts_at,
     )
     selection = select_target_minute(
         context,
@@ -301,7 +302,7 @@ def test_representative_is_exact_unweighted_pair_mean() -> None:
     b365_edge = ou_edge(Decimal("1.9"), Decimal("2.1"))
 
     assert full_time["REPRESENTATIVE"]["EDGE"] == pytest.approx(
-        float((pin_edge + b365_edge) / Decimal("2"))
+        (pin_edge + b365_edge) / Decimal("2")
     )
 
 

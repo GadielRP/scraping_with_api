@@ -1,6 +1,7 @@
 """Coverage is independent from analytical success for every configured bookmaker."""
 
 import pytest
+from dataclasses import replace
 from modules.pillars.mining.adapters import P2MiningAdapter, P3MiningAdapter
 from modules.pillars.mining.contracts import validate_mining_run
 from tests.pillars.test_market_evaluation import (
@@ -25,8 +26,8 @@ def test_one_book_produces_success_without_required_counterparts(
     result = evaluate(pillar, rows)
     assert result["status"] == "ACTIVE"
     run = adapter().build(event(), result)
-    validate_mining_run(run)
-    assert run.canonical_status == "SUCCESS"
+    validate_mining_run(replace(run, evaluation_id="evaluation"))
+    assert run.status == "ACTIVE"
     assert any(c["status"] == "MISSING" for c in result["coverage"])
 
 

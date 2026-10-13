@@ -1,4 +1,4 @@
-"""P5 schema v4 mining writer."""
+"""P5 schema v5 mining writer."""
 
 from .market import MarketMiningAdapter
 

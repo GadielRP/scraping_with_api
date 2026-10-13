@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from .instrumentation import SIGNAL_REASONS, SIGNAL_STATUSES, signal_diagnostics
 
-POLICY_VERSION = "market-evaluation-v1"
-PAYLOAD_SCHEMA_VERSION = 4
+POLICY_VERSION = "market-evaluation-v3-source-reconstruction"
+PAYLOAD_SCHEMA_VERSION = 5
 SignalStatus = Literal["COMPUTED", "BLOCKED", "ERROR"]
 CoverageStatus = Literal[
     "COMPLETE",
@@ -30,6 +31,12 @@ class SignalResult:
     evidence: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if self.status not in SIGNAL_STATUSES:
+            raise ValueError(f"unsupported signal status: {self.status!r}")
+        if self.status != "COMPUTED" and self.reason not in SIGNAL_REASONS:
+            raise ValueError(
+                "blocked/failed signals require an explicit registered reason"
+            )
         if self.status == "COMPUTED" and self.value is None:
             raise ValueError("computed signals require a value; neutral zero is valid")
         if self.status != "COMPUTED" and self.value is not None:
@@ -139,12 +146,8 @@ class EvaluationResult:
             "inputs": self.inputs,
             "contracts": self.contracts,
             "analysis": self.analysis,
-            "diagnostics": list(self.diagnostics),
+            "diagnostics": {
+                "signals": signal_diagnostics([s.to_dict() for s in self.signals]),
+                "details": list(self.diagnostics),
+            },
         }
-
-
-def read_stored_result(payload: dict[str, Any], schema_version: int) -> dict[str, Any]:
-    """History is returned with its stored semantics, never reclassified."""
-    if schema_version < 1 or schema_version > PAYLOAD_SCHEMA_VERSION:
-        raise ValueError(f"unsupported result schema: {schema_version}")
-    return payload

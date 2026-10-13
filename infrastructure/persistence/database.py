@@ -59,6 +59,9 @@ class DatabaseManager:
         if self.engine.dialect.name != "sqlite":
             raise RuntimeError("PostgreSQL schema changes must use Alembic")
         Base.metadata.create_all(bind=self.engine)
+        from infrastructure.persistence.mining_immutability import install_immutability
+        with self.engine.begin() as connection:
+            install_immutability(connection)
 
     @contextmanager
     def get_session(self) -> Generator[Session, None, None]:

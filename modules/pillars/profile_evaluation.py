@@ -12,8 +12,8 @@ from .market_evaluation import (
     FIRST_FIVE,
     contract_key,
 )
-from .market_audit import json_inputs
 from .signal_dependencies import resolve_dependencies
+from .instrumentation import calculation_scope
 
 
 def profile_signals(
@@ -248,7 +248,7 @@ def evaluate_snapshot_profile(
                         )
                         continue
                     values, traces = (
-                        json_inputs(snapshot.input_values()),
+                        snapshot.input_values(),
                         snapshot.input_trace(),
                     )
                     local_refs = []
@@ -271,7 +271,8 @@ def evaluate_snapshot_profile(
                             ),
                         }
                         local_refs.append(key)
-                    profile = build(snapshot, debug_mode=debug_mode).to_dict()
+                    with calculation_scope(scope):
+                        profile = build(snapshot, debug_mode=debug_mode).to_dict()
                     analyses[scope] = _display_period(profile, secondary)
                     readings = profile_signals(
                         profile,

@@ -133,93 +133,32 @@ def _totals_result() -> dict:
     }
 
 
-def test_p1_side_persists_summary_modules_components_and_full_output() -> None:
+def test_side_preserves_internal_classifications_as_signal_data():
+    from dataclasses import replace
     result = _side_result()
+    result["modules"][0]["raw"]["m1_status"] = "DEGRADED"
+    result["modules"][1]["raw"]["m2_status"] = "INACTIVE"
     run = P1SideMiningAdapter().build(_event_context(), result)
-    validate_mining_run(run)
-
-    assert run.pillar_id == "pillar_1_team_structure"
-    assert run.result_scope == "side"
-    assert run.execution_slot == "evaluation:5"
-    assert run.canonical_status == "SUCCESS"
-    assert run.engine_version == "side_engine_multilayer_v3_0"
-    assert run.output_payload == result
-    assert len(run.units) == 15
-
-    summary = run.units[0]
-    assert summary.signal_axis == "SIDE"
-    assert summary.direction == "HOME"
-    assert summary.score_name == "value"
-    assert summary.payload["final"]["p1_final_state"] == "CONFIRMED"
-
-    module = next(unit for unit in run.units if unit.unit_key == "module:M1")
-    component = next(
-        unit for unit in run.units if unit.unit_key == "component:M1:EDGE"
-    )
-    assert module.parent_unit_key == "summary"
-    assert module.score_name == "value"
-    assert module.direction == "HOME"
-    assert component.parent_unit_key == "module:M1"
-    assert component.score_name == "edge"
-    assert {metric.name for metric in component.metrics} == {
-        "weight",
-        "weighted_edge",
-    }
+    validate_mining_run(replace(run,evaluation_id="evaluation"))
+    assert run.status == "ACTIVE"
+    assert run.units[1].status == "COMPUTED"
+    blocked=next(u for u in run.units if u.unit_key == "module:M2")
+    assert blocked.status == "BLOCKED"
+    assert blocked.diagnostics["reason"] == "MISSING_INPUT"
+    assert run.output_payload["modules"][0]["raw"]["m1_status"] == "DEGRADED"
+    assert all("raw" not in unit.payload for unit in run.units)
 
 
-def test_p1_side_normalizes_degraded_and_inactive_module_statuses() -> None:
-    result = _side_result()
-    result["modules"][1]["raw"]["m2_status"] = "DEGRADED"
-    result["modules"][2]["raw"]["m3_status"] = "INACTIVE"
-
-    run = P1SideMiningAdapter().build(_event_context(), result)
-
-    assert run.producer_status == "PARTIAL"
-    assert run.canonical_status == "PARTIAL"
-    degraded = next(unit for unit in run.units if unit.unit_key == "module:M2")
-    inactive = next(unit for unit in run.units if unit.unit_key == "module:M3")
-    assert degraded.canonical_status == "PARTIAL"
-    assert degraded.is_valid is True
-    assert inactive.canonical_status == "INSUFFICIENT"
-    assert inactive.is_valid is False
-
-
-def test_p1_totals_persists_directional_score_composite_and_layers() -> None:
+def test_totals_keeps_continuous_components_and_weights():
+    from dataclasses import replace
     result = _totals_result()
+    result.update(P1_TOTALS_DIRECTIONAL_SCORE=-.2, BREAKOUT_SCORE=.1, TREND_DOMINANCE=-1,
+                  P1_TOTALS_COMPOSITE=-.23, UNDER_COUNT=3, OVER_COUNT=1,
+                  raw={"composite_breakout":{"weights":{"directional":.55,"breakout":.30,"trend":.15},
+                                             "alignment":"UNDER","thresholds":[.05,.15,.30,.60]}})
     run = P1TotalsMiningAdapter().build(_event_context(), result)
-    validate_mining_run(run)
-
-    assert run.pillar_id == "pillar_1_team_structure"
-    assert run.result_scope == "totals"
-    assert run.canonical_status == "SUCCESS"
-    assert run.output_payload == result
-
-    summary = run.units[0]
-    assert summary.signal_axis == "TOTALS"
-    assert summary.score_name == "P1_TOTALS_DIRECTIONAL_SCORE"
-    assert summary.direction == "OVER_PROFILE"
-    assert summary.strength == "MODERATE"
-    assert {metric.name for metric in summary.metrics} >= {
-        "P1_TOTALS_COMPOSITE",
-        "BREAKOUT_SCORE",
-        "TREND_DOMINANCE",
-    }
-
-    structural = next(unit for unit in run.units if unit.unit_key == "layer:STRUCTURAL")
-    temporal = next(unit for unit in run.units if unit.unit_key == "layer:TEMPORAL")
-    assert structural.parent_unit_key == "summary"
-    assert structural.canonical_status == "SUCCESS"
-    assert temporal.canonical_status == "SKIPPED"
-    assert temporal.diagnostics["ignored_reason"] == "ABS_SIGNAL_BELOW_0_05"
-
-
-def test_p1_adapters_use_target_fallback_only_for_evaluation_unknown() -> None:
-    side_run = P1SideMiningAdapter().build(
-        _event_context(evaluation_minute=None), _side_result()
-    )
-    totals_run = P1TotalsMiningAdapter().build(
-        _event_context(evaluation_minute=None), _totals_result()
-    )
-
-    assert side_run.execution_slot == "event"
-    assert totals_run.execution_slot == "event"
+    validate_mining_run(replace(run,evaluation_id="evaluation"))
+    metrics={m.name:m.value for m in run.units[0].metrics}
+    assert str(metrics["P1_TOTALS_COMPOSITE"]) == "-0.23"
+    assert str(metrics["raw.composite_breakout.weights.directional"]) == "0.55"
+    assert run.output_payload["raw"]["composite_breakout"]["alignment"] == "UNDER"

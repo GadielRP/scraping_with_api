@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from modules.pillars.common import clamp
 from modules.pillars.context import EventContext
+from modules.pillars.instrumentation import record_calculation
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,13 @@ W_TEMPORAL = 0.30
 W_TREND = 0.25
 
 IGNORE_THRESHOLD = 0.05
+COMPOSITE_DIRECTIONAL_WEIGHT = 0.55
+COMPOSITE_BREAKOUT_WEIGHT = 0.30
+COMPOSITE_TREND_WEIGHT = 0.15
+STRENGTH_NONE_THRESHOLD = 0.05
+STRENGTH_WEAK_THRESHOLD = 0.15
+STRENGTH_MODERATE_THRESHOLD = 0.30
+STRENGTH_STRONG_THRESHOLD = 0.60
 
 TREND_SHORT_WEIGHT_SHORT = 0.60
 TREND_SHORT_WEIGHT_RECENT = 0.40
@@ -376,8 +384,6 @@ def _extract_league_team_results_by_team(league_totals_context: Any) -> Dict[str
     return results_by_team
 
 
-
-
 def _resolve_totals_temporal_window_config(total_season_games: int, n_avail: int) -> Dict[str, Any]:
     windows: Dict[str, int] = {}
     games_used: Dict[str, int] = {}
@@ -501,13 +507,13 @@ def _calculate_league_trend_deltas(
 
 def _classify_totals_strength(score: float) -> str:
     abs_score = abs(score)
-    if abs_score < 0.05:
+    if abs_score < STRENGTH_NONE_THRESHOLD:
         return "NONE"
-    if abs_score < 0.15:
+    if abs_score < STRENGTH_WEAK_THRESHOLD:
         return "WEAK"
-    if abs_score < 0.30:
+    if abs_score < STRENGTH_MODERATE_THRESHOLD:
         return "MODERATE"
-    if abs_score <= 0.60:
+    if abs_score <= STRENGTH_STRONG_THRESHOLD:
         return "STRONG"
     return "VERY_STRONG"
 
@@ -754,6 +760,7 @@ def _abort(
     debug_context: Optional[Dict[str, Any]] = None,
     debug_mode: bool = False,
 ) -> None:
+    record_calculation("totals_abort", reason=reason, evidence=debug_context or {})
     logger.warning(
         "P1_TOTALS aborted for event_id=%s participants=%s reason=%s context=%s",
         event_id,
@@ -787,8 +794,6 @@ def _resolve_total_season_games(event_context: Optional[EventContext]) -> Option
     if total_season_games is None or total_season_games <= 0:
         return None
     return total_season_games
-
-
 
 
 def calculate_p1_totals(
@@ -906,6 +911,13 @@ def calculate_p1_totals(
         )
         return None
 
+    record_calculation(
+        "totals_windows",
+        n_avail=n_avail,
+        total_season_games=total_season_games,
+        windows=window_config,
+    )
+
     if debug_mode:
         _debug_section("VENTANAS")
         for window_name in TOTALS_TEMPORAL_WINDOW_NAMES:
@@ -979,6 +991,37 @@ def calculate_p1_totals(
         ]
         total_dynamic_scale = _percentile_cont(goal_environment_extremeness_samples, 0.75)
 
+    structural_core = {
+        "gp_home_available": n_avail,
+        "gp_away_available": n_avail,
+        "gf_home": gf_home,
+        "ga_home": ga_home,
+        "gf_away": gf_away,
+        "ga_away": ga_away,
+        "gfpg_home": gfpg_home,
+        "gapg_home": gapg_home,
+        "gfpg_away": gfpg_away,
+        "gapg_away": gapg_away,
+        "home_attack_environment": home_attack_environment,
+        "away_attack_environment": away_attack_environment,
+        "expected_total_structural": expected_total_structural,
+    }
+    league_baselines = {
+        "league_match_total_count": len(game_totals_league),
+        "league_match_total_baseline": league_match_total_baseline,
+        "total_dynamic_scale": total_dynamic_scale,
+        "extremeness_samples": (
+            goal_environment_extremeness_samples
+            if league_match_total_baseline is not None
+            else []
+        ),
+    }
+    record_calculation(
+        "totals_structural_baseline",
+        structural_core=structural_core,
+        league_baselines=league_baselines,
+    )
+
     if (
         league_match_total_baseline is None
         or total_dynamic_scale is None
@@ -1001,6 +1044,10 @@ def calculate_p1_totals(
         (expected_total_structural - league_match_total_baseline) / total_dynamic_scale
     )
     structural_anchor = clamp(0.50 + (abs(structural_profile_score) * 0.50), 0.50, 1.00)
+    structural_core.update(
+        structural_profile_score=structural_profile_score,
+        structural_anchor=structural_anchor,
+    )
 
     if debug_mode:
         _debug_section("STRUCTURAL CORE")
@@ -1056,7 +1103,6 @@ def calculate_p1_totals(
             "Estimación estructural base del volumen de goles del matchup.",
         )
 
-
     if debug_mode:
         _debug_section("BASELINE ESTRUCTURAL DE LIGA")
         _debug_line(
@@ -1079,7 +1125,7 @@ def calculate_p1_totals(
             _fmt(league_summary["avg"]),
             _fmt(league_summary["sample"]),
         )
-        
+
         # Detalle de cada partido de liga
         league_matches_info = []
         matches = league_totals_context.get("matches") if isinstance(league_totals_context, dict) else None
@@ -1239,6 +1285,24 @@ def calculate_p1_totals(
             },
         )
 
+    variance_components = {
+        "std_dev_totals_home": std_dev_totals_home,
+        "std_dev_totals_away": std_dev_totals_away,
+        "matchup_volatility": matchup_volatility,
+        "team_volatility_count": len(team_volatilities),
+        "team_volatility_by_name": team_volatility_by_name,
+        "league_vol_edge_samples": league_vol_edge_samples,
+        "vol_available": vol_available,
+        "vol_baseline": vol_baseline,
+        "vol_dynamic_scale": vol_dynamic_scale,
+        "vol_edge": vol_edge,
+        "vol_edge_p50": vol_edge_p50,
+        "vol_edge_p75": vol_edge_p75,
+        "vol_edge_p90": vol_edge_p90,
+        "P1_TOTALS_VARIANCE_STATE": p1_totals_variance_state,
+    }
+    record_calculation("totals_variance", components=variance_components)
+
     if debug_mode:
         _debug_section("VOLATILITY LAYER")
         _debug_line("VOL_EDGE is variance-only and is not used as OVER/UNDER direction.")
@@ -1329,7 +1393,7 @@ def calculate_p1_totals(
             t_std = team_volatility_by_name[t_name]
             t_gp = len(league_team_game_totals_by_team.get(t_name, []))
             t_dev = abs(t_std - vol_baseline)
-            
+
             # Extract matches details (gf, ga, tot) for each team match-by-match
             results = league_team_results_by_team.get(t_name, [])
             match_details = []
@@ -1340,13 +1404,13 @@ def calculate_p1_totals(
                 g_tots = league_team_game_totals_by_team.get(t_name, [])
                 for idx, gt in enumerate(g_tots, 1):
                     match_details.append(f"P{idx}: tot={_fmt(gt)}")
-            
+
             g_tots_nums = league_team_game_totals_by_team.get(t_name, [])
             mean_val = sum(g_tots_nums) / len(g_tots_nums) if g_tots_nums else 0.0
             sq_diffs_str = ", ".join(f"({_fmt(x)}-{_fmt(mean_val)})^2" for x in g_tots_nums[:3])
             if len(g_tots_nums) > 3:
                 sq_diffs_str += ", ..."
-                
+
             _debug_line("  Equipo: %s | GP=%s", t_name, t_gp)
             _debug_line("    Partidos: %s", ", ".join(match_details))
             _debug_line("    Formula STD_DEV_TOTALS = sqrt( sum( (GAME_TOTAL_i - mean)^2 ) / GP )")
@@ -1457,6 +1521,15 @@ def calculate_p1_totals(
 
     team_total_weighted_home = _weighted_team_temporal_total(home_window_totals, effective_weights)
     team_total_weighted_away = _weighted_team_temporal_total(away_window_totals, effective_weights)
+    temporal_components = {
+        "home_window_totals": home_window_totals,
+        "away_window_totals": away_window_totals,
+        "home_window_components": home_window_components,
+        "away_window_components": away_window_components,
+        "team_total_weighted_home": team_total_weighted_home,
+        "team_total_weighted_away": team_total_weighted_away,
+    }
+    record_calculation("totals_temporal", components=temporal_components)
     if team_total_weighted_home is None or team_total_weighted_away is None:
         _abort(
             "ABORT_ACTIVE_WEIGHT_SUM_ZERO",
@@ -1476,6 +1549,11 @@ def calculate_p1_totals(
         (matchup_temporal_total - league_match_total_baseline) / total_dynamic_scale
     )
     temporal_final = temporal_profile_score
+    temporal_components.update(
+        matchup_temporal_total=matchup_temporal_total,
+        temporal_profile_score=temporal_profile_score,
+        temporal_final=temporal_final,
+    )
 
     if debug_mode:
         _debug_section("TEMPORAL PROFILE LAYER")
@@ -1542,6 +1620,11 @@ def calculate_p1_totals(
 
     team_trend_delta_home = _calculate_team_trend_delta(home_window_totals)
     team_trend_delta_away = _calculate_team_trend_delta(away_window_totals)
+    trend_components = {
+        "team_trend_delta_home": team_trend_delta_home,
+        "team_trend_delta_away": team_trend_delta_away,
+    }
+    record_calculation("totals_trend", components=trend_components)
     if team_trend_delta_home is None or team_trend_delta_away is None:
         _abort(
             "ABORT_TREND_DYNAMIC_SCALE_ZERO",
@@ -1557,7 +1640,6 @@ def calculate_p1_totals(
 
     matchup_trend_delta = (team_trend_delta_home + team_trend_delta_away) / 2
 
-
     league_trend_deltas_by_team = _calculate_league_trend_deltas(
         league_team_results_by_team,
         window_config["windows"],
@@ -1571,6 +1653,14 @@ def calculate_p1_totals(
             for team_trend_delta in league_trend_deltas
         ]
         trend_dynamic_scale = _percentile_cont(trend_deviations, 0.75)
+
+    trend_components.update(
+        matchup_trend_delta=matchup_trend_delta,
+        league_trend_delta_count=len(league_trend_deltas),
+        league_trend_deltas_by_team=league_trend_deltas_by_team,
+        trend_baseline=trend_baseline,
+        trend_dynamic_scale=trend_dynamic_scale,
+    )
 
     if trend_baseline is None or trend_dynamic_scale is None or trend_dynamic_scale == 0:
         _abort(
@@ -1588,6 +1678,7 @@ def calculate_p1_totals(
 
     trend_signal = clamp((matchup_trend_delta - trend_baseline) / trend_dynamic_scale)
     trend_final = trend_signal
+    trend_components.update(trend_signal=trend_signal, trend_final=trend_final)
 
     if debug_mode:
         _debug_section("TREND ENGINE")
@@ -1678,28 +1769,28 @@ def calculate_p1_totals(
             t_results = league_team_results_by_team.get(t_name, [])
             t_gp = len(t_results)
             t_dev = abs(t_delta - trend_baseline)
-            
+
             t_games_used = {
                 window_name: min(t_gp, window_config["windows"][window_name])
                 for window_name in TOTALS_TEMPORAL_WINDOW_NAMES
             }
             t_window_totals = _team_window_totals_from_config(t_results, t_games_used)
-            
+
             t_short = t_window_totals.get("SHORT")
             t_recent = t_window_totals.get("RECENT")
             t_mid = t_window_totals.get("MID")
             t_full = t_window_totals.get("FULL")
-            
+
             t_short_profile = (
                 TREND_SHORT_WEIGHT_SHORT * float(t_short)
                 + TREND_SHORT_WEIGHT_RECENT * float(t_recent)
             ) if t_short is not None and t_recent is not None else 0.0
-            
+
             t_long_profile = (
                 TREND_LONG_WEIGHT_MID * float(t_mid)
                 + TREND_LONG_WEIGHT_FULL * float(t_full)
             ) if t_mid is not None and t_full is not None else 0.0
-            
+
             _debug_line("  Equipo: %s | GP=%s", t_name, t_gp)
             _debug_line(
                 "    Juegos Usados Ventanas: SHORT=%s, RECENT=%s, MID=%s, FULL=%s",
@@ -1962,9 +2053,9 @@ def calculate_p1_totals(
 
     # ALIGNMENT_SCORE remains audit/debug only; it is not a composite component.
     p1_totals_composite = clamp(
-        (0.55 * p1_totals_directional_score)
-        + (0.30 * breakout_score)
-        + (0.15 * trend_dominance)
+        (COMPOSITE_DIRECTIONAL_WEIGHT * p1_totals_directional_score)
+        + (COMPOSITE_BREAKOUT_WEIGHT * breakout_score)
+        + (COMPOSITE_TREND_WEIGHT * trend_dominance)
     )
     p1_totals_composite_direction = _totals_direction(p1_totals_composite)
     p1_totals_composite_strength = _classify_totals_strength(p1_totals_composite)
@@ -2382,29 +2473,11 @@ def calculate_p1_totals(
             "total_regular_season_games": "event_context.competition.total_regular_season_games",
         },
         "windows": window_config,
-        "structural_core": {
-            "gp_home_available": n_avail,
-            "gp_away_available": n_avail,
-            "gf_home": gf_home,
-            "ga_home": ga_home,
-            "gf_away": gf_away,
-            "ga_away": ga_away,
-            "gfpg_home": gfpg_home,
-            "gapg_home": gapg_home,
-            "gfpg_away": gfpg_away,
-            "gapg_away": gapg_away,
-            "home_attack_environment": home_attack_environment,
-            "away_attack_environment": away_attack_environment,
-            "expected_total_structural": expected_total_structural,
-            "structural_profile_score": structural_profile_score,
-            "structural_anchor": structural_anchor,
-        },
-        "league_baselines": {
-            "league_match_total_count": len(game_totals_league),
-            "league_match_total_baseline": league_match_total_baseline,
-            "total_dynamic_scale": total_dynamic_scale,
-        },
+        "structural_core": structural_core,
+        "league_baselines": league_baselines,
         "directional_components": {
+            "directional_numerator": p1_totals_directional_numerator,
+            "active_weight_sum": active_weight_sum,
             "STRUCTURAL_PROFILE_SCORE": structural_profile_score,
             "TEMPORAL_PROFILE_SCORE": temporal_profile_score,
             "TREND_SIGNAL": trend_signal,
@@ -2413,39 +2486,21 @@ def calculate_p1_totals(
             "P1_TOTALS_COMPOSITE_DIRECTION": p1_totals_composite_direction,
             "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
         },
-        "variance_components": {
-            "std_dev_totals_home": std_dev_totals_home,
-            "std_dev_totals_away": std_dev_totals_away,
-            "matchup_volatility": matchup_volatility,
-            "team_volatility_count": len(team_volatilities),
-            "vol_baseline": vol_baseline,
-            "vol_dynamic_scale": vol_dynamic_scale,
-            "vol_edge": vol_edge,
-            "vol_edge_p50": vol_edge_p50,
-            "vol_edge_p75": vol_edge_p75,
-            "vol_edge_p90": vol_edge_p90,
-            "P1_TOTALS_VARIANCE_STATE": p1_totals_variance_state,
-        },
-        "temporal": {
-            "home_window_totals": home_window_totals,
-            "away_window_totals": away_window_totals,
-            "team_total_weighted_home": team_total_weighted_home,
-            "team_total_weighted_away": team_total_weighted_away,
-            "matchup_temporal_total": matchup_temporal_total,
-            "temporal_profile_score": temporal_profile_score,
-            "temporal_final": temporal_final,
-        },
-        "trend": {
-            "team_trend_delta_home": team_trend_delta_home,
-            "team_trend_delta_away": team_trend_delta_away,
-            "matchup_trend_delta": matchup_trend_delta,
-            "league_trend_delta_count": len(league_trend_deltas),
-            "trend_baseline": trend_baseline,
-            "trend_dynamic_scale": trend_dynamic_scale,
-            "trend_signal": trend_signal,
-            "trend_final": trend_final,
-        },
+        "variance_components": variance_components,
+        "temporal": temporal_components,
+        "trend": trend_components,
         "composite_breakout": {
+            "weights": {
+                "directional": COMPOSITE_DIRECTIONAL_WEIGHT,
+                "breakout": COMPOSITE_BREAKOUT_WEIGHT,
+                "trend_dominance": COMPOSITE_TREND_WEIGHT,
+            },
+            "strength_thresholds": {
+                "none": STRENGTH_NONE_THRESHOLD,
+                "weak": STRENGTH_WEAK_THRESHOLD,
+                "moderate": STRENGTH_MODERATE_THRESHOLD,
+                "strong": STRENGTH_STRONG_THRESHOLD,
+            },
             "STRUCTURAL_FINAL": structural_final,
             "STRUCTURAL_WEIGHT": structural_weight,
             "STRUCTURAL_WEIGHTED": structural_weighted,
@@ -2461,6 +2516,10 @@ def calculate_p1_totals(
             "HEATING_PRESSURE": heating_pressure,
             "COOLING_PRESSURE": cooling_pressure,
             "ALIGNMENT_SCORE": alignment_score,
+            "alignment_denominator": alignment_denominator,
+            "breakout_denominator": (
+                breakout_denominator if breakout_condition else None
+            ),
             "ALIGNMENT_SCORE_ROLE": "AUDIT_DEBUG_ONLY_NOT_COMPOSITE_COMPONENT",
             "TREND_DOMINANCE": trend_dominance,
             "composite_formula": "clamp((0.55 * P1_TOTALS_DIRECTIONAL_SCORE) + (0.30 * BREAKOUT_SCORE) + (0.15 * TREND_DOMINANCE))",
@@ -2472,8 +2531,13 @@ def calculate_p1_totals(
             "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
         },
         "policy_ignore": {
-            "active_layers": [_serialize_layer_summary(layer) for layer in active_layers],
-            "ignored_layers": [_serialize_layer_summary(layer) for layer in ignored_layers],
+            "threshold": IGNORE_THRESHOLD,
+            "active_layers": [
+                _serialize_layer_summary(layer) for layer in active_layers
+            ],
+            "ignored_layers": [
+                _serialize_layer_summary(layer) for layer in ignored_layers
+            ],
         },
         "internal_state": p1_totals_internal_state,
         "debug_logging_mode": "step_by_step_human_readable" if debug_mode else "off",

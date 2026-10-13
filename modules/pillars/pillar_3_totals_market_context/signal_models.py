@@ -9,8 +9,8 @@ from typing import Any
 from .relations import ContextDirection, Direction, Relation
 
 
-def _number(value: Decimal | None) -> float | None:
-    return None if value is None else float(value)
+def _number(value: Decimal | None) -> Decimal | None:
+    return value
 
 
 @dataclass(frozen=True, slots=True)

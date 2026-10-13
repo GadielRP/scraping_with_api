@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from shared.temporal import utc_now
 from infrastructure.persistence.orm_base import Base
-from infrastructure.persistence.types import UTCDateTime
+from infrastructure.persistence.types import UTCDateTime, ExactNumeric
 
 
 class Participant(Base):
@@ -100,11 +100,6 @@ class Event(Base):
     # Relationships
     result = relationship("Result", back_populates="event", uselist=False, cascade="all, delete-orphan")
     observations = relationship("EventObservation", back_populates="event", cascade="all, delete-orphan")
-    pillar_mining_runs = relationship(
-        "PillarMiningRun",
-        back_populates="event",
-        cascade="all, delete-orphan",
-    )
     prediction_logs = relationship("PredictionLog", back_populates="event", uselist=False, cascade="all, delete-orphan")
     season = relationship("Season", back_populates="events")
     markets = relationship("Market", back_populates="event", cascade="all, delete-orphan")
@@ -274,8 +269,38 @@ class EventObservation(Base):
         return f"<EventObservation(event_id={self.event_id}, type='{self.observation_type}', value='{self.observation_value}')>"
 
 
+class PillarEvaluation(Base):
+    """Shared knowledge snapshot; operational entities cannot cascade into it."""
+    __tablename__ = "pillar_evaluations"
+    evaluation_id = Column(String(36), primary_key=True)
+    event_id = Column(Integer, nullable=False)
+    evaluation_as_of = Column(UTCDateTime(), nullable=False)
+    schema_version = Column(SmallInteger, nullable=False)
+    content_hash = Column(String(64), nullable=False)
+    context = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    inputs = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    configuration = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    versions = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    __table_args__ = (Index("ix_pillar_evaluation_event_time", "event_id", "evaluation_as_of"),)
+
+
+class EventOutcomeObservation(Base):
+    """Post-evaluation sporting evidence, appended independently of pillar snapshots."""
+    __tablename__ = "event_outcome_observations"
+    observation_id = Column(String(36), primary_key=True)
+    event_id = Column(Integer, nullable=False)
+    source = Column(String(50), nullable=False)
+    source_event_id = Column(Text)
+    source_observed_at = Column(UTCDateTime())
+    received_at = Column(UTCDateTime(), nullable=False)
+    payload = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    __table_args__ = (Index("ix_outcome_event_received", "event_id", "received_at"),)
+
+
 class PillarMiningRun(Base):
-    """One canonical pillar execution for an event and execution slot."""
+    """One immutable pillar scope belonging to a captured evaluation."""
 
     __tablename__ = 'pillar_mining_runs'
 
@@ -284,26 +309,19 @@ class PillarMiningRun(Base):
         primary_key=True,
         autoincrement=True,
     )
-    event_id = Column(
-        Integer,
-        ForeignKey('events.id', ondelete='CASCADE'),
-        nullable=False,
-    )
+    event_id = Column(Integer, nullable=False)
+    evaluation_id = Column(String(36), ForeignKey("pillar_evaluations.evaluation_id"), nullable=False)
+    content_hash = Column(String(64), nullable=False)
     pillar_id = Column(String(100), nullable=False)
     result_scope = Column(String(100), nullable=False)
-    execution_slot = Column(String(64), nullable=False)
     engine_version = Column(String(150), nullable=False)
     payload_schema_version = Column(SmallInteger, nullable=False, default=1)
-    producer_status = Column(String(50), nullable=False)
-    canonical_status = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False)
     evaluation_minute = Column(SmallInteger)
     target_minute = Column(SmallInteger)
     calculated_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     sport = Column(String(50), nullable=False)
-    competition_id = Column(
-        Integer,
-        ForeignKey('competitions.competition_id', ondelete='SET NULL'),
-    )
+    competition_id = Column(Integer)
     context = Column(
         JSONB().with_variant(JSON(), 'sqlite'), nullable=False, default=dict
     )
@@ -317,12 +335,7 @@ class PillarMiningRun(Base):
         JSONB().with_variant(JSON(), 'sqlite'), nullable=False, default=dict
     )
     created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
-    updated_at = Column(
-        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
-    )
 
-    event = relationship("Event", back_populates="pillar_mining_runs")
-    competition = relationship("Competition", foreign_keys=[competition_id])
     units = relationship(
         "PillarMiningUnit",
         back_populates="run",
@@ -335,16 +348,13 @@ class PillarMiningRun(Base):
             name='ck_pillar_mining_run_payload_schema_version_positive',
         ),
         CheckConstraint(
-            "canonical_status IN ('SUCCESS', 'PARTIAL', 'INSUFFICIENT', "
-            "'ERROR', 'SKIPPED')",
-            name='ck_pillar_mining_run_canonical_status',
+            "status IN ('ACTIVE', 'INSUFFICIENT_DATA', 'ERROR', 'SKIPPED')",
+            name='ck_pillar_mining_run_status',
         ),
         UniqueConstraint(
-            'event_id',
+            'evaluation_id',
             'pillar_id',
             'result_scope',
-            'execution_slot',
-            'engine_version',
             name='uq_pillar_mining_run_identity',
         ),
         Index(
@@ -356,7 +366,7 @@ class PillarMiningRun(Base):
         Index(
             'idx_pillar_mining_run_pillar_status_calculated',
             'pillar_id',
-            'canonical_status',
+            'status',
             'calculated_at',
         ),
         Index('idx_pillar_mining_run_sport_pillar', 'sport', 'pillar_id'),
@@ -380,6 +390,7 @@ class P5MemorySample(Base):
     wins_home = Column(Integer, nullable=False)
     wins_draw = Column(Integer, nullable=False)
     wins_away = Column(Integer, nullable=False)
+    acquired_at = Column(UTCDateTime(), nullable=False, default=utc_now)
     created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
 
 
@@ -429,25 +440,19 @@ class PillarMiningUnit(Base):
     unit_key = Column(String(512), nullable=False)
     ordinal = Column(Integer)
     module_id = Column(String(100))
-    producer_status = Column(String(50), nullable=False)
-    canonical_status = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False)
     signal_axis = Column(String(50))
     is_valid = Column(Boolean)
     score_name = Column(String(100))
-    score = Column(Numeric(30, 12))
+    score = Column(ExactNumeric())
     direction = Column(String(50))
     strength = Column(String(50))
     target_minute = Column(SmallInteger)
-    market_type_id = Column(
-        SmallInteger,
-        ForeignKey('canonical_market_types.market_type_id', ondelete='RESTRICT'),
-    )
-    line_value = Column(Numeric)
+    market_type_id = Column(SmallInteger)
+    line_value = Column(ExactNumeric())
     choice_name = Column(Text)
-    bookie_id = Column(
-        Integer,
-        ForeignKey('bookies.bookie_id', ondelete='SET NULL'),
-    )
+    bookie_id = Column(Integer)
+    reason = Column(String(80))
     quote_id = Column(BigInteger)
     source = Column(String(50))
     exchange_side = Column(String(20))
@@ -462,9 +467,6 @@ class PillarMiningUnit(Base):
         JSONB().with_variant(JSON(), 'sqlite'), nullable=False, default=dict
     )
     created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
-    updated_at = Column(
-        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
-    )
 
     run = relationship("PillarMiningRun", back_populates="units")
     parent = relationship(
@@ -478,7 +480,6 @@ class PillarMiningUnit(Base):
         cascade="all, delete-orphan",
         single_parent=True,
     )
-    bookie = relationship("Bookie", foreign_keys=[bookie_id])
     metrics = relationship(
         "PillarMiningMetricValue",
         back_populates="unit",
@@ -487,21 +488,23 @@ class PillarMiningUnit(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "canonical_status IN ('SUCCESS', 'PARTIAL', 'INSUFFICIENT', "
-            "'ERROR', 'SKIPPED')",
-            name='ck_pillar_mining_unit_canonical_status',
+            "(unit_type = 'summary' AND status IN ('ACTIVE', 'INSUFFICIENT_DATA', 'ERROR', 'SKIPPED')) OR "
+            "(unit_type != 'summary' AND status IN ('COMPUTED', 'BLOCKED', 'ERROR'))",
+            name='ck_pillar_mining_unit_status',
         ),
+        CheckConstraint("status != 'BLOCKED' OR (reason IS NOT NULL AND length(reason) > 0)", name='ck_mining_blocked_reason'),
+        Index('idx_mining_unit_status_reason', 'status', 'reason'),
         UniqueConstraint(
             'run_id', 'unit_key', name='uq_pillar_mining_unit_identity'
         ),
         Index('idx_pillar_mining_unit_run_parent', 'run_id', 'parent_unit_id'),
         # FK cascades search by parent alone; (run_id, parent_unit_id) cannot
-        # efficiently serve that lookup when replacing a complete hierarchy.
+        # efficiently serve lookups within an immutable hierarchy.
         Index('idx_pillar_mining_unit_parent', 'parent_unit_id'),
         Index(
             'idx_pillar_mining_unit_type_status',
             'unit_type',
-            'canonical_status',
+            'status',
         ),
         Index('idx_pillar_mining_unit_market_type', 'market_type_id', 'line_value'),
         Index('idx_pillar_mining_unit_bookie', 'bookie_id'),
@@ -528,16 +531,13 @@ class PillarMiningMetricValue(Base):
         ForeignKey('pillar_mining_units.id', ondelete='CASCADE'),
         nullable=False,
     )
-    metric_name = Column(String(150), nullable=False)
+    metric_name = Column(Text, nullable=False)
     metric_group = Column(String(100))
     value_type = Column(String(10), nullable=False)
-    numeric_value = Column(Numeric(30, 12))
+    numeric_value = Column(ExactNumeric())
     text_value = Column(Text)
     boolean_value = Column(Boolean)
     created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
-    updated_at = Column(
-        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
-    )
 
     unit = relationship("PillarMiningUnit", back_populates="metrics")
 

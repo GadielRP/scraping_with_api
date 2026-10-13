@@ -1,63 +1,27 @@
-"""Application service coordinating mining adapters and persistence policy."""
+"""Mandatory, transaction-owned instrumentation of independent pillar results."""
 
-from __future__ import annotations
-
-from typing import Any, Mapping
-
-from modules.pillars.context import EventContext, EventIdentity
-
+from dataclasses import replace
 from .contracts import validate_mining_run
-from .ports import PillarMiningAdapter, PillarMiningWriter
+from .fingerprint import content_hash
+
 
 class PillarMiningService:
-    VALID_STATUS_MODES = frozenset({"all", "successful_only"})
+    def __init__(self, writer, adapters):
+        self.writer = writer
+        self.adapters = dict(adapters)
 
-    def __init__(
-        self,
-        writer: PillarMiningWriter,
-        adapters: Mapping[str, PillarMiningAdapter],
-        *,
-        enabled: bool = True,
-        status_mode: str = "all",
-    ) -> None:
-        normalized_mode = str(status_mode).strip().lower()
-        if normalized_mode not in self.VALID_STATUS_MODES:
-            expected = ", ".join(sorted(self.VALID_STATUS_MODES))
-            raise ValueError(
-                f"status_mode must be one of: {expected}; got {status_mode!r}"
-            )
-        self._writer = writer
-        self._adapters = dict(adapters)
-        self._enabled = bool(enabled)
-        self._status_mode = normalized_mode
-
-    @property
-    def enabled(self) -> bool:
-        return self._enabled
-
-    def persist(
-        self,
-        pillar_id: str,
-        event_context: EventContext | EventIdentity,
-        result: dict[str, Any],
-        *,
-        session=None,
-    ) -> bool:
-        if not self._enabled:
-            return False
-
-        try:
-            adapter = self._adapters[pillar_id]
-        except KeyError as exc:
-            raise ValueError(f"no mining adapter registered for {pillar_id!r}") from exc
-
-        run = adapter.build(event_context, result)
+    def persist(self, pillar_id, event_context, result, *, evaluation_id, session):
+        run = replace(
+            self.adapters[pillar_id].build(event_context, result),
+            evaluation_id=evaluation_id,
+        )
+        run = replace(
+            run,
+            inputs={
+                name: {"evaluation_input_ref": content_hash(point)}
+                for name, point in run.inputs.items()
+            },
+        )
         validate_mining_run(run)
-        if self._status_mode == "successful_only" and run.canonical_status != "SUCCESS":
-            return False
-
-        if session is None:
-            self._writer.replace_run(run)
-        else:
-            self._writer.replace_run(run, session=session)
-        return True
+        self.writer.append_run(run, session=session)
+        return run

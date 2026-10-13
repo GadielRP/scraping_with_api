@@ -8,13 +8,35 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Iterator
 
-from shared.temporal import utc_now
-
-
-CANONICAL_STATUSES = frozenset(
-    {"SUCCESS", "PARTIAL", "INSUFFICIENT", "ERROR", "SKIPPED"}
+from shared.temporal import utc_now, as_utc
+from modules.pillars.instrumentation import (
+    PILLAR_STATUSES,
+    SIGNAL_STATUSES,
+    SIGNAL_REASONS,
 )
+
 METRIC_VALUE_TYPES = frozenset({"number", "text", "boolean"})
+
+
+@dataclass(frozen=True)
+class EvaluationSnapshot:
+    evaluation_id: str
+    event_id: int
+    evaluation_as_of: datetime
+    context: dict[str, Any]
+    inputs: dict[str, Any]
+    configuration: dict[str, Any]
+    versions: dict[str, Any]
+    schema_version: int = 5
+
+    def __post_init__(self):
+        object.__setattr__(
+            self,
+            "evaluation_as_of",
+            as_utc(self.evaluation_as_of, field_name="evaluation_as_of"),
+        )
+        if not self.evaluation_id or self.event_id <= 0:
+            raise ValueError("evaluation identity is required")
 
 
 @dataclass(frozen=True)
@@ -33,8 +55,7 @@ class PillarMiningUnit:
 
     unit_type: str
     unit_key: str
-    producer_status: str
-    canonical_status: str
+    status: str
     parent_unit_key: str | None = None
     ordinal: int | None = None
     module_id: str | None = None
@@ -63,17 +84,16 @@ class PillarMiningUnit:
 
 @dataclass(frozen=True)
 class PillarMiningRun:
-    """Canonical execution of one pillar scope for an event and execution slot."""
+    """Immutable result of one independent pillar scope in an evaluation."""
 
     event_id: int
     pillar_id: str
     result_scope: str
-    execution_slot: str
     engine_version: str
     payload_schema_version: int
-    producer_status: str
-    canonical_status: str
+    status: str
     sport: str
+    evaluation_id: str = ""
     evaluation_minute: int | None = None
     target_minute: int | None = None
     competition_id: int | None = None
@@ -120,25 +140,32 @@ def validate_mining_run(run: PillarMiningRun) -> None:
     for field_name in (
         "pillar_id",
         "result_scope",
-        "execution_slot",
         "engine_version",
-        "producer_status",
+        "status",
+        "evaluation_id",
         "sport",
     ):
         if not str(getattr(run, field_name)).strip():
             raise ValueError(f"{field_name} must not be empty")
     if run.payload_schema_version < 1:
         raise ValueError("payload_schema_version must be positive")
-    if run.canonical_status not in CANONICAL_STATUSES:
-        raise ValueError(f"unsupported canonical status: {run.canonical_status!r}")
+    if run.status not in PILLAR_STATUSES:
+        raise ValueError(f"unsupported pillar status: {run.status!r}")
 
     for unit in run.units:
         if not unit.unit_type.strip() or not unit.unit_key.strip():
             raise ValueError("unit_type and unit_key must not be empty")
-        if unit.canonical_status not in CANONICAL_STATUSES:
+        allowed = PILLAR_STATUSES if unit.unit_type == "summary" else SIGNAL_STATUSES
+        if unit.status not in allowed:
             raise ValueError(
-                f"unsupported canonical status for {unit.unit_key!r}: "
-                f"{unit.canonical_status!r}"
+                f"unsupported status for {unit.unit_key!r}: {unit.status!r}"
+            )
+        if (
+            unit.status == "BLOCKED"
+            and unit.diagnostics.get("reason") not in SIGNAL_REASONS
+        ):
+            raise ValueError(
+                f"blocked unit {unit.unit_key!r} requires a registered reason"
             )
 
         metric_names: set[str] = set()

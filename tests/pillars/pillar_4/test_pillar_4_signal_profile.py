@@ -117,6 +117,7 @@ def _context(rows: list[dict], target: int = 5):
         target_minutes_expected=[120, 30, 5, 1, 0, -5],
         tolerance_minutes=0,
         evaluation_minute=target,
+        event_starts_at=KICKOFF,
     )
 
 
@@ -188,6 +189,7 @@ def test_checkpoint_gap_preserves_net_but_does_not_invent_path() -> None:
         _row(minute=5, odds="1.90"),
     ]
 
+    rows = [{**row, "source_collected_at": None} for row in rows]
     result = _run_p4(
         _event(5),
         _context(rows, 5),
@@ -204,7 +206,7 @@ def test_checkpoint_gap_preserves_net_but_does_not_invent_path() -> None:
     signals = series["structural_signals"]
     assert series["legs"][0]["CONTIGUOUS_RAW"] is False
     assert features["GAP_PRESENT_RAW"] is True
-    assert features["NET_MOVE_RAW"] == pytest.approx(-0.20)
+    assert features["NET_MOVE_RAW"] == pytest.approx(Decimal("-0.20"))
     assert features["PATH_LENGTH_RAW"] == 0.0
     assert features["PATH_EFFICIENCY_RAW"] is None
     assert features["VELOCITY_RAW"] is None
@@ -237,11 +239,11 @@ def test_temporal_math_preserves_runs_overshoot_velocity_and_dominant_ties() -> 
     correction = signals["CORRECTION_RAW"]
     assert features["SIGN_SEQUENCE_RAW"] == [1, 1, -1]
     assert signals["PATH_PATTERN_RAW"] == "REVERSAL"
-    assert correction["CORRECTION_RATIO_RAW"] == pytest.approx(1.25)
+    assert correction["CORRECTION_RATIO_RAW"] == pytest.approx(Decimal("1.25"))
     assert correction["MOVE_RETENTION_RAW"] == 0.0
     assert correction["OVERSHOOT_RAW"] is True
-    assert correction["OVERSHOOT_MAGNITUDE_RAW"] == pytest.approx(0.05)
-    assert legs[0]["VELOCITY_RAW"] == pytest.approx(0.10 / 30)
+    assert correction["OVERSHOOT_MAGNITUDE_RAW"] == pytest.approx(Decimal("0.05"))
+    assert legs[0]["VELOCITY_RAW"] == pytest.approx(Decimal("0.10") / Decimal(30))
     assert features["DOMINANT_SEGMENTS_RAW"] == [legs[2]["LEG_ID"]]
 
 
@@ -256,6 +258,7 @@ def test_missing_early_anchor_preserves_contiguous_later_path() -> None:
         target_minutes_expected=[360, 120, 30, 5],
         tolerance_minutes=0,
         evaluation_minute=5,
+        event_starts_at=KICKOFF,
     )
 
     result = _run_p4(_event(5), context, target_minute=5)
@@ -268,7 +271,9 @@ def test_missing_early_anchor_preserves_contiguous_later_path() -> None:
     )
     assert series["status"] == "ACTIVE"
     assert all(leg["CONTIGUOUS_RAW"] for leg in series["legs"])
-    assert series["raw_temporal_features"]["PATH_LENGTH_RAW"] == pytest.approx(0.20)
+    assert series["raw_temporal_features"]["PATH_LENGTH_RAW"] == pytest.approx(
+        Decimal("0.20")
+    )
     assert series["structural_signals"]["PATH_PATTERN_RAW"] == "UNIDIRECTIONAL"
 
 
@@ -288,7 +293,7 @@ def test_exact_zero_and_sub_threshold_moves_are_not_reclassified() -> None:
     small_legs, _, small_signals = build_temporal_features(points(("1", "1.019")))
     _, flat_features, flat_signals = build_temporal_features(points(("1", "1")))
 
-    assert small_legs[0]["DELTA_RAW"] == pytest.approx(0.019)
+    assert small_legs[0]["DELTA_RAW"] == pytest.approx(Decimal("0.019"))
     assert small_legs[0]["DIRECTION_BY_SIGN"] == 1
     assert small_signals["NET_DIRECTION_RAW"] == "POSITIVE"
     assert flat_features["NO_MOVEMENT_RAW"] is True

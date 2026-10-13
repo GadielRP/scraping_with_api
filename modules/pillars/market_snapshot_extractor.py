@@ -53,6 +53,9 @@ class QuoteTrace:
                 self.collected_at.isoformat() if self.collected_at else None
             ),
             "changed_at": self.changed_at.isoformat() if self.changed_at else None,
+            "time_basis": (
+                "SOURCE" if self.source_collected_at is not None else "OBSERVATION"
+            ),
             "minutes_before_start": self.minutes_before_start,
             "quote_id": self.quote_id,
             "market_group": self.market_group,

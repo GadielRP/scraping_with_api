@@ -290,7 +290,9 @@ def _complete_rows(
 
 def _calculate(rows: list[dict], *, debug_mode: bool = False) -> dict:
     context = build_odds_trajectory_context(
-        rows, target_minutes_expected=TARGET_MINUTES
+        rows,
+        target_minutes_expected=TARGET_MINUTES,
+        event_starts_at=_event_context().starts_at,
     )
     target_selection = select_target_minute(
         context,

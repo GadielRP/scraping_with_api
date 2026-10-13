@@ -27,7 +27,7 @@ from modules.pillars.pillar_5.calculation_models import (
     PopulationFilters,
 )
 from tests.pillars.test_market_evaluation import START, event, evaluate, quotes
-from tests.test_pillar_mining_repository import _event
+from tests.test_pillar_mining_repository import _event, snapshot
 
 
 @pytest.fixture
@@ -121,7 +121,11 @@ def persist(manager):
             5, quotes(), Pillar5PriceMemoryRepository(session=session, capture=True)
         )
         run = P5MiningAdapter().build(event(), result)
-        PillarMiningRepository.replace_run(run, session=session)
+        original = snapshot(event_id=900)
+        PillarMiningRepository.append_evaluation(original, session=session)
+        PillarMiningRepository.append_run(
+            replace(run, evaluation_id=original.evaluation_id), session=session
+        )
         return next(p["sample_id"] for p in result["analysis"].values())
 
 
@@ -142,17 +146,6 @@ def test_frozen_detail_survives_source_mutation_and_pages_exactly(manager):
         repository.get_sample_page(sample_id, page_size=1001)
 
 
-def test_replacement_cascades_only_owned_sample(manager):
-    first = persist(manager)
-    second = persist(manager)
-    with manager.get_session() as session:
-        assert session.get(P5MemorySample, first) is None
-        assert session.get(P5MemorySample, second).sample_size == 4
-        assert (
-            session.query(P5MemorySampleMember).filter_by(sample_id=first).count() == 0
-        )
-
-
 def test_transaction_failure_does_not_leave_sample_or_partial_result(manager):
     with pytest.raises(RuntimeError):
         with manager.get_session() as session:
@@ -163,47 +156,6 @@ def test_transaction_failure_does_not_leave_sample_or_partial_result(manager):
     with manager.get_session() as session:
         assert session.query(P5MemorySample).count() == 0
         assert session.query(P5MemorySampleMember).count() == 0
-
-
-def test_replacement_rollback_keeps_previous_complete_execution(manager):
-    previous = persist(manager)
-    with pytest.raises(RuntimeError):
-        with manager.get_session() as session:
-            result = evaluate(
-                5, quotes(), Pillar5PriceMemoryRepository(session=session, capture=True)
-            )
-            PillarMiningRepository.replace_run(
-                P5MiningAdapter().build(event(), result), session=session
-            )
-            session.flush()
-            raise RuntimeError("transaction failed after replacement")
-    repository = Pillar5PriceMemoryRepository(manager.SessionLocal)
-    assert repository.get_sample_page(previous)["sample_size"] == 4
-    with manager.get_session() as session:
-        assert session.query(P5MemorySample).count() == 1
-        assert session.query(P5MemorySampleMember).count() == 4
-
-
-def test_replacement_keeps_samples_of_other_engine_versions(manager):
-    with manager.get_session() as session:
-        result = evaluate(
-            5, quotes(), Pillar5PriceMemoryRepository(session=session, capture=True)
-        )
-        original = next(p["sample_id"] for p in result["analysis"].values())
-        run = P5MiningAdapter().build(event(), result)
-        PillarMiningRepository.replace_run(
-            replace(run, engine_version="p5-preserved-version"), session=session
-        )
-    current = persist(manager)
-    persist(manager)
-    repository = Pillar5PriceMemoryRepository(manager.SessionLocal)
-    assert (
-        repository.get_sample_page(original)["engine_version"] == "p5-preserved-version"
-    )
-    with pytest.raises(LookupError):
-        repository.get_sample_page(current)
-    with manager.get_session() as session:
-        assert session.query(P5MemorySample).count() == 2
 
 
 def test_tied_start_times_use_event_id_as_cursor_tiebreaker(manager):
@@ -225,7 +177,7 @@ def test_tied_start_times_use_event_id_as_cursor_tiebreaker(manager):
     assert ids == [4, 3, 2, 1]
     page = repository.get_sample_page(sample_id)
     assert page["counts"] == {"home": 2, "draw": 1, "away": 1}
-    assert page["payload_schema_version"] == 4
+    assert page["payload_schema_version"] == 5
     assert page["cutoff"] == START.isoformat()
     for invalid in (0, True, "100", 1001):
         with pytest.raises(ValueError):
@@ -251,79 +203,224 @@ def test_captured_sample_is_owned_even_when_calculation_fails(manager, monkeypat
     assert any(s["reason"] == "CALCULATION_ERROR" for s in result["result"]["signals"])
 
 
-def test_pipeline_uses_one_transaction_for_sample_and_result(manager, monkeypatch):
+def test_new_evaluation_keeps_previous_sample(manager):
+    first, second = persist(manager), persist(manager)
+    repository = Pillar5PriceMemoryRepository(manager.SessionLocal)
+    assert first != second
+    assert repository.get_sample_page(first)["sample_size"] == 4
+    assert repository.get_sample_page(second)["sample_size"] == 4
+
+
+@pytest.mark.parametrize("table", ["p5_memory_samples", "p5_memory_sample_members"])
+def test_bound_population_cannot_be_modified(manager, table):
+    from sqlalchemy.exc import IntegrityError
+
+    persist(manager)
+    with pytest.raises(IntegrityError, match="immutable"):
+        with manager.get_session() as session:
+            session.execute(text(f"DELETE FROM {table}"))
+
+
+def pipeline_context():
+    from tests.pillars.test_structural_target_selection import _event_context
+
+    context = _event_context()
+    context.event_id, context.starts_at, context.odds_trajectory = 900, START, quotes()
+    return context
+
+
+def test_pipeline_freezes_six_scopes_and_sample_before_cutoff(manager, monkeypatch):
+    import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
+    from infrastructure.persistence.repositories import pillar_mining_repository
+    from infrastructure.persistence.repositories.pillar_mining_repository import (
+        PillarMiningRepository,
+    )
+    from datetime import datetime
+
+    monkeypatch.setattr(pipeline, "db_manager", manager)
+    monkeypatch.setattr(pillar_mining_repository, "db_manager", manager)
+    monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+    context = pipeline_context()
+    processor = pipeline.EventPillarProcessor(enabled_pillars={"pillar_1": False})
+    output = processor.process_event(context)
+    stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
+    assert len(stored["pillars"]) == 6
+    assert output["pillar_5"]["status"] == "ACTIVE"
+    assert {
+        p["status"]
+        for p in stored["pillars"]
+        if p["pillar_id"] == "pillar_1_team_structure"
+    } == {"SKIPPED"}
+    sample_id = next(p["sample_id"] for p in output["pillar_5"]["analysis"].values())
+    page = Pillar5PriceMemoryRepository(manager.SessionLocal).get_sample_page(sample_id)
+    assert datetime.fromisoformat(page["acquired_at"]) <= output["evaluation_as_of"]
+    assert (
+        stored["inputs"]["odds_observations"][0]["collected_at"]
+        <= stored["evaluation_as_of"]
+    )
+    with manager.get_session() as session:
+        session.execute(text("DELETE FROM mv_p5_price_memory"))
+    assert PillarMiningRepository.get_evaluation(output["evaluation_id"]) == stored
+
+
+def test_pipeline_storage_failure_propagates_and_rolls_back_everything(
+    manager, monkeypatch
+):
     import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
     from modules.pillars.mining.service import PillarMiningService
-    from tests.pillars.test_structural_target_selection import _event_context
+    from infrastructure.persistence.models import PillarEvaluation
 
     monkeypatch.setattr(pipeline, "db_manager", manager)
     monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
-    context = _event_context()
-    context.event_id, context.starts_at, context.odds_trajectory = 900, START, quotes()
-    service = PillarMiningService(
-        PillarMiningRepository, {"pillar_5": P5MiningAdapter()}
-    )
+
+    class FailingWriter(PillarMiningRepository):
+        @classmethod
+        def append_run(cls, run, *, session):
+            value = super().append_run(run, session=session)
+            if run.pillar_id == "pillar_5":
+                raise RuntimeError("write failed")
+            return value
+
     processor = pipeline.EventPillarProcessor(
-        None,
-        enabled_pillars={
-            "pillar_1": False,
-            "pillar_2": False,
-            "pillar_3": False,
-            "pillar_4": False,
-            "pillar_5": True,
+        enabled_pillars={"pillar_1": False},
+        mining_service=PillarMiningService(
+            FailingWriter(), pipeline._registered_mining_adapters()
+        ),
+    )
+    with pytest.raises(RuntimeError, match="write failed"):
+        processor.process_event(pipeline_context())
+    with manager.get_session() as session:
+        assert session.query(PillarEvaluation).count() == 0
+        assert session.query(PillarMiningRun).count() == 0
+        assert session.query(P5MemorySample).count() == 0
+
+
+def test_sample_capture_failure_propagates_before_scoring(manager, monkeypatch):
+    import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
+    from infrastructure.persistence.models import PillarEvaluation
+    from modules.pillars.pillar_5.ports import MemorySamplePersistenceError
+
+    monkeypatch.setattr(pipeline, "db_manager", manager)
+    monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+    with manager.get_session() as session:
+        session.execute(text("DROP TABLE p5_memory_sample_members"))
+
+    processor = pipeline.EventPillarProcessor(enabled_pillars={"pillar_1": False})
+    with pytest.raises(MemorySamplePersistenceError, match="sample capture failed"):
+        processor.process_event(pipeline_context())
+
+    with manager.get_session() as session:
+        assert session.query(PillarEvaluation).count() == 0
+        assert session.query(PillarMiningRun).count() == 0
+        assert session.query(P5MemorySample).count() == 0
+
+
+def test_p1_missing_inputs_and_early_abort_are_preserved(manager, monkeypatch):
+    import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
+    from infrastructure.persistence.repositories import pillar_mining_repository
+    from modules.pillars.instrumentation import record_calculation
+
+    monkeypatch.setattr(pipeline, "db_manager", manager)
+    monkeypatch.setattr(pillar_mining_repository, "db_manager", manager)
+    monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+    monkeypatch.setattr(
+        pipeline,
+        "resolve_matchup_streak_analysis",
+        lambda *args, **kwargs: (None, False),
+    )
+    processor = pipeline.EventPillarProcessor(enabled_pillars={"pillar_5": False})
+    first = processor.process_event(pipeline_context())
+    assert first["pillar_1"]["reason"] == "MISSING_INPUT"
+    context = pipeline_context()
+    monkeypatch.setattr(
+        pipeline, "resolve_matchup_streak_analysis", lambda *args, **kwargs: ({}, False)
+    )
+
+    def abort(*args, **kwargs):
+        record_calculation(
+            "totals_abort", reason="ABORT_N_AVAIL_ZERO", evidence={"available": 0}
+        )
+
+    monkeypatch.setattr(pipeline, "calculate_p1_totals", abort)
+    monkeypatch.setattr(
+        pipeline,
+        "calculate_p1_side",
+        lambda *args, **kwargs: {
+            "modules": [],
+            "status": "ERROR",
+            "reason": "CALCULATION_ERROR",
         },
-        mining_service=service,
     )
     output = processor.process_event(context)
-    assert output["pillar_5"]["status"] == "ACTIVE"
-    sample_id = next(p["sample_id"] for p in output["pillar_5"]["analysis"].values())
-    assert (
-        Pillar5PriceMemoryRepository(manager.SessionLocal).get_sample_page(sample_id)[
-            "run_id"
-        ]
-        is not None
-    )
-    assert context.odds_trajectory == []
+    assert output["pillar_1_totals"]["reason"] == "INSUFFICIENT_OBSERVATIONS"
+    stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
+    totals = next(p for p in stored["pillars"] if p["result_scope"] == "totals")
+    assert totals["result"]["evidence"]["native_reason"] == "ABORT_N_AVAIL_ZERO"
+    assert totals["result"]["diagnostics"]["signals"]["blocked_signals"] == 1
 
 
-@pytest.mark.parametrize("has_history", [True, False])
-def test_pipeline_rolls_back_audit_if_writer_fails(manager, monkeypatch, has_history):
+def test_pipeline_preserves_existing_inputs_without_id_exclusions(manager, monkeypatch):
     import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
-    from modules.pillars.mining.service import PillarMiningService
-    from tests.pillars.test_structural_target_selection import _event_context
+    from infrastructure.persistence.repositories import pillar_mining_repository
 
     monkeypatch.setattr(pipeline, "db_manager", manager)
+    monkeypatch.setattr(pillar_mining_repository, "db_manager", manager)
     monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
-    if not has_history:
-        with manager.get_session() as session:
-            session.execute(text("DELETE FROM mv_p5_price_memory"))
+    context = pipeline_context()
+    context.odds_trajectory[0]["snapshot_id"] = 0
+    output = pipeline.EventPillarProcessor(
+        enabled_pillars={"pillar_1": False}
+    ).process_event(context)
+    stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
+    assert len(stored["inputs"]["odds_observations"]) == 3
+    assert stored["inputs"]["odds_observations"][0]["snapshot_id"] == 0
+    for number in range(2, 6):
+        assert all(
+            s["key"] != "temporal_availability"
+            for s in output[f"pillar_{number}"]["signals"]
+        )
 
-    class FailingWriter:
-        def replace_run(self, run, *, session):
-            PillarMiningRepository.replace_run(run, session=session)
-            raise RuntimeError("write failed")
 
-    context = _event_context()
-    context.event_id, context.starts_at, context.odds_trajectory = 900, START, quotes()
-    service = PillarMiningService(FailingWriter(), {"pillar_5": P5MiningAdapter()})
-    processor = pipeline.EventPillarProcessor(
-        None,
-        enabled_pillars={
-            "pillar_1": False,
-            "pillar_2": False,
-            "pillar_3": False,
-            "pillar_4": False,
-            "pillar_5": True,
-        },
-        mining_service=service,
+def test_persisted_p4_reuses_one_tick_with_distinct_checkpoint_times(
+    manager, monkeypatch
+):
+    from datetime import timedelta
+    import modules.jobs.pre_start_check_job.pillar_pipeline as pipeline
+    from infrastructure.persistence.repositories import pillar_mining_repository
+
+    monkeypatch.setattr(pipeline, "db_manager", manager)
+    monkeypatch.setattr(pillar_mining_repository, "db_manager", manager)
+    monkeypatch.setattr(pipeline, "_is_pillar_competition_in_scope", lambda _: True)
+    context = pipeline_context()
+    for row in context.odds_trajectory:
+        row["source_collected_at"] = START - timedelta(minutes=36)
+    result = pipeline.EventPillarProcessor(
+        enabled_pillars={"pillar_1": False}
+    ).process_event(context)
+    stored = PillarMiningRepository.get_evaluation(result["evaluation_id"])
+    p4 = next(
+        p
+        for p in stored["pillars"]
+        if p["pillar_id"] == "pillar_4_temporal_market_drift"
     )
-    result = processor.process_event(context)["pillar_5"]
-    assert result["status"] == ("ACTIVE" if has_history else "ERROR")
-    assert result["execution_status"] == (
-        "COMPLETED_WITH_ERRORS" if has_history else "FAILED"
+    inputs = p4["result"]["inputs"]
+    checkpoint_points = [
+        p for p in inputs.values() if p.get("time_basis") == "CHECKPOINT_TARGET"
+    ]
+    assert any(
+        p["target_minute"] == 30
+        and p["effective_at"] == (START - timedelta(minutes=30)).isoformat()
+        for p in checkpoint_points
     )
-    assert all(p.get("sample_id") is None for p in result["analysis"].values())
+    assert any(
+        p["target_minute"] == 5
+        and p["effective_at"] == (START - timedelta(minutes=5)).isoformat()
+        for p in checkpoint_points
+    )
+    source = inputs[checkpoint_points[0]["observation_ref"]]
+    assert source["SOURCE_COLLECTED_AT"] == (START - timedelta(minutes=36)).isoformat()
+    assert source["COLLECTED_AT"] == (START - timedelta(minutes=5)).isoformat()
+    assert len([key for key in inputs if key.startswith("snapshot:")]) == 3
     with manager.get_session() as session:
-        assert session.query(P5MemorySample).count() == 0
-        assert session.query(P5MemorySampleMember).count() == 0
-        assert session.query(PillarMiningRun).count() == 0
+        session.execute(text("DELETE FROM mv_p5_price_memory"))
+    assert PillarMiningRepository.get_evaluation(result["evaluation_id"]) == stored

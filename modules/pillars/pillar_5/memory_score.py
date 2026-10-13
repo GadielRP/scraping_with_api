@@ -12,6 +12,22 @@ from .calculation_models import (
 
 MIN_SAMPLE_SIZE = 3
 SAMPLE_SATURATION = Decimal("8")
+MSRI_THRESHOLDS = (
+    (Decimal("0.60"), Decimal("1.00")),
+    (Decimal("0.40"), Decimal("0.75")),
+    (Decimal("0.20"), Decimal("0.50")),
+    (Decimal("0.10"), Decimal("0.25")),
+)
+SAMPLE_WEIGHT_BUCKETS = (
+    (4, Decimal("0.40")),
+    (7, Decimal("0.60")),
+    (12, Decimal("0.80")),
+)
+STRENGTH_THRESHOLDS = (
+    (Decimal("0.10"), "NONE"),
+    (Decimal("0.25"), "WEAK"),
+    (Decimal("0.50"), "MODERATE"),
+)
 ZERO = Decimal("0")
 ONE = Decimal("1")
 logger = logging.getLogger(__name__)
@@ -37,14 +53,9 @@ def _log_formula(
 
 def msri_signal(msri_raw: Decimal) -> Decimal:
     """Discretize MSRI_RAW using the canonical descending thresholds."""
-    if msri_raw >= Decimal("0.60"):
-        return Decimal("1.00")
-    if msri_raw >= Decimal("0.40"):
-        return Decimal("0.75")
-    if msri_raw >= Decimal("0.20"):
-        return Decimal("0.50")
-    if msri_raw >= Decimal("0.10"):
-        return Decimal("0.25")
+    for threshold, value in MSRI_THRESHOLDS:
+        if msri_raw >= threshold:
+            return value
     return ZERO
 
 
@@ -52,22 +63,16 @@ def sample_weight(sample_size: int) -> Decimal:
     """Return the post-bucket sample weight for a sufficient sample."""
     if sample_size < MIN_SAMPLE_SIZE:
         raise ValueError("sample weight is undefined below the minimum sample size")
-    if sample_size <= 4:
-        return Decimal("0.40")
-    if sample_size <= 7:
-        return Decimal("0.60")
-    if sample_size <= 12:
-        return Decimal("0.80")
+    for maximum, weight in SAMPLE_WEIGHT_BUCKETS:
+        if sample_size <= maximum:
+            return weight
     return ONE
 
 
 def profile_strength(score: Decimal) -> str:
-    if score < Decimal("0.10"):
-        return "NONE"
-    if score < Decimal("0.25"):
-        return "WEAK"
-    if score < Decimal("0.50"):
-        return "MODERATE"
+    for threshold, classification in STRENGTH_THRESHOLDS:
+        if score < threshold:
+            return classification
     return "STRONG"
 
 

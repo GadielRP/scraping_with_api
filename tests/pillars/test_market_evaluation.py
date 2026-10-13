@@ -101,12 +101,13 @@ class Memory:
         return MemorySample(key, self.n, self.n, 0, 0)
 
 
-def evaluate(pillar, rows, memory=None):
+def evaluate(pillar, rows, memory=None, *, evaluation_as_of=None):
     context = build_odds_trajectory_context(
         rows,
         target_minutes_expected=[120, 30, 5],
         event_starts_at=START,
         evaluation_minute=5,
+        evaluation_as_of=evaluation_as_of,
     )
     target = select_target_minute(
         context,
@@ -148,8 +149,8 @@ def evaluate(pillar, rows, memory=None):
 def test_one_book_and_one_family_is_success(pillar, group, period):
     result = evaluate(pillar, quotes(group, period))
     assert result["status"] == "ACTIVE"
-    assert result["payload_schema_version"] == 4
-    assert result["policy_version"] == "market-evaluation-v1"
+    assert result["payload_schema_version"] == 5
+    assert result["policy_version"] == "market-evaluation-v3-source-reconstruction"
     assert result["evidence"]["computed_signals"] > 0
 
 
@@ -216,7 +217,10 @@ def test_live_and_unknown_contracts_do_not_enter_selection():
     rows = [{**row, "is_live": True} for row in rows]
     result = evaluate(2, quotes() + rows)
     assert result["selected_full_time_period"] == FT
-    assert any(d.get("reason") == "UNSUPPORTED_CONTRACT" for d in result["diagnostics"])
+    assert any(
+        d.get("reason") == "UNSUPPORTED_CONTRACT"
+        for d in result["diagnostics"]["details"]
+    )
 
 
 @pytest.mark.parametrize("n", [0, 1, 2, 3])
@@ -362,6 +366,7 @@ def test_missing_endpoint_blocks_only_temporal_series():
     rows = quotes("Over/Under", outcomes=("Over",), minute=120) + quotes(
         "Over/Under", outcomes=("Over",), minute=30
     )
+    rows = [{**row, "source_collected_at": None} for row in rows]
     result = evaluate(4, rows + quotes(outcomes=("1", "2")))
     assert result["status"] == "INSUFFICIENT_DATA"
     assert any(s["reason"] == "MISSING_ENDPOINT" for s in result["signals"])
@@ -384,12 +389,19 @@ def test_future_availability_does_not_enter_temporal_movement():
     )
     future = quotes("Over/Under", outcomes=("Over",), minute=20, price="9")
     future = [{**r, "collected_at": START - timedelta(minutes=4)} for r in future]
-    baseline, result = evaluate(4, rows), evaluate(4, rows + future)
+    baseline, result = evaluate(
+        4, rows, evaluation_as_of=START - timedelta(minutes=5)
+    ), evaluate(4, rows + future, evaluation_as_of=START - timedelta(minutes=5))
     computed = lambda r: {
         s["key"]: s["value"] for s in r["signals"] if s["status"] == "COMPUTED"
     }
     assert computed(baseline) == computed(result)
-    assert any(d.get("excluded_future_points", 0) > 0 for d in result["diagnostics"])
+    context = build_odds_trajectory_context(
+        rows + future,
+        event_starts_at=START,
+        evaluation_as_of=START - timedelta(minutes=5),
+    )
+    assert context.availability_diagnostics["after_evaluation_as_of"] == 1
 
 
 def test_result_states_are_independent_of_neutral_values_and_coverage():
@@ -420,6 +432,7 @@ def test_line_contract_transition_is_explicit_and_does_not_join_price_series():
     rows = quotes(
         "Over/Under", FT_OT, outcomes=("Over",), minute=30, line="2.5", market_id=70
     )
+    rows = [{**row, "source_collected_at": None} for row in rows]
     rows += quotes("Over/Under", FT_OT, outcomes=("Over",), line="3.5", market_id=71)
     result = evaluate(4, rows)
     assert result["selected_full_time_period"] == FT_OT
@@ -434,7 +447,8 @@ def test_line_contract_transition_is_explicit_and_does_not_join_price_series():
     assert signal["value"] == 1
     assert len(signal["contract_refs"]) == 2
     ended_prices = [
-        series for series in result["analysis"].values()
+        series
+        for series in result["analysis"].values()
         if series["market"]["VALUE_TYPE"] == "ODDS_PRICE"
         and series["market"]["CHOICE_GROUP"] == "2.5"
     ]
@@ -515,10 +529,12 @@ def test_invalid_optional_sizes_limits_and_lines_keep_valid_p4_price_metrics():
     rows = [{**r, "source_limit": "NaN", "exchange_size": "Infinity"} for r in rows]
     result = evaluate(4, rows)
     assert result["status"] == "ACTIVE"
-    json.dumps(result, allow_nan=False)
+    from modules.pillars.mining.serialization import to_json_value
+
+    json.dumps(to_json_value(result), allow_nan=False)
     assert any(
         "invalid_source_limit" in value
-        for d in result["diagnostics"]
+        for d in result["diagnostics"]["details"]
         for value in d.get("invalid", [])
     )
     assert not any(

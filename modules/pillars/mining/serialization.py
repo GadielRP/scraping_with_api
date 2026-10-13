@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
@@ -12,8 +12,8 @@ from typing import Any
 from .contracts import PillarMiningMetric
 
 
-def to_json_value(value: Any) -> Any:
-    """Convert supported domain values to deterministic JSON-safe values."""
+def to_json_value(value: Any, *, copy_containers: bool = True) -> Any:
+    """Capture JSON values, or reuse already captured containers during storage."""
 
     if value is None or isinstance(value, (str, int, bool)):
         return value
@@ -24,23 +24,50 @@ def to_json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise ValueError("non-finite Decimals cannot be persisted as mining JSON")
-        return float(value)
+        return str(value)
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Enum):
-        return to_json_value(value.value)
+        return to_json_value(value.value, copy_containers=copy_containers)
     if is_dataclass(value) and not isinstance(value, type):
-        return to_json_value(asdict(value))
+        return {
+            item.name: to_json_value(
+                getattr(value, item.name), copy_containers=copy_containers
+            )
+            for item in fields(value)
+        }
     if isinstance(value, dict):
-        return {str(key): to_json_value(item) for key, item in value.items()}
+        converted = {
+            str(key): to_json_value(item, copy_containers=copy_containers)
+            for key, item in value.items()
+        }
+        if (
+            not copy_containers
+            and converted.keys() == value.keys()
+            and all(item is value[key] for key, item in converted.items())
+        ):
+            return value
+        return converted
     if isinstance(value, (list, tuple)):
-        return [to_json_value(item) for item in value]
+        converted = [
+            to_json_value(item, copy_containers=copy_containers) for item in value
+        ]
+        if (
+            not copy_containers
+            and isinstance(value, list)
+            and all(before is after for before, after in zip(value, converted))
+        ):
+            return value
+        return converted
     if isinstance(value, (set, frozenset)):
-        return [to_json_value(item) for item in sorted(value, key=str)]
+        return [
+            to_json_value(item, copy_containers=copy_containers)
+            for item in sorted(value, key=str)
+        ]
 
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
-        return to_json_value(to_dict())
+        return to_json_value(to_dict(), copy_containers=copy_containers)
     raise TypeError(f"unsupported mining JSON value: {type(value).__name__}")
 
 
@@ -65,9 +92,13 @@ def scalar_metric(
     if value is None:
         return None
     if isinstance(value, bool):
-        return PillarMiningMetric(name=name, value_type="boolean", value=value, group=group)
+        return PillarMiningMetric(
+            name=name, value_type="boolean", value=value, group=group
+        )
     if isinstance(value, str):
-        return PillarMiningMetric(name=name, value_type="text", value=value, group=group)
+        return PillarMiningMetric(
+            name=name, value_type="text", value=value, group=group
+        )
     decimal_value = optional_decimal(value)
     if decimal_value is not None:
         return PillarMiningMetric(
@@ -77,3 +108,16 @@ def scalar_metric(
             group=group,
         )
     raise TypeError(f"metric {name!r} is not a supported scalar value")
+
+
+def numeric_metrics(value: Any, *, prefix: str = "", group: str = "derived"):
+    """Project numeric/boolean fields, retaining their paths inside arrays."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            yield from numeric_metrics(item, prefix=path, group=group)
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            yield from numeric_metrics(item, prefix=f"{prefix}[{index}]", group=group)
+    elif isinstance(value, (int, float, Decimal, bool)):
+        yield scalar_metric(prefix, value, group=group)

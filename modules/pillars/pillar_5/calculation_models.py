@@ -9,8 +9,8 @@ from typing import Any, Literal
 MarketShape = Literal["TWO_WAY", "THREE_WAY"]
 
 
-def _json_number(value: Decimal | None) -> float | None:
-    return float(value) if value is not None else None
+def _json_number(value: Decimal | None) -> Decimal | None:
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,9 +48,9 @@ class MemoryQueryKey:
 
     def price_vector(self) -> dict[str, float | None]:
         return {
-            "HOME": float(self.odds_home),
+            "HOME": self.odds_home,
             "DRAW": _json_number(self.odds_draw),
-            "AWAY": float(self.odds_away),
+            "AWAY": self.odds_away,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -61,9 +61,9 @@ class MemoryQueryKey:
             "market_period": self.market_period,
             "market_shape": self.market_shape,
             "has_draw": self.has_draw,
-            "odds_home": float(self.odds_home),
+            "odds_home": self.odds_home,
             "odds_draw": _json_number(self.odds_draw),
-            "odds_away": float(self.odds_away),
+            "odds_away": self.odds_away,
         }
 
 

@@ -69,21 +69,24 @@ def test_postgresql_migration_has_typed_timestamps_json_and_cascades():
     assert "ix_p5_sample_page" in ddl
 
 
-def _orm_audit_tables():
-    from infrastructure.persistence.models import P5MemorySample, P5MemorySampleMember
-
+def _revision_audit_tables():
+    """Use this historical revision's schema, independently of the current ORM."""
+    module = migration()
     metadata = sa.MetaData()
     runs = sa.Table(
         "pillar_mining_runs", metadata, sa.Column("id", sa.Integer, primary_key=True)
     )
-    header = P5MemorySample.__table__.to_metadata(metadata)
-    members = P5MemorySampleMember.__table__.to_metadata(metadata)
+    header = sa.Table("p5_memory_samples", metadata, *module._sample_columns())
+    members = sa.Table("p5_memory_sample_members", metadata, *module._member_columns())
+    for name, table_name, columns in module._INDEXES:
+        table = metadata.tables[table_name]
+        sa.Index(name, *(table.c[name] for name in columns))
     return runs, header, members
 
 
-def test_upgrade_adopts_orm_tables_preserving_data_and_can_repeat():
+def test_upgrade_adopts_original_tables_preserving_data_and_can_repeat():
     engine = create_engine("sqlite://")
-    runs, header, members = _orm_audit_tables()
+    runs, header, members = _revision_audit_tables()
     with engine.begin() as connection:
         runs.metadata.create_all(connection)
         connection.execute(runs.insert().values(id=17))
@@ -99,6 +102,7 @@ def test_upgrade_adopts_orm_tables_preserving_data_and_can_repeat():
                 wins_home=1,
                 wins_draw=0,
                 wins_away=0,
+                created_at=instant,
             )
         )
         connection.execute(
@@ -135,7 +139,7 @@ def test_upgrade_adopts_orm_tables_preserving_data_and_can_repeat():
 )
 def test_upgrade_completes_partial_creation_and_missing_indexes(existing_tables):
     engine = create_engine("sqlite://")
-    runs, header, members = _orm_audit_tables()
+    runs, header, members = _revision_audit_tables()
     with engine.begin() as connection:
         runs.create(connection)
         for table in (header, members):
@@ -150,7 +154,9 @@ def test_upgrade_completes_partial_creation_and_missing_indexes(existing_tables)
         assert inspector.has_table(header.name) and inspector.has_table(members.name)
         assert inspector.get_indexes(header.name)[0]["column_names"] == ["run_id"]
         assert inspector.get_indexes(members.name)[0]["column_names"] == [
-            "sample_id", "starts_at", "event_id"
+            "sample_id",
+            "starts_at",
+            "event_id",
         ]
     engine.dispose()
 
@@ -160,7 +166,7 @@ def test_upgrade_completes_partial_creation_and_missing_indexes(existing_tables)
 )
 def test_upgrade_rejects_incompatible_existing_tables_before_ddl(drift):
     engine = create_engine("sqlite://")
-    runs, header, members = _orm_audit_tables()
+    runs, header, members = _revision_audit_tables()
     if drift == "type":
         header.c.sample_size.type = sa.String(20)
     elif drift == "nullable":
@@ -181,7 +187,9 @@ def test_upgrade_rejects_incompatible_existing_tables_before_ddl(drift):
         header.create(connection)
         module = migration()
         module.op = Operations(MigrationContext.configure(connection))
-        with pytest.raises(RuntimeError, match="Cannot adopt existing p5_memory_samples"):
+        with pytest.raises(
+            RuntimeError, match="Cannot adopt existing p5_memory_samples"
+        ):
             module.upgrade()
         assert not inspect(connection).has_table(members.name)
         assert inspect(connection).has_table(header.name)

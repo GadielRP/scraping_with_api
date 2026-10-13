@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import replace
 
 from copy import deepcopy
 from dataclasses import replace
@@ -233,9 +234,9 @@ def test_joint_side_execution_keeps_other_module_results_and_shared_inputs(monke
     assert result["raw"]["engine_version"] == "side_engine_multilayer_v3_1"
 
     mining_run = P1SideMiningAdapter().build(_event(), result)
-    validate_mining_run(mining_run)
+    validate_mining_run(replace(mining_run, evaluation_id="evaluation"))
     m5_unit = next(unit for unit in mining_run.units if unit.unit_key == "module:M5")
-    assert m5_unit.producer_status == "INACTIVE"
+    assert m5_unit.status == "BLOCKED"
     assert m5_unit.is_valid is False
     assert m5_unit.strength == "INACTIVE"
-    assert m5_unit.diagnostics["status_reason"] == "OUTSIDE_LATE_SEASON_WINDOW"
+    assert m5_unit.diagnostics["evidence"]["status_reason"] == "OUTSIDE_LATE_SEASON_WINDOW"

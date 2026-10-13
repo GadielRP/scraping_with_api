@@ -85,8 +85,11 @@ def calculate_pillar_4(
         accepted_refs = {contract_key(line) for line in evaluation.lines}
         series_contracts = resolve_series_contracts(
             series_results,
-            {ref: contract for ref, contract in contracts.items()
-             if ref in accepted_refs},
+            {
+                ref: contract
+                for ref, contract in contracts.items()
+                if ref in accepted_refs
+            },
         )
         for series in series_results:
             if series.status == "ERROR":
@@ -116,13 +119,14 @@ def calculate_pillar_4(
                     if original.snapshot_id is not None
                     else "observation_"
                     + sha256(
-                        f"{base}:{original.quote_id}:{original.effective_at}:{original.availability_at}".encode()
+                        f"{base}:{original.quote_id}:{original.source_collected_at or original.collected_at or original.effective_at}:{original.availability_at}".encode()
                     ).hexdigest()[:24]
                 )
+                point_evidence = original.to_dict()
                 if provenance_ref not in inputs:
                     inputs[provenance_ref] = {
                         key: value
-                        for key, value in original.to_dict().items()
+                        for key, value in point_evidence.items()
                         if key
                         not in {
                             "VALUE",
@@ -135,12 +139,15 @@ def calculate_pillar_4(
                 inputs.setdefault(
                     ref,
                     {
-                        "value": float(point.value),
+                        "value": point.value,
                         "observation_ref": provenance_ref,
+                        # Projection time belongs to each point, not the shared snapshot.
+                        "effective_at": point.effective_at.isoformat(),
+                        "time_basis": point_evidence["TIME_BASIS"],
                         "target_minute": point.target_minute,
                         "observation_kind": point.observation_kind,
                         "distance_from_target_minutes": (
-                            float(point.distance_from_target_minutes)
+                            point.distance_from_target_minutes
                             if point.distance_from_target_minutes is not None
                             else None
                         ),
@@ -173,11 +180,7 @@ def calculate_pillar_4(
                 signals.append(
                     SignalResult(
                         f"{key}:{name}",
-                        (
-                            "COMPUTED"
-                            if sufficient and value is not None
-                            else "BLOCKED"
-                        ),
+                        ("COMPUTED" if sufficient and value is not None else "BLOCKED"),
                         value if sufficient else None,
                         (
                             None
@@ -242,10 +245,13 @@ def calculate_pillar_4(
         **result["checkpoint"],
         "nominal_target_as_of": (
             extraction.nominal_target_as_of.isoformat()
-            if extraction.nominal_target_as_of else None
+            if extraction.nominal_target_as_of
+            else None
         ),
         "operative_as_of": (
-            extraction.operative_as_of.isoformat() if extraction.operative_as_of else None
+            extraction.operative_as_of.isoformat()
+            if extraction.operative_as_of
+            else None
         ),
     }
     if debug_mode:

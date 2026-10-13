@@ -9,15 +9,16 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import asdict, is_dataclass
-from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
-from decimal import Decimal
+from dataclasses import fields, replace
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from time import perf_counter
-from typing import Any, Optional
+from uuid import uuid4
+from typing import Any
 
-from collections import Counter
+from .pillar_result_logging import log_pillar_results
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 from infrastructure.settings import Config
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories.pillar_5_price_memory_repository import (
@@ -27,19 +28,11 @@ from infrastructure.persistence.repositories.pillar_mining_repository import (
     PillarMiningRepository,
 )
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.pillars.context import (
-    EventContext,
-    EventIdentity,
-    build_event_context,
-    summarize_number_of_teams_from_streak_analysis,
-)
+from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
 from modules.pillars.market_evaluation import prepare_event_markets
 from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
-from modules.pillars.trajectory_selection import (
-    TargetMinuteSelection,
-    select_target_minute,
-)
+from modules.pillars.trajectory_selection import select_target_minute
 from modules.pillars.competition_metadata_resolver import (
     apply_competition_metadata_resolution,
     resolve_competition_metadata,
@@ -47,9 +40,8 @@ from modules.pillars.competition_metadata_resolver import (
 from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
-from modules.pillars.pillar_1_team_structure.run_pillar_1_team_structure import (
-    calculate_pillar_1_team_structure,
-)
+from modules.pillars.pillar_1_team_structure.side import calculate_p1_side
+from modules.pillars.pillar_1_team_structure.totals import calculate_p1_totals
 from modules.pillars.pillar_2_side_market.run_pillar_2 import (
     ENGINE_VERSION as P2_ENGINE_VERSION,
     calculate_pillar_2,
@@ -74,10 +66,19 @@ from modules.pillars.pillar_4.run_pillar_4 import (
 from modules.pillars.pillar_5.run_pillar_5 import (
     ENGINE_VERSION as P5_ENGINE_VERSION,
     calculate_pillar_5,
+    prepare_pillar_5,
 )
-from modules.pillars.pillar_1_team_structure.totals import (
-    P1TotalsOutput,
+
+from modules.pillars.pillar_5.ports import MemorySamplePersistenceError
+from shared.temporal import utc_now
+from modules.pillars.instrumentation import (
+    capture_calculations,
+    calculation_scope,
 )
+from modules.pillars.mining.contracts import EvaluationSnapshot
+from modules.pillars.mining.serialization import to_json_value
+from modules.pillars.mining.versioning import calculation_versions
+from modules.pillars.mining.fingerprint import content_hash
 
 from .debug_exports.odds_trajectory_excel import export_odds_trajectory_context_xlsx
 from .providers.debug_paths import sport_folder_name
@@ -87,168 +88,12 @@ logger = logging.getLogger(__name__)
 CANONICAL_SIGNAL_FLOW_ID = "pre_start_signal_profile"
 
 
-def _serialize_p1_totals_output(output: P1TotalsOutput) -> dict:
-    return asdict(output)
-
-
-def _resolve_pillar_competition_id(event_context: Any):
-    """Resolve the canonical competition ID used by the pillar scope policy."""
-    if hasattr(event_context, "competition"):
-        competition = getattr(event_context, "competition", None)
-        if competition is not None:
-            return getattr(competition, "competition_id", None)
-
-    if isinstance(event_context, dict):
-        ctx = event_context.get("event_context")
-        if ctx and hasattr(ctx, "competition"):
-            return getattr(ctx.competition, "competition_id", None)
-        competition_id = event_context.get("competition_id")
-        if competition_id is not None:
-            return competition_id
-        event_data = event_context.get("event_data")
-        if isinstance(event_data, dict):
-            return event_data.get("competition_id")
-
-    return None
-
-
 def _is_pillar_competition_in_scope(competition_id) -> bool:
     """Return whether the competition is inside the configured pillar scope."""
     return (
         not Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS
         or is_tracked_competition(competition_id)
     )
-
-
-def _format_result_fields(fields, indent=2):
-    """Render named values as aligned rows, with nested sections for metric paths."""
-    tree = {}
-    for name, value in fields.items():
-        parts = str(name).split(".")
-        branch = tree
-        for part in parts[:-1]:
-            branch = branch.setdefault(part, {})
-        branch[parts[-1]] = value
-
-    width = max((len(name) for name in tree), default=0)
-    padding = " " * indent
-    lines = []
-    for name, value in tree.items():
-        if isinstance(value, dict) and value:
-            lines.append(f"{padding}{name}:")
-            lines.append(_format_result_fields(value, indent + 2))
-        elif isinstance(value, list) and value:
-            lines.append(f"{padding}{name}:")
-            for index, item in enumerate(value, start=1):
-                lines.append(_format_result_fields({f"[{index}]": item}, indent + 2))
-        else:
-            if value is None:
-                display = "no disponible"
-            elif isinstance(value, (dict, list)):
-                display = "ninguno"
-            elif isinstance(value, bool):
-                display = "true" if value else "false"
-            else:
-                display = str(value)
-            lines.append(f"{padding}{name:<{width}} : {display}")
-    return "\n".join(lines)
-
-
-def _log_result_block(title, context, sections):
-    # One record keeps each block together when events run concurrently.
-    logger.info(
-        "%s\n%s\n  %s",
-        title,
-        _format_result_fields(_to_json_safe({"Contexto": context, **sections})),
-        "-" * 72,
-    )
-
-
-def _log_market_values(result):
-    """Show every computed reading once, grouped by its analytical scope."""
-    groups = {}
-    for signal in result.get("signals", []):
-        if signal.get("status") != "COMPUTED":
-            continue
-        evidence = signal.get("evidence", {})
-        if "metric" in evidence:
-            scope, name = evidence["scope"], evidence["metric"]
-        else:
-            scope, _, name = signal["key"].rpartition(":")
-            scope = scope or "global"
-        groups.setdefault(scope, {})[name] = signal["value"]
-
-    for scope, values in groups.items():
-        market = result.get("analysis", {}).get(scope, {}).get("market", {})
-        context = {"Pilar": result.get("pillar_id"), "Evento": result.get("event_id")}
-        if market:
-            context.update({
-                "Bookmaker": f"{market['BOOKIE_NAME']} ({market['BOOKIE_ID']})",
-                "Mercado": f"{market['MARKET_GROUP']} / {market['MARKET_PERIOD']}",
-                "Línea": market["CHOICE_GROUP"] if market["CHOICE_GROUP"] is not None else "sin línea",
-                "Elección": market["CHOICE_NAME"],
-                "Vista": market["VIEW"],
-                "Tipo de valor": market["VALUE_TYPE"],
-                "Fuente": market["SOURCE"],
-                "Lado exchange": market["EXCHANGE_SIDE"] or "no aplica",
-                "Nivel de exchange (0 es el valor default)": market["EXCHANGE_LEVEL"],
-                "Serie": scope,
-            })
-        else:
-            context["Ámbito"] = scope
-        _log_result_block(
-            "🏁 Market values — RESULTADOS CALCULADOS",
-            context,
-            {"Variables finales": values},
-        )
-
-
-def _log_market_result(participants, result):
-    if result.get("pillar_id") == "pillar_5":
-        for scope, profile in result.get("analysis", {}).items():
-            if "P5_STATUS" in profile:
-                _log_result_block(
-                    "🏁 P5 PROFILE RESULT — MEMORIA DE PRECIOS",
-                    {"Evento": result.get("event_id"), "Ámbito": scope},
-                    {"Variables finales": {
-                        name: value for name, value in profile.items()
-                        if name not in {"diagnostics", "sample_id"}
-                    }},
-                )
-    else:
-        _log_market_values(result)
-    _log_result_block(
-        "🏁 Market result — RESUMEN FINAL",
-        {"Pilar": result.get("pillar_id"), "Evento": result.get("event_id"), "Participantes": participants},
-        {
-            "Ejecución": {
-                "status": result.get("status"),
-                "execution_status": result.get("execution_status"),
-                "target_minute": result.get("target_minute"),
-                "selected_full_time_period": result.get("selected_full_time_period"),
-                "selection_reason": result.get("selection", {}).get("reason"),
-                "computed_signals": result.get("evidence", {}).get("computed_signals"),
-            },
-            "Cálculos no disponibles (cantidad por motivo)": dict(Counter(
-                signal.get("reason")
-                for signal in result.get("signals", [])
-                if signal.get("status") in ("BLOCKED", "ERROR")
-            )),
-            "Cobertura (cantidad por estado)": dict(Counter(
-                cell["status"] for cell in result.get("coverage", [])
-            )),
-        },
-    )
-
-
-def _clear_unpersisted_samples(result):
-    for profile in result.get("analysis", {}).values():
-        profile["sample_id"] = None
-    for signal in result.get("signals", []):
-        signal["evidence"].pop("sample_id", None)
-    for diagnostic in result.get("diagnostics", []):
-        if "audit_persisted" in diagnostic:
-            diagnostic["audit_persisted"] = False
 
 
 def _build_market_error_result(event_context, pillar, evaluation, exc):
@@ -270,57 +115,12 @@ def _build_market_error_result(event_context, pillar, evaluation, exc):
                 "execution",
                 "ERROR",
                 reason="CALCULATION_ERROR",
-                evidence={"error_class": type(exc).__name__},
+                evidence={"error_class": type(exc).__name__, "message": str(exc)},
             ),
         ),
         evaluation.coverage(pillar),
         contracts=evaluation.contracts(pillar),
     ).to_dict()
-
-
-def _to_json_safe(value: Any):
-    try:
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-
-        if isinstance(value, Decimal):
-            return str(value)
-
-        if isinstance(value, (datetime, date)):
-            return value.isoformat()
-
-        to_dict = getattr(value, "to_dict", None)
-        if callable(to_dict):
-            try:
-                return _to_json_safe(to_dict())
-            except Exception:
-                pass
-
-        if is_dataclass(value) and not isinstance(value, type):
-            return _to_json_safe(asdict(value))
-
-        if isinstance(value, dict):
-            return {str(key): _to_json_safe(item) for key, item in value.items()}
-
-        if isinstance(value, (list, tuple)):
-            return [_to_json_safe(item) for item in value]
-
-        if isinstance(value, set):
-            try:
-                return [_to_json_safe(item) for item in sorted(value, key=lambda item: str(item))]
-            except Exception:
-                return [_to_json_safe(item) for item in list(value)]
-
-        if hasattr(value, "__dict__"):
-            return {
-                str(key): _to_json_safe(item)
-                for key, item in vars(value).items()
-                if not str(key).startswith("_")
-            }
-
-        return str(value)
-    except Exception:
-        return str(value)
 
 
 def _safe_debug_name(value: Any) -> str:
@@ -337,7 +137,9 @@ def _safe_debug_name(value: Any) -> str:
 
 def _write_debug_json(filepath: Path, payload: Any) -> None:
     with filepath.open("w", encoding="utf-8") as handle:
-        json.dump(_to_json_safe(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(
+            to_json_value(payload), handle, ensure_ascii=False, indent=2, sort_keys=True
+        )
 
 
 def _save_pillar_debug_snapshots(
@@ -352,41 +154,55 @@ def _save_pillar_debug_snapshots(
         participants = getattr(event_context, "participants_label", "unknown_matchup")
 
         safe_participants = _safe_debug_name(participants)
-        competition_folder = re.sub(
-            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
-        ).strip("_") or "unknown_competition"
+        competition_folder = (
+            re.sub(r"[^a-z0-9]+", "_", (competition_slug or "").lower()).strip("_")
+            or "unknown_competition"
+        )
         debug_dir = (
-            Path("debug") / "pillar_pipeline_objects"
+            Path("debug")
+            / "pillar_pipeline_objects"
             / sport_folder_name(getattr(event_context, "sport", None))
-            / competition_folder / f"{event_id}_{safe_participants}"
+            / competition_folder
+            / f"{event_id}_{safe_participants}"
         )
         debug_dir.mkdir(parents=True, exist_ok=True)
 
         _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
         if odds_trajectory_context is not None:
-            _write_debug_json(debug_dir / f"{event_id}_odds_trajectory_context.json", odds_trajectory_context)
+            _write_debug_json(
+                debug_dir / f"{event_id}_odds_trajectory_context.json",
+                odds_trajectory_context,
+            )
             workbook_path = debug_dir / f"{event_id}_odds_trajectory_context.xlsx"
             try:
-                saved_workbook_path = export_odds_trajectory_context_xlsx(
-                    odds_trajectory_context,
-                    workbook_path,
-                    event_context=event_context,
-                ) or workbook_path
+                saved_workbook_path = (
+                    export_odds_trajectory_context_xlsx(
+                        odds_trajectory_context,
+                        workbook_path,
+                        event_context=event_context,
+                    )
+                    or workbook_path
+                )
                 if saved_workbook_path != workbook_path:
                     logger.warning(
                         "Odds trajectory debug workbook target was locked; saved alternate file "
                         "event_id=%s path=%s",
-                        event_id, saved_workbook_path,
+                        event_id,
+                        saved_workbook_path,
                     )
                 else:
                     logger.info(
                         "Odds trajectory debug workbook saved event_id=%s path=%s",
-                        event_id, saved_workbook_path,
+                        event_id,
+                        saved_workbook_path,
                     )
             except Exception as exc:
                 logger.exception(
                     "Failed to save odds trajectory debug workbook event_id=%s path=%s exception_class=%s: %s",
-                    event_id, workbook_path, type(exc).__name__, exc,
+                    event_id,
+                    workbook_path,
+                    type(exc).__name__,
+                    exc,
                 )
 
         resolved_streak = (
@@ -395,7 +211,9 @@ def _save_pillar_debug_snapshots(
             else getattr(event_context, "streak_analysis", None)
         )
         if resolved_streak is not None:
-            _write_debug_json(debug_dir / f"{event_id}_streak_analysis.json", resolved_streak)
+            _write_debug_json(
+                debug_dir / f"{event_id}_streak_analysis.json", resolved_streak
+            )
 
         logger.info(
             "💾 Pillar debug snapshots saved for event %s at %s (streak_analysis_saved=%s)",
@@ -410,804 +228,15 @@ def _save_pillar_debug_snapshots(
         )
 
 
-class EventPillarProcessor:
-    """Processes a single event through the pillar/module architecture."""
-
-    def __init__(
-        self,
-        event_repo,
-        debug_mode: bool = False,
-        enabled_pillars: Optional[dict[str, bool]] = None,
-        mining_service: PillarMiningService | None = None,
-        evaluation_as_of: datetime | None = None,
-    ):
-        self.event_repo = event_repo
-        self.debug_mode = debug_mode
-        self.enabled_pillars = enabled_pillars or {}
-        self.mining_service = mining_service
-        self.evaluation_as_of = evaluation_as_of
-
-    def _is_pillar_enabled(self, pillar_key: str) -> bool:
-        if not self.enabled_pillars:
-            return True
-        return bool(self.enabled_pillars.get(pillar_key, True))
-
-    def _persist_mining_result(
-        self,
-        pillar_id: str,
-        event_context: EventIdentity | EventContext,
-        result: dict[str, Any],
-    ) -> None:
-        if self.mining_service is None:
-            return
-
-        target_minute = result.get("target_minute", result.get("P1_TARGET_MINUTE"))
-        engine_version = result.get("engine_version") or result.get("raw", {}).get(
-            "engine_version"
-        )
-
-        started = perf_counter()
-        try:
-            persisted = self.mining_service.persist(
-                pillar_id,
-                event_context,
-                result,
-            )
-            if persisted:
-                logger.info(
-                    "Pillar mining run persisted pillar_id=%s event_id=%s status=%s target_minute=%s engine_version=%s duration_ms=%.1f",
-                    pillar_id,
-                    event_context.event_id,
-                    result.get("status"),
-                    target_minute,
-                    engine_version,
-                    (perf_counter() - started) * 1000,
-                )
-        except Exception:
-            # Mining is an analytical side effect. Its failure must be visible,
-            # but must not prevent P4/P5 or the rest of the event from running.
-            logger.exception(
-                "Pillar mining persistence failed pillar_id=%s event_id=%s status=%s target_minute=%s engine_version=%s",
-                pillar_id,
-                event_context.event_id,
-                result.get("status"),
-                target_minute,
-                engine_version,
-            )
-
-    def process_event(
-        self,
-        event_context: EventContext,
-        trajectory_points: Optional[list[Any]] = None,
-    ) -> Optional[dict]:
-        """Calculate pillar modules for a single event context.
-
-        Returns a dictionary with pillar results or ``None`` on failure.
-        """
-        # The pillar pipeline has one canonical input contract.  Do not
-        # silently reconstruct it from the legacy event payload here: doing
-        # so would bring back the duplicate objects this context refactor is
-        # intended to remove.
-        if event_context is not None and not isinstance(event_context, EventContext):
-            logger.warning(
-                "Pillar pipeline received a non-canonical event context (%s); skipping event",
-                type(event_context).__name__,
-            )
-            return None
-
-        if event_context is None or not event_context.success:
-            event_id = event_context.event_id if event_context is not None else "?"
-            logger.warning(f"☢️ Pillar pipeline: success is false for event {event_id}, skipping pillar calculation")
-            return None
-
-        event_id = event_context.event_id
-
-        competition_id = event_context.competition.competition_id
-        if not _is_pillar_competition_in_scope(competition_id):
-            logger.info(
-                "🚫 Pillar pipeline: competition_id=%s is outside the configured scope for event %s; skipping pillar calculation",
-                competition_id,
-                event_id,
-            )
-            return None
-
-        logger.info(f"🏛️ Started pillars processing for event {event_id}")
-        round_value = event_context.round
-        if round_value != "regular_season":
-            logger.info(
-                "🚫 Pillar pipeline: round is %s for event_id %s, skipping pillar calculation",
-                round_value,
-                event_id,
-            )
-            return None
-
-        evaluation_minute = event_context.minutes_until_start
-        odds_trajectory = (
-            trajectory_points
-            if trajectory_points is not None
-            else event_context.odds_trajectory
-        )
-        odds_trajectory_context = build_odds_trajectory_context(
-            odds_trajectory,
-            evaluation_minute=evaluation_minute,
-            event_starts_at=event_context.starts_at,
-            evaluation_as_of=self.evaluation_as_of,
-        )
-        target_selection = select_target_minute(
-            odds_trajectory_context,
-            flow_id=CANONICAL_SIGNAL_FLOW_ID,
-            expected_event_id=event_context.event_id,
-            allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
-            evaluation_minute=evaluation_minute,
-        )
-        event_identity = event_context.to_identity()
-        market_evaluation = prepare_event_markets(
-            odds_trajectory_context, target_selection, event_identity
-        )
-
-        logger.info(
-            "Pillar odds trajectory context for event %s: available=%s market_groups=%s present_minutes=%s missing_minutes=%s",
-            event_id,
-            odds_trajectory_context.available,
-            len(odds_trajectory_context.markets),
-            odds_trajectory_context.target_minutes_present,
-            odds_trajectory_context.missing_target_minutes,
-        )
-        logger.info(
-            "Canonical structural target selected for event %s: target_minute=%s reason=%s diagnostics=%s",
-            event_id,
-            target_selection.target_minute,
-            target_selection.reason,
-            target_selection.diagnostics,
-        )
-        if self.debug_mode and odds_trajectory_context.available:
-            trajectory_keys = []
-            for market_group, periods in odds_trajectory_context.markets.items():
-                for market_period in periods:
-                    trajectory_keys.append(f"{market_group}/{market_period}")
-            logger.info(
-                "P4 pre-check trajectory sample for event %s: %s",
-                event_id,
-                trajectory_keys[:10],
-            )
-
-        if self.debug_mode:
-            _save_pillar_debug_snapshots(
-                event_context=event_identity,
-                odds_trajectory_context=odds_trajectory_context,
-                competition_slug=event_context.competition.slug,
-            )
-
-        p2_result = None
-        if self._is_pillar_enabled("pillar_2"):
-            try:
-                p2_result = calculate_pillar_2(
-                    event_context=event_identity,
-                    odds_trajectory_context=odds_trajectory_context,
-                    target_selection=target_selection,
-                    debug_mode=self.debug_mode,
-                    market_evaluation=market_evaluation,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Error calculating P2 for event %s (%s): %s",
-                    event_id,
-                    event_context.participants_label,
-                    exc,
-                )
-                p2_result = _build_market_error_result(
-                    event_identity, 2, market_evaluation, exc
-                )
-
-            _log_market_result(
-                event_context.participants_label,
-                p2_result,
-            )
-            self._persist_mining_result(
-                "pillar_2_side_market",
-                event_identity,
-                p2_result,
-            )
-        else:
-            p2_result = EvaluationResult(
-                event_identity.event_id,
-                "pillar_2_side_market",
-                P2_ENGINE_VERSION,
-                target_selection.target_minute,
-                market_evaluation.selection,
-                (),
-                market_evaluation.coverage(2),
-                skipped=True,
-            ).to_dict()
-            logger.info(
-                "🏁 Pillar 2 (Side Market Signal Engine) skipped for %s (disabled by toggle)",
-                event_context.participants_label,
-            )
-
-        p3_result = None
-        if self._is_pillar_enabled("pillar_3"):
-            try:
-                p3_result = calculate_pillar_3(
-                    event_context=event_identity,
-                    odds_trajectory_context=odds_trajectory_context,
-                    target_selection=target_selection,
-                    debug_mode=self.debug_mode,
-                    market_evaluation=market_evaluation,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Error calculating P3 for event %s (%s): %s",
-                    event_id,
-                    event_context.participants_label,
-                    exc,
-                )
-                p3_result = _build_market_error_result(
-                    event_identity, 3, market_evaluation, exc
-                )
-
-            _log_market_result(
-                event_context.participants_label,
-                p3_result,
-            )
-            self._persist_mining_result(
-                "pillar_3_totals_market_context",
-                event_identity,
-                p3_result,
-            )
-        else:
-            p3_result = EvaluationResult(
-                event_identity.event_id,
-                "pillar_3_totals_market_context",
-                P3_ENGINE_VERSION,
-                target_selection.target_minute,
-                market_evaluation.selection,
-                (),
-                market_evaluation.coverage(3),
-                skipped=True,
-            ).to_dict()
-            logger.info(
-                "🏁 Pillar 3 (Over/Under Market Signal Engine) skipped for %s (disabled by toggle)",
-                event_context.participants_label,
-            )
-
-        p4_result = None
-        if self._is_pillar_enabled("pillar_4"):
-            try:
-                # calculate pillar 4 (p4)
-                p4_result = calculate_pillar_4(
-                    event_context=event_identity,
-                    odds_trajectory_context=odds_trajectory_context,
-                    target_selection=target_selection,
-                    debug_mode=self.debug_mode,
-                    market_evaluation=market_evaluation,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Error calculating P4 for event %s (%s): %s",
-                    event_id,
-                    event_context.participants_label,
-                    exc,
-                )
-                p4_result = _build_market_error_result(
-                    event_identity, 4, market_evaluation, exc
-                )
-
-            _log_market_result(event_context.participants_label, p4_result)
-            self._persist_mining_result(
-                "pillar_4_temporal_market_drift",
-                event_identity,
-                p4_result,
-            )
-        else:
-            p4_result = EvaluationResult(
-                event_identity.event_id,
-                "pillar_4_temporal_market_drift",
-                P4_ENGINE_VERSION,
-                target_selection.target_minute,
-                market_evaluation.selection,
-                (),
-                market_evaluation.coverage(4),
-                skipped=True,
-            ).to_dict()
-            logger.info(
-                "🏁 Pillar 4 (Temporal Market Drift) skipped for %s (disabled by toggle)",
-                event_context.participants_label,
-            )
-
-        p5_result = None
-        if self._is_pillar_enabled("pillar_5"):
-            try:
-                if self.mining_service is not None and self.mining_service.enabled:
-                    with db_manager.get_session() as session:
-                        p5_result = calculate_pillar_5(
-                            event_identity,
-                            odds_trajectory_context,
-                            target_selection=target_selection,
-                            debug_mode=self.debug_mode,
-                            market_evaluation=market_evaluation,
-                            memory_repository=Pillar5PriceMemoryRepository(
-                                session=session, capture=True
-                            ),
-                        )
-                        _log_market_result(event_context.participants_label, p5_result)
-                        if not self.mining_service.persist(
-                            "pillar_5", event_identity, p5_result, session=session
-                        ):
-                            session.rollback()
-                            _clear_unpersisted_samples(p5_result)
-                else:
-                    p5_result = calculate_pillar_5(
-                        event_identity,
-                        odds_trajectory_context,
-                        target_selection=target_selection,
-                        debug_mode=self.debug_mode,
-                        market_evaluation=market_evaluation,
-                        memory_repository=Pillar5PriceMemoryRepository(
-                            db_manager.SessionLocal
-                        ),
-                    )
-                    _log_market_result(event_context.participants_label, p5_result)
-            except Exception as exc:
-                logger.exception(
-                    "Error calculating P5 for event %s (%s): %s",
-                    event_id,
-                    event_context.participants_label,
-                    exc,
-                )
-                if p5_result is None:
-                    p5_result = _build_market_error_result(
-                        event_identity, 5, market_evaluation, exc
-                    )
-                else:
-                    _clear_unpersisted_samples(p5_result)
-                    p5_result["diagnostics"].append(
-                        {
-                            "reason": "PERSISTENCE_ERROR",
-                            "error_class": type(exc).__name__,
-                        }
-                    )
-                    p5_result["signals"].append(
-                        SignalResult(
-                            "persistence",
-                            "ERROR",
-                            reason="PERSISTENCE_ERROR",
-                            evidence={"error_class": type(exc).__name__},
-                        ).to_dict()
-                    )
-                    computed = any(
-                        signal["status"] == "COMPUTED"
-                        for signal in p5_result["signals"]
-                    )
-                    p5_result["status"] = "ACTIVE" if computed else "ERROR"
-                    p5_result["execution_status"] = (
-                        "COMPLETED_WITH_ERRORS" if computed else "FAILED"
-                    )
-                _log_market_result(event_context.participants_label, p5_result)
-        else:
-            p5_result = EvaluationResult(
-                event_identity.event_id,
-                "pillar_5",
-                P5_ENGINE_VERSION,
-                target_selection.target_minute,
-                market_evaluation.selection,
-                (),
-                market_evaluation.coverage(5),
-                skipped=True,
-            ).to_dict()
-            logger.info(
-                "🏁 Pillar 5 (Exact Price Memory) skipped for %s (disabled by toggle)",
-                event_context.participants_label,
-            )
-
-        # Release raw odds before Pillar 1; contexts must not retain a trajectory.
-        market_evaluation = None
-        odds_trajectory = None
-        odds_trajectory_context = None
-        trajectory_points = None
-        if event_context.odds_trajectory:
-            event_context.odds_trajectory = []
-
-        logger.info(
-            "Pillar pipeline metadata check for event %s: competition_id=%s source_unique_tournament_id=%s season_id=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
-            event_id,
-            getattr(event_context.competition, "competition_id", None),
-            getattr(event_context.competition, "source_unique_tournament_id", None),
-            getattr(event_context, "season_id", None),
-            getattr(event_context.competition, "number_of_teams", None),
-            getattr(event_context.competition, "total_regular_season_games", None),
-            getattr(event_context.competition, "standings_grouping", None),
-            getattr(event_context.competition, "league_config_source", None),
-        )
-
-        missing_fields = []
-        if getattr(event_context.competition, "number_of_teams", None) is None:
-            missing_fields.append("number_of_teams")
-        if getattr(event_context.competition, "total_regular_season_games", None) is None:
-            missing_fields.append("total_regular_season_games")
-        if getattr(event_context.competition, "standings_grouping", None) is None:
-            missing_fields.append("standings_grouping")
-
-        if missing_fields and getattr(event_context, "competition_metadata_resolved", False):
-            logger.info(
-                "Pillar pipeline metadata enrichment skipped for event %s; resolver already ran during payload build (missing fields: %s)",
-                event_id,
-                ", ".join(missing_fields),
-            )
-        elif missing_fields:
-            logger.info(
-                "Pillar pipeline metadata enrichment needed for event %s; missing fields: %s; calling competition metadata resolver",
-                event_id,
-                ", ".join(missing_fields),
-            )
-            resolution = resolve_competition_metadata(event_context)
-            apply_competition_metadata_resolution(event_context, resolution)
-            logger.info(
-                "Pillar pipeline metadata enrichment result for event %s: source=%s standings_called=%s should_persist=%s number_of_teams=%s total_regular_season_games=%s standings_grouping=%s",
-                event_id,
-                resolution.league_config_source,
-                resolution.standings_called,
-                resolution.should_persist,
-                resolution.number_of_teams,
-                resolution.total_regular_season_games,
-                resolution.standings_grouping,
-            )
-
-        season_id = event_context.season_id
-        participants = event_context.participants_label
-
-        # If Pillar 1 is disabled, return results calculated so far
-        if not self._is_pillar_enabled("pillar_1"):
-            logger.info(
-                "🏁 Pillar 1 (Team Structure) skipped for %s (disabled by toggle)",
-                participants,
-            )
-            return {
-                "event_id": event_id,
-                "participants": participants,
-                "pillar_1": None,
-                "pillar_1_totals": None,
-                "pillar_2": p2_result,
-                "pillar_3": p3_result,
-                "pillar_4": p4_result,
-                "pillar_5": p5_result,
-            }
-
-        # --- Resolve streak analysis (shared with alert pipeline) ---
-        streak_analysis, _should_send = resolve_matchup_streak_analysis(
-            event_context=event_context,
-            debug_mode=self.debug_mode,
-        )
-
-        if streak_analysis and self.debug_mode:
-            _save_pillar_debug_snapshots(
-                event_context=event_identity,
-                odds_trajectory_context=None,
-                streak_analysis=streak_analysis,
-                competition_slug=event_context.competition.slug,
-            )
-
-        if streak_analysis is None:
-            logger.info(
-                "🏁 P1 RESULT | event=%s | participants=%s | status=SKIPPED | reason=no streak_analysis",
-                event_id,
-                participants,
-            )
-            return {
-                "event_id": event_id,
-                "participants": participants,
-                "pillar_1": None,
-                "pillar_1_totals": None,
-                "pillar_2": p2_result,
-                "pillar_3": p3_result,
-                "pillar_4": p4_result,
-                "pillar_5": p5_result,
-            }
-
-        number_of_teams_summary = summarize_number_of_teams_from_streak_analysis(
-            streak_analysis,
-            event_context,
-        )
-        inferred_number_of_teams = number_of_teams_summary.inferred_number_of_teams
-        unique_team_count = number_of_teams_summary.unique_team_count
-        inferred_number_of_teams_used = False
-        competition_id = event_context.competition.competition_id
-
-        logger.info(
-            "Pillar context for %s: context_status=%s, event_context_present=%s, competition_id=%s, competition_number_of_teams=%s, number_of_teams_source=%s, inferred_number_of_teams=%s, unique_team_count=%s, inferred_used=%s, total_regular_season_games=%s",
-            participants,
-            event_context.context_status,
-            True,
-            competition_id,
-            event_context.competition.number_of_teams,
-            event_context.competition.number_of_teams_source,
-            inferred_number_of_teams,
-            unique_team_count,
-            inferred_number_of_teams_used,
-            event_context.competition.total_regular_season_games,
-        )
-
-        # --- Calculate Pillar 1 (Orchestrated) ---
-        try:
-            p1_output = calculate_pillar_1_team_structure(
-                event_context=event_context,
-                debug_mode=self.debug_mode,
-            )
-            p1_result = p1_output["side"]
-            p1_totals_result = p1_output["totals"]
-        except Exception as exc:
-            logger.error(
-                "🏁 P1 RESULT | event=%s | participants=%s | status=ERROR | reason=%s",
-                event_id,
-                participants,
-                exc,
-            )
-            return {
-                "event_id": event_id,
-                "participants": participants,
-                "pillar_1": None,
-                "pillar_1_totals": None,
-                "pillar_2": p2_result,
-                "pillar_3": p3_result,
-                "pillar_4": p4_result,
-                "pillar_5": p5_result,
-            }
-        # Log the M1 result.
-        m1 = p1_result.get("modules", [{}])[0] if p1_result.get("modules") else {}
-        logger.info(
-            "P1/M1 Base Strength calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m1.get("value", 0),
-            m1.get("bias", "N/A"),
-            m1.get("strength", "N/A"),
-        )
-
-        for comp in m1.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        # Log the M2 result.
-        modules = p1_result.get("modules", [])
-        m2 = modules[1] if len(modules) > 1 else {}
-        logger.info(
-            "P1/M2 Offensive Profile Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m2.get("value", 0),
-            m2.get("bias", "N/A"),
-            m2.get("strength", "N/A"),
-        )
-
-        for comp in m2.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        # Log the M3 result.
-        m3 = modules[2] if len(modules) > 2 else {}
-        logger.info(
-            "P1/M3 Direct Matchup Profile calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m3.get("value", 0),
-            m3.get("bias", "N/A"),
-            m3.get("strength", "N/A"),
-        )
-
-        for comp in m3.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        m4 = modules[3] if len(modules) > 3 else {}
-        logger.info(
-            "P1/M4 Quality-Adjusted Immediate State Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m4.get("value", 0),
-            m4.get("bias", "N/A"),
-            m4.get("strength", "N/A"),
-        )
-
-        for comp in m4.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        m5 = modules[4] if len(modules) > 4 else {}
-        logger.info(
-            "P1/M5 Contextual Competitive Cost Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m5.get("value", 0),
-            m5.get("bias", "N/A"),
-            m5.get("strength", "N/A"),
-        )
-
-        for comp in m5.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        m6 = modules[5] if len(modules) > 5 else {}
-        logger.info(
-            "P1/M6 Structural Drift Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m6.get("value", 0),
-            m6.get("bias", "N/A"),
-            m6.get("strength", "N/A"),
-        )
-
-        for comp in m6.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        m7 = modules[6] if len(modules) > 6 else {}
-        logger.info(
-            "P1/M7 Opponent Expectation Engine calculated for %s: value=%.3f, bias=%s, strength=%s",
-            participants,
-            m7.get("value", 0),
-            m7.get("bias", "N/A"),
-            m7.get("strength", "N/A"),
-        )
-
-        for comp in m7.get("components", []):
-            logger.info(
-                "   - %s: edge=%.4f (weight=%.2f, weighted=%.4f) | bias=%s, strength=%s",
-                comp.get("name", "?"),
-                comp.get("edge", 0),
-                comp.get("weight", 0),
-                comp.get("weighted_edge", 0),
-                comp.get("bias", "?"),
-                comp.get("strength", "?"),
-            )
-
-        if p1_totals_result is not None:
-            for layer in p1_totals_result.active_layers:
-                logger.info(
-                    "   - active layer: %s raw_signal=%s final_signal=%s weighted=%s",
-                    layer.layer,
-                    layer.raw_signal,
-                    layer.final_signal,
-                    layer.weighted_signal,
-                )
-            for layer in p1_totals_result.ignored_layers:
-                logger.info(
-                    "   - ignored layer: %s raw_signal=%s final_signal=%s reason=%s",
-                    layer.layer,
-                    layer.raw_signal,
-                    layer.final_signal,
-                    layer.ignored_reason,
-                )
-        else:
-            logger.info(
-                "🏁 P1/P1_TOTALS Totals skipped for %s: unavailable",
-                participants,
-            )
-
-        p1_result.setdefault("raw", {}).update(
-            {
-                "event_context_present": True,
-                "context_status": event_context.context_status,
-                "competition_id": competition_id,
-                "competition_display_name": event_context.competition.display_name,
-                "competition_number_of_teams": event_context.competition.number_of_teams,
-                "competition_number_of_teams_source": event_context.competition.number_of_teams_source,
-                "total_regular_season_games": event_context.competition.total_regular_season_games,
-                "standings_grouping": event_context.competition.standings_grouping,
-                "league_config_source": event_context.competition.league_config_source,
-                "inferred_number_of_teams": inferred_number_of_teams,
-                "inferred_number_of_teams_from_streak_analysis": inferred_number_of_teams,
-                "inferred_number_of_teams_source": "streak_analysis_team_results",
-                "inferred_number_of_teams_used": inferred_number_of_teams_used,
-                "unique_team_count": unique_team_count,
-                "persisted_number_of_teams": False,
-            }
-        )
-
-        p1_totals_serialized = (
-            _serialize_p1_totals_output(p1_totals_result)
-            if p1_totals_result is not None
-            else None
-        )
-        p1_final_raw = p1_result.get("raw", {}).get("final", {})
-        p1_variables = {
-            "value": p1_result.get("value"),
-            "bias": p1_result.get("bias"),
-            "strength": p1_result.get("strength"),
-            **{
-                name: value for name, value in p1_result.get("raw", {}).items()
-                if name in {
-                    "p1_core_side", "m4_context_adj", "p1_effective_core",
-                    "core_bias", "core_strength", "m5_edge", "m5_strength", "m5_pressure_side",
-                }
-            },
-            **p1_final_raw,
-        }
-        _log_result_block(
-            "🏁 P1/SIDE RESULT — PERFIL DE LADO",
-            {"Evento": event_id, "Participantes": participants},
-            {"Variables finales": p1_variables},
-        )
-
-        self._persist_mining_result(
-            "pillar_1_team_structure_side",
-            event_identity,
-            p1_result,
-        )
-        if p1_totals_serialized is not None:
-            _log_result_block(
-                "🏁 P1/P1_TOTALS RESULT — PERFIL DE TOTALES",
-                {"Evento": event_id, "Participantes": participants},
-                {"Ejecución": {
-                    "status": p1_totals_result.status,
-                    "status_reason": p1_totals_serialized.get("status_reason"),
-                }, "Variables finales": {
-                    name: value for name, value in p1_totals_serialized.items()
-                    if name.isupper()
-                }},
-            )
-            self._persist_mining_result(
-                "pillar_1_team_structure_totals",
-                event_identity,
-                p1_totals_serialized,
-            )
-
-        return {
-            "event_id": event_id,
-            "participants": participants,
-            "pillar_1": p1_result,
-            "pillar_1_totals": p1_totals_serialized,
-            "pillar_2": p2_result,
-            "pillar_3": p3_result,
-            "pillar_4": p4_result,
-            "pillar_5": p5_result,
-        }
+PILLAR_DEFINITIONS = {
+    2: ("pillar_2_side_market", P2_ENGINE_VERSION),
+    3: ("pillar_3_totals_market_context", P3_ENGINE_VERSION),
+    4: ("pillar_4_temporal_market_drift", P4_ENGINE_VERSION),
+    5: ("pillar_5", P5_ENGINE_VERSION),
+}
 
 
-def _registered_mining_adapters() -> dict[
-    str,
-    P1SideMiningAdapter
-    | P1TotalsMiningAdapter
-    | P2MiningAdapter
-    | P3MiningAdapter
-    | P4MiningAdapter
-    | P5MiningAdapter,
-]:
-    """Composition root for structural signal-profile mining writers."""
+def _registered_mining_adapters():
     return {
         "pillar_1_team_structure_side": P1SideMiningAdapter(),
         "pillar_1_team_structure_totals": P1TotalsMiningAdapter(),
@@ -1218,121 +247,462 @@ def _registered_mining_adapters() -> dict[
     }
 
 
-def evaluate_and_calculate_pillars_batch(
-    events_for_pillars: list[EventContext],
-    event_repo=None,
-    key_moments: Optional[list] = None,
-    *,
-    debug_mode: bool = False,
-    enabled_pillars: Optional[dict[str, bool]] = None,
-    trajectories_by_event_id: Optional[dict[int, list[Any]]] = None,
-    evaluation_as_of: datetime | None = None,
-    **_legacy_kwargs: Any,
-) -> None:
-    """Entry point to evaluate and calculate pillar modules for a batch of events."""
-    # Older callers pass (events, key_moments, event_repo).
-    if isinstance(event_repo, (list, tuple)) and key_moments is not None:
-        event_repo, key_moments = key_moments, event_repo
-    if not events_for_pillars:
-        return
+def _p1_unavailable(status, reason, **evidence):
+    return {
+        "status": status,
+        "reason": reason,
+        "evidence": evidence,
+        "engine_version": "p1-input-contract-v1",
+    }
 
-    allowed_events = [
-        event_context
-        for event_context in events_for_pillars
-        if _is_pillar_competition_in_scope(
-            _resolve_pillar_competition_id(event_context)
+
+class EventPillarProcessor:
+    """Acquire first, freeze knowledge, calculate independently, commit once."""
+
+    def __init__(
+        self,
+        *,
+        debug_mode=False,
+        enabled_pillars=None,
+        mining_service=None,
+        versions=None,
+    ):
+        self.debug_mode = debug_mode
+        self.enabled_pillars = (
+            Config.PILLAR_PIPELINE_ENABLED_PILLARS
+            if enabled_pillars is None
+            else enabled_pillars
         )
-    ]
-    skipped_count = len(events_for_pillars) - len(allowed_events)
-    if skipped_count:
+        self.mining_service = mining_service or PillarMiningService(
+            PillarMiningRepository(), adapters=_registered_mining_adapters()
+        )
+        self.configuration, self.versions = versions or calculation_versions()
+
+    def _enabled(self, number):
+        return bool(self.enabled_pillars.get(f"pillar_{number}", True))
+
+    def _prepare_p1(self, context):
+        try:
+            competition = context.competition
+            if not context.competition_metadata_resolved and any(
+                getattr(competition, name, None) is None
+                for name in (
+                    "number_of_teams",
+                    "total_regular_season_games",
+                    "standings_grouping",
+                )
+            ):
+                apply_competition_metadata_resolution(
+                    context, resolve_competition_metadata(context)
+                )
+            streak, _ = resolve_matchup_streak_analysis(
+                context, debug_mode=self.debug_mode
+            )
+            context.streak_analysis = streak
+            return None
+        except Exception as exc:
+            logger.exception(
+                "P1 input preparation failed event_id=%s", context.event_id
+            )
+            return {"error_class": type(exc).__name__, "message": str(exc)}
+
+    def _calculate_p1(self, context, skipped, preparation_error, traces):
+        outputs = {}
+        for scope, calculator in (
+            ("side", calculate_p1_side),
+            ("totals", calculate_p1_totals),
+        ):
+            trace_key = f"p1_{scope}"
+            if skipped or not self._enabled(1):
+                result = _p1_unavailable("SKIPPED", skipped or "DISABLED")
+            elif preparation_error:
+                result = _p1_unavailable(
+                    "ERROR", "CONTEXT_PREPARATION_ERROR", **preparation_error
+                )
+            elif context.streak_analysis is None:
+                result = _p1_unavailable(
+                    "INSUFFICIENT_DATA", "MISSING_INPUT", missing=["streak_analysis"]
+                )
+            else:
+                try:
+                    with calculation_scope(trace_key):
+                        native = calculator(
+                            context.streak_analysis,
+                            event_context=context,
+                            debug_mode=self.debug_mode,
+                        )
+                    if native is None:
+                        aborts = [
+                            step
+                            for step in traces.get(trace_key, [])
+                            if step["operation"] == "totals_abort"
+                        ]
+                        abort = aborts[-1] if aborts else {}
+                        code = abort.get("reason", "MISSING_INPUT")
+                        reason = (
+                            "ZERO_DENOMINATOR"
+                            if "SCALE_ZERO" in code or "WEIGHT_SUM_ZERO" in code
+                            else (
+                                "INSUFFICIENT_OBSERVATIONS"
+                                if "N_AVAIL_ZERO" in code or "GAMES_USED_ZERO" in code
+                                else "MISSING_INPUT"
+                            )
+                        )
+                        result = _p1_unavailable(
+                            "INSUFFICIENT_DATA",
+                            reason,
+                            native_reason=code,
+                            **abort.get("evidence", {}),
+                        )
+                    elif isinstance(native, dict):
+                        result = native
+                    else:
+                        # Keep numbers typed until the mining adapter projects them.
+                        result = {
+                            f.name: getattr(native, f.name) for f in fields(native)
+                        }
+                        for name in ("active_layers", "ignored_layers"):
+                            result[name] = [
+                                {f.name: getattr(layer, f.name) for f in fields(layer)}
+                                for layer in result.get(name, [])
+                            ]
+                except Exception as exc:
+                    logger.exception(
+                        "P1 %s calculation failed event_id=%s", scope, context.event_id
+                    )
+                    result = _p1_unavailable(
+                        "ERROR",
+                        "CALCULATION_ERROR",
+                        error_class=type(exc).__name__,
+                        message=str(exc),
+                    )
+            stages = traces.get(trace_key, [])
+            completed_modules = [
+                step["result"] for step in stages if step["operation"] == "side_module"
+            ]
+            if (
+                scope == "side"
+                and result.get("status") == "ERROR"
+                and completed_modules
+            ):
+                result["modules"] = completed_modules
+            # Completed totals expose these components in their native RAW payload.
+            result["calculation_trace"] = (
+                []
+                if scope == "totals" and result.get("status") == "OK"
+                else [step for step in stages if step["operation"] != "side_module"]
+            )
+            result["input_refs"] = ["evaluation.inputs.p1"]
+            outputs[scope] = result
+        return outputs
+
+    def process_event(self, event_context, trajectory_points=None):
+        if not isinstance(event_context, EventContext):
+            raise TypeError("pillar evaluation requires EventContext")
+        if not _is_pillar_competition_in_scope(
+            event_context.competition.competition_id
+        ):
+            return None
+        preparation_started_at = utc_now()
+        skipped = (
+            "EVENT_UNAVAILABLE"
+            if not event_context.success
+            else (
+                "OUTSIDE_REGULAR_SEASON"
+                if event_context.round != "regular_season"
+                else None
+            )
+        )
+        preparation_error = (
+            self._prepare_p1(event_context)
+            if self._enabled(1) and not skipped
+            else None
+        )
+        identity = event_context.to_identity()
+        raw_odds = (
+            trajectory_points
+            if trajectory_points is not None
+            else event_context.odds_trajectory
+        )
+        # All network enrichment has completed before opening the audit transaction.
+        odds = build_odds_trajectory_context(
+            raw_odds,
+            evaluation_minute=identity.minutes_until_start,
+            event_starts_at=identity.starts_at,
+            evaluation_as_of=utc_now(),
+        )
+        selection = select_target_minute(
+            odds,
+            flow_id=CANONICAL_SIGNAL_FLOW_ID,
+            expected_event_id=identity.event_id,
+            allowed_target_minutes=Config.PRE_START_ODDS_MOMENTS,
+            evaluation_minute=identity.minutes_until_start,
+        )
+        markets = prepare_event_markets(odds, selection, identity)
+        evaluation_id = str(uuid4())
+        configuration = {**self.configuration, "enabled_pillars": self.enabled_pillars}
+        versions = {
+            **self.versions,
+            "configuration_sha256": content_hash(configuration),
+        }
+        results = {}
+        with db_manager.get_session() as session:
+            # A single MVCC population is used by every P5 bookmaker query and its COPY capture.
+            if session.get_bind().dialect.name == "postgresql":
+                session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+            prepared_p5 = None
+            p5_preparation_error = None
+            if self._enabled(5) and not skipped:
+                try:
+                    prepared_p5 = prepare_pillar_5(
+                        identity,
+                        odds,
+                        target_selection=selection,
+                        memory_repository=Pillar5PriceMemoryRepository(
+                            session=session, capture=True
+                        ),
+                        debug_mode=self.debug_mode,
+                        market_evaluation=markets,
+                    )
+                except (SQLAlchemyError, MemorySamplePersistenceError):
+                    raise
+                except Exception as exc:
+                    p5_preparation_error = exc
+            evaluation_as_of = utc_now()
+            odds = replace(odds, evaluation_as_of=evaluation_as_of)
+            selected = {
+                **markets.selection,
+                "checkpoint": {
+                    **markets.selection.get("checkpoint", {}),
+                    "evaluation_as_of": evaluation_as_of.isoformat(),
+                },
+            }
+            markets = replace(markets, context=odds, selection=selected)
+            if prepared_p5 is not None:
+                prepared_p5 = replace(prepared_p5, selection=selected)
+            # Serialize shared material inputs once, before calculations can release their buffers.
+            p1_context = {
+                f.name: getattr(event_context, f.name)
+                for f in fields(event_context)
+                if f.name
+                not in {
+                    "odds_trajectory",
+                    "odds_trajectory_context",
+                    "ft_1x2_odds_trajectory_context",
+                    "dual_report",
+                }
+            }
+            snapshot = EvaluationSnapshot(
+                evaluation_id,
+                identity.event_id,
+                evaluation_as_of,
+                context=to_json_value(identity),
+                inputs=to_json_value(
+                    {
+                        "p1": p1_context,
+                        "odds_observations": raw_odds,
+                        "odds_selection": selection,
+                        "odds_availability": odds.availability_diagnostics,
+                        "market_contracts": {
+                            str(n): markets.contracts(n) for n in range(2, 6)
+                        },
+                        "preparation_started_at": preparation_started_at,
+                        "inputs_captured_at": evaluation_as_of,
+                        "p1_preparation_error": preparation_error,
+                        "p5_samples": prepared_p5.profiles if prepared_p5 else {},
+                    }
+                ),
+                configuration=configuration,
+                versions=versions,
+            )
+            with capture_calculations() as traces:
+                p1 = self._calculate_p1(
+                    event_context, skipped, preparation_error, traces
+                )
+                for scope, result in p1.items():
+                    result["evaluation_as_of"] = evaluation_as_of
+                    results["pillar_1" if scope == "side" else "pillar_1_totals"] = (
+                        result
+                    )
+                for number, (pillar_id, version) in PILLAR_DEFINITIONS.items():
+                    calculator = {
+                        2: calculate_pillar_2,
+                        3: calculate_pillar_3,
+                        4: calculate_pillar_4,
+                        5: calculate_pillar_5,
+                    }[number]
+                    if skipped or not self._enabled(number):
+                        result = EvaluationResult(
+                            identity.event_id,
+                            pillar_id,
+                            version,
+                            selection.target_minute,
+                            markets.selection,
+                            (),
+                            markets.coverage(number),
+                            contracts=markets.contracts(number),
+                            skipped=True,
+                            diagnostics=({"reason": skipped or "DISABLED"},),
+                        ).to_dict()
+                    else:
+                        try:
+                            if number == 5 and p5_preparation_error is not None:
+                                raise p5_preparation_error
+                            with calculation_scope(f"p{number}"):
+                                kwargs = {
+                                    "event_context": identity,
+                                    "target_selection": selection,
+                                    "debug_mode": self.debug_mode,
+                                    "market_evaluation": markets,
+                                }
+                                if number == 5:
+                                    kwargs["prepared_inputs"] = prepared_p5
+                                else:
+                                    kwargs["odds_trajectory_context"] = odds
+                                result = calculator(**kwargs)
+                        except Exception as exc:
+                            logger.exception(
+                                "P%s calculation failed event_id=%s",
+                                number,
+                                identity.event_id,
+                            )
+                            result = _build_market_error_result(
+                                identity, number, markets, exc
+                            )
+                    result["evaluation_as_of"] = evaluation_as_of
+                    result["calculation_trace"] = {
+                        key: steps
+                        for key, steps in traces.items()
+                        if key == f"p{number}" or key.startswith(f"p{number}.")
+                    }
+                    result["shared_input_refs"] = [
+                        "evaluation.inputs.odds_observations",
+                        "evaluation.inputs.market_contracts",
+                    ]
+                    results[f"pillar_{number}"] = result
+                # Selected inputs shared by several scopes have one stored payload.
+                selected_inputs = {}
+                for result in results.values():
+                    for point in result.get("inputs", {}).values():
+                        selected_inputs.setdefault(
+                            content_hash(point), to_json_value(point)
+                        )
+                snapshot.inputs["selected_inputs"] = selected_inputs
+                self.mining_service.writer.append_evaluation(snapshot, session=session)
+                registrations = {
+                    "pillar_1": "pillar_1_team_structure_side",
+                    "pillar_1_totals": "pillar_1_team_structure_totals",
+                    **{
+                        f"pillar_{n}": definition[0]
+                        for n, definition in PILLAR_DEFINITIONS.items()
+                    },
+                }
+                for key, result in results.items():
+                    run = self.mining_service.persist(
+                        registrations[key],
+                        identity,
+                        result,
+                        evaluation_id=evaluation_id,
+                        session=session,
+                    )
+                    if key in {"pillar_1", "pillar_1_totals"}:
+                        results[key] = {
+                            **run.output_payload,
+                            "diagnostics": run.diagnostics,
+                        }
+                self.mining_service.writer.require_complete_evaluation(
+                    evaluation_id, session=session
+                )
+        # No persistence exception is converted into a pillar signal or swallowed.
+        if self.debug_mode:
+            _save_pillar_debug_snapshots(
+                event_context=identity,
+                odds_trajectory_context=odds,
+                streak_analysis=event_context.streak_analysis,
+                competition_slug=event_context.competition.slug,
+            )
         logger.info(
-            "🚫 Pillar pipeline competition filter skipped %s/%s events",
-            skipped_count,
-            len(events_for_pillars),
+            "Immutable pillar evaluation committed evaluation_id=%s event_id=%s as_of=%s",
+            evaluation_id,
+            identity.event_id,
+            evaluation_as_of.isoformat(),
         )
-    if not allowed_events:
+        log_pillar_results(
+            logger,
+            evaluation_id=evaluation_id,
+            event_id=identity.event_id,
+            evaluation_as_of=evaluation_as_of,
+            participants=identity.participants_label,
+            results=results,
+        )
+        return {
+            "evaluation_id": evaluation_id,
+            "evaluation_as_of": evaluation_as_of,
+            "event_id": identity.event_id,
+            "participants": identity.participants_label,
+            **results,
+        }
+
+
+def evaluate_and_calculate_pillars_batch(
+    events_for_pillars,
+    *,
+    debug_mode=False,
+    enabled_pillars=None,
+    trajectories_by_event_id=None,
+):
+    """Complete all eligible evaluations; propagate infrastructure failures to the coordinator."""
+    events = [
+        ctx
+        for ctx in events_for_pillars
+        if _is_pillar_competition_in_scope(ctx.competition.competition_id)
+    ]
+    if not events:
         return
-
-    logger.info(
-        "Evaluating pillar modules for %d events...",
-        len(allowed_events),
-    )
-
-    mining_service = PillarMiningService(
-        PillarMiningRepository(),
-        adapters=_registered_mining_adapters(),
-        enabled=Config.PILLAR_MINING_ENABLED,
-        status_mode=Config.PILLAR_MINING_STATUS_MODE,
-    )
     processor = EventPillarProcessor(
-        event_repo=event_repo,
         debug_mode=debug_mode,
         enabled_pillars=(
             Config.PILLAR_PIPELINE_ENABLED_PILLARS
             if enabled_pillars is None
             else enabled_pillars
         ),
-        mining_service=mining_service,
-        evaluation_as_of=evaluation_as_of,
     )
 
-    def _resolve_batch_event_id(ctx: Any) -> Optional[int]:
-        raw_id = getattr(ctx, "event_id", None)
-        if raw_id is None and isinstance(ctx, dict):
-            raw_id = ctx.get("event_id") or ctx.get("id")
-        if raw_id is not None:
-            try:
-                return int(raw_id)
-            except (ValueError, TypeError):
-                return None
-        return None
+    def execute(context):
+        points = (
+            trajectories_by_event_id.pop(context.event_id, None)
+            if trajectories_by_event_id is not None
+            else None
+        )
+        processor.process_event(context, trajectory_points=points)
 
-    def _execute_process_event(
-        proc: Any,
-        ctx: Any,
-    ) -> Any:
-        if trajectories_by_event_id is not None:
-            event_id = _resolve_batch_event_id(ctx)
-            if event_id is not None and event_id in trajectories_by_event_id:
+    failures = []
+    workers = min(Config.PILLAR_PIPELINE_WORKERS, len(events))
+
+    def failed(event_id, exc):
+        logger.exception("Pillar evaluation failed event_id=%s", event_id)
+        failures.append((event_id, exc))
+
+    if workers == 1:
+        for context in events:
+            try:
+                execute(context)
+            except Exception as exc:
+                failed(context.event_id, exc)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(execute, context): context.event_id
+                for context in events
+            }
+            for future in as_completed(futures):
+                event_id = futures.pop(future)
                 try:
-                    # Consume the entry as the worker starts so the batch
-                    # cannot retain this event's raw odds after it completes.
-                    return proc.process_event(
-                        ctx,
-                        trajectory_points=trajectories_by_event_id.pop(event_id),
-                    )
-                except TypeError:
-                    return proc.process_event(ctx)
-        return proc.process_event(ctx)
-
-    max_workers = min(Config.PILLAR_PIPELINE_WORKERS, len(allowed_events))
-    logger.info(
-        "Pillar pipeline concurrency events=%s workers=%s",
-        len(allowed_events),
-        max_workers,
-    )
-    if max_workers == 1:
-        for event_context in allowed_events:
-            try:
-                _execute_process_event(
-                    processor,
-                    event_context,
-                )
-            except Exception as exc:
-                logger.error("Critical failure in pillar processing: %s", exc)
-        return
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
-                _execute_process_event,
-                processor,
-                event_context,
-            )
-            for event_context in allowed_events
-        ]
-        for future in futures:
-            try:
-                future.result()
-            except Exception as exc:
-                logger.error("Critical failure in pillar processing thread: %s", exc)
+                    future.result()
+                except Exception as exc:
+                    failed(event_id, exc)
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} pillar evaluations could not be persisted: "
+            f"{[event_id for event_id, _ in failures]}"
+        ) from failures[0][1]

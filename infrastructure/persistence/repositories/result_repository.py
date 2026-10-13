@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, or_
 
 from infrastructure.persistence.models import Event, EventSourceMapping, Result
 from infrastructure.persistence.database import db_manager
+from .outcome_observation_repository import append_outcome_observation
 from infrastructure.settings import Config
 from shared.batching import chunks
 
@@ -142,6 +143,7 @@ class ResultRepository:
 
                 observations = []
                 for (event_id,) in committed:
+                    append_outcome_observation(session, event_id, result_payloads[event_id])
                     for observation in result_payloads[event_id].get("observations") or []:
                         kind, value = observation.get("type"), observation.get("value")
                         if kind and kind != "rankings" and value is not None:

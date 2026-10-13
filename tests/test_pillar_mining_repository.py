@@ -1,82 +1,84 @@
-from __future__ import annotations
+"""Immutable mining acceptance against isolated SQL databases."""
 
 from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
+from uuid import uuid4
 from importlib import import_module
 from io import StringIO
-
+import pytest
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-import pytest
-from sqlalchemy import create_engine, event, inspect, select, text
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.exc import IntegrityError
-
 from infrastructure.persistence.database import DatabaseManager
 from infrastructure.persistence.models import (
-    Event,
-    PillarMiningMetricValue,
+    PillarEvaluation,
     PillarMiningRun,
     PillarMiningUnit,
-    Result,
+    PillarMiningMetricValue,
+    Event,
 )
-from infrastructure.persistence.repositories import pillar_mining_repository
+from infrastructure.persistence.repositories import (
+    pillar_mining_repository as repository_module,
+)
 from infrastructure.persistence.repositories.pillar_mining_repository import (
-    PillarMiningRepository,
+    PillarMiningRepository as Repository,
+)
+from infrastructure.persistence.repositories.outcome_observation_repository import (
+    append_outcome_observation,
 )
 from modules.pillars.mining.contracts import (
-    PillarMiningMetric,
-    PillarMiningRun as MiningRunContract,
-    PillarMiningUnit as MiningUnitContract,
-    iter_unit_layers,
-    validate_mining_run,
+    EvaluationSnapshot,
+    PillarMiningRun as Run,
+    PillarMiningUnit as Unit,
+    PillarMiningMetric as Metric,
 )
+from modules.pillars.evaluation_contracts import SignalResult, EvaluationResult
+
+NOW = datetime(2026, 10, 12, 12, tzinfo=timezone.utc)
 
 
-def _run(**overrides) -> MiningRunContract:
-    summary = MiningUnitContract(
-        unit_type="summary",
-        unit_key="summary",
-        producer_status="ACTIVE",
-        canonical_status="SUCCESS",
-        signal_axis="SIDE",
-        payload={"P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}}},
+def snapshot(evaluation_id=None, event_id=1):
+    return EvaluationSnapshot(
+        evaluation_id or str(uuid4()),
+        event_id,
+        NOW,
+        context={"sport": "Football"},
+        inputs={"original": Decimal("1.12345678901234567890123456789")},
+        configuration={"threshold": ".15"},
+        versions={"code_sha256": "effective-code", "commit_sha": "base-commit"},
     )
-    module = MiningUnitContract(
-        unit_type="module",
-        unit_key="p2_signal_engine",
+
+
+def _run(evaluation_id, **overrides):
+    unit = Unit(
+        "signal",
+        "reading",
+        "BLOCKED",
         parent_unit_key="summary",
-        module_id="p2_signal_engine",
-        producer_status="ACTIVE",
-        canonical_status="SUCCESS",
-        signal_axis="SIDE",
-        payload={"P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}}},
-    )
-    values = {
-        "event_id": 1,
-        "pillar_id": "pillar_2_side_market",
-        "result_scope": "side_market",
-        "execution_slot": "evaluation:5",
-        "engine_version": "p2-signal-profile-v1",
-        "payload_schema_version": 2,
-        "producer_status": "ACTIVE",
-        "canonical_status": "SUCCESS",
-        "sport": "Football",
-        "evaluation_minute": 5,
-        "target_minute": 5,
-        "context": {"minutes_to_start": 5},
-        "inputs": {"PIN_HOME": 2.0},
-        "diagnostics": {"input_trace": {"PIN_HOME": {"quote_id": 1}}},
-        "output_payload": {
-            "P2_STATUS": "ACTIVE",
-            "P2_SIGNAL_PROFILE": {"FT": {"1X2": {"DIRECTION": "HOME"}}},
+        diagnostics={
+            "reason": "INSUFFICIENT_OBSERVATIONS",
+            "evidence": {"available": 1, "required": 2},
         },
-        "units": (summary, module),
-        "calculated_at": datetime(2026, 8, 22, 17, 55, tzinfo=timezone.utc),
-    }
-    values.update(overrides)
-    return MiningRunContract(**values)
+        metrics=(
+            Metric("composite", "number", Decimal("-.12345678901234567890123456789")),
+        ),
+    )
+    fields = dict(
+        event_id=1,
+        evaluation_id=evaluation_id,
+        pillar_id="pillar_2_side_market",
+        result_scope="side_market",
+        engine_version="test-v1",
+        payload_schema_version=5,
+        status="INSUFFICIENT_DATA",
+        sport="Football",
+        diagnostics={"signals": {"computed_signals": 0, "blocked_signals": 1}},
+        units=(Unit("summary", "summary", "INSUFFICIENT_DATA"), unit),
+    )
+    fields.update(overrides)
+    return Run(**fields)
 
 
 def _event() -> Event:
@@ -94,294 +96,189 @@ def _event() -> Event:
     )
 
 
-def _manager(tmp_path, monkeypatch, name: str) -> DatabaseManager:
-    manager = DatabaseManager(f"sqlite:///{tmp_path / name}")
+@pytest.fixture
+def manager(tmp_path, monkeypatch):
+    manager = DatabaseManager(f"sqlite:///{tmp_path / 'mining.db'}")
     manager.create_tables()
-    monkeypatch.setattr(pillar_mining_repository, "db_manager", manager)
+    monkeypatch.setattr(repository_module, "db_manager", manager)
+    yield manager
+    manager.engine.dispose()
+
+
+def test_immutable_idempotent_and_exact(manager):
+    original = snapshot()
+    run = _run(original.evaluation_id)
     with manager.get_session() as session:
-        session.execute(text("PRAGMA foreign_keys = ON"))
-        session.add(_event())
-    return manager
-
-
-def test_repository_replaces_graph_and_keeps_other_slots_and_versions(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    manager = _manager(tmp_path, monkeypatch, "mining.db")
-    original = _run()
-    PillarMiningRepository.replace_run(original)
-
-    replacement_profile = {"FT": {"1X2": {"DIRECTION": "AWAY"}}}
-    replacement_summary = replace(
-        original.units[0], payload={"P2_SIGNAL_PROFILE": replacement_profile}
-    )
-    replacement_module = replace(
-        original.units[1],
-        payload={"P2_SIGNAL_PROFILE": replacement_profile},
-    )
-    PillarMiningRepository.replace_run(
-        replace(original, units=(replacement_summary, replacement_module))
-    )
-    PillarMiningRepository.replace_run(
-        replace(original, execution_slot="evaluation:0", evaluation_minute=0)
-    )
-    PillarMiningRepository.replace_run(
-        replace(original, engine_version="p2-signal-profile-v2")
-    )
-
+        Repository.append_evaluation(original, session=session)
+        first = Repository.append_run(run, session=session)
     with manager.get_session() as session:
-        assert session.query(PillarMiningRun).count() == 3
-        canonical = (
-            session.query(PillarMiningRun)
-            .filter_by(
-                execution_slot="evaluation:5",
-                engine_version="p2-signal-profile-v1",
+        Repository.append_evaluation(original, session=session)
+        assert Repository.append_run(run, session=session) == first
+        assert session.scalar(select(PillarMiningMetricValue.numeric_value)) == Decimal(
+            "-.12345678901234567890123456789"
+        )
+    with pytest.raises(ValueError, match="conflicts"):
+        with manager.get_session() as session:
+            Repository.append_run(
+                replace(run, inputs={"changed": True}), session=session
             )
-            .one()
-        )
-        units = session.query(PillarMiningUnit).filter_by(run_id=canonical.id).all()
-        assert len(units) == 2
-        summary = next(unit for unit in units if unit.unit_type == "summary")
-        module = next(unit for unit in units if unit.unit_type == "module")
-        assert summary.score is None
-        assert summary.direction is None
-        assert module.parent_unit_id == summary.id
-        assert (
-            session.query(PillarMiningMetricValue).filter_by(unit_id=module.id).count()
-            == 0
-        )
-
-
-def test_run_joins_results_and_event_delete_cascades_graph(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    manager = _manager(tmp_path, monkeypatch, "mining_join.db")
+    with pytest.raises(ValueError, match="conflicts"):
+        with manager.get_session() as session:
+            Repository.append_evaluation(replace(original, inputs={}), session=session)
     with manager.get_session() as session:
-        session.add(Result(event_id=1, home_score=2, away_score=0, winner="1"))
-
-    PillarMiningRepository.replace_run(_run())
-
-    with manager.get_session() as session:
-        joined = (
-            session.query(PillarMiningUnit.direction, Result.winner)
-            .join(PillarMiningRun, PillarMiningRun.id == PillarMiningUnit.run_id)
-            .join(Result, Result.event_id == PillarMiningRun.event_id)
-            .filter(PillarMiningUnit.unit_type == "summary")
-            .one()
-        )
-        assert joined == (None, "1")
-        session.delete(session.query(Event).filter_by(id=1).one())
-
-    with manager.get_session() as session:
-        assert session.query(PillarMiningRun).count() == 0
-        assert session.query(PillarMiningUnit).count() == 0
-        assert session.query(PillarMiningMetricValue).count() == 0
-
-
-def test_postgresql_run_upsert_is_atomic() -> None:
-    values = PillarMiningRepository._run_values(_run())
-    statement = PillarMiningRepository._build_atomic_upsert(values, "postgresql")
-    sql = str(statement.compile(dialect=postgresql.dialect()))
-
-    assert (
-        "ON CONFLICT (event_id, pillar_id, result_scope, execution_slot, engine_version)"
-        in sql
-    )
-    assert "DO UPDATE SET" in sql
-
-
-def test_reader_preserves_historical_status_and_payload(tmp_path, monkeypatch):
-    manager = _manager(tmp_path, monkeypatch, "historical_reader.db")
-    old = _run(producer_status="PARTIAL", canonical_status="PARTIAL")
-    PillarMiningRepository.replace_run(old)
-    with manager.get_session() as session:
-        run_id = session.query(PillarMiningRun.id).scalar()
-    stored = PillarMiningRepository.get_result(run_id)
-    assert stored["result"] == old.output_payload
-    assert stored["producer_status"] == stored["canonical_status"] == "PARTIAL"
-    assert stored["payload_schema_version"] == 2
-
-
-def test_reader_reconstructs_v4_signals_from_units_without_profile_copies(
-    tmp_path, monkeypatch
-):
-    from modules.pillars.mining.adapters import P2MiningAdapter
-    from tests.pillars.test_market_evaluation import evaluate, quotes, event
-    from modules.pillars.mining.serialization import to_json_value
-
-    manager = _manager(tmp_path, monkeypatch, "current_reader.db")
-    from infrastructure.persistence.models import Bookie
-
-    with manager.get_session() as session:
-        session.add(Bookie(bookie_id=302, name="Pinnacle", slug="pinnacle"))
-    identity = event()
-    identity.event_id = 1
-    result = evaluate(2, quotes())
-    run = P2MiningAdapter().build(identity, result)
-    PillarMiningRepository.replace_run(run)
-    with manager.get_session() as session:
-        model = session.query(PillarMiningRun).one()
-        assert "signals" not in model.output_payload
-        stored = PillarMiningRepository.get_result(model.id, session=session)
-    assert stored["canonical_status"] == "SUCCESS"
-    assert stored["result"]["inputs"] == to_json_value(result["inputs"])
-    assert [s["status"] for s in stored["result"]["signals"]] == [
-        s["status"] for s in result["signals"]
-    ]
-    assert [s["key"] for s in stored["result"]["signals"]] == [
-        s["key"] for s in result["signals"]
-    ]
-    for original, loaded in zip(result["signals"], stored["result"]["signals"]):
-        if isinstance(original["value"], (int, float)):
-            assert abs(original["value"] - loaded["value"]) < 1e-10
-        else:
-            assert original["value"] == loaded["value"]
-
-
-def _wide_run(count=1201):
-    root = MiningUnitContract('summary', 'summary', 'ACTIVE', 'SUCCESS')
-    leaves = tuple(
-        MiningUnitContract(
-            'signal', f'node_{i}', 'ACTIVE', 'SUCCESS',
-            parent_unit_key='summary', ordinal=i,
-            payload={'index': i}, diagnostics={'retained': True},
-            metrics=(
-                PillarMiningMetric('amount', 'number', Decimal(i) / 8),
-                PillarMiningMetric('label', 'text', f'value_{i}'),
-                PillarMiningMetric('flag', 'boolean', bool(i % 2)),
-            ),
-        ) for i in range(count)
-    )
-    grandchild = MiningUnitContract('component', 'grandchild', 'INSUFFICIENT_DATA', 'INSUFFICIENT',
-                     parent_unit_key='node_5', diagnostics={'reason': 'MISSING_INPUT'})
-    return _run(units=(grandchild, *reversed(leaves), root))
-
-
-def test_wide_graph_batches_sql_and_maps_unordered_returning_rows(tmp_path, monkeypatch):
-    db = _manager(tmp_path, monkeypatch, 'bulk.db')
-    statements = []
-
-    @event.listens_for(db.engine, 'before_cursor_execute')
-    def count_sql(connection, cursor, statement, parameters, context, executemany):
-        statements.append(statement)
-
-    run = _wide_run()
-    validate_mining_run(run)
-    with db.get_session() as session:
-        execute = session.execute
-
-        def shuffled(statement, *args, **kwargs):
-            result = execute(statement, *args, **kwargs)
-            if getattr(statement, 'is_insert', False) and statement.table.name == 'pillar_mining_units':
-                return reversed(result.all())
-            return result
-
-        monkeypatch.setattr(session, 'execute', shuffled)
-        PillarMiningRepository.replace_run(run, session=session)
-        assert not any(isinstance(obj, (PillarMiningUnit, PillarMiningMetricValue))
-                       for obj in session.identity_map.values())
-    # This guard detects a return to per-unit INSERT/flush regardless of hardware.
-    assert len(statements) < 40
-    assert not any(s.lstrip().startswith('SELECT') for s in statements)
-    with db.get_session() as session:
-        units = {unit.unit_key: unit for unit in session.query(PillarMiningUnit)}
-        assert len(units) == 1203
-        root_id = units['summary'].id
-        for i in range(1201):
-            unit = units[f'node_{i}']
-            assert unit.parent_unit_id == root_id and unit.ordinal == i
-            assert unit.payload == {'index': i} and unit.diagnostics == {'retained': True}
-            values = {metric.metric_name: metric for metric in unit.metrics}
-            assert values['amount'].numeric_value == Decimal(i) / 8
-            assert values['label'].text_value == f'value_{i}'
-            assert values['flag'].boolean_value is bool(i % 2)
-        assert units['grandchild'].parent_unit_id == units['node_5'].id
-        assert units['grandchild'].canonical_status == 'INSUFFICIENT'
-    statements.clear()
-    PillarMiningRepository.replace_run(_run())
-    assert len(statements) < 15
-    with db.get_session() as session:
         assert session.query(PillarMiningRun).count() == 1
         assert session.query(PillarMiningUnit).count() == 2
-        assert session.query(PillarMiningMetricValue).count() == 0
+        stored = Repository.get_evaluation(original.evaluation_id, session=session)
+        assert stored["inputs"]["original"] == "1.12345678901234567890123456789"
+        assert (
+            stored["pillars"][0]["units"]["items"][1]["reason"]
+            == "INSUFFICIENT_OBSERVATIONS"
+        )
 
 
-def test_failed_later_batch_rolls_back_header_deletes_and_earlier_batches(tmp_path, monkeypatch):
-    db = _manager(tmp_path, monkeypatch, 'bulk_rollback.db')
-    original = _run()
-    PillarMiningRepository.replace_run(original)
-    run = _wide_run()
-    # node_0 is in the last sibling batch because declarations are reversed.
-    units = tuple(replace(unit, metrics=unit.metrics + unit.metrics[:1])
-                  if unit.unit_key == 'node_0' else unit for unit in run.units)
-    with pytest.raises(IntegrityError):
-        PillarMiningRepository.replace_run(replace(run, inputs={'changed': True}, units=units))
-    with db.get_session() as session:
-        assert session.query(PillarMiningRun).one().inputs == original.inputs
-        assert {key for key, in session.query(PillarMiningUnit.unit_key)} == {'summary', 'p2_signal_engine'}
-        assert session.query(PillarMiningMetricValue).count() == 0
+def test_operational_deletion_and_later_corrections_cannot_change_snapshot(manager):
+    original = snapshot()
+    with manager.get_session() as session:
+        session.add(_event())
+        Repository.append_evaluation(original, session=session)
+        Repository.append_run(_run(original.evaluation_id), session=session)
+    before = Repository.get_evaluation(original.evaluation_id)
+    with manager.get_session() as session:
+        session.execute(text("DELETE FROM events WHERE id=1"))
+        append_outcome_observation(session, 1, {"home_score": 1, "away_score": 1})
+        append_outcome_observation(session, 1, {"home_score": 2, "away_score": 1})
+    case = Repository.get_mining_case(original.evaluation_id)
+    assert case["evaluation"] == before
+    assert case["outcome"]["payload"]["home_score"] == 2
+    with manager.get_session() as session:
+        assert (
+            session.execute(
+                text("SELECT COUNT(*) FROM event_outcome_observations")
+            ).scalar()
+            == 2
+        )
 
 
-def test_supplied_transaction_can_rollback_entire_replacement(tmp_path, monkeypatch):
-    db = _manager(tmp_path, monkeypatch, 'caller_transaction.db')
-    with db.SessionLocal() as session:
-        PillarMiningRepository.replace_run(_run(), session=session)
-        assert session.scalar(select(PillarMiningRun.id)) is not None
-        session.rollback()
-    with db.get_session() as session:
-        assert session.query(PillarMiningRun).count() == 0
+@pytest.mark.parametrize(
+    "table",
+    [
+        "pillar_evaluations",
+        "pillar_mining_runs",
+        "pillar_mining_units",
+        "pillar_mining_metric_values",
+        "event_outcome_observations",
+    ],
+)
+def test_database_rejects_mutation(manager, table):
+    original = snapshot()
+    with manager.get_session() as session:
+        Repository.append_evaluation(original, session=session)
+        Repository.append_run(_run(original.evaluation_id), session=session)
+        append_outcome_observation(session, 1, {"home_score": 1})
+    with pytest.raises(IntegrityError, match="immutable"):
+        with manager.get_session() as session:
+            session.execute(text(f"DELETE FROM {table}"))
+
+
+def test_rollback_and_missing_scope(manager):
+    original = snapshot()
+    with pytest.raises(ValueError, match="six"):
+        with manager.get_session() as session:
+            Repository.append_evaluation(original, session=session)
+            Repository.append_run(_run(original.evaluation_id), session=session)
+            Repository.require_complete_evaluation(
+                original.evaluation_id, session=session
+            )
+    with manager.get_session() as session:
+        assert session.query(PillarEvaluation).count() == 0
         assert session.query(PillarMiningUnit).count() == 0
 
 
-@pytest.mark.parametrize('units,reason', [
-    ((MiningUnitContract('x', 'x', 'ACTIVE', 'SUCCESS', parent_unit_key='absent'),), 'unknown parent'),
-    ((MiningUnitContract('x', 'x', 'ACTIVE', 'SUCCESS', parent_unit_key='y'),
-      MiningUnitContract('x', 'y', 'ACTIVE', 'SUCCESS', parent_unit_key='x')), 'cycle'),
-    ((MiningUnitContract('x', 'x', 'ACTIVE', 'SUCCESS'), MiningUnitContract('x', 'x', 'ACTIVE', 'SUCCESS')), 'duplicate'),
-])
-def test_invalid_graph_is_rejected(units, reason):
-    with pytest.raises(ValueError, match=reason):
-        validate_mining_run(_run(units=units))
+def test_new_evaluation_same_minute_gets_new_identity(manager):
+    for _ in range(2):
+        with manager.get_session() as session:
+            original = snapshot()
+            Repository.append_evaluation(original, session=session)
+            Repository.append_run(_run(original.evaluation_id), session=session)
+    with manager.get_session() as session:
+        assert session.query(PillarEvaluation).count() == 2
+        assert session.query(PillarMiningRun).count() == 2
 
 
-def test_deep_graph_does_not_require_recursion():
-    units = tuple(MiningUnitContract('component', str(i), 'ACTIVE', 'SUCCESS',
-                       parent_unit_key=str(i - 1) if i else None) for i in range(2000))
-    validate_mining_run(_run(units=tuple(reversed(units))))
-    assert [unit.unit_key for layer in iter_unit_layers(units) for unit in layer] == [str(i) for i in range(2000)]
+def test_reasons_and_aggregate_diagnostics():
+    with pytest.raises(ValueError, match="registered reason"):
+        SignalResult("missing", "BLOCKED")
+    with pytest.raises(ValueError, match="registered reason"):
+        SignalResult("missing", "BLOCKED", reason="ambiguous string")
+    result = EvaluationResult(
+        1,
+        "p2",
+        "v1",
+        5,
+        {},
+        (
+            SignalResult("a", "BLOCKED", reason="MISSING_INPUT"),
+            SignalResult("b", "BLOCKED", reason="INSUFFICIENT_OBSERVATIONS"),
+        ),
+        (),
+    ).to_dict()
+    assert result["status"] == "INSUFFICIENT_DATA"
+    assert result["diagnostics"]["signals"] == {
+        "total_signals": 2,
+        "computed_signals": 0,
+        "blocked_signals": 2,
+        "error_signals": 0,
+        "reasons": {"MISSING_INPUT": 1, "INSUFFICIENT_OBSERVATIONS": 1},
+    }
 
 
-def _migration(monkeypatch, context):
-    module = import_module('infrastructure.persistence.alembic.versions.20261004_01_mining_parent_index')
-    monkeypatch.setattr(module, 'op', Operations(context))
-    return module
+def test_batching_and_paged_units(manager, monkeypatch):
+    original = snapshot()
+    monkeypatch.setattr(repository_module, "UNIT_BATCH_SIZE", 3)
+    monkeypatch.setattr(repository_module, "METRIC_BATCH_SIZE", 3)
+    units = (Unit("summary", "summary", "ACTIVE"),) + tuple(
+        Unit(
+            "signal",
+            f"s{i}",
+            "COMPUTED",
+            parent_unit_key="summary",
+            metrics=(Metric("value", "number", Decimal(i)),),
+        )
+        for i in range(10)
+    )
+    with manager.get_session() as session:
+        Repository.append_evaluation(original, session=session)
+        run_id = Repository.append_run(
+            _run(original.evaluation_id, units=units, status="ACTIVE"), session=session
+        )
+    ids = []
+    after = 0
+    while True:
+        page = Repository.get_units_page(run_id, after_id=after, page_size=3)
+        ids += [item["id"] for item in page["items"]]
+        after = page["next_cursor"]
+        if after is None:
+            break
+    assert len(set(ids)) == 11
 
 
-def test_index_upgrade_is_repeatable_and_preserves_units(monkeypatch):
-    engine = create_engine('sqlite://')
-    with engine.begin() as connection:
-        connection.execute(text('CREATE TABLE pillar_mining_units(id INTEGER PRIMARY KEY, parent_unit_id INTEGER)'))
-        connection.execute(text('INSERT INTO pillar_mining_units VALUES (1, NULL), (2, 1)'))
-        module = _migration(monkeypatch, MigrationContext.configure(connection))
+def test_migration_offline_is_fixed_and_keeps_operational_population():
+    module = import_module(
+        "infrastructure.persistence.alembic.versions.20261012_01_immutable_pillar_evaluations"
+    )
+    buffer = StringIO()
+    context = MigrationContext.configure(
+        url="postgresql://", opts={"as_sql": True, "output_buffer": buffer}
+    )
+    with Operations.context(context):
         module.upgrade()
-        module.upgrade()
-        plan = connection.execute(text('EXPLAIN QUERY PLAN SELECT id FROM pillar_mining_units WHERE parent_unit_id=1')).all()
-        assert 'USING COVERING INDEX idx_pillar_mining_unit_parent' in str(plan)
-        module.downgrade()
-        assert inspect(connection).get_indexes('pillar_mining_units') == []
-        assert connection.execute(text('SELECT * FROM pillar_mining_units ORDER BY id')).all() == [(1, None), (2, 1)]
-
-
-def test_postgresql_index_is_built_concurrently(monkeypatch):
-    output = StringIO()
-    module = _migration(monkeypatch, MigrationContext.configure(
-        dialect_name='postgresql', opts={'as_sql': True, 'output_buffer': output},
-    ))
-    module.upgrade()
-    module.downgrade()
-    ddl = output.getvalue()
-    assert 'CREATE INDEX CONCURRENTLY idx_pillar_mining_unit_parent' in ddl
-    assert 'DROP INDEX CONCURRENTLY IF EXISTS idx_pillar_mining_unit_parent' in ddl
-    assert 'ALTER TABLE' not in ddl
+    sql = buffer.getvalue()
+    assert "CREATE TABLE pillar_evaluations" in sql
+    assert "NUMERIC(" not in next(
+        ddl for ddl in module.DDL if "CREATE TABLE pillar_mining_metric_values" in ddl
+    )
+    assert "result_available_at" not in sql
+    assert "DROP TABLE IF EXISTS pillar_mining_runs" in sql
+    assert "DROP MATERIALIZED VIEW" not in sql
+    assert "available_at" not in sql
+    assert "recorded_at" not in sql

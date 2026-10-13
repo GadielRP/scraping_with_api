@@ -33,7 +33,6 @@ from modules.pillars.competition_metadata_resolver import (
 from modules.pillars.context import EventContext, build_event_context
 from modules.sofascore import api_client
 from modules.sports.catalog import is_supported_sport_name
-from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -466,7 +465,6 @@ def evaluate_pre_start_key_moments(
     enable_alert_pipeline: bool | None = None,
     enable_pillar_pipeline: bool | None = None,
     enabled_pillars: dict[str, bool] | None = None,
-    evaluation_as_of: datetime | None = None,
 ) -> None:
     """Build shared evaluation payloads, then run enabled alert pipelines."""
     legacy_alerts_enabled = (
@@ -564,14 +562,11 @@ def evaluate_pre_start_key_moments(
             # The loaded rows are the exact snapshot set evaluated by the pillars.
             # Capture the boundary after loading so writes completed during the
             # query are not accidentally cut off at the nominal key moment.
-            effective_evaluation_as_of = evaluation_as_of or utc_now()
             evaluate_and_calculate_pillars_batch(
                 events_for_pillars=pillar_contexts,
-                event_repo=runtime.event_repo,
                 debug_mode=debug_mode,
                 enabled_pillars=enabled_pillars,
                 trajectories_by_event_id=trajectory_payloads,
-                evaluation_as_of=effective_evaluation_as_of,
             )
 
 

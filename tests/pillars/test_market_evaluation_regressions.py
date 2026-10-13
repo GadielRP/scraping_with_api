@@ -2,6 +2,8 @@
 
 import logging
 from datetime import timedelta
+from decimal import Decimal
+from dataclasses import replace
 
 import pytest
 
@@ -11,38 +13,56 @@ from modules.pillars.trajectory_selection import TargetMinuteSelection
 from modules.pillars.pillar_4.run_pillar_4 import calculate_pillar_4
 from modules.pillars.mining.adapters import P4MiningAdapter, P5MiningAdapter
 from modules.pillars.mining.contracts import validate_mining_run
-from tests.pillars.test_market_evaluation import START, FT, FT_OT, event, quotes, evaluate
+from tests.pillars.test_market_evaluation import (
+    START,
+    FT,
+    FT_OT,
+    event,
+    quotes,
+    evaluate,
+)
 
 
 def run_p4(rows, *, evaluation_as_of=None, debug_mode=False):
     context = build_odds_trajectory_context(
-        rows, target_minutes_expected=[120, 30, 5], event_starts_at=START,
-        evaluation_minute=5, evaluation_as_of=evaluation_as_of,
+        rows,
+        target_minutes_expected=[120, 30, 5],
+        event_starts_at=START,
+        evaluation_minute=5,
+        evaluation_as_of=evaluation_as_of,
     )
     target = TargetMinuteSelection(5)
     evaluation = prepare_event_markets(context, target, event())
-    result = calculate_pillar_4(event(), context, target, market_evaluation=evaluation,
-                                debug_mode=debug_mode)
+    result = calculate_pillar_4(
+        event(), context, target, market_evaluation=evaluation, debug_mode=debug_mode
+    )
     return result, evaluation
 
 
 def prices(result, book=302, view="ADAPTIVE_VIEW"):
-    return [series for series in result["analysis"].values()
-            if series["market"]["BOOKIE_ID"] == book
-            and series["market"]["VALUE_TYPE"] == "ODDS_PRICE"
-            and series["market"]["VIEW"] == view]
+    return [
+        series
+        for series in result["analysis"].values()
+        if series["market"]["BOOKIE_ID"] == book
+        and series["market"]["VALUE_TYPE"] == "ODDS_PRICE"
+        and series["market"]["VIEW"] == view
+    ]
 
 
 @pytest.mark.parametrize("pillar", [2, 3, 4, 5])
 def test_unusable_overtime_does_not_displace_regulation(pillar):
     regulation = quotes(minute=30) + quotes() + quotes("Over/Under")
     endpoint = [
-        {**row, "source_collected_at": START - timedelta(minutes=20)}
+        {**row, "source_collected_at": START - timedelta(minutes=4)}
         for row in quotes("Over/Under", FT_OT, outcomes=("Over",), market_id=71)
     ]
     tick_after_endpoint = quotes(
         "Over/Under", FT_OT, outcomes=("Over",), market_id=71, minute=10, price="2.1"
     )
+    tick_after_endpoint = [
+        {**row, "source_collected_at": START - timedelta(minutes=3)}
+        for row in tick_after_endpoint
+    ]
     result = evaluate(pillar, regulation + endpoint + tick_after_endpoint)
     assert result["selected_full_time_period"] == FT
     assert result["status"] == "ACTIVE"
@@ -55,17 +75,24 @@ def test_later_collection_keeps_history_but_later_market_state_is_excluded():
         for row in quotes(minute=30, price="2.2")
     ]
     after_endpoint = [
-        {**row, "collected_at": START - timedelta(minutes=4, seconds=40),
-         "source_collected_at": START - timedelta(minutes=4, seconds=50)}
+        {
+            **row,
+            "collected_at": START - timedelta(minutes=4, seconds=40),
+            "source_collected_at": START - timedelta(minutes=4, seconds=50),
+        }
         for row in quotes(minute=4, price="9")
     ]
     result, evaluation = run_p4(
         quotes() + history + after_endpoint,
         evaluation_as_of=START - timedelta(minutes=4, seconds=30),
     )
-    assert all(series["traceability"]["OBSERVATION_COUNT"] == 2 for series in prices(result))
-    assert all(series["raw_temporal_features"]["NET_MOVE_RAW"] == pytest.approx(-.2)
-               for series in prices(result))
+    assert all(
+        series["traceability"]["OBSERVATION_COUNT"] == 2 for series in prices(result)
+    )
+    assert all(
+        series["raw_temporal_features"]["NET_MOVE_RAW"] == pytest.approx(Decimal("-.2"))
+        for series in prices(result)
+    )
     # P4 details must not mutate the envelope shared with P2/P3/P5.
     assert "operative_as_of" not in evaluation.selection["checkpoint"]
 
@@ -73,29 +100,43 @@ def test_later_collection_keeps_history_but_later_market_state_is_excluded():
 def test_one_point_without_snapshot_id_is_not_counted_twice():
     result, _ = run_p4([{**row, "snapshot_id": None} for row in quotes()])
     assert result["status"] == "INSUFFICIENT_DATA"
-    assert all(series["traceability"]["OBSERVATION_COUNT"] == 1 for series in prices(result))
-    assert all(series["raw_temporal_features"]["NET_MOVE_RAW"] is None
-               for series in prices(result))
+    assert all(
+        series["traceability"]["OBSERVATION_COUNT"] == 1 for series in prices(result)
+    )
+    assert all(
+        series["raw_temporal_features"]["NET_MOVE_RAW"] is None
+        for series in prices(result)
+    )
 
 
 def test_missing_endpoint_does_not_imply_line_contract_ended():
-    rows = quotes() + quotes("Asian Handicap", minute=120)
-    rows += quotes("Asian Handicap", minute=30)
+    rows = quotes() + [
+        {**row, "source_collected_at": None}
+        for row in quotes("Asian Handicap", minute=120)
+        + quotes("Asian Handicap", minute=30)
+    ]
     result, _ = run_p4(rows)
-    handicap = [series for series in prices(result)
-                if series["market"]["MARKET_GROUP"] == "Asian Handicap"]
+    handicap = [
+        series
+        for series in prices(result)
+        if series["market"]["MARKET_GROUP"] == "Asian Handicap"
+    ]
     assert handicap
     assert all(series["status"] == "INSUFFICIENT_DATA" for series in handicap)
-    assert all(series["raw_temporal_features"]["NET_MOVE_RAW"] is None
-               for series in handicap)
+    assert all(
+        series["raw_temporal_features"]["NET_MOVE_RAW"] is None for series in handicap
+    )
 
 
 def test_late_betfair_endpoint_and_single_point_bet365_are_preserved():
     rows = quotes("Asian Handicap", minute=30) + quotes("Asian Handicap")
     rows += quotes("Asian Handicap", book=3)
     rows += [
-        {**row, "collected_at": START - timedelta(minutes=4, seconds=45),
-         "source_collected_at": START - timedelta(minutes=4, seconds=45)}
+        {
+            **row,
+            "collected_at": START - timedelta(minutes=4, seconds=45),
+            "source_collected_at": None,
+        }
         for row in quotes("Asian Handicap", book=4, side="back")
     ]
     result, _ = run_p4(rows, evaluation_as_of=START - timedelta(minutes=4, seconds=30))
@@ -114,16 +155,21 @@ def test_derived_signals_inherit_contracts_and_mining_dimensions():
         for minute in (30, 5):
             rows += quotes(book=book, side=side, minute=minute)
     result, _ = run_p4(rows)
-    derived = [signal for signal in result["signals"]
-               if signal["status"] == "COMPUTED"
-               and signal["evidence"]["market"]["BOOKIE_ID"] is None]
+    derived = [
+        signal
+        for signal in result["signals"]
+        if signal["status"] == "COMPUTED"
+        and signal["evidence"]["market"]["BOOKIE_ID"] is None
+    ]
     assert derived
     assert all(signal["contract_refs"] for signal in derived)
     run = P4MiningAdapter().build(event(), result)
-    validate_mining_run(run)
+    validate_mining_run(replace(run, evaluation_id="evaluation"))
     keys = {signal["key"] for signal in derived}
     units = [unit for unit in run.units if unit.payload.get("signal_key") in keys]
-    assert all(unit.dimensions["contract_refs"] and unit.market_period == FT for unit in units)
+    assert all(
+        unit.dimensions["contract_refs"] and unit.market_period == FT for unit in units
+    )
 
 
 def test_debug_logging_explains_timing_source_and_endpoint(caplog):
@@ -146,8 +192,13 @@ def test_p4_logging_keeps_one_worked_example_as_series_count_grows(caplog):
         rows = []
         for index in range(line_count):
             for minute, price in ((120, "2.2"), (30, "2.1"), (5, "2.0")):
-                rows += quotes("Over/Under", minute=minute, price=price,
-                               line=str(index + .5), market_id=70 + index)
+                rows += quotes(
+                    "Over/Under",
+                    minute=minute,
+                    price=price,
+                    line=str(index + 0.5),
+                    market_id=70 + index,
+                )
         caplog.clear()
         quiet_result, _ = run_p4(rows)
         with caplog.at_level(logging.INFO):
@@ -155,7 +206,9 @@ def test_p4_logging_keeps_one_worked_example_as_series_count_grows(caplog):
         assert logged_result == quiet_result
         messages = [record.getMessage() for record in caplog.records]
         assert sum(message.startswith("P4 example |") for message in messages) == 1
-        assert sum(message.startswith("P4 example point |") for message in messages) == 3
+        assert (
+            sum(message.startswith("P4 example point |") for message in messages) == 3
+        )
         assert sum(message.startswith("P4 example leg |") for message in messages) == 2
         assert messages[0].startswith("P4 timing |")
         assert "'COMPLETE':" in caplog.text
@@ -174,17 +227,43 @@ def test_p5_preserves_partial_exchange_exposure_without_memory_signals(regular):
     exchange = [{**row, "exchange_size": "125.5"} for row in exchange]
     result = evaluate(5, rows + exchange)
     assert result["status"] == ("ACTIVE" if regular else "INSUFFICIENT_DATA")
-    exposure = [item for item in result["inputs"].values() if item.get("role") == "DIAGNOSTIC"]
+    exposure = [
+        item for item in result["inputs"].values() if item.get("role") == "DIAGNOSTIC"
+    ]
     assert len(exposure) == 2
-    assert all(item["exchange_size"] == 125.5 and item["trace"]["bookie_id"] == 4
-               and item["trace"]["snapshot_id"] is not None for item in exposure)
-    diagnostic = next(item for item in result["diagnostics"]
-                      if item.get("kind") == "exchange_exposure" and item["exchange_side"] == "back")
+    assert all(
+        item["exchange_size"] == 125.5
+        and item["trace"]["bookie_id"] == 4
+        and item["trace"]["snapshot_id"] is not None
+        for item in exposure
+    )
+    diagnostic = next(
+        item
+        for item in result["diagnostics"]["details"]
+        if item.get("kind") == "exchange_exposure" and item["exchange_side"] == "back"
+    )
     assert diagnostic["status"] == "INCOMPLETE" and diagnostic["missing"] == ["x"]
     assert diagnostic["participates_in_score"] is False
-    assert not any(set(signal["input_refs"]) & set(diagnostic["input_refs"])
-                   for signal in result["signals"])
+    assert not any(
+        set(signal["input_refs"]) & set(diagnostic["input_refs"])
+        for signal in result["signals"]
+    )
     run = P5MiningAdapter().build(event(), result)
-    validate_mining_run(run)
+    validate_mining_run(replace(run, evaluation_id="evaluation"))
     assert all(ref in run.inputs for ref in diagnostic["input_refs"])
-    assert diagnostic in run.output_payload["diagnostics"]
+    assert diagnostic in run.diagnostics["details"]
+
+
+def test_reconstructed_source_states_keep_line_ambiguity_explicit():
+    rows = quotes("Over/Under", minute=30, line="2.5", market_id=70)
+    rows += quotes("Over/Under", line="3.5", market_id=71)
+    result, _ = run_p4(rows)
+    assert any(
+        item["ambiguous"]
+        for item in result["diagnostics"]["details"]
+        if "ambiguous" in item
+    )
+    assert not any(
+        series["market"]["VALUE_TYPE"] == "LINE"
+        for series in result["analysis"].values()
+    )
