@@ -89,7 +89,7 @@ El instante nominal es «inicio menos minuto elegido». La tolerancia predetermi
 
 Entre candidatos se prefiere la menor distancia al instante nominal. Los empates se resuelven usando el momento efectivo más reciente, luego la recogida más reciente y finalmente la identidad de la observación.
 
-Hay dos relojes: **cuándo cambió el precio según el proveedor** y **cuándo lo recogió el sistema**. El momento efectivo utiliza la hora del proveedor cuando existe, sin situarla después de la recogida. La selección comprueba disponibilidad; P4 conserva ambos relojes para medir duraciones.
+Hay dos relojes: **cuándo cambió el precio según el proveedor** y **cuándo lo recogió el sistema**. El momento efectivo utiliza la hora del proveedor cuando existe y, en su ausencia, la observación real; no recorta el valor de fuente a la recogida. La selección comprueba disponibilidad y reconstruye checkpoints por el último tick de fuente previo, con tolerancia de observación cuando falta fuente. P4 usa el objetivo en CHECKPOINT_VIEW y la fuente en ADAPTIVE_VIEW, conservando ambos relojes.
 
 Esta selección es común a P2–P5. Las fórmulas deportivas de P1 no utilizan cuotas ni reciben el minuto seleccionado como ingrediente.
 

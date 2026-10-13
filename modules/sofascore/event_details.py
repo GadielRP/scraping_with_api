@@ -122,9 +122,13 @@ def update_event_information_from_response(response: Dict) -> bool:
         updated_event = EventRepository.upsert_event(event_data)
         if updated_event:
             logger.info(
-                "Event information updated for event %s from results sync (season_id=%s, round=%s, season_year=%s)",
+                "Event information updated for event %s from results sync "
+                "(canonical_event_id=%s, season_id=%s, round=%s, "
+                "incoming_round=%s, season_year=%s)",
                 event_payload["id"],
+                updated_event.id,
                 event_payload.get("season_id"),
+                updated_event.round,
                 event_payload.get("round"),
                 event_payload.get("season_year"),
             )

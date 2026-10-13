@@ -1,6 +1,6 @@
 """Simulate the production pre-start check flow for one or more events.
 
-The simulator forces database events to the requested minutes-until-start,
+The simulator supplies a forced minutes-until-start value for scheduling,
 then delegates candidate selection, provider ingestion, OddsPortal selection,
 and key-moment evaluation to the same functions used by production.
 
@@ -14,13 +14,19 @@ Examples:
     python -m scripts.development.simulate_pre_start_check 14083613 14083614 30
     python -m scripts.development.simulate_pre_start_check 14083613,14083614 30
     python -m scripts.development.simulate_pre_start_check 14083613 14083614 --minutes 30
-    python -m scripts.development.simulate_pre_start_check 14083613 5 --evaluation-as-of 2026-09-29T21:34:57Z
+    python -m scripts.development.simulate_pre_start_check 14083613 -m 5 --no-odds-ingestion --pillar-5
+
+All toggles accept --<flag> and --no-<flag>; see --help. This runs real
+persistence and provider calls when enabled. Alerts can send real notifications.
+Only scheduling minutes are simulated: evaluation_as_of remains the real UTC
+input-capture time. Production moment and competition filters still apply.
 """
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 import logging
 import sys
 from typing import Sequence
@@ -30,7 +36,13 @@ from sqlalchemy.orm import joinedload
 from app.initialize import initialize_system
 from app.logging_setup import setup_logging
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import Market, MarketChoice, MarketChoiceQuote
+from infrastructure.persistence.models import (
+    Event,
+    Market,
+    MarketChoice,
+    MarketChoiceQuote,
+    MarketChoiceSnapshot,
+)
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.event_candidate_builder import (
@@ -46,6 +58,7 @@ from modules.jobs.pre_start_check_job.oddsportal_worker import (
     OddsPortalScrapeContext,
     start_oddsportal_scrape_for_events,
 )
+from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
 from modules.sports.catalog import is_supported_sport_name
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.competition.tracked_competitions import is_tracked_competition
@@ -71,36 +84,58 @@ ENABLE_PILLAR_1 = False  # Pillar 1 - Team Structure (Side & Totals: M1-M7)
 ENABLE_PILLAR_2 = False  # Pillar 2 - Side Market Signal Profile
 ENABLE_PILLAR_3 = False  # Pillar 3 - Over/Under Market Signal Profile
 ENABLE_PILLAR_4 = False  # Pillar 4 - Temporal Market Drift
-ENABLE_PILLAR_5 = True  # Pillar 5 - Exact Price Memory
-ENABLE_CUSTOM_PILLAR_FILTER = True  # Set True to override production pillar selection with the toggles above
+ENABLE_PILLAR_5 = False  # Pillar 5 - Exact Price Memory
+ENABLE_CUSTOM_PILLAR_FILTER = (
+    True  # Set True to override production pillar selection with the toggles above
+)
+
+# CLI overrides use the same switches as editing this file; omitted flags retain
+# the values above. Keep one mapping for argument parsing and scoped restoration.
+_TOGGLE_FLAGS = {
+    "odds-ingestion": "ENABLE_ODDS_INGESTION_SIMULATION",
+    "alerts": "ENABLE_ALERT_PIPELINE",
+    "pillars": "ENABLE_PILLAR_PIPELINE",
+    "market-report": "SHOW_MARKET_PERSISTENCE_REPORT",
+    "sofascore": "ENABLE_SOFASCORE_ODDS_SIMULATION",
+    "oddspapi": "ENABLE_ODDSPAPI_ODDS_SIMULATION",
+    "oddsportal": "ENABLE_ODDSPORTAL_ODDS_SIMULATION",
+    "custom-pillar-filter": "ENABLE_CUSTOM_PILLAR_FILTER",
+    **{f"pillar-{i}": f"ENABLE_PILLAR_{i}" for i in range(1, 6)},
+}
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
-
 logger = logging.getLogger(__name__)
 
 
-def _apply_simulation_toggle_overrides() -> None:
-    """Make this script's ingestion toggles authoritative for this process."""
-    if ENABLE_ODDS_INGESTION_SIMULATION:
-        # Candidate timing is gated by the global production setting. The
-        # simulator's explicit enable must win over ENABLE_ODDS_EXTRACTION in .env.
-        Config.ENABLE_ODDS_EXTRACTION = True
-        logger.info("Simulation override: ENABLE_ODDS_EXTRACTION=True")
-
-    # run_oddspapi_pre_start_odds has a second, provider-level feature gate.
-    # Mirror the local provider toggle so an .env value cannot silently bypass
-    # an explicitly enabled simulation. The production .env file is untouched.
-    Config.ENABLE_ODDSPAPI_PRE_START_ODDS = (
-        ENABLE_ODDS_INGESTION_SIMULATION
-        and ENABLE_ODDSPAPI_ODDS_SIMULATION
-    )
-    logger.info(
-        "Simulation override: ENABLE_ODDSPAPI_PRE_START_ODDS=%s",
-        Config.ENABLE_ODDSPAPI_PRE_START_ODDS,
-    )
+@contextmanager
+def _simulation_toggle_overrides(overrides: dict[str, bool] | None):
+    """Keep CLI switches and provider gates local to this one-shot execution."""
+    overrides = overrides or {}
+    unknown = overrides.keys() - _TOGGLE_FLAGS.keys()
+    if unknown:
+        raise ValueError(f"Unknown simulation toggles: {sorted(unknown)}")
+    previous_toggles = {
+        _TOGGLE_FLAGS[flag]: globals()[_TOGGLE_FLAGS[flag]] for flag in overrides
+    }
+    previous_config = {
+        name: getattr(Config, name)
+        for name in ("ENABLE_ODDS_EXTRACTION", "ENABLE_ODDSPAPI_PRE_START_ODDS")
+    }
+    try:
+        for flag, enabled in overrides.items():
+            globals()[_TOGGLE_FLAGS[flag]] = enabled
+        # These are additional production gates inside candidate/provider code.
+        Config.ENABLE_ODDS_EXTRACTION = ENABLE_ODDS_INGESTION_SIMULATION
+        Config.ENABLE_ODDSPAPI_PRE_START_ODDS = (
+            ENABLE_ODDS_INGESTION_SIMULATION and ENABLE_ODDSPAPI_ODDS_SIMULATION
+        )
+        yield
+    finally:
+        globals().update(previous_toggles)
+        for name, value in previous_config.items():
+            setattr(Config, name, value)
 
 
 def _ensure_logging_configured() -> None:
@@ -128,10 +163,7 @@ def _log_pipeline_eligibility(event_obj) -> bool:
     competition_id = getattr(event_obj, "competition_id", None)
     tracked_competition = is_tracked_competition(competition_id)
 
-    if (
-        Config.TRACKED_COMPETITIONS_ONLY
-        and not tracked_competition
-    ):
+    if Config.TRACKED_COMPETITIONS_ONLY and not tracked_competition:
         logger.info(
             "🚫 PRODUCTION FLOW STOPS BEFORE INGESTION: competition_id=%s is "
             "not tracked and TRACKED_COMPETITIONS_ONLY=True.",
@@ -169,10 +201,7 @@ def _log_pipeline_eligibility(event_obj) -> bool:
             competition_id,
         )
 
-    if (
-        Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS
-        and not tracked_competition
-    ):
+    if Config.FILTER_PIPELINES_BY_TRACKED_COMPETITIONS and not tracked_competition:
         logger.warning(
             "ALERT AND PILLAR PIPELINES WILL SKIP: competition_id=%s is "
             "not tracked and FILTER_PIPELINES_BY_TRACKED_COMPETITIONS=True.",
@@ -189,39 +218,39 @@ def _log_pipeline_eligibility(event_obj) -> bool:
     return True
 
 
-def _find_matching_raw_market(
-    market,
-    adapted_response: dict | None,
-) -> dict | None:
-    raw_markets = (adapted_response or {}).get("markets", [])
-    for choice in market.choices:
-        for quote in choice.quotes:
-            if not quote.source_outcome_id:
-                continue
-            for raw_market in raw_markets:
-                if any(
-                    raw_choice.get("sourceOutcomeId")
-                    == quote.source_outcome_id
-                    for raw_choice in raw_market.get("choices", [])
-                ):
-                    return raw_market
-    return None
+def _load_snapshot_ids_by_event(event_ids: list[int]) -> dict[int, set[int]]:
+    """Read just identities in one query, and only when the report is enabled."""
+    with db_manager.get_session() as session:
+        rows = (
+            session.query(Market.event_id, MarketChoiceSnapshot.snapshot_id)
+            .join(MarketChoice, MarketChoice.market_id == Market.market_id)
+            .join(
+                MarketChoiceQuote, MarketChoiceQuote.choice_id == MarketChoice.choice_id
+            )
+            .join(
+                MarketChoiceSnapshot,
+                MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
+            )
+            .filter(Market.event_id.in_(event_ids))
+        )
+        snapshots_by_event = {event_id: set() for event_id in event_ids}
+        for event_id, snapshot_id in rows:
+            snapshots_by_event[event_id].add(snapshot_id)
+        return snapshots_by_event
 
 
 def _log_persisted_market_odds(
     event_id: int,
     previous_snapshot_ids: set[int],
-    adapted_response: dict | None = None,
 ) -> None:
-    """Report the exact market state persisted by the production processor."""
-    if not SHOW_MARKET_PERSISTENCE_REPORT:
-        return
+    """Report persisted markets from every source, including stored-only runs."""
 
     with db_manager.get_session() as session:
         markets = (
             session.query(Market)
             .options(
                 joinedload(Market.bookie),
+                joinedload(Market.canonical_market_type),
                 joinedload(Market.choices)
                 .joinedload(MarketChoice.quotes)
                 .joinedload(MarketChoiceQuote.snapshots),
@@ -245,7 +274,7 @@ def _log_persisted_market_odds(
         }
         logger.info("")
         logger.info("=" * 100)
-        logger.info("DATABASE PERSISTENCE AFTER ODDS INGESTION")
+        logger.info("DATABASE MARKET PERSISTENCE REPORT")
         logger.info(
             "event_id=%s markets=%s choices=%s snapshots=%s "
             "new_snapshots_this_run=%s",
@@ -257,7 +286,6 @@ def _log_persisted_market_odds(
         )
 
         for market in markets:
-            raw_market = _find_matching_raw_market(market, adapted_response)
             has_new_snapshot = any(
                 snapshot.snapshot_id in new_snapshot_ids
                 for choice in market.choices
@@ -267,26 +295,32 @@ def _log_persisted_market_odds(
             logger.info("-" * 100)
             logger.info(
                 "%sMARKET id=%s key=%r bookie=%r live=%s "
-                "name=%r group=%r period=%r line_value=%r "
-                "raw_name=%r",
+                "name=%r group=%r period=%r line_value=%r",
                 "NEW " if has_new_snapshot else "",
                 market.market_id,
-                market.canonical_market_type.canonical_market_key
-                if market.canonical_market_type
-                else None,
+                (
+                    market.canonical_market_type.canonical_market_key
+                    if market.canonical_market_type
+                    else None
+                ),
                 market.bookie.name if market.bookie else None,
                 market.is_live,
-                market.canonical_market_type.canonical_market_name
-                if market.canonical_market_type
-                else None,
-                market.canonical_market_type.canonical_market_group
-                if market.canonical_market_type
-                else None,
-                market.canonical_market_type.canonical_market_period
-                if market.canonical_market_type
-                else None,
+                (
+                    market.canonical_market_type.canonical_market_name
+                    if market.canonical_market_type
+                    else None
+                ),
+                (
+                    market.canonical_market_type.canonical_market_group
+                    if market.canonical_market_type
+                    else None
+                ),
+                (
+                    market.canonical_market_type.canonical_market_period
+                    if market.canonical_market_type
+                    else None
+                ),
                 market.line_value,
-                raw_market.get("marketName") if raw_market else None,
             )
             for choice in sorted(
                 market.choices,
@@ -320,6 +354,7 @@ def _log_persisted_market_odds(
                     ):
                         logger.info(
                             "      %sSNAPSHOT id=%s odds=%s collected_at=%s "
+                            "source_collected_at=%s "
                             "quote_id=%s limit=%r",
                             (
                                 "NEW "
@@ -329,6 +364,7 @@ def _log_persisted_market_odds(
                             snapshot.snapshot_id,
                             snapshot.odds_value,
                             snapshot.collected_at,
+                            snapshot.source_collected_at,
                             snapshot.quote_id,
                             snapshot.source_limit,
                         )
@@ -376,32 +412,13 @@ def _parse_event_ids_and_minutes(
     return event_ids, simulated_minutes
 
 
-def _parse_evaluation_as_of(value: str) -> datetime:
-    """Parse an explicit ISO-8601 evaluation instant for deterministic replay."""
-    normalized = value.strip()
-    if normalized.endswith(("Z", "z")):
-        normalized = normalized[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(
-            "Use an ISO-8601 timestamp, for example 2026-09-29T21:34:57Z."
-        ) from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise argparse.ArgumentTypeError(
-            "evaluation-as-of must include a timezone, such as Z or +00:00."
-        )
-    return parsed.astimezone(timezone.utc)
-
-
 def simulate_pre_start_check(
     event_ids: int | Sequence[int],
     simulated_minutes: int,
     *,
-    evaluation_as_of: datetime | None = None,
+    toggle_overrides: dict[str, bool] | None = None,
 ) -> bool:
     """Run the pre-start flow for one or more events with production observability and debug mode."""
-    _apply_simulation_toggle_overrides()
     _ensure_logging_configured()
     previous_evidence_mode = getattr(
         api_client,
@@ -410,11 +427,12 @@ def simulate_pre_start_check(
     )
     api_client.set_challenge_evidence_enabled(True)
     try:
-        with observe_operation("pre_start_check"):
+        with _simulation_toggle_overrides(toggle_overrides), observe_operation(
+            "pre_start_check"
+        ):
             return _run_pre_start_check_simulation(
                 event_ids,
                 simulated_minutes,
-                evaluation_as_of=evaluation_as_of,
             )
     finally:
         if previous_evidence_mode is not None:
@@ -424,8 +442,6 @@ def simulate_pre_start_check(
 def _run_pre_start_check_simulation(
     event_ids: int | Sequence[int],
     simulated_minutes: int,
-    *,
-    evaluation_as_of: datetime | None = None,
 ) -> bool:
     if isinstance(event_ids, int):
         event_id_list = [event_ids]
@@ -441,11 +457,47 @@ def _run_pre_start_check_simulation(
     logger.info("=" * 80)
     logger.info("Event IDs: %s", event_id_list)
     logger.info("Simulated minutes: %s", simulated_minutes)
-    logger.info("Is key moment: %s", simulated_minutes in key_moments)
+    logger.info(
+        "The simulated minute selects the historical target; collected_at and "
+        "evaluation_as_of retain real UTC acquisition/evaluation times. "
+        "Source timestamps reconstruct checkpoints; this is a new evaluation."
+    )
+    logger.info(
+        "Effective toggles: %s",
+        {flag: globals()[name] for flag, name in _TOGGLE_FLAGS.items()},
+    )
+    logger.info(
+        "Is key moment: %s (configured: %s)",
+        simulated_minutes in key_moments,
+        key_moments,
+    )
+    if simulated_minutes not in key_moments:
+        logger.warning(
+            "This minute is outside PRE_START_ODDS_MOMENTS; alert/pillar evaluation will skip it."
+        )
+    allowed_pillar_moments = Config.PILLAR_PIPELINE_EXECUTION_MOMENTS
+    if (
+        ENABLE_PILLAR_PIPELINE
+        and allowed_pillar_moments
+        and simulated_minutes not in allowed_pillar_moments
+    ):
+        logger.warning(
+            "Pillars will skip this minute; PILLAR_PIPELINE_EXECUTION_MOMENTS=%s",
+            allowed_pillar_moments,
+        )
+    if ENABLE_ODDS_INGESTION_SIMULATION and ENABLE_ODDSPAPI_ODDS_SIMULATION:
+        logger.info(
+            "Oddspapi allowed moments: %s", Config.ODDSPAPI_PRE_START_ALLOWED_MOMENTS
+        )
+    if ENABLE_ODDS_INGESTION_SIMULATION and ENABLE_ODDSPORTAL_ODDS_SIMULATION:
+        logger.info(
+            "OddsPortal opening capture minute: %s",
+            Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES,
+        )
     logger.info("=" * 80)
 
     logger.info("Step 1: Loading %s event(s) from database", len(event_id_list))
-    events_by_id: dict[int, Any] = {}
+    events_by_id: dict[int, Event] = {}
     missing_ids: list[int] = []
     for e_id in event_id_list:
         event_obj = runtime.event_repo.get_event_by_id(e_id)
@@ -470,9 +522,7 @@ def _run_pre_start_check_simulation(
             event_obj.season_id,
             event_obj.starts_at,
         )
-        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(
-            event_obj.starts_at
-        )
+        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(event_obj.starts_at)
         boundary = (
             kickoff_utc - timedelta(minutes=simulated_minutes)
             if kickoff_utc is not None
@@ -480,7 +530,7 @@ def _run_pre_start_check_simulation(
         )
         oddspapi_boundaries_by_event[e_id] = boundary
         logger.info(
-            "Event %s Oddspapi historical observation boundary: %s",
+            "Event %s Oddspapi historical source cutoff: %s",
             e_id,
             boundary,
         )
@@ -500,7 +550,7 @@ def _run_pre_start_check_simulation(
             "Simulation complete: production upcoming-event selection would "
             "exclude all requested event(s).",
         )
-        return True
+        return not missing_ids
 
     supported_events = []
     for event_obj in eligible_events:
@@ -516,7 +566,7 @@ def _run_pre_start_check_simulation(
     eligible_events = supported_events
     if not eligible_events:
         logger.info("Simulation complete: no supported sports were provided.")
-        return True
+        return not missing_ids
 
     events_data = [
         EventRepository._build_event_data_with_legacy_fallback(event_obj)
@@ -524,123 +574,111 @@ def _run_pre_start_check_simulation(
     ]
     timings = {int(e["id"]): simulated_minutes for e in events_data}
 
-    if ENABLE_ODDS_INGESTION_SIMULATION:
-        if ENABLE_ODDSPORTAL_ODDS_SIMULATION:
+    previous_snapshot_ids = (
+        _load_snapshot_ids_by_event([event.id for event in eligible_events])
+        if SHOW_MARKET_PERSISTENCE_REPORT
+        else {}
+    )
+    try:
+        if ENABLE_ODDS_INGESTION_SIMULATION:
+            if ENABLE_ODDSPORTAL_ODDS_SIMULATION:
+                logger.info(
+                    "Step 2: Starting production OddsPortal candidate selection (%s events)",
+                    len(events_data),
+                )
+                oddsportal_context = start_oddsportal_scrape_for_events(
+                    runtime,
+                    events_data,
+                    timings,
+                    debug_mode=debug_mode,
+                    scraping_enabled=ENABLE_ODDSPORTAL_ODDS_SIMULATION,
+                )
+            else:
+                logger.info(
+                    "Step 2: Skipping OddsPortal scrape (ENABLE_ODDSPORTAL_ODDS_SIMULATION=False)"
+                )
+                oddsportal_context = OddsPortalScrapeContext(
+                    event_states={},
+                    event_ids=set(),
+                )
+
             logger.info(
-                "Step 2: Starting production OddsPortal candidate selection (%s events)",
-                len(events_data),
+                "Step 3: Running production candidate builder and provider ingestion (%s events)",
+                len(eligible_events),
             )
-            oddsportal_context = start_oddsportal_scrape_for_events(
-                runtime,
-                events_data,
-                timings,
+            target_for_phase = (
+                eligible_events[0] if len(eligible_events) == 1 else eligible_events
+            )
+            odds_outcome = run_production_odds_phase(
+                target_for_phase,
+                simulated_minutes,
+                key_moments,
                 debug_mode=debug_mode,
-                scraping_enabled=ENABLE_ODDSPORTAL_ODDS_SIMULATION,
+                runtime=runtime,
+                enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
+                enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
+                oddspapi_available_through_utc=(
+                    oddspapi_boundaries_by_event.get(eligible_events[0].id)
+                    if len(eligible_events) == 1
+                    else oddspapi_boundaries_by_event
+                ),
             )
+            event_plan = odds_outcome.event_plan
         else:
             logger.info(
-                "Step 2: Skipping OddsPortal scrape (ENABLE_ODDSPORTAL_ODDS_SIMULATION=False)"
+                "Step 2: Skipping OddsPortal scrape (ENABLE_ODDS_INGESTION_SIMULATION=False)"
             )
             oddsportal_context = OddsPortalScrapeContext(
                 event_states={},
                 event_ids=set(),
             )
 
-        logger.info(
-            "Step 3: Running production candidate builder and provider ingestion (%s events)",
-            len(eligible_events),
-        )
-        target_for_phase = (
-            eligible_events[0]
-            if len(eligible_events) == 1
-            else eligible_events
-        )
-        odds_outcome = run_production_odds_phase(
-            target_for_phase,
-            simulated_minutes,
-            key_moments,
-            debug_mode=debug_mode,
-            show_persistence_report=SHOW_MARKET_PERSISTENCE_REPORT,
-            log_persisted_market_odds=_log_persisted_market_odds,
-            runtime=runtime,
-            enable_sofascore=ENABLE_SOFASCORE_ODDS_SIMULATION,
-            enable_oddspapi=ENABLE_ODDSPAPI_ODDS_SIMULATION,
-            oddspapi_available_through_utc=(
-                oddspapi_boundaries_by_event.get(eligible_events[0].id)
-                if len(eligible_events) == 1
-                else oddspapi_boundaries_by_event
-            ),
-        )
-        event_plan = odds_outcome.event_plan
-    else:
-        logger.info(
-            "Step 2: Skipping OddsPortal scrape (ENABLE_ODDS_INGESTION_SIMULATION=False)"
-        )
-        oddsportal_context = OddsPortalScrapeContext(
-            event_states={},
-            event_ids=set(),
-        )
+            logger.info(
+                "Step 3: Skipping provider odds ingestion (ENABLE_ODDS_INGESTION_SIMULATION=False); building candidate plan only"
+            )
+            source_states = load_pre_start_odds_source_states(events_data)
+            event_plan = build_pre_start_event_candidates(
+                runtime,
+                events_data,
+                timings,
+                source_states,
+                key_moments=key_moments,
+            )
 
-        logger.info(
-            "Step 3: Skipping provider odds ingestion (ENABLE_ODDS_INGESTION_SIMULATION=False); building candidate plan only"
-        )
-        source_states = load_pre_start_odds_source_states(events_data)
-        event_plan = build_pre_start_event_candidates(
-            runtime,
-            events_data,
-            timings,
-            source_states,
-            key_moments=key_moments,
-        )
+    finally:
+        # Finish provider writes before reading trajectories, and also on failure.
+        _wait_for_oddsportal_worker(runtime)
+
+    if SHOW_MARKET_PERSISTENCE_REPORT:
+        for event in eligible_events:
+            _log_persisted_market_odds(event.id, previous_snapshot_ids[event.id])
 
     if ENABLE_ALERT_PIPELINE or ENABLE_PILLAR_PIPELINE:
         logger.info("Step 4: Running production key-moment evaluation")
-        tolerance_minutes = max(0, int(getattr(Config, "PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES", 2)))
-        valid_boundaries = [b for b in oddspapi_boundaries_by_event.values() if b is not None]
-        simulated_eval_as_of = evaluation_as_of or (
-            max(valid_boundaries) + timedelta(minutes=tolerance_minutes)
-            if valid_boundaries
-            else None
-        )
-        logger.info(
-            "Pillar evaluation_as_of: %s%s",
-            simulated_eval_as_of,
-            " (explicit replay value)"
-            if evaluation_as_of is not None
-            else " (derived from the simulated target window)",
-        )
-        if ENABLE_CUSTOM_PILLAR_FILTER:
-            evaluate_pre_start_key_moments(
-                runtime,
-                event_plan,
-                oddsportal_context,
-                debug_mode=debug_mode,
-                enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
-                enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
-                evaluation_as_of=simulated_eval_as_of,
-                enabled_pillars={
+        evaluate_pre_start_key_moments(
+            runtime,
+            event_plan,
+            oddsportal_context,
+            debug_mode=debug_mode,
+            enable_alert_pipeline=ENABLE_ALERT_PIPELINE,
+            enable_pillar_pipeline=ENABLE_PILLAR_PIPELINE,
+            enabled_pillars=(
+                {
                     "pillar_1": ENABLE_PILLAR_1,
                     "pillar_2": ENABLE_PILLAR_2,
                     "pillar_3": ENABLE_PILLAR_3,
                     "pillar_4": ENABLE_PILLAR_4,
                     "pillar_5": ENABLE_PILLAR_5,
-                },
-            )
-        else:
-            evaluate_pre_start_key_moments(
-                runtime,
-                event_plan,
-                oddsportal_context,
-                debug_mode=debug_mode,
-                evaluation_as_of=simulated_eval_as_of,
-            )
+                }
+                if ENABLE_CUSTOM_PILLAR_FILTER
+                else None
+            ),
+        )
     else:
         logger.info(
             "Step 4: Skipping pillar and alert evaluation "
             "(both ENABLE_ALERT_PIPELINE and ENABLE_PILLAR_PIPELINE are False)"
         )
-
-    _wait_for_oddsportal_worker(runtime)
 
     logger.info("=" * 80)
     logger.info(
@@ -649,7 +687,7 @@ def _run_pre_start_check_simulation(
         simulated_minutes,
     )
     logger.info("=" * 80)
-    return True
+    return not missing_ids
 
 
 def main() -> int:
@@ -674,15 +712,13 @@ def main() -> int:
         default=None,
         help="Forced minutes until start. If omitted, the last positional argument is used as minutes.",
     )
-    parser.add_argument(
-        "--evaluation-as-of",
-        type=_parse_evaluation_as_of,
-        default=None,
-        help=(
-            "Explicit timezone-aware ISO-8601 evaluation instant for a reproducible replay "
-            "(for example 2026-09-29T21:34:57Z)."
-        ),
-    )
+    for flag, constant in _TOGGLE_FLAGS.items():
+        parser.add_argument(
+            f"--{flag}",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help=f"Override {constant} (file default: {globals()[constant]}).",
+        )
     args = parser.parse_args()
     _ensure_logging_configured()
 
@@ -692,7 +728,6 @@ def main() -> int:
         logger.error("Argument error: %s", err)
         return 1
 
-    _apply_simulation_toggle_overrides()
     if not initialize_system():
         logger.error(
             "Failed to initialize system; the pre-start simulation cannot run."
@@ -704,7 +739,11 @@ def main() -> int:
         if simulate_pre_start_check(
             event_ids,
             minutes,
-            evaluation_as_of=args.evaluation_as_of,
+            toggle_overrides={
+                flag: getattr(args, flag.replace("-", "_"))
+                for flag in _TOGGLE_FLAGS
+                if getattr(args, flag.replace("-", "_")) is not None
+            },
         )
         else 1
     )

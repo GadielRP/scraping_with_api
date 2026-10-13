@@ -5,16 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import logging
-from types import SimpleNamespace
-from typing import Callable
 
-from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.models import (
-    Market,
-    MarketChoice,
-    MarketChoiceQuote,
-    MarketChoiceSnapshot,
-)
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import tracked_competition_ids
@@ -37,9 +28,6 @@ from modules.jobs.pre_start_check_job.providers.sofascore.tennis_observations im
     attach_stored_observations,
     persist_snapshot_observations,
 )
-from modules.odds_ingestion.adapters.sofascore_market_adapter import (
-    SofaScoreMarketAdapter,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +46,6 @@ def run_production_odds_phase(
     key_moments: list[int],
     *,
     debug_mode: bool,
-    show_persistence_report: bool,
-    log_persisted_market_odds: Callable[[int, set[int], dict], None],
     runtime=None,
     enable_sofascore: bool = True,
     enable_oddspapi: bool = True,
@@ -76,6 +62,7 @@ def run_production_odds_phase(
 
     if runtime is None:
         from modules.jobs.pre_start_check_job.runtime import PreStartRuntime
+
         runtime = PreStartRuntime(EventRepository())
 
     events_data = [
@@ -96,8 +83,7 @@ def run_production_odds_phase(
 
     global_ts_correction = Config.ENABLE_TIMESTAMP_CORRECTION
     restrict_timestamp_corrections = (
-        global_ts_correction
-        and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY
+        global_ts_correction and Config.TIMESTAMP_CORRECTIONS_TRACKED_COMPETITIONS_ONLY
     )
     restrict_general_odds_extraction = (
         Config.ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY
@@ -125,12 +111,16 @@ def run_production_odds_phase(
     timings = {int(e["id"]): simulated_minutes for e in events_data}
 
     if restrict_timestamp_corrections:
+
         def _is_ts_candidate(e: dict) -> bool:
             if tracked_ids is not None and e.get("competition_id") in tracked_ids:
                 return True
             if include_all_tennis:
                 sport = e.get("sport") or (e.get("event_data") or {}).get("sport")
-                if sport in ["Tennis", "Tennis Doubles"] and timings.get(int(e.get("id"))) == 5:
+                if (
+                    sport in ["Tennis", "Tennis Doubles"]
+                    and timings.get(int(e.get("id"))) == 5
+                ):
                     return True
             return False
 
@@ -144,26 +134,12 @@ def run_production_odds_phase(
         tracked_ids if restrict_general_odds_extraction else None
     )
 
-    def _safe_build_candidates(evts: list[dict], **kwargs) -> PreStartEventPlan:
-        try:
-            return build_pre_start_event_candidates(
-                runtime,
-                evts,
-                timings,
-                source_states,
-                **kwargs,
-            )
-        except TypeError:
-            return build_pre_start_event_candidates(
-                runtime,
-                evts,
-                timings,
-                source_states,
-            )
-
     plan_ts = (
-        _safe_build_candidates(
+        build_pre_start_event_candidates(
+            runtime,
             ts_events,
+            timings,
+            source_states,
             key_moments=key_moments,
             timestamp_correction_enabled=global_ts_correction,
             fetch_alert_metadata=True,
@@ -174,8 +150,11 @@ def run_production_odds_phase(
     )
 
     if no_ts_events:
-        plan_no_ts = _safe_build_candidates(
+        plan_no_ts = build_pre_start_event_candidates(
+            runtime,
             no_ts_events,
+            timings,
+            source_states,
             key_moments=key_moments,
             timestamp_correction_enabled=False,
             fetch_alert_metadata=False,
@@ -200,30 +179,6 @@ def run_production_odds_phase(
     # Attach existing tennis observations and persist initial snapshot observations
     attach_stored_observations(event_plan.candidates)
     persist_snapshot_observations(event_plan.candidates)
-
-    previous_snapshot_ids_by_event: dict[int, set[int]] = {}
-    if show_persistence_report:
-        with db_manager.get_session() as session:
-            for event_info in event_plan.candidates:
-                if event_info.get("should_extract_odds"):
-                    e_id = event_info["event_id"]
-                    previous_snapshot_ids_by_event[e_id] = {
-                        snapshot_id
-                        for (snapshot_id,) in (
-                            session.query(MarketChoiceSnapshot.snapshot_id)
-                            .join(
-                                MarketChoiceQuote,
-                                MarketChoiceSnapshot.quote_id == MarketChoiceQuote.quote_id,
-                            )
-                            .join(
-                                MarketChoice,
-                                MarketChoiceQuote.choice_id == MarketChoice.choice_id,
-                            )
-                            .join(Market, MarketChoice.market_id == Market.market_id)
-                            .filter(Market.event_id == e_id)
-                            .all()
-                        )
-                    }
 
     if enable_sofascore:
         logger.info("  Running production SofaScore odds processor...")
@@ -252,17 +207,6 @@ def run_production_odds_phase(
                         ingestion_result.markets_saved,
                         ingestion_result.dual_process_market_available,
                         ingestion_result.reason,
-                    )
-                if show_persistence_report:
-                    adapted_response = SofaScoreMarketAdapter.from_event_odds_response(
-                        odds_response,
-                        home_team=event_obj_item.home_team,
-                        away_team=event_obj_item.away_team,
-                    )
-                    log_persisted_market_odds(
-                        e_id,
-                        previous_snapshot_ids_by_event.get(e_id, set()),
-                        adapted_response,
                     )
             elif event_info.get("should_extract_odds"):
                 logger.warning(
@@ -309,13 +253,19 @@ def run_production_odds_phase(
         logger.info(
             "  Event %s odds availability after run: sofascore=%s oddspapi=%s",
             e_id,
-            refreshed_sofascore.has_odds if refreshed_sofascore else "<missing mapping>",
+            (
+                refreshed_sofascore.has_odds
+                if refreshed_sofascore
+                else "<missing mapping>"
+            ),
             refreshed_oddspapi.has_odds if refreshed_oddspapi else "<missing mapping>",
         )
 
     first_event_info = event_plan.by_event_id.get(int(event_objs[0].id))
     return SimulatedOddsOutcome(
-        odds_response=first_event_info.get("odds_response") if first_event_info else None,
+        odds_response=(
+            first_event_info.get("odds_response") if first_event_info else None
+        ),
         metadata_snapshot=(
             first_event_info.get("metadata_snapshot") if first_event_info else None
         ),
