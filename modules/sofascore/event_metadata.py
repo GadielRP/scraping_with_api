@@ -44,6 +44,7 @@ def _is_knockout_round(text: str) -> bool:
     return _contains_any(
         text,
         (
+            "super-bowl",
             "final",
             "playoff",
             "knockout",
@@ -65,11 +66,46 @@ def _is_knockout_round(text: str) -> bool:
             "play-in",
             "winnerloser",
             "match-for-3rd-place",
+            "match-for-",
+            "placement",
+            "round-of-256",
             "in-season-tournament",
-            "wild-card-round",
-            "wild-card-weekend",
+            "wild-card",
             "conference-championships",
             "divisional-round",
+        ),
+    )
+
+
+def _is_relegation_or_promotion_round(text: str) -> bool:
+    return _contains_any(
+        text,
+        (
+            "releg",
+            "descenso",
+            "promotion",
+        ),
+    )
+
+
+def _is_qualification_round(text: str) -> bool:
+    return _contains_any(
+        text,
+        (
+            "qualification",
+            "qualifier",
+            "qualif.",
+            "qual.",
+            "preliminary",
+        ),
+    )
+
+
+def _is_preseason_round(text: str) -> bool:
+    return _contains_any(
+        text,
+        (
+            "preseason",
         ),
     )
 
@@ -90,9 +126,9 @@ def _derive_round(
         if value
     ).lower()
 
-    if _contains_any(competition_lower, ("releg", "descenso", "promotion")):
+    if _is_relegation_or_promotion_round(competition_lower):
         return "relegation/promotion"
-    if _contains_any(competition_lower, ["qualification", "qualifier", "qualif.", "qual."]):
+    if _is_qualification_round(competition_lower):
         return "qualification"
     if _contains_any(competition_lower, ["friendly", "amistoso"]):
         return "friendly"
@@ -100,13 +136,19 @@ def _derive_round(
         competition_lower,
         ["pre season", "preseason", "pre-temporada", "pré-temporada", "pretemporada"],
     ):
-        return "preseason"
+        return "pre_season"
 
     slug = (round_info or {}).get("slug")
     if slug:
         slug_lower = slug.lower()
         if _is_knockout_round(slug_lower):
             return "knockouts/playoffs"
+        if _is_relegation_or_promotion_round(slug_lower):
+            return "relegation/promotion"
+        if _is_qualification_round(slug_lower):
+            return "qualification"
+        if _is_preseason_round(slug_lower):
+            return "pre_season"
 
         season_text = (season_name or "").lower()
         if _contains_any(season_text, ["cup", "copa", "taça", "coupe"]) or _contains_any(

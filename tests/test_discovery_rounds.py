@@ -50,10 +50,16 @@ def test_default_round_policy_is_enabled_and_regular_season_only():
     ("regular_season", "League", "regular_season", True),
     ("quarterfinal", "League", "knockouts/playoffs", False),
     ("wild-card-round", "League", "knockouts/playoffs", False),
+    ("placement-match", "League", "knockouts/playoffs", False),
+    ("match-for-5th-place", "League", "knockouts/playoffs", False),
+    ("round-of-256", "League", "knockouts/playoffs", False),
     (None, "Friendly Games", "friendly", False),
-    (None, "League Preseason", "preseason", False),
+    (None, "League Preseason", "pre_season", False),
+    ("preseason", "League", "pre_season", False),
     (None, "League Qualification", "qualification", False),
     (None, "League Promotion", "relegation/promotion", False),
+    ("preliminary", "League", "qualification", False),
+    (None, "Preliminary Round", "qualification", False),
     ("custom-stage", "League", "custom-stage", False),
 ])
 def test_discovery_and_full_normalization_use_same_round(slug, competition, expected, accepted):
