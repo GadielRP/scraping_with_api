@@ -221,8 +221,8 @@ def write_events(db_manager, events, *, source='sofascore', match_method='direct
             result.inserted += saved.inserted
             result.updated += saved.updated
             log = logger.info if len(batch) > 1 or saved.discarded else logger.debug
-            log('Event batch committed: source=%s inserted=%s updated=%s discarded=%s '
-                'duration_s=%.3f discarded_source_event_ids=%s',
+            log('Event batch committed: source=%s inserted=%s updated=%s blocked_by_discard_memory=%s '
+                'duration_s=%.3f blocked_source_event_ids=%s',
                 source, saved.inserted, saved.updated, len(saved.discarded),
                 monotonic() - started, sorted(saved.discarded))
         except (IntegrityError, DataError) as exc:

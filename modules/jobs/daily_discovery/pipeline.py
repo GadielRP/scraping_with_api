@@ -1,6 +1,7 @@
 """Commit bounded event batches, then join streamed odds to confirmed run members."""
 
 import logging
+from collections import Counter
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event, EventSourceMapping
@@ -23,7 +24,8 @@ from shared.batching import chunks
 from shared.execution_context import WorkDeferred, check_execution_budget
 
 from .event_source import iter_sport_events
-from .persistence import persist_daily_events
+from .observability import DailySourceCounts, log_daily_batch
+from .persistence import DailyWriteSummary, persist_daily_events
 
 logger = logging.getLogger(__name__)
 
@@ -79,44 +81,54 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
             "events_persisted",
             "events_inserted",
             "events_updated",
-            "events_discarded",
+            "events_blocked_by_discard_memory",
             "events_failed",
             "events_filtered",
+            "events_filtered_before_write",
             "sports_failed",
             "odds_inserted",
         ),
         0,
     )
+    total_source_counts = DailySourceCounts()
+    write_filter_reasons = Counter()
     with DiscoveryRunStore() as store:
         try:
             for sport in sofascore_discovery_sport_slugs(sports):
                 check_execution_budget()
                 failed = False
+                source_counts = DailySourceCounts()
+                reported_counts = DailySourceCounts()
+                batch_number = 0
+                source = iter_sport_events(client, date, sport, scope, store, source_counts)
                 try:
-                    for batch in chunks(
-                        iter_sport_events(client, date, sport, scope, store),
-                        limits.event_read_batch_size,
-                    ):
+                    for batch in chunks(source, limits.event_read_batch_size):
                         check_execution_budget()
                         check_maintenance_capacity()
-                        result = persist_daily_events(
-                            client, batch, run_store=store, tracked_competitions=scope,
+                        result = persist_daily_events(client, batch, run_store=store)
+                        batch_number += 1
+                        log_daily_batch(
+                            logger, source_counts.since(reported_counts), result,
+                            date=date, run_slot=run_slot, sport=sport, batch_number=batch_number,
                         )
+                        reported_counts = source_counts.snapshot()
                         stats["events_processed"] += len(batch)
                         for name, value in (
                             ("persisted", result.persisted),
                             ("inserted", result.inserted),
                             ("updated", result.updated),
-                            ("discarded", result.discarded),
+                            ("blocked_by_discard_memory", result.blocked_by_discard_memory),
                             ("failed", result.failed),
-                            ("filtered", result.filtered),
+                            ("filtered_before_write", result.filtered),
                         ):
                             stats[f"events_{name}"] += value
+                        write_filter_reasons.update(result.filter_reasons)
                         failed |= result.failed > 0
                     stats["odds_inserted"] += persist_sport_odds(
                         client, date, sport, store, limits.event_read_batch_size
                     )
                 except (KeyboardInterrupt, WorkDeferred):
+                    stats["sports_failed"] += 1
                     DailyDiscoveryRepository.update_sport_status(date, run_slot, sport, "failed")
                     raise
                 except Exception:
@@ -124,13 +136,35 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
                     logger.exception(
                         "Daily sport incomplete date=%s slot=%s sport=%s", date, run_slot, sport
                     )
+                finally:
+                    source.close()
+                    remaining = source_counts.since(reported_counts)
+                    if (remaining.totals or remaining.event_filter_reasons
+                        or remaining.tournament_filter_reasons or remaining.tournament_skip_reasons):
+                        log_daily_batch(
+                            logger, remaining, DailyWriteSummary(), date=date,
+                            run_slot=run_slot, sport=sport, batch_number=batch_number + 1,
+                            phase="incomplete" if remaining.totals["events_admitted"] else "admission",
+                        )
+                    total_source_counts.add(source_counts)
                 stats["sports_failed"] += int(failed)
                 DailyDiscoveryRepository.update_sport_status(
                     date, run_slot, sport, "failed" if failed else "completed"
                 )
-            logger.info("Daily discovery persistence summary: %s", stats)
             return stats
         finally:
             log_discovery_summary(
                 store, logger, job="daily_discovery", requested_date=date, run_slot=run_slot
+            )
+            stats.update(total_source_counts.log_fields())
+            stats["events_filtered"] = (
+                stats["events_filtered_at_source"] + stats["events_filtered_before_write"]
+            )
+            stats["event_filter_reasons"] = dict(
+                total_source_counts.event_filter_reasons + write_filter_reasons
+            )
+            stats["write_filter_reasons"] = dict(write_filter_reasons)
+            stats["events_unprocessed"] = stats["events_admitted"] - stats["events_processed"]
+            logger.info(
+                "Daily discovery summary requested_date=%s slot=%s counts=%s", date, run_slot, stats,
             )

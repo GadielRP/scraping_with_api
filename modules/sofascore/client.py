@@ -44,7 +44,8 @@ from .event_details import (
     get_event_results,
     update_event_information_from_response,
 )
-from .event_normalizer import clean_competition, get_gender, normalize_event_payload
+from .event_metadata import UNRESOLVED_ROUND
+from .event_normalizer import get_gender, normalize_event_payload
 from .challenge import (
     body_preview,
     build_challenge_evidence,
@@ -720,14 +721,13 @@ class SofaScoreAPI:
             logger.warning("%s", exc)
             return None
 
-    def clean_competition(self, competition: str) -> str:
-        return clean_competition(competition)
-
     def get_gender(self, home_team: Dict, away_team: Dict) -> str:
         return get_gender(home_team, away_team)
 
-    def normalize_event_payload(self, event: Dict, discovery_source: str = "dropping_odds") -> Dict:
-        return normalize_event_payload(event, discovery_source)
+    def normalize_event_payload(
+        self, event: Dict, discovery_source: str = "dropping_odds", *, resolved_round=UNRESOLVED_ROUND,
+    ) -> Dict:
+        return normalize_event_payload(event, discovery_source, resolved_round=resolved_round)
 
     def get_dropping_odds_with_odds_and_events_response(self, sport: str) -> Optional[Dict]:
         return get_dropping_odds_with_odds_and_events_response(self, sport=sport)

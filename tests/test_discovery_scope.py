@@ -7,7 +7,7 @@ from infrastructure.settings import discovery as settings
 from dataclasses import replace
 from modules.jobs.discovery.filters import (
     SourceCompetitionIds,
-    is_tracked_source_event,
+    source_competition_filter_reason,
     load_tracked_source_competitions,
 )
 
@@ -53,26 +53,26 @@ def test_canonical_competition_resolves_to_both_sofascore_ids_on_its_row():
         )
 
     assert source_ids == {(36, 8)}
-    assert is_tracked_source_event(
+    assert source_competition_filter_reason(
         {"id": 1, "tournament": {"id": "36", "uniqueTournament": {"id": "8"}}},
         {SourceCompetitionIds(36, 8)},
-    )
-    assert is_tracked_source_event(
+    ) is None
+    assert source_competition_filter_reason(
         {"id": 4, "tournament": {"id": "36"}},
         {SourceCompetitionIds(36, 8)},
-    )
-    assert is_tracked_source_event(
+    ) is None
+    assert source_competition_filter_reason(
         {"id": 5, "tournament": {"uniqueTournament": {"id": "8"}}},
         {SourceCompetitionIds(36, 8)},
-    )
-    assert not is_tracked_source_event(
+    ) is None
+    assert source_competition_filter_reason(
         {"id": 2, "tournament": {"id": "167", "uniqueTournament": {"id": "167"}}},
         {SourceCompetitionIds(36, 8)},
-    )
-    assert not is_tracked_source_event(
+    ) == "untracked_competition"
+    assert source_competition_filter_reason(
         {"id": 3, "tournament": {"id": "36", "uniqueTournament": {"id": "9"}}},
         {SourceCompetitionIds(36, 8)},
-    )
+    ) == "untracked_competition"
     engine.dispose()
 
 
@@ -90,4 +90,4 @@ def test_disabled_competition_filter_skips_lookup_and_accepts_any_source_ids(mon
     scope = load_tracked_source_competitions("sofascore")
 
     assert scope is None
-    assert is_tracked_source_event({"id": 9}, scope)
+    assert source_competition_filter_reason({"id": 9}, scope) is None

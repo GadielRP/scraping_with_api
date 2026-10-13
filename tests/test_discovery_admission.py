@@ -14,7 +14,7 @@ from infrastructure.settings import Config, discovery as settings
 from infrastructure.settings.discovery import DiscoveryFilters
 from modules.jobs.discovery.filters import (
     SourceCompetitionIds, filter_sofascore_events, oddspapi_fixture_filter_reason,
-    sofascore_event_filter_reason, sofascore_tournament_filter_reason,
+    admit_sofascore_event, sofascore_tournament_filter_reason,
     oddspapi_discovery_sport_ids, sofascore_discovery_sport_slugs,
 )
 from modules.jobs.discovery import persistence
@@ -60,8 +60,8 @@ def test_each_toggle_rejects_and_can_be_disabled(normalized, toggle, reason):
     raw = event(normalized=normalized, start=NOW-timedelta(hours=1))
     enabled = replace(policy, **{toggle: True})
     scope = {SourceCompetitionIds(999, 888)} if enabled.tracked_competitions_only else None
-    assert sofascore_event_filter_reason(raw, scope, policy=enabled) == reason
-    assert sofascore_event_filter_reason(raw, policy=replace(enabled, **{toggle: False})) is None
+    assert admit_sofascore_event(raw, scope, policy=enabled).rejection_reason == reason
+    assert admit_sofascore_event(raw, policy=replace(enabled, **{toggle: False})).rejection_reason is None
 
 
 def test_time_margin_and_unknown_availability_are_independent():
@@ -78,7 +78,7 @@ def test_time_margin_and_unknown_availability_are_independent():
 
 def test_category_uses_source_metadata_and_tournaments_are_rejected_before_event_fetch():
     raw = event(category="England", unique_id=17)
-    assert sofascore_event_filter_reason(raw) is None  # Venue country is not the category.
+    assert admit_sofascore_event(raw).rejection_reason is None  # Venue country is not the category.
     assert sofascore_tournament_filter_reason(event(), None, "football") == "excluded_category"
 
 
@@ -98,9 +98,9 @@ def test_excluding_tennis_singles_keeps_the_shared_calendar_for_doubles(monkeypa
     raw["homeTeam"], raw["awayTeam"] = {"name": "A/B"}, {"name": "C/D"}
     assert sofascore_discovery_sport_slugs() == ["tennis"]
     assert sofascore_tournament_filter_reason(raw, None, "tennis") is None
-    assert sofascore_event_filter_reason(raw) is None
+    assert admit_sofascore_event(raw).rejection_reason is None
     raw["homeTeam"], raw["awayTeam"] = {"name": "A"}, {"name": "C"}
-    assert sofascore_event_filter_reason(raw) == "excluded_sport"
+    assert admit_sofascore_event(raw).rejection_reason == "excluded_sport"
 
 
 def test_oddspapi_rejects_old_fixtures_and_disabled_time_filter_allows_backfill():

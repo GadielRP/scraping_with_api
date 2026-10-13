@@ -1,4 +1,4 @@
-"""Discovery admission: provider scopes, time, rankings and curated exclusions."""
+"""Discovery admission: provider scopes, time, rounds, rankings and exclusions."""
 
 from __future__ import annotations
 
@@ -30,6 +30,15 @@ class SourceCompetitionIds:
     source_unique_tournament_id: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class SofascoreEventAdmission:
+    """Admission result retaining the original payload and its resolved round."""
+
+    raw_event: dict
+    round_name: str | None = None
+    rejection_reason: str | None = None
+
+
 def load_tracked_source_competitions(
     source: str,
 ) -> frozenset[SourceCompetitionIds] | None:
@@ -56,9 +65,7 @@ def source_competition_ids(event: dict | None) -> SourceCompetitionIds:
     tournament = payload.get("tournament") or {}
     if not isinstance(tournament, dict):
         tournament = {}
-    unique_tournament = (
-        tournament.get("uniqueTournament") or {} if isinstance(tournament, dict) else {}
-    )
+    unique_tournament = tournament.get("uniqueTournament") or {}
     if not isinstance(competition_ref, dict):
         competition_ref = {}
     if not isinstance(unique_tournament, dict):
@@ -79,13 +86,6 @@ def _as_int(value) -> int | None:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
-
-
-def is_tracked_source_event(
-    event: dict | None,
-    tracked_competitions: Collection[SourceCompetitionIds] | None,
-) -> bool:
-    return source_competition_filter_reason(event, tracked_competitions) is None
 
 
 def source_competition_filter_reason(
@@ -188,28 +188,12 @@ def _participant_ranking(participant) -> int | None:
     return None
 
 
-def sofascore_event_filter_reason(event, scope=None, *, policy=None, now=None):
-    """Evaluate raw or normalized data; participant rankings require raw data."""
+def sofascore_start_time_filter_reason(event, *, policy=None, now=None):
+    """Check kickoff independently so a delayed batch can revalidate only time."""
     policy = policy or settings.SOFASCORE.filters
-    if not isinstance(event, dict) or not isinstance(event.get("event", event), dict):
-        return "invalid_event_payload"
-    sport_id = sofascore_sport_id_for_event(event)
-    if sport_id not in configured_sport_ids():
-        return "unsupported_sport"
-    reason = source_competition_filter_reason(event, scope) or exclusion_reason(
-        sport_id, _category_name(event),
-        source_competition_ids(event).source_unique_tournament_id, policy,
-    )
-    if reason:
-        return reason
-    payload = event.get("event", event)
-    if settings.SOFASCORE.tennis_ranking_filter_enabled and sport_id in ("tennis", "tennis_doubles"):
-        for side in ("homeTeam", "awayTeam"):
-            ranking = _participant_ranking(payload.get(side))
-            if ranking is not None and ranking >= settings.SOFASCORE.tennis_ranking_cutoff:
-                return "tennis_ranking_excluded"
     if not policy.future_only:
         return None
+    payload = event.get("event", event)
     raw_start = payload.get("startTimestamp")
     if raw_start is None:
         return "missing_start_timestamp"
@@ -220,13 +204,56 @@ def sofascore_event_filter_reason(event, scope=None, *, policy=None, now=None):
     return start_time_filter_reason(starts_at, policy, now=now)
 
 
+def admit_sofascore_event(event, scope=None, *, policy=None, now=None) -> SofascoreEventAdmission:
+    """Apply cheap filters first, then resolve the round once for normalization."""
+    policy = policy or settings.SOFASCORE.filters
+    if not isinstance(event, dict) or not isinstance(event.get("event", event), dict):
+        return SofascoreEventAdmission(event, rejection_reason="invalid_event_payload")
+    sport_id = sofascore_sport_id_for_event(event)
+    if sport_id not in configured_sport_ids():
+        return SofascoreEventAdmission(event, rejection_reason="unsupported_sport")
+    reason = source_competition_filter_reason(event, scope) or exclusion_reason(
+        sport_id, _category_name(event),
+        source_competition_ids(event).source_unique_tournament_id, policy,
+    )
+    if reason:
+        return SofascoreEventAdmission(event, rejection_reason=reason)
+    payload = event.get("event", event)
+    if settings.SOFASCORE.tennis_ranking_filter_enabled and sport_id in ("tennis", "tennis_doubles"):
+        for side in ("homeTeam", "awayTeam"):
+            ranking = _participant_ranking(payload.get(side))
+            if ranking is not None and ranking >= settings.SOFASCORE.tennis_ranking_cutoff:
+                return SofascoreEventAdmission(event, rejection_reason="tennis_ranking_excluded")
+    reason = sofascore_start_time_filter_reason(event, policy=policy, now=now)
+    if reason:
+        return SofascoreEventAdmission(event, rejection_reason=reason)
+
+    if "round" in payload:
+        # Persistence revalidation reads the classified value, without deriving it again.
+        from modules.events.round_policy import resolve_event_round
+
+        round_name = resolve_event_round(
+            payload.get("season_id"), payload.get("competition"), payload["round"], None,
+        )
+    else:
+        # Lazy import avoids the SofaScore client facade's dependency on these filters.
+        from modules.sofascore.event_metadata import classify_event_round
+
+        round_name = classify_event_round(event)
+    if settings.SOFASCORE.round_filter_enabled:
+        round_key = (round_name or "").strip().lower().replace("_", "-")
+        if round_key not in settings.SOFASCORE.allowed_rounds:
+            return SofascoreEventAdmission(event, round_name, "round_not_allowed")
+    return SofascoreEventAdmission(event, round_name)
+
+
 def filter_sofascore_events(events, scope=None, *, policy=None, now=None):
     """Filter one bounded batch, recording rejected counts rather than payloads."""
     current = now or utc_now()
     counts = Counter()
     eligible = []
     for event in events or ():
-        reason = sofascore_event_filter_reason(event, scope, policy=policy, now=current)
+        reason = admit_sofascore_event(event, scope, policy=policy, now=current).rejection_reason
         counts[reason or "accepted"] += 1
         if reason is None:
             eligible.append(event)

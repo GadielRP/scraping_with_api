@@ -55,6 +55,8 @@ class DiscoveryFilters:
 @dataclass(frozen=True, slots=True)
 class SofascoreDiscoverySettings:
     filters: DiscoveryFilters = field(default_factory=DiscoveryFilters)
+    round_filter_enabled: bool = True
+    allowed_rounds: frozenset[str] = frozenset({"regular-season"})
     tennis_ranking_filter_enabled: bool = False
     tennis_ranking_cutoff: int = 120  # Reject when any known participant rank >= cutoff.
     dropping_interval_hours: int = 6
@@ -68,6 +70,11 @@ class SofascoreDiscoverySettings:
     team_streaks_require_odds: bool = True  # Existing feed policy: fetch odds before admitting events.
 
     def __post_init__(self):
+        if any(not isinstance(value, str) or not value.strip() for value in self.allowed_rounds):
+            raise ValueError("allowed_rounds must contain non-empty strings")
+        object.__setattr__(self, "allowed_rounds", frozenset(
+            value.strip().lower().replace("_", "-") for value in self.allowed_rounds
+        ))
         for name in ("dropping_interval_hours", "secondary_interval_hours", "daily_check_interval_minutes",
                      "team_event_workers", "odds_workers", "daily_progress_retention_days",
                      "tennis_ranking_cutoff"):
@@ -119,6 +126,8 @@ def _validate_times(times):
 # from that snapshot use the original Config/provider job defaults above.
 # Each provider owns its switches and can override the shared audited lists.
 SOFASCORE = SofascoreDiscoverySettings(
+    round_filter_enabled=True,
+    allowed_rounds=frozenset({"regular-season"}),
     # Optional tennis policy enabled explicitly; the constructor defaults to disabled.
     tennis_ranking_filter_enabled=True,
     tennis_ranking_cutoff=120,

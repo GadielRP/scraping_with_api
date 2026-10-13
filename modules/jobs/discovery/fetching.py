@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from infrastructure.settings import discovery as settings
 from modules.jobs.discovery.filters import (
-    sofascore_event_filter_reason,
+    admit_sofascore_event,
     load_tracked_source_competitions,
     UNRESOLVED_SCOPE,
 )
@@ -40,13 +40,15 @@ def fetch_nearest_team_events(
                 logger.debug("No nearest event found for team %s", team_id)
                 return None
 
-            reason = sofascore_event_filter_reason(event_response, tracked_competitions)
-            if reason:
-                logger.debug("Skipping team event team=%s reason=%s", team_id, reason)
+            admission = admit_sofascore_event(event_response, tracked_competitions)
+            if admission.rejection_reason:
+                logger.debug(
+                    "Skipping team event team=%s reason=%s", team_id, admission.rejection_reason,
+                )
                 return None
 
             event_data = api_client.normalize_event_payload(
-                event_response, discovery_source="team_streaks"
+                admission.raw_event, discovery_source="team_streaks", resolved_round=admission.round_name,
             )
             if not event_data:
                 logger.debug("Failed to structure event data for team %s", team_id)

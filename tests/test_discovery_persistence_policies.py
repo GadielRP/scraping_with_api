@@ -83,11 +83,12 @@ def test_feed_policy_keeps_events_without_odds(monkeypatch, writes):
 
 def test_daily_normalization_propagates_budget_pause(monkeypatch, writes):
     from modules.jobs.daily_discovery.persistence import persist_daily_events
+    from modules.jobs.discovery.filters import admit_sofascore_event
 
     _, writer = writes
     client = SimpleNamespace(normalize_event_payload=Mock(side_effect=WorkDeferred("budget")))
     with pytest.raises(WorkDeferred, match="budget"):
-        persist_daily_events(client, [event(1)])
+        persist_daily_events(client, [admit_sofascore_event(event(1))])
     writer.assert_not_called()
 
 

@@ -1,13 +1,13 @@
 """Normalize one filtered daily batch before opening event write transactions."""
 
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 import logging
 
 from infrastructure.persistence.repositories import EventRepository
-from modules.jobs.discovery.filters import (
-    filter_sofascore_events, load_tracked_source_competitions, UNRESOLVED_SCOPE,
-)
+from modules.jobs.discovery.filters import SofascoreEventAdmission, sofascore_start_time_filter_reason
 from shared.execution_context import WorkDeferred, check_execution_budget
+from shared.temporal import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -17,22 +17,34 @@ class DailyWriteSummary:
     persisted: int = 0
     inserted: int = 0
     updated: int = 0
-    discarded: int = 0
+    blocked_by_discard_memory: int = 0
     failed: int = 0
-    filtered: int = 0
+    filter_reasons: Counter[str] = field(default_factory=Counter)
+
+    @property
+    def filtered(self) -> int:
+        return sum(self.filter_reasons.values())
 
 
-def persist_daily_events(client, events, run_store=None, *, tracked_competitions=UNRESOLVED_SCOPE):
-    """Revalidate admission before normalization and event writes."""
+def persist_daily_events(client, events: list[SofascoreEventAdmission], run_store=None):
+    """Normalize an admitted batch, rechecking only elapsed kickoff time."""
     check_execution_budget()
-    if tracked_competitions is UNRESOLVED_SCOPE:
-        tracked_competitions = load_tracked_source_competitions("sofascore")
     summary = DailyWriteSummary()
-    eligible = filter_sofascore_events(events, tracked_competitions)
-    summary.filtered = len(events) - len(eligible)
-    eligible = [raw for raw in eligible if raw.get("id")]
-    summary.failed = len(events) - summary.filtered - len(eligible)
-    blocked = EventRepository.discarded_source_ids("sofascore", [raw["id"] for raw in eligible])
+    eligible = []
+    current = utc_now()
+    for admission in events:
+        reason = sofascore_start_time_filter_reason(admission.raw_event, now=current)
+        if reason:
+            summary.filter_reasons[reason] += 1
+        elif not admission.raw_event.get("id"):
+            summary.failed += 1
+        else:
+            eligible.append(admission)
+    if not eligible:
+        return summary
+    blocked = EventRepository.discarded_source_ids(
+        "sofascore", [admission.raw_event["id"] for admission in eligible],
+    )
     if blocked:
         logger.info(
             "Discovery discard memory blocked: source=sofascore phase=before_normalization "
@@ -41,13 +53,16 @@ def persist_daily_events(client, events, run_store=None, *, tracked_competitions
             sorted(blocked),
         )
     normalized = []
-    for raw in eligible:
+    for admission in eligible:
         check_execution_budget()
+        raw = admission.raw_event
         if str(raw["id"]) in blocked:
-            summary.discarded += 1
+            summary.blocked_by_discard_memory += 1
             continue
         try:
-            data = client.normalize_event_payload(raw, discovery_source="daily_discovery")
+            data = client.normalize_event_payload(
+                raw, discovery_source="daily_discovery", resolved_round=admission.round_name,
+            )
             if not data:
                 raise ValueError("Invalid normalized event")
             normalized.append(data)
@@ -64,6 +79,6 @@ def persist_daily_events(client, events, run_store=None, *, tracked_competitions
     summary.persisted = len(result.events)
     summary.inserted = result.inserted
     summary.updated = result.updated
-    summary.discarded += len(result.discarded)
+    summary.blocked_by_discard_memory += len(result.discarded)
     summary.failed += len(result.errors)
     return summary

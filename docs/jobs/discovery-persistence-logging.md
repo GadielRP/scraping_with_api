@@ -16,6 +16,18 @@ The log emits one `Discovery calendar` record per sport/local-date group, follow
 
 Filtered events, discard-memory exclusions, and failed event writes are excluded. A committed event remains included if optional odds persistence subsequently fails. The existing operation and odds counters remain separate from the calendar summary.
 
+Daily also logs each write batch with its source-admission counts and a final
+`Daily discovery summary` after the calendar audit. `events_filtered` includes
+source and pre-write filter rejections, with combined `event_filter_reasons`
+and separate stage counts. `events_blocked_by_discard_memory` counts prior
+discard-memory matches independently. Tournament filters and other calendar
+skips have their own counts and reasons; they are never added to event totals.
+An admission-only trailing batch is logged even when no event reaches a write,
+and interrupted partial batches report their admitted `events_unprocessed`.
+These counts describe received occurrences, whereas `persisted_unique` describes
+canonical identities. The logging counters are bounded by the number of reasons
+and add no database queries or payload retention.
+
 ## Interpretation
 
 Counts describe the events written during one invocation; they are not a snapshot of all events in the database. Totals from separate invocations overlap and cannot be summed to count unique events across a day. Subsequent rescheduling or deletion can change the set selected by Results Collection.

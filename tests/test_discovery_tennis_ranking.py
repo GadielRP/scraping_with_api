@@ -43,9 +43,9 @@ def test_ranking_filter_is_disabled_by_default():
     assert not settings.SofascoreDiscoverySettings().tennis_ranking_filter_enabled
     assert not settings.SOFASCORE.tennis_ranking_filter_enabled
     assert settings.SofascoreDiscoverySettings().tennis_ranking_cutoff == 120
-    assert filters.sofascore_event_filter_reason(
+    assert filters.admit_sofascore_event(
         event(home={"playerTeamInfo": {"currentRanking": 1788}})
-    ) is None
+    ).rejection_reason is None
 
 
 @pytest.mark.parametrize("side,participant", [
@@ -57,7 +57,7 @@ def test_one_known_rank_at_or_above_cutoff_rejects_wrapped_event(monkeypatch, si
     enable_ranking_filter(monkeypatch)
     raw = event()
     raw[side].update(participant)
-    assert filters.sofascore_event_filter_reason({"event": raw}) == "tennis_ranking_excluded"
+    assert filters.admit_sofascore_event({"event": raw}).rejection_reason == "tennis_ranking_excluded"
 
 
 @pytest.mark.parametrize("home,away,reason", [
@@ -69,13 +69,13 @@ def test_one_known_rank_at_or_above_cutoff_rejects_wrapped_event(monkeypatch, si
 ])
 def test_current_rank_precedence_fallback_and_missing_ranks(monkeypatch, home, away, reason):
     enable_ranking_filter(monkeypatch)
-    assert filters.sofascore_event_filter_reason(event(home, away)) == reason
+    assert filters.admit_sofascore_event(event(home, away)).rejection_reason == reason
 
 
 def test_cutoff_is_configurable_and_independent_of_future_filter(monkeypatch):
     enable_ranking_filter(monkeypatch, cutoff=500)
-    assert filters.sofascore_event_filter_reason(event(home={"ranking": 500})) == "tennis_ranking_excluded"
-    assert filters.sofascore_event_filter_reason(event(home={"ranking": 499})) is None
+    assert filters.admit_sofascore_event(event(home={"ranking": 500})).rejection_reason == "tennis_ranking_excluded"
+    assert filters.admit_sofascore_event(event(home={"ranking": 499})).rejection_reason is None
 
 
 @pytest.mark.parametrize("sport,reason", [
@@ -84,7 +84,7 @@ def test_cutoff_is_configurable_and_independent_of_future_filter(monkeypatch):
 ])
 def test_ranking_scope_is_tennis_only(monkeypatch, sport, reason):
     enable_ranking_filter(monkeypatch)
-    assert filters.sofascore_event_filter_reason(event(home={"ranking": 120}, sport=sport)) == reason
+    assert filters.admit_sofascore_event(event(home={"ranking": 120}, sport=sport)).rejection_reason == reason
 
 
 def test_cutoff_must_be_positive():

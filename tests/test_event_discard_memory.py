@@ -301,6 +301,7 @@ def test_invalid_reference_does_not_abort_valid_batch(database):
 
 def test_daily_discard_is_successful_skip_before_normalization(database, monkeypatch):
     from modules.jobs.daily_discovery.persistence import persist_daily_events
+    from modules.jobs.discovery.filters import admit_sofascore_event
     from types import SimpleNamespace
 
     obj = EventRepository.upsert_event(payload(1300))
@@ -312,9 +313,9 @@ def test_daily_discard_is_successful_skip_before_normalization(database, monkeyp
 
     result = persist_daily_events(
         SimpleNamespace(normalize_event_payload=unexpected),
-        [{"id": 1300, "sport": "Football", "startTimestamp": 4_102_444_800}],
+        [admit_sofascore_event({"id": 1300, "sport": "Football", "startTimestamp": 4_102_444_800})],
     )
-    assert result.discarded == 1 and result.persisted == 0 and result.failed == 0
+    assert result.blocked_by_discard_memory == 1 and result.persisted == 0 and result.failed == 0
 
 
 def test_results_collector_keeps_raw_evidence(database):

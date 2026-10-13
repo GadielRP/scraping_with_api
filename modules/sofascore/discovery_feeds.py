@@ -8,15 +8,13 @@ from collections import Counter
 from typing import Dict, List, Tuple
 
 from modules.jobs.discovery.filters import (
-    is_tracked_source_event,
     load_tracked_source_competitions,
     source_competition_ids,
     UNRESOLVED_SCOPE,
-    sofascore_event_filter_reason,
+    admit_sofascore_event,
 )
 from modules.sports.catalog import (
     canonical_sport_id,
-    is_supported_sofascore_event,
     sofascore_sport_slug,
     sofascore_sport_slugs,
 )
@@ -66,6 +64,7 @@ def extract_events_from_high_value_streaks(
     *,
     tracked_competitions=UNRESOLVED_SCOPE,
 ) -> Tuple[List[Dict], List[Dict]]:
+    """Admit and normalize both streak groups once through the shared feed path."""
     if not isinstance(response, dict) or not response:
         return [], []
     tracked_competitions = (
@@ -73,36 +72,27 @@ def extract_events_from_high_value_streaks(
         if tracked_competitions is not UNRESOLVED_SCOPE
         else load_tracked_source_competitions("sofascore")
     )
-    events = []
-    events_h2h = []
-
     try:
-        if "general" in response:
-            for item in response["general"]:
+        groups = []
+        for key, discovery_source in (
+            ("general", "high_value_streaks"),
+            ("head2head", "high_value_streaks_h2h"),
+        ):
+            raw_events = []
+            for item in response.get(key, []):
                 check_execution_budget()
-                event = item.get("event")
-                if (
-                    event
-                    and sofascore_event_filter_reason(event, tracked_competitions) is None
-                ):
-                    events.append(event)
-
-        if "head2head" in response:
-            for item in response["head2head"]:
-                check_execution_budget()
-                event = item.get("event")
-                if (
-                    event
-                    and sofascore_event_filter_reason(event, tracked_competitions) is None
-                ):
-                    events_h2h.append(event)
-
+                if item.get("event"):
+                    raw_events.append(item["event"])
+            events, _ = extract_events_and_odds_from_dropping_response(
+                {"events": raw_events}, odds_extraction=False,
+                discovery_source=discovery_source, tracked_competitions=tracked_competitions,
+            )
+            groups.append(events)
         logger.info(
             "Extracted %s general and %s head-to-head events from high value streaks",
-            len(events),
-            len(events_h2h),
+            len(groups[0]), len(groups[1]),
         )
-        return events, events_h2h
+        return groups[0], groups[1]
     except WorkDeferred:
         raise
     except Exception as exc:
@@ -148,53 +138,36 @@ def extract_events_and_odds_from_dropping_response(
 
     try:
         for event in response_events:
-            if not isinstance(event, dict):
-                rejected_invalid_event_payload += 1
-                logger.debug(
-                    "Dropping feed rejected event source_event_id=unknown reason=invalid_event_payload"
-                )
-                continue
+            payload = event.get("event", event) if isinstance(event, dict) else None
+            source_event_id = payload.get("id") if isinstance(payload, dict) else None
             try:
                 check_execution_budget()
-                if not is_supported_sofascore_event(event):
-                    rejected_unsupported_sport += 1
-                    payload = event.get("event", event)
-                    logger.debug(
-                        "Dropping feed rejected event source_event_id=%s sport=%s "
-                        "reason=unsupported_sport",
-                        payload.get("id") if isinstance(payload, dict) else None,
-                        payload.get("sport") if isinstance(payload, dict) else None,
-                    )
-                    continue
-                if not is_tracked_source_event(event, tracked_competitions):
-                    ids = source_competition_ids(event)
-                    missing_ids = (
-                        ids.source_tournament_id is None and ids.source_unique_tournament_id is None
-                    )
-                    reason = (
-                        "missing_source_competition_ids" if missing_ids else "untracked_competition"
-                    )
-                    if missing_ids:
-                        rejected_missing_competition_ids += 1
-                    else:
-                        rejected_untracked_competition += 1
-                    logger.debug(
-                        "Dropping feed rejected event "
-                        "source_event_id=%s tournament_id=%s unique_tournament_id=%s "
-                        "reason=%s",
-                        event.get("id"),
-                        ids.source_tournament_id,
-                        ids.source_unique_tournament_id,
-                        reason,
-                    )
-                    continue
-                reason = sofascore_event_filter_reason(event, tracked_competitions)
+                admission = admit_sofascore_event(event, tracked_competitions)
+                reason = admission.rejection_reason
                 if reason:
-                    rejected_policy[reason] += 1
+                    if reason == "unsupported_sport":
+                        rejected_unsupported_sport += 1
+                    elif reason == "missing_source_competition_ids":
+                        rejected_missing_competition_ids += 1
+                    elif reason == "untracked_competition":
+                        rejected_untracked_competition += 1
+                    elif reason == "invalid_event_payload":
+                        rejected_invalid_event_payload += 1
+                    else:
+                        rejected_policy[reason] += 1
+                    ids = source_competition_ids(event)
+                    logger.debug(
+                        "Dropping feed rejected event source_event_id=%s tournament_id=%s "
+                        "unique_tournament_id=%s reason=%s",
+                        source_event_id, ids.source_tournament_id,
+                        ids.source_unique_tournament_id, reason,
+                    )
                     continue
-                event_data = normalize_event_payload(event, discovery_source)
+                event_data = normalize_event_payload(
+                    admission.raw_event, discovery_source, resolved_round=admission.round_name,
+                )
                 event_payload = event_data.get("event", event_data)
-                required_fields = [
+                required_fields = (
                     "id",
                     "slug",
                     "startTimestamp",
@@ -202,7 +175,7 @@ def extract_events_and_odds_from_dropping_response(
                     "competition",
                     "homeTeam",
                     "awayTeam",
-                ]
+                )
                 missing_fields = [
                     field
                     for field in required_fields
@@ -216,7 +189,7 @@ def extract_events_and_odds_from_dropping_response(
                     logger.debug(
                         "Dropping feed rejected event source_event_id=%s missing_fields=%s "
                         "reason=missing_required_fields",
-                        event.get("id"),
+                        source_event_id,
                         missing_fields,
                     )
             except WorkDeferred:
@@ -226,7 +199,7 @@ def extract_events_and_odds_from_dropping_response(
                 logger.warning(
                     "Dropping feed rejected event source_event_id=%s "
                     "reason=normalization_error error=%s",
-                    event.get("id"),
+                    source_event_id,
                     exc,
                 )
 

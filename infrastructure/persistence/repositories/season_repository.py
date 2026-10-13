@@ -10,21 +10,6 @@ class SeasonRepository:
     """Repository for season-related database operations"""
     
     @staticmethod
-    def _parse_season_name(season_name: str, unique_tournament_name: str) -> str:
-        if not season_name:
-            return season_name  # or return "" if you prefer
-
-        # Check if there is at least one alphabetical character anywhere
-        has_alpha = any(ch.isalpha() for ch in season_name)
-
-        # If there are NO alphabetical characters, prefix the unique_tournament_name
-        if not has_alpha:
-            return f"{unique_tournament_name} {season_name}"
-
-        # Otherwise, leave it as is
-        return season_name
-
-    @staticmethod
     def _parse_year(year_str: str) -> int:
         if not year_str:
             return None

@@ -22,9 +22,17 @@ The heartbeat cleans old progress rows, initializes missing `(date, run_slot, sp
 
 ## Bounded ingestion
 
-`event_source.py` yields eligible raw events from scheduled-tournament pages and tournament responses. Shared admission in `modules/jobs/discovery/filters.py` checks supported sports, optional tracked competition scope, explicit category/competition/sport exclusions and kickoff time. Tournament exclusions run before requesting their event lists. Event admission runs before normalization and is rechecked at persistence. By default only events at least ten minutes before kickoff are admitted. Set `SOFASCORE.filters.future_only=False` in `infrastructure/settings/discovery.py` to admit past events; all other switches remain independent.
+`event_source.py` streams admission results from scheduled-tournament pages and tournament responses. Shared admission in `modules/jobs/discovery/filters.py` checks supported sports, optional tracked competition scope, explicit category/competition/sport exclusions, participant rankings and kickoff time before classifying the round. Tournament exclusions run before requesting their event lists. An accepted result holds a reference to the original JSON and the resolved round; it does not copy the payload or retain the full sport calendar. Bounded batches pass that round explicitly to the full normalizer. Daily persistence rechecks only kickoff time, because it can change eligibility while a batch fills, and retains the existing batched discard-memory lookup. By default only events at least ten minutes before kickoff are admitted. Set `SOFASCORE.filters.future_only=False` in `infrastructure/settings/discovery.py` to admit past events; all other switches remain independent.
 
 `infrastructure/network/json_document.py` owns the shared disk-backed document and bounded incremental parser. SofaScore's `open_scheduled_tournaments`, `open_scheduled_events` and `open_scheduled_odds` methods describe the requested endpoints; its `download_json` adapter writes through libcurl's callback using the same authentication and retries as ordinary JSON requests. Parsing one member at a time bounds response bytes, individual elements/tokens and nesting depth, including ignored fields. Exhausting the iterator validates the complete document. It never retains a full sport payload in `Response.content`, `all_events` or a Python odds dictionary. See [shared JSON documents](../providers/http-json-documents.md).
+
+A tournament listed in the calendar can return HTTP 404 for its scheduled-events
+endpoint. Daily skips that tournament for the requested date, logs its ID and
+increments `tournament_schedule_not_found`, preserving the pending batch and
+continuing with other tournaments. This handling applies only to tournament
+scheduled-events 404 responses. Calendar-page failures, malformed documents,
+rate limits, connection errors and server failures still leave the sport
+retryable.
 
 `pipeline.py` groups events with `shared/batching.chunks`. The existing identity/discard-aware event batch writer performs persistence; `modules/jobs/daily_discovery/persistence.py` owns normalization and confirmed-write counters; the incremental source owns sport and competition filtering. There is no second event upsert implementation.
 
@@ -34,7 +42,7 @@ After event batches commit, a second streamed pass reads the sport's odds. Each 
 
 No HTTP call runs inside an event write transaction. A failed run can retain earlier committed batches; retry repeats that sport and safely updates existing events. Operation counters count writes; the calendar summary counts unique canonical events and cannot be added across runs to establish daily uniqueness.
 
-The persistence summary separates `events_failed` (individual event persistence failures)
+The final daily summary separates `events_failed` (individual event persistence failures)
 from `sports_failed` (sports left incomplete by an event failure or an exception during
 calendar/odds processing). A truncated calendar can therefore report `events_failed=0`
 and `sports_failed=1`: committed events remain valid, but the sport still needs a retry.
@@ -59,6 +67,42 @@ in `.env`; `SUPPORTED_SPORTS` remains a shared application constraint.
 [investigation and plan](../analysis/discovery-filter-plan.md) for evidence and
 the estimated scope of the initial exclusions. Existing history is retained.
 
+SofaScore discovery also enables `SOFASCORE.round_filter_enabled=True` with
+`SOFASCORE.allowed_rounds=frozenset({"regular-season"})` by default. The shared
+raw-event gate classifies only the round using the pure helpers in
+`modules/sofascore/event_metadata.py`, after the cheaper filters and before
+normalizing participants or persisting events, mappings or odds. Daily, dropping
+and secondary discovery carry that resolved value into `event_normalizer.py`,
+which does not classify it again. High-value streak groups use the same feed
+extraction once, rather than filtering and extracting twice. Normalized secondary
+batches are rechecked at the discovery persistence boundary using their explicit
+round value. Standalone full normalization still resolves the round itself when
+no precalculated value was supplied. No extra database queries or provider
+requests are needed. OddsPapi admission is unaffected.
+
+Raw round classification reads structured tournament and season metadata from
+the provider. It no longer accepts canonical event envelopes or falls back to
+the old concatenated competition text. Admission reads the explicit round when
+revalidating an already normalized event; it does not invoke the raw classifier.
+
+The allowlist compares trimmed, case-insensitive names and treats underscores as
+hyphens: `regular-season` matches the existing internal `regular_season` value.
+Known phases such as `friendly`, `qualification`, `preseason`,
+`relegation/promotion` and `knockouts/playoffs` require explicit inclusion.
+Unrecognized `roundInfo.slug` values retain the normalizer's existing raw
+fallback and must also appear in the allowlist. For example, use
+`frozenset({"regular-season", "knockouts/playoffs", "custom-stage"})` to allow
+those three values. An empty set rejects all rounds; set the switch to `False`
+to disable round filtering instead.
+
+The existing classifier infers `regular_season` when round metadata is missing
+and no competition keywords identify another phase. An explicit unknown round
+in an already normalized payload is rejected. NBA Cup classification follows
+the existing persistence rule. The rejection reason is `round_not_allowed`;
+source-level counts appear in `Daily source ... counts`. No historical events
+are deleted, and existing persistence rules can preserve an older stored round
+when updating an admitted event. Restart after changing the configuration.
+
 The optional SofaScore tennis ranking filter is configured on `SOFASCORE`:
 `tennis_ranking_filter_enabled=True` and `tennis_ranking_cutoff=120` in the current
 runtime configuration. The settings constructor defaults to a disabled filter
@@ -80,9 +124,32 @@ Normalized events no longer contain these fields, so ranking admission belongs
 at the raw source boundary. This optional filter does not affect OddsPapi fixture
 admission or delete existing events or mappings. Restart after editing settings.
 
-Logs expose reason counts for raw source admission and persistence boundaries.
-`events_filtered` counts rejections at the daily persistence boundary;
-earlier calendar/source rejections are reported by `Daily source ... counts`.
+Each `Daily discovery batch` reports raw events received, admitted events,
+filter rejections with their reasons, inserted/updated/persisted events, failures
+and `events_blocked_by_discard_memory`. The source counts cover the input consumed
+while forming that batch of up to 100 admitted events. `process_rss_mb` samples
+resident memory for the entire Python process at the batch boundary; it does not
+measure PostgreSQL, the VM or the host's total memory. These counters and samples
+do not change the batch size or add database queries. A trailing `phase=admission` record captures
+rejected input that does not form another write batch, including all-rejected
+runs. An interruption with admitted events not included in a completed write
+result reports `phase=incomplete` and `events_unprocessed`; their final database
+state cannot be inferred from those counters alone.
+
+The last `Daily discovery summary` includes all sports, even on interruption.
+`events_filtered` is the total rejected at the source and before writes;
+`events_filtered_at_source`, `events_filtered_before_write`,
+`source_filter_reasons`, `write_filter_reasons` and combined
+`event_filter_reasons` identify each stage and reason. Discard-memory blocks are
+reported separately as `events_blocked_by_discard_memory`, replacing the
+ambiguous `events_discarded` label. The generic writer likewise logs
+`blocked_by_discard_memory`. `tournaments_filtered` and
+`tournament_filter_reasons` count calendar entries, not events; duplicates,
+missing IDs, empty schedules and HTTP 404s appear in `tournament_skip_reasons`.
+The source also emits its per-sport counts. Counters retain only reason totals,
+not event IDs or payloads. The calendar audit remains a separate count of
+successfully persisted unique identities.
+
 Rejections are not persistence failures and do not keep an otherwise successful
 sport retrying. Existing completed progress rows remain completed after a policy
 change; rerunning a date/slot requires the usual operational replay procedure.

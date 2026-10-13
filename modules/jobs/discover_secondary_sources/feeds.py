@@ -19,24 +19,8 @@ def run_high_value_streaks(tracked_competitions=UNRESOLVED_SCOPE):
         logger.error("Failed to get high value streaks events")
         return [], []
 
-    extracted_events, extracted_events_h2h = api_client.extract_events_from_high_value_streaks(
-        response,
-        tracked_competitions=tracked_competitions,
-    )
-
-    normalized_response = {"events": extracted_events}
-    normalized_response_h2h = {"events": extracted_events_h2h}
-    events, _ = api_client.extract_events_and_odds_from_dropping_response(
-        normalized_response,
-        odds_extraction=False,
-        discovery_source="high_value_streaks",
-        tracked_competitions=tracked_competitions,
-    )
-    events_h2h, _ = api_client.extract_events_and_odds_from_dropping_response(
-        normalized_response_h2h,
-        odds_extraction=False,
-        discovery_source="high_value_streaks_h2h",
-        tracked_competitions=tracked_competitions,
+    events, events_h2h = api_client.extract_events_from_high_value_streaks(
+        response, tracked_competitions=tracked_competitions,
     )
 
     if not events and not events_h2h:

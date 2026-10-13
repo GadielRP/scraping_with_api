@@ -113,7 +113,11 @@ kind, conflictos de eliminación, IDs canónicos y duración del lote.
 
 Discovery registra los IDs externos bloqueados antes de normalizar y los que
 bloquea la comprobación final dentro de la transacción. Los resúmenes distinguen
-`events_persisted`, `events_inserted`, `events_updated` y `events_discarded`.
+`events_persisted`, `events_inserted`, `events_updated` y
+`events_blocked_by_discard_memory`. El escritor de lotes usa
+`blocked_by_discard_memory`; estos bloqueos no son rechazos por filtros.
+Daily informa todos los rechazos como `events_filtered`, con el desglose
+`event_filter_reasons`, tanto por lote como en el resumen final.
 `events_inserted` ahora significa exclusivamente eventos nuevos; anteriormente
 incluía todos los upserts. `updated` cuenta eventos existentes escritos, aunque
 sus valores de negocio no cambien; los contadores reflejan operaciones y no un
