@@ -23,10 +23,15 @@ from .calculation_models import PopulationFilters
 from .models import ThreeWayMarketSnapshot
 from .ports import PriceMemoryReader, MemorySamplePersistenceError
 from .memory_sample import build_memory_query_key, build_memory_sample
-from .memory_score import calculate_memory_profile, MIN_SAMPLE_SIZE
+from .memory_score import (
+    build_p5_executive_summary,
+    calculate_memory_profile,
+    MIN_SAMPLE_SIZE,
+    interpret_p5_result,
+)
 from .exchange_diagnostics import collect_exchange_inputs
 
-ENGINE_VERSION = "p5_price_memory_v4_0"
+ENGINE_VERSION = "p5_price_memory_v4_2_executive_summary"
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +100,12 @@ def prepare_pillar_5(
         ]
         for book in P5_BOOKMAKERS:
             namespace = f"{book.id}:{family}:{selected or 'NO_FT'}"
+            signal_evidence = {
+                "bookmaker": book.name,
+                "bookie_id": book.id,
+                "market_group": family,
+                "market_period": selected,
+            }
             refs = tuple(contract_key(line) for line in lines)
             debug_label = f"{selected or 'NO_FT'}.{family}.{book.name.upper()}"
             if debug_mode:
@@ -113,7 +124,11 @@ def prepare_pillar_5(
                     )
                 signals.append(
                     SignalResult(
-                        namespace, "BLOCKED", reason="MISSING_INPUT", contract_refs=refs
+                        namespace,
+                        "BLOCKED",
+                        reason="MISSING_INPUT",
+                        contract_refs=refs,
+                        evidence=signal_evidence,
                     )
                 )
                 continue
@@ -152,7 +167,11 @@ def prepare_pillar_5(
                     )
                 signals.append(
                     SignalResult(
-                        namespace, "BLOCKED", reason=reason, contract_refs=refs
+                        namespace,
+                        "BLOCKED",
+                        reason=reason,
+                        contract_refs=refs,
+                        evidence=signal_evidence,
                     )
                 )
                 continue
@@ -203,7 +222,10 @@ def prepare_pillar_5(
                         reason="MISSING_POPULATION_FILTER",
                         input_refs=tuple(input_refs),
                         contract_refs=refs,
-                        evidence={"missing_filters": list(missing_filters)},
+                        evidence={
+                            **signal_evidence,
+                            "missing_filters": list(missing_filters),
+                        },
                     )
                 )
                 continue
@@ -225,7 +247,7 @@ def prepare_pillar_5(
                         reason="INVALID_VALUE",
                         input_refs=tuple(input_refs),
                         contract_refs=refs,
-                        evidence={"detail": str(exc)},
+                        evidence={**signal_evidence, "detail": str(exc)},
                     )
                 )
                 continue
@@ -281,7 +303,10 @@ def prepare_pillar_5(
                         reason="HISTORICAL_LOOKUP_ERROR",
                         input_refs=tuple(input_refs),
                         contract_refs=refs,
-                        evidence={"error_class": type(exc).__name__},
+                        evidence={
+                            **signal_evidence,
+                            "error_class": type(exc).__name__,
+                        },
                     )
                 )
     exchange_diagnostics = collect_exchange_inputs(evaluation, inputs)
@@ -337,6 +362,12 @@ def calculate_pillar_5(
     )
     signals, profiles = list(prepared.signals), dict(prepared.profiles)
     for namespace, bookmaker, sample, input_refs, refs in prepared.calculations:
+        signal_evidence = {
+            "bookmaker": bookmaker,
+            "bookie_id": sample.key.bookie_id,
+            "market_group": sample.key.market_group,
+            "market_period": sample.key.market_period,
+        }
         try:
             profile = calculate_memory_profile(
                 bookmaker=bookmaker,
@@ -358,6 +389,7 @@ def calculate_pillar_5(
                         "required_observations": MIN_SAMPLE_SIZE,
                         "sample_id": sample.sample_id,
                         "direction": profile.p5_direction,
+                        **signal_evidence,
                     },
                 )
             )
@@ -372,10 +404,11 @@ def calculate_pillar_5(
                     evidence={
                         "error_class": type(exc).__name__,
                         "sample_id": sample.sample_id,
+                        **signal_evidence,
                     },
                 )
             )
-    return EvaluationResult(
+    result = EvaluationResult(
         prepared.event_id,
         "pillar_5",
         ENGINE_VERSION,
@@ -388,6 +421,11 @@ def calculate_pillar_5(
         profiles,
         prepared.diagnostics,
     ).to_dict()
+    result["INTERPRETATION"] = interpret_p5_result(result)
+    result["EXECUTIVE_SUMMARY"] = build_p5_executive_summary(
+        result, result["INTERPRETATION"]
+    )
+    return result
 
 
 __all__ = ["ENGINE_VERSION", "prepare_pillar_5", "calculate_pillar_5"]

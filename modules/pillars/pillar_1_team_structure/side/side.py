@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from modules.pillars.common import calculate_bias, clamp, classify_strength
 from modules.pillars.context import EventContext
+from modules.pillars.evaluation_contracts import EXECUTIVE_SUMMARY_VERSION
 from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
     calculate_base_strength,
 )
@@ -34,7 +35,7 @@ from modules.pillars.instrumentation import record_calculation
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "side_engine_multilayer_v3_1"
+_ENGINE_VERSION = "side_engine_multilayer_v3_2_executive_summary"
 _LAYER_A_WEIGHTS: Dict[str, float] = {
     "M1": 0.30,
     "M2": 0.20,
@@ -648,7 +649,7 @@ def calculate_p1_side(
         
         _debug_section("FIN P1 SIDE MULTILAYER AGGREGATION")
 
-    return {
+    result = {
         "pillar_id": "pillar_1_team_structure",
         "pillar_name": "Team Structure",
         "event_id": m1_result.event_id,
@@ -699,4 +700,45 @@ def calculate_p1_side(
             "m6_raw": m6_result.raw,
             "m7_raw": m7_result.raw,
         },
+    }
+    result["EXECUTIVE_SUMMARY"] = build_p1_side_executive_summary(result)
+    return result
+
+
+def build_p1_side_executive_summary(result):
+    """Select P1 SIDE's final bias, strength and state without recalculating them."""
+    raw = result.get("raw") or {}
+    final = raw.get("final") or {}
+    decision_inputs = final.get("decision_inputs") or {}
+    direction = final.get("p1_final_bias", raw.get("p1_final_bias"))
+    state = final.get("p1_final_state", raw.get("p1_final_state"))
+    strength = raw.get("core_strength", decision_inputs.get("core_strength"))
+    status = result.get("status")
+    if status == "OK":
+        status = "ACTIVE"
+    if status not in {"ACTIVE", "INSUFFICIENT_DATA", "ERROR", "SKIPPED"}:
+        module_statuses = raw.get("module_statuses") or {}
+        native_statuses = {
+            value.get("status")
+            for value in module_statuses.values()
+            if isinstance(value, dict)
+        }
+        if native_statuses - {"INSUFFICIENT_DATA", "INACTIVE", "SKIPPED", "ERROR"}:
+            status = "ACTIVE"
+        elif "ERROR" in native_statuses:
+            status = "ERROR"
+        else:
+            status = "INSUFFICIENT_DATA"
+    summary = (
+        f"{direction or 'NONE'} · {strength or 'NONE'} · {state}"
+        if state
+        else f"P1 SIDE no produjo una lectura calculada ({result.get('reason') or status})."
+    )
+    return {
+        "version": EXECUTIVE_SUMMARY_VERSION,
+        "status": status,
+        "direction": direction,
+        "strength": strength,
+        "state": state,
+        "summary": summary,
     }

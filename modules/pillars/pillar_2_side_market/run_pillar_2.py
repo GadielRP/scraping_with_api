@@ -2,7 +2,12 @@
 
 from modules.pillars.market_evaluation import prepare_event_markets
 from modules.pillars.profile_evaluation import evaluate_snapshot_profile
-from .signal_engine import ENGINE_VERSION, build_p2_signal_profile
+from .signal_engine import (
+    ENGINE_VERSION,
+    build_p2_executive_summary,
+    build_p2_signal_profile,
+    interpret_p2_result,
+)
 from .snapshot_policy import extract_p2_market_snapshot
 
 ANALYTICAL_FIELDS = frozenset(
@@ -49,7 +54,7 @@ def calculate_pillar_2(
     evaluation = market_evaluation or prepare_event_markets(
         odds_trajectory_context, target_selection, event_context
     )
-    return evaluate_snapshot_profile(
+    result = evaluate_snapshot_profile(
         event_context,
         evaluation,
         pillar=2,
@@ -59,6 +64,11 @@ def calculate_pillar_2(
         metric_fields=ANALYTICAL_FIELDS,
         debug_mode=debug_mode,
     )
+    result["INTERPRETATION"] = interpret_p2_result(result)
+    result["EXECUTIVE_SUMMARY"] = build_p2_executive_summary(
+        result, result["INTERPRETATION"]
+    )
+    return result
 
 
 __all__ = ["ENGINE_VERSION", "calculate_pillar_2"]

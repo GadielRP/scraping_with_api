@@ -1,6 +1,7 @@
 """P1 Totals package."""
 
 from .totals import (
+    build_p1_totals_executive_summary,
     P1TotalsLayerOutput,
     P1TotalsOutput,
     TOTALS_TEMPORAL_WINDOW_CONFIG,
@@ -11,6 +12,7 @@ from .totals import (
 )
 
 __all__ = [
+    "build_p1_totals_executive_summary",
     "P1TotalsLayerOutput",
     "P1TotalsOutput",
     "TOTALS_TEMPORAL_WINDOW_CONFIG",

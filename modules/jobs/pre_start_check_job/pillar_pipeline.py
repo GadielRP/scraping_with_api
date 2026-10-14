@@ -32,6 +32,22 @@ from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
 from modules.pillars.market_evaluation import prepare_event_markets
 from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
+from modules.pillars.pillar_2_side_market.signal_engine import (
+    build_p2_executive_summary,
+    interpret_p2_result,
+)
+from modules.pillars.pillar_3_totals_market_context.signal_engine import (
+    build_p3_executive_summary,
+    interpret_p3_result,
+)
+from modules.pillars.pillar_4.trajectory_engine import (
+    build_p4_executive_summary,
+    interpret_p4_result,
+)
+from modules.pillars.pillar_5.memory_score import (
+    build_p5_executive_summary,
+    interpret_p5_result,
+)
 from modules.pillars.trajectory_selection import select_target_minute
 from modules.pillars.competition_metadata_resolver import (
     apply_competition_metadata_resolution,
@@ -40,8 +56,14 @@ from modules.pillars.competition_metadata_resolver import (
 from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
-from modules.pillars.pillar_1_team_structure.side import calculate_p1_side
-from modules.pillars.pillar_1_team_structure.totals import calculate_p1_totals
+from modules.pillars.pillar_1_team_structure.side import (
+    build_p1_side_executive_summary,
+    calculate_p1_side,
+)
+from modules.pillars.pillar_1_team_structure.totals import (
+    build_p1_totals_executive_summary,
+    calculate_p1_totals,
+)
 from modules.pillars.pillar_2_side_market.run_pillar_2 import (
     ENGINE_VERSION as P2_ENGINE_VERSION,
     calculate_pillar_2,
@@ -393,6 +415,12 @@ class EventPillarProcessor:
                 else [step for step in stages if step["operation"] != "side_module"]
             )
             result["input_refs"] = ["evaluation.inputs.p1"]
+            if "EXECUTIVE_SUMMARY" not in result:
+                result["EXECUTIVE_SUMMARY"] = (
+                    build_p1_side_executive_summary(result)
+                    if scope == "side"
+                    else build_p1_totals_executive_summary(result)
+                )
             outputs[scope] = result
         return outputs
 
@@ -569,6 +597,18 @@ class EventPillarProcessor:
                             result = _build_market_error_result(
                                 identity, number, markets, exc
                             )
+                    if "INTERPRETATION" not in result:
+                        result["INTERPRETATION"] = {
+                            2: interpret_p2_result, 3: interpret_p3_result,
+                            4: interpret_p4_result, 5: interpret_p5_result,
+                        }[number](result)
+                    if "EXECUTIVE_SUMMARY" not in result:
+                        result["EXECUTIVE_SUMMARY"] = {
+                            2: build_p2_executive_summary,
+                            3: build_p3_executive_summary,
+                            4: build_p4_executive_summary,
+                            5: build_p5_executive_summary,
+                        }[number](result, result["INTERPRETATION"])
                     result["evaluation_as_of"] = evaluation_as_of
                     result["calculation_trace"] = {
                         key: steps
@@ -635,6 +675,7 @@ class EventPillarProcessor:
             participants=identity.participants_label,
             results=results,
             enabled_pillars=self.enabled_pillars,
+            debug_mode=self.debug_mode,
         )
         return {
             "evaluation_id": evaluation_id,

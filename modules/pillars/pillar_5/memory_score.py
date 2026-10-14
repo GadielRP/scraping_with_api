@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from modules.pillars.evaluation_contracts import (
+    EXECUTIVE_SUMMARY_VERSION,
+    INTERPRETATION_VERSION,
+    interpretation_reading,
+)
 
 from .calculation_models import (
     BookmakerMemoryProfile,
@@ -275,9 +280,142 @@ def calculate_memory_profile(
     )
 
 
+def interpret_p5_result(result):
+    """Describe frozen historical counts without changing the memory score."""
+    readings = {}
+    signals = {signal["key"]: signal for signal in result["signals"]}
+    for scope in dict.fromkeys((*result["analysis"], *signals)):
+        profile = result["analysis"].get(scope) or {}
+        signal = signals.get(scope) or {}
+        signal_evidence = signal.get("evidence") or {}
+        status = signal.get("status", "BLOCKED")
+        reason = signal.get("reason")
+        if status == "ERROR":
+            state = "CALCULATION_ERROR"
+        elif reason == "INSUFFICIENT_OBSERVATIONS":
+            state = "INSUFFICIENT_HISTORICAL_SAMPLE"
+        elif status != "COMPUTED":
+            state = (
+                reason
+                if reason
+                in (
+                    "MISSING_INPUT",
+                    "INVALID_VALUE",
+                    "AMBIGUOUS_CANDIDATE",
+                    "INCOMPATIBLE_CONTRACT",
+                )
+                else "MISSING_INPUT"
+            )
+            if state == "INCOMPATIBLE_CONTRACT":
+                state = "INCOMPARABLE_CONTRACT"
+        elif profile.get("is_tie"):
+            state = "HISTORICAL_OUTCOME_TIE"
+        else:
+            state = "HISTORICAL_OUTCOME_READING"
+        readings[scope] = interpretation_reading(
+            state,
+            status=status,
+            reason=reason,
+            comparability="COMPARABLE" if status == "COMPUTED" else "UNAVAILABLE",
+            direction=profile.get("P5_DIRECTION"),
+            strength=profile.get("P5_STRENGTH"),
+            sample_size=(
+                profile.get("sample_size")
+                if profile.get("sample_size") is not None
+                else signal_evidence.get("sample_size")
+            ),
+            bookmaker=profile.get("bookmaker") or signal_evidence.get("bookmaker"),
+            bookie_id=profile.get("bookie_id") or signal_evidence.get("bookie_id"),
+            market_group=profile.get("market_group")
+            or signal_evidence.get("market_group"),
+            market_period=profile.get("market_period")
+            or signal_evidence.get("market_period"),
+            wins_home=profile.get("wins_home"),
+            wins_draw=profile.get("wins_draw"),
+            wins_away=profile.get("wins_away"),
+            evidence={
+                "analysis_ref": f"analysis.{scope}",
+                "signal_ref": scope,
+                "sample_id": profile.get("sample_id")
+                or signal_evidence.get("sample_id"),
+            },
+        )
+    return {
+        "version": INTERPRETATION_VERSION,
+        "status": result["status"],
+        "bookmakers": readings,
+        "summary": "Lectura de resultados históricos por bookmaker; no es una probabilidad calibrada.",
+    }
+
+
+def build_p5_executive_summary(result, interpretation=None):
+    """Select the existing full-time three-way memory reading per bookmaker."""
+    interpretation = interpretation or result.get("INTERPRETATION") or interpret_p5_result(result)
+    profiles = interpretation.get("bookmakers") or {}
+    selected = {}
+    for scope, reading in profiles.items():
+        parts = scope.split(":")
+        market_group = reading.get("market_group") or (parts[1] if len(parts) > 1 else None)
+        market_period = reading.get("market_period") or (parts[2] if len(parts) > 2 else None)
+        if market_group != "1X2" or str(market_period).casefold() not in {"full time", "ft"}:
+            continue
+        bookmaker = reading.get("bookmaker")
+        if not bookmaker:
+            continue
+        selected[str(bookmaker).casefold()] = {
+            "state": reading.get("state"),
+            "sample_size": reading.get("sample_size") or 0,
+            "home": reading.get("wins_home"),
+            "draw": reading.get("wins_draw"),
+            "away": reading.get("wins_away"),
+            "direction": reading.get("direction"),
+            "status": reading.get("status"),
+            "reason": reading.get("reason"),
+        }
+
+    sentences = []
+    for bookmaker, reading in selected.items():
+        label = {
+            "pinnacle": "Pinnacle",
+            "bet365": "bet365",
+            "sofascore": "SofaScore",
+        }.get(bookmaker, bookmaker.capitalize())
+        if reading["state"] == "INSUFFICIENT_HISTORICAL_SAMPLE":
+            sentences.append(
+                f"{label} no tiene muestra histórica suficiente "
+                f"({reading['sample_size']} coincidencias)."
+            )
+        elif reading["state"] == "HISTORICAL_OUTCOME_TIE":
+            sentences.append(
+                f"{label} tiene {reading['sample_size']} coincidencias: "
+                f"{reading['home']} HOME, {reading['draw']} DRAW y {reading['away']} AWAY; "
+                f"empate de cuentas, dirección {reading['direction']}."
+            )
+        elif reading["state"] == "HISTORICAL_OUTCOME_READING":
+            sentences.append(
+                f"{label} tiene un resultado histórico dominante {reading['direction']} "
+                f"en {reading['sample_size']} coincidencias."
+            )
+        elif reading["status"] == "BLOCKED":
+            sentences.append(
+                f"{label} no tiene una lectura disponible "
+                f"({reading['reason'] or 'MISSING_INPUT'})."
+            )
+
+    return {
+        "version": EXECUTIVE_SUMMARY_VERSION,
+        "status": result.get("status"),
+        "bookmakers": selected,
+        "summary": " ".join(sentences)
+        or "P5 no dispone de una muestra ejecutiva 1X2 de tiempo completo.",
+    }
+
+
 __all__ = [
+    "build_p5_executive_summary",
     "MIN_SAMPLE_SIZE",
     "calculate_memory_profile",
+    "interpret_p5_result",
     "msri_signal",
     "profile_strength",
     "sample_weight",

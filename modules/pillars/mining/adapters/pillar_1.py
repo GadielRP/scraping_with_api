@@ -55,7 +55,13 @@ def _build(adapter, context, result, units):
                 {
                     k: v
                     for k, v in result.items()
-                    if k not in {"modules", "active_layers", "ignored_layers"}
+                    if k
+                    not in {
+                        "modules",
+                        "active_layers",
+                        "ignored_layers",
+                        "EXECUTIVE_SUMMARY",
+                    }
                 },
                 group="derived",
             )

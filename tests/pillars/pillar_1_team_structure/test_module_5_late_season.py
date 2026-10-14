@@ -231,7 +231,7 @@ def test_joint_side_execution_keeps_other_module_results_and_shared_inputs(monke
     assert analysis.current_standings == before
     assert result["value"] == pytest.approx(-0.09248072500269389)
     assert result["raw"]["final"]["p1_final_bias"] == "AWAY"
-    assert result["raw"]["engine_version"] == "side_engine_multilayer_v3_1"
+    assert result["raw"]["engine_version"] == "side_engine_multilayer_v3_2_executive_summary"
 
     mining_run = P1SideMiningAdapter().build(_event(), result)
     validate_mining_run(replace(mining_run, evaluation_id="evaluation"))

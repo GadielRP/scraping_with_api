@@ -217,24 +217,28 @@ def test_m4_celta_levante_blueprint_exact_values():
 
     assert result.module_id == "M4"
     assert result.module_name == "Quality-Adjusted Immediate State Engine"
-    assert result.raw["engine_profile"] == "quality_adjusted_immediate_state_v1"
+    assert result.raw["engine_profile"] == "quality_adjusted_immediate_state_v2_asymmetric_quality_adjustment"
     assert result.raw["n_liga"] == 20
     assert result.raw["n_liga_source"] == "streak_analysis.current_standings.len"
     assert result.raw["m4_status"] == "ACTIVE"
     assert result.raw["m4_status_reason"] == "active"
     assert result.bias == "AWAY"
-    assert result.strength == "HIGH"
-    assert result.value == pytest.approx(-0.3333333333333333, abs=1e-3)
-    assert result.raw["home_adjusted_result"] == pytest.approx(-0.736842105263, abs=1e-3)
-    assert result.raw["away_adjusted_result"] == pytest.approx(0.421052631579, abs=1e-3)
-    assert result.raw["home_adjusted_gd"] == pytest.approx(-0.421052631579, abs=1e-3)
-    assert result.raw["away_adjusted_gd"] == pytest.approx(-2.105263157895, abs=1e-3)
-    assert result.raw["result_score"] == pytest.approx(-1.0, abs=1e-3)
-    assert result.raw["gd_score"] == pytest.approx(0.666666666667, abs=1e-3)
-    assert result.raw["m4_edge"] == pytest.approx(-0.333333333333, abs=1e-3)
-    assert result.raw["m4_abs_edge"] == pytest.approx(0.333333333333, abs=1e-3)
+    # Independent v2 arithmetic: wins use strength, losses use weakness.
+    # Window sums: 1/19, 23/19, -31/19, 20/19. Relative scores:
+    # (1-23)/(1+23)=-11/12 and (-31-20)/(31+20)=-1.
+    # Weighted edge: 0.6*(-11/12) + 0.4*(-1) = -0.95.
+    assert result.strength == "EXTREME"
+    assert result.value == pytest.approx(-0.95, abs=1e-12)
+    assert result.raw["home_adjusted_result"] == pytest.approx(1 / 19, abs=1e-12)
+    assert result.raw["away_adjusted_result"] == pytest.approx(23 / 19, abs=1e-12)
+    assert result.raw["home_adjusted_gd"] == pytest.approx(-31 / 19, abs=1e-12)
+    assert result.raw["away_adjusted_gd"] == pytest.approx(20 / 19, abs=1e-12)
+    assert result.raw["result_score"] == pytest.approx(-11 / 12, abs=1e-12)
+    assert result.raw["gd_score"] == pytest.approx(-1, abs=1e-12)
+    assert result.raw["m4_edge"] == pytest.approx(-0.95, abs=1e-12)
+    assert result.raw["m4_abs_edge"] == pytest.approx(0.95, abs=1e-12)
     assert result.raw["m4_bias"] == "AWAY"
-    assert result.raw["m4_strength"] == "HIGH"
+    assert result.raw["m4_strength"] == "EXTREME"
     assert len(result.components) == 2
     assert [component.name for component in result.components] == ["RESULT_SCORE", "GD_SCORE"]
     assert result.raw["home_valid_matches"] == 5

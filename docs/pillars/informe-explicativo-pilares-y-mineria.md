@@ -1,7 +1,7 @@
 # Qué hacen los pilares P1–P5 y cómo se conserva su trabajo
 
 **Informe para personas sin conocimientos de programación**  
-**Fecha de revisión: 13 de octubre de 2026**  
+**Fecha de revisión: 14 de octubre de 2026**
 **Base del informe: implementación actual del proyecto, incluida la instrumentación inmutable de minería, versión de esquema 5.**
 
 ## Cómo leer este informe
@@ -9,6 +9,54 @@
 Este documento sigue el recorrido de la información: desde que el sistema recibe un encuentro y sus datos hasta que guarda los resultados para estudiarlos después.
 
 Los nombres en inglés se incluyen porque aparecen en los registros del sistema. Cada uno se explica en español. Los ejemplos numéricos son ilustrativos; no representan una evaluación real de un partido. Los pesos y reglas que se indican corresponden al código revisado en la fecha anterior.
+
+## Cómo leer la interpretación oficial de los pilares
+
+P2, P3, P4 y P5 ahora guardan una lectura explícita llamada `INTERPRETATION`.
+Los números y cálculos originales siguen disponibles. La lectura explica su
+significado mediante campos estructurados y una frase breve en español.
+
+- **P2:** distingue coincidencia entre bookmakers, desacuerdo, neutralidad y
+  cobertura parcial. Una única casa no se presenta como consenso. Compara books
+  y exchange únicamente cuando sus contratos permiten esa comparación.
+  Una cobertura parcial puede conservar AWAY si todas las ramas disponibles
+  coinciden hacia AWAY; la cobertura sigue siendo parcial.
+- **P3:** conserva la línea de cada lectura. Under en 2.5 y Over en 2.25 describen
+  líneas diferentes; no se presentan automáticamente como opiniones contrarias.
+  `period_readings` ofrece una lectura directa por periodo, sin recorrer cada
+  ámbito detallado. Conserva por separado los contratos válidos múltiples.
+- **P4:** separa dónde terminó el precio o edge de hacia dónde se movió. Un edge
+  que pasa de +0.20 a +0.10 se mueve hacia AWAY, aunque su valor final sigue siendo
+  HOME. Un precio que baja fortalece la selección en términos de cuota; no prueba
+  que entró dinero informado. Datos insuficientes no significan estabilidad.
+  Los campos se llaman `endpoint_direction`, `net_move_direction` y
+  `final_run_direction`. Por ejemplo, el edge puede terminar AWAY y no haberse
+  movido: endpoint AWAY, movimiento NO_MOVEMENT y tramo final ausente.
+  `contracts` resume cada mercado, periodo, línea y vista mediante sus
+  representantes existentes. Las distintas fuentes permanecen identificadas,
+  con todas las series originales disponibles para revisión.
+- **P5:** distingue empate deportivo DRAW de empate entre cuentas históricas.
+  Mantiene su intensidad actual y no representa una probabilidad calibrada.
+
+P2–P4 no reciben etiquetas de intensidad nuevas. El último tramo de P4 se llama
+tramo final; no se clasifica como tardío. Los resúmenes `🏁` incluyen una capa
+`EXECUTIVE_SUMMARY`, separada de `INTERPRETATION`: la primera permite leer la
+conclusión principal rápidamente y la segunda conserva el detalle para auditoría
+y minería. P1 Side resume dirección, fuerza y estado; P1 Totals mantiene separado
+su score direccional del composite. P2 muestra FT y el periodo secundario; P3
+expone las líneas por periodo; P4 resume los contratos principales de
+`CHECKPOINT_VIEW`; P5 presenta la memoria 1X2 por bookmaker.
+
+Los engines de cada pilar construyen los dos bloques y los guardan juntos en
+`output_payload`. No se derivan señales nuevas ni se duplican métricas. El log
+presenta primero estado, conteos, minuto objetivo y resumen ejecutivo. En modo
+diagnóstico agrega `INTERPRETATION_DETAIL`. El logger solo presenta los bloques;
+no decide ni calcula su significado. Los cierres 🏁 salen después de persistir y
+solo para pilares habilitados.
+
+Las evaluaciones anteriores permanecen intactas y no se les agrega esta lectura
+retrospectivamente. Para consultas y exportación compacta, ver
+[la sección de interpretación oficial](mining-persistence.md#interpretación-oficial).
 
 El objetivo es entender qué significa cada resultado y de dónde sale. Ninguno de los cinco pilares, por sí solo, demuestra que una apuesta será rentable.
 

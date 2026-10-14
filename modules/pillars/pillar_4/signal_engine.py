@@ -3,7 +3,7 @@
 from .semantic_metrics import build_checkpoint_semantic_series
 from .trajectory_engine import build_trajectory_features
 
-ENGINE_VERSION = "p4-signal-profile-v3"
+ENGINE_VERSION = "p4-signal-profile-v4.2-executive-summary"
 
 
 def build_p4_series(extraction, *, debug_mode=False):

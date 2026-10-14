@@ -21,6 +21,14 @@ from .models import (
     TwoWayMarketSnapshot,
 )
 from .relations import direction, relation
+from modules.pillars.evaluation_contracts import (
+    INTERPRETATION_VERSION,
+    EXECUTIVE_SUMMARY_VERSION,
+    interpretation_reading,
+    interpretation_failure_reason,
+    project_executive_sources,
+    executive_source_sentences,
+)
 from .signal_models import (
     AsianHandicapSignal,
     AsianHandicapBookExchangeSignal,
@@ -35,7 +43,7 @@ from .signal_models import (
     PeriodSignal,
 )
 
-ENGINE_VERSION = "p2-signal-profile-v3"
+ENGINE_VERSION = "p2-signal-profile-v4.2-executive-summary"
 
 logger = logging.getLogger(__name__)
 
@@ -924,4 +932,411 @@ def build_p2_signal_profile(
     return profile
 
 
-__all__ = ["ENGINE_VERSION", "build_p2_signal_profile"]
+def _interpret_side_pair(
+    left, right, representative, comparable, *, kind="books", evidence=None
+):
+    available = [value for value in (left, right) if value is not None]
+    if not available:
+        return interpretation_reading(
+            "MISSING_INPUT",
+            status="BLOCKED",
+            reason="MISSING_INPUT",
+            comparability="UNAVAILABLE",
+            evidence=evidence,
+        )
+    if len(available) == 1:
+        state = "SINGLE_BOOK_READING" if kind == "books" else "SINGLE_EXCHANGE_READING"
+        return interpretation_reading(
+            state, direction=available[0], comparability="PARTIAL", evidence=evidence
+        )
+    if not comparable:
+        return interpretation_reading(
+            "INCOMPARABLE_CONTRACT",
+            status="BLOCKED",
+            reason="INCOMPATIBLE_CONTRACT",
+            comparability="INCOMPARABLE_CONTRACT",
+            evidence=evidence,
+        )
+    if left == right == "NEUTRAL":
+        state = "NEUTRAL_STRUCTURE"
+    elif "NEUTRAL" in (left, right):
+        state = "PARTIAL_DIRECTIONAL_AGREEMENT"
+    elif left == right:
+        state = {
+            "books": "BOOK_CONSENSUS",
+            "exchange": "BACK_LAY_CONSENSUS",
+            "sources": "CROSS_SOURCE_CONSENSUS",
+        }[kind]
+    else:
+        state = {
+            "books": "BOOK_DISAGREEMENT",
+            "exchange": "BACK_LAY_DIVERGENCE",
+            "sources": "CROSS_SOURCE_CONFLICT",
+        }[kind]
+    return interpretation_reading(state, direction=representative, evidence=evidence)
+
+
+def _interpret_side_period(branches):
+    supporting = [
+        key
+        for key, reading in branches.items()
+        if reading["direction"] in ("HOME", "AWAY")
+    ]
+    complete = bool(branches) and all(
+        r["status"] == "COMPUTED"
+        and r["comparability"] == "COMPARABLE"
+        and r["state"] in ("BOOK_CONSENSUS", "NEUTRAL_STRUCTURE")
+        for r in branches.values()
+    )
+    directions = {
+        r["direction"] for r in branches.values() if r["direction"] is not None
+    }
+    comparable_directions = {
+        r["direction"]
+        for r in branches.values()
+        if r["comparability"] == "COMPARABLE" and r["direction"] in ("HOME", "AWAY")
+    }
+    if comparable_directions == {"HOME", "AWAY"}:
+        state, value = "CROSS_MARKET_CONFLICT", "MIXED"
+    elif (
+        complete
+        and len(branches) >= 2
+        and len(directions) == 1
+        and "NEUTRAL" not in directions
+    ):
+        state, value = "MULTI_MARKET_CONSENSUS", next(iter(directions))
+    elif complete and directions == {"NEUTRAL"}:
+        state, value = "NEUTRAL_STRUCTURE", "NEUTRAL"
+    else:
+        available_directions = {
+            r["direction"]
+            for r in branches.values()
+            if r["status"] == "COMPUTED"
+            and r["comparability"] in ("COMPARABLE", "PARTIAL")
+            and r["direction"] is not None
+        }
+        state = "PARTIAL_STRUCTURE"
+        value = (
+            next(iter(available_directions))
+            if len(available_directions) == 1
+            and not any(r["state"] == "BOOK_DISAGREEMENT" for r in branches.values())
+            else None
+        )
+    return interpretation_reading(
+        state,
+        direction=value,
+        comparability="COMPARABLE" if complete else "PARTIAL",
+        supporting_branches=supporting,
+        evidence={"branch_refs": list(branches)},
+    )
+
+
+def interpret_p2_result(result):
+    """Describe existing side readings without creating representatives or scores."""
+    scopes, structures = {}, {}
+    for scope, profile in result["analysis"].items():
+        periods = {}
+        for period in ("FT", "1H", "FIRST_FIVE_INNINGS"):
+            values = profile.get(period)
+            if not values:
+                continue
+            branches = {}
+            for family in ("1X2", "AH", "HANDICAP"):
+                raw = values.get(family)
+                if raw is None:
+                    continue
+                reading = _interpret_side_pair(
+                    raw.get("PIN_DIRECTION"),
+                    raw.get("B365_DIRECTION"),
+                    raw.get("DIRECTION"),
+                    raw.get("REP_EDGE") is not None,
+                    evidence={"analysis_ref": f"analysis.{scope}.{period}.{family}"},
+                )
+                reading.update(
+                    pinnacle_direction=raw.get("PIN_DIRECTION"),
+                    bet365_direction=raw.get("B365_DIRECTION"),
+                )
+                reading["relation"] = raw.get("BOOK_RELATION")
+                if reading["state"] == "MISSING_INPUT":
+                    reason = interpretation_failure_reason(
+                        result, scope, f"{period}.{family}"
+                    )
+                    state = (
+                        "INCOMPARABLE_CONTRACT"
+                        if reason == "INCOMPATIBLE_CONTRACT"
+                        else reason
+                    )
+                    reading = {
+                        **reading,
+                        **interpretation_reading(
+                            state,
+                            reason=reason,
+                            status=(
+                                "ERROR" if reason == "CALCULATION_ERROR" else "BLOCKED"
+                            ),
+                            comparability="UNAVAILABLE",
+                            evidence=reading["evidence"],
+                        ),
+                    }
+                if family != "1X2":
+                    reading.update(
+                        pinnacle_line=raw.get("PIN_LINE"),
+                        bet365_line=raw.get("B365_LINE"),
+                        lines_match=(
+                            None
+                            if raw.get("PIN_LINE") is None
+                            or raw.get("B365_LINE") is None
+                            else raw["PIN_LINE"] == raw["B365_LINE"]
+                        ),
+                    )
+                    for bookmaker, line_key, direction_key in (
+                        ("PINNACLE", "PIN_LINE", "PIN_DIRECTION"),
+                        ("BET365", "B365_LINE", "B365_DIRECTION"),
+                    ):
+                        if raw.get(direction_key) is not None:
+                            structures.setdefault(
+                                (scope.split(":", 1)[0], period, family), {}
+                            ).setdefault(
+                                (bookmaker, raw.get(line_key)),
+                                {
+                                    "bookmaker": bookmaker,
+                                    "line": raw.get(line_key),
+                                    "direction": raw[direction_key],
+                                    "analysis_ref": f"analysis.{scope}.{period}.{family}",
+                                },
+                            )
+                branches[family] = reading
+            exchanges, comparisons = {}, {}
+            exchange_keys = {"1X2": "EXCHANGE"} if period == "FT" else {}
+            suffix = period
+            exchange_keys.update(
+                {
+                    family: f"BETFAIR_{suffix}_{family}"
+                    for family in ("AH", "HANDICAP") if family in branches
+                }
+            )
+            for family, key in exchange_keys.items():
+                raw = profile.get(key) or {}
+                exchanges[family] = _interpret_side_pair(
+                    raw.get("BACK_DIRECTION"),
+                    raw.get("LAY_DIRECTION"),
+                    raw.get("DIRECTION"),
+                    raw.get("REP_EDGE") is not None,
+                    kind="exchange",
+                    evidence={"analysis_ref": f"analysis.{scope}.{key}"},
+                )
+                exchanges[family].update(
+                    back_direction=raw.get("BACK_DIRECTION"),
+                    lay_direction=raw.get("LAY_DIRECTION"),
+                    line=raw.get("LINE"),
+                    relation=raw.get("BACK_LAY_RELATION"),
+                )
+                book = values.get(family) or {}
+                comparison_key = (
+                    "BOOK_EXCHANGE"
+                    if family == "1X2"
+                    else f"BOOK_EXCHANGE_{'' if period == 'FT' else suffix + '_'}{family}"
+                )
+                comparison = profile.get(comparison_key) or {}
+                book_direction, exchange_direction = book.get("DIRECTION"), raw.get(
+                    "DIRECTION"
+                )
+                comparable = comparison.get("RELATION") is not None
+                if book_direction is None or exchange_direction is None:
+                    comparisons[family] = interpretation_reading(
+                        "PARTIAL_STRUCTURE",
+                        status="BLOCKED",
+                        reason="MISSING_INPUT",
+                        comparability="PARTIAL",
+                    )
+                else:
+                    representative = (
+                        book_direction if book_direction == exchange_direction else None
+                    )
+                    comparisons[family] = _interpret_side_pair(
+                        book_direction,
+                        exchange_direction,
+                        representative,
+                        comparable,
+                        kind="sources",
+                    )
+                comparisons[family].update(
+                    book_direction=book_direction,
+                    exchange_direction=exchange_direction,
+                    relation=comparison.get("RELATION"),
+                    evidence={"analysis_ref": f"analysis.{scope}.{comparison_key}"},
+                )
+                if family != "1X2":
+                    comparisons[family].update(
+                        books_line=(
+                            book.get("PIN_LINE")
+                            if book.get("REP_EDGE") is not None
+                            else None
+                        ),
+                        exchange_line=raw.get("LINE"),
+                        line_gap=comparison.get("LINE_GAP"),
+                    )
+            periods[period] = {
+                "markets": branches,
+                "exchange": exchanges,
+                "book_exchange": comparisons,
+                "reading": _interpret_side_period(branches),
+            }
+        secondary = "FIRST_FIVE_INNINGS" if "FIRST_FIVE_INNINGS" in profile else "1H"
+        cross_key = "FT_FIRST_FIVE_INNINGS" if secondary != "1H" else "FT_1H"
+        cross = profile.get(cross_key) or {}
+        ft_direction = ((profile.get("FT") or {}).get("1X2") or {}).get("DIRECTION")
+        secondary_direction = ((profile.get(secondary) or {}).get("1X2") or {}).get(
+            "DIRECTION"
+        )
+        cross_state = (
+            "PARTIAL_STRUCTURE"
+            if not cross
+            else (
+                "CROSS_PERIOD_CONSENSUS"
+                if ft_direction == secondary_direction
+                else "CROSS_PERIOD_DIFFERENCE"
+            )
+        )
+        scopes[scope] = {
+            "periods": periods,
+            "cross_period": interpretation_reading(
+                cross_state,
+                status="COMPUTED" if cross else "BLOCKED",
+                reason=None if cross else "MISSING_INPUT",
+                comparability="PARTIAL",
+                full_time_direction=ft_direction,
+                secondary_direction=secondary_direction,
+                relation=cross.get(f"{cross_key}_1X2_RELATION"),
+                evidence={"analysis_ref": f"analysis.{scope}.{cross_key}"},
+            ),
+        }
+    line_structures = {}
+    for (family, period, market), readings in structures.items():
+        if len({r["line"] for r in readings.values()}) > 1:
+            line_structures[f"{family}:{period}:{market}"] = interpretation_reading(
+                "INCOMPARABLE_CONTRACT",
+                status="BLOCKED",
+                reason="INCOMPATIBLE_CONTRACT",
+                comparability="INCOMPARABLE_LINE",
+                readings=list(readings.values()),
+            )
+    return {
+        "version": INTERPRETATION_VERSION,
+        "status": result["status"],
+        "scopes": scopes,
+        "line_structures": line_structures,
+        "reasons": result["diagnostics"]["signals"]["reasons"],
+        "summary": "Lectura SIDE por contrato y periodo, sin score agregado.",
+    }
+
+
+def build_p2_executive_summary(result, interpretation=None):
+    """Select P2's existing period readings for a compact operator summary."""
+    interpretation = interpretation or result.get("INTERPRETATION") or interpret_p2_result(result)
+    scopes = interpretation.get("scopes") or {}
+
+    def scope_priority(item):
+        name, scope = item
+        periods = scope.get("periods") or {}
+        available = sum(
+            1
+            for value in periods.values()
+            if value.get("reading", {}).get("status") == "COMPUTED"
+            and value.get("reading", {}).get("direction") is not None
+        )
+        family = name.split(":", 1)[0]
+        lane = name.rsplit(":", 1)[-1]
+        return available, family == "1X2", lane == "base", name
+
+    selected_scope = (
+        max(scopes.items(), key=scope_priority)[1] if scopes else {}
+    )
+    periods = selected_scope.get("periods") or {}
+    period_names = {
+        "FT": "full_time",
+        "1H": "first_half",
+        "FIRST_FIVE_INNINGS": "first_five_innings",
+    }
+    period_readings = {}
+    for source_name, summary_name in period_names.items():
+        available_periods = [
+            scope["periods"][source_name]
+            for scope in scopes.values()
+            if source_name in scope.get("periods", {})
+        ]
+        if not available_periods:
+            continue
+        period = periods.get(source_name) or {}
+        reading = period.get("reading") or {}
+        supported = reading.get("supporting_branches") or []
+        period_readings[summary_name] = {
+            "status": reading.get("status"),
+            "direction": reading.get("direction"),
+            "state": reading.get("state"),
+            "supporting_markets": [
+                {"AH": "ASIAN_HANDICAP", "HANDICAP": "HANDICAP"}.get(
+                    market, market
+                )
+                for market in supported
+            ],
+            "source_readings": project_executive_sources(
+                (role, market, source)
+                for available in available_periods
+                for role, key in (("books", "markets"), ("exchange", "exchange"), ("book_exchange", "book_exchange"))
+                for market, source in available.get(key, {}).items()
+            ),
+        }
+
+    cross = selected_scope.get("cross_period") or {}
+    cross_period = {
+        "status": cross.get("status"),
+        "state": cross.get("state"),
+        "full_time_direction": cross.get("full_time_direction"),
+        "secondary_direction": cross.get("secondary_direction"),
+    }
+
+    sentences = []
+    labels = {
+        "full_time": "FT",
+        "first_half": "1H",
+        "first_five_innings": "First Five Innings",
+    }
+    state_phrases = {
+        "MULTI_MARKET_CONSENSUS": "presenta consenso multimercado",
+        "PARTIAL_STRUCTURE": "presenta una estructura parcial con dirección",
+        "CROSS_MARKET_CONFLICT": "presenta direcciones distintas entre mercados",
+        "NEUTRAL_STRUCTURE": "presenta una estructura neutral",
+        "MISSING_INPUT": "no tiene inputs suficientes para una lectura",
+    }
+    for name, reading in period_readings.items():
+        direction = reading["direction"]
+        phrase = state_phrases.get(reading["state"])
+        if phrase is None:
+            continue
+        if direction is not None:
+            sentences.append(f"{labels[name]} {phrase} {direction}.")
+        elif reading["state"] in {"CROSS_MARKET_CONFLICT", "MISSING_INPUT"}:
+            sentences.append(f"{labels[name]} {phrase}.")
+        sentences.extend(executive_source_sentences(labels[name], reading["source_readings"]))
+    if cross_period["state"] == "CROSS_PERIOD_CONSENSUS":
+        sentences.append("FT y el periodo secundario están alineados.")
+    elif cross_period["state"] == "CROSS_PERIOD_DIFFERENCE":
+        sentences.append("FT y el periodo secundario muestran direcciones diferentes.")
+
+    return {
+        "version": EXECUTIVE_SUMMARY_VERSION,
+        "status": result.get("status"),
+        **period_readings,
+        "cross_period": cross_period,
+        "summary": " ".join(sentences)
+        or "P2 no dispone de una lectura ejecutiva calculada para este evento.",
+    }
+
+
+__all__ = [
+    "ENGINE_VERSION",
+    "build_p2_executive_summary",
+    "build_p2_signal_profile",
+    "interpret_p2_result",
+]

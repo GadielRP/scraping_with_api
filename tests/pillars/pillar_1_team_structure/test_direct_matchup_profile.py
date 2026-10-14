@@ -97,8 +97,8 @@ def test_single_h2h_home_win_is_active_but_sample_discounted():
     assert result.raw["m3_edge"] == pytest.approx(0.16, rel=1e-12, abs=1e-12)
     assert result.raw["m3_raw_strength"] == "EXTREME"
     assert len(result.components) == 2
-    assert result.raw["parsed_h2h"][0]["home_goals"] == 2
-    assert result.raw["parsed_h2h"][0]["away_goals"] == 1
+    assert result.raw["parsed_h2h"][0]["home_points"] == 2
+    assert result.raw["parsed_h2h"][0]["away_points"] == 1
 
 
 def test_no_h2h_returns_inactive_neutral():
@@ -142,7 +142,7 @@ def test_draw_counts_as_half_result():
     assert result.raw["win_rate_home"] == pytest.approx(0.5, rel=1e-12, abs=1e-12)
     assert result.raw["win_rate_away"] == pytest.approx(0.5, rel=1e-12, abs=1e-12)
     assert result.raw["win_matchup_edge_raw"] == pytest.approx(0.0, rel=1e-12, abs=1e-12)
-    assert result.raw["goal_matchup_edge_raw"] == pytest.approx(0.0, rel=1e-12, abs=1e-12)
+    assert result.raw["points_matchup_edge_raw"] == pytest.approx(0.0, rel=1e-12, abs=1e-12)
     assert result.raw["m3_edge"] == pytest.approx(0.0, rel=1e-12, abs=1e-12)
 
 
@@ -159,7 +159,7 @@ def test_away_h2h_advantage_returns_negative_edge():
     result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
 
     assert result.raw["win_matchup_edge_raw"] == pytest.approx(-1.0, rel=1e-12, abs=1e-12)
-    assert result.raw["goal_matchup_edge_raw"] == pytest.approx(-0.3333333333333333, rel=1e-12, abs=1e-12)
+    assert result.raw["points_matchup_edge_raw"] == pytest.approx(-0.3333333333333333, rel=1e-12, abs=1e-12)
     assert result.raw["m3_raw_edge"] == pytest.approx(-0.8, rel=1e-12, abs=1e-12)
     assert result.raw["m3_sample_factor"] == pytest.approx(0.2, rel=1e-12, abs=1e-12)
     assert result.raw["m3_edge"] == pytest.approx(-0.16, rel=1e-12, abs=1e-12)

@@ -2,7 +2,37 @@
 
 [Guía funcional del flujo](guia-funcional/00-flujo-principal.md) · [Entradas y expedientes](inputs.md) · [Conservación de resultados](mining-persistence.md)
 
-Documento contrastado con el código el 9 de octubre de 2026. Explica cómo P2, P3, P4 y P5 acuerdan qué cuotas pueden leer, qué momento representan y qué condiciones de mercado están comparando. La política se identifica como `market-evaluation-v1`; el formato actual de sus resultados es `payload_schema_version = 4`.
+Documento actualizado el 14 de octubre de 2026. Explica cómo P2, P3, P4 y P5 acuerdan qué cuotas pueden leer, qué momento representan y qué condiciones de mercado están comparando. La política vigente es `market-evaluation-v3-source-reconstruction`; el formato de almacenamiento es `payload_schema_version = 5`.
+
+## Interpretación oficial
+
+P2–P5 incluyen `INTERPRETATION` en su resultado canónico: versión 2 en P4 y 1 en
+los demás. Sus engines
+interpretan los resultados existentes sin modificar fórmulas ni crear scores.
+P2 conserva direcciones y relaciones por mercado, fuente y periodo. P3 describe
+las líneas seleccionadas, incluso cuando quedaron separadas en ámbitos distintos,
+y las reúne en `period_readings` sin duplicar los periodos en el resumen.
+P2 conserva también la dirección consistente de periodos con cobertura parcial.
+P4 separa `endpoint_direction`, `net_move_direction` y `final_run_direction`,
+y resume por contrato y vista en `contracts`, manteniendo las series de evidencia.
+Interpreta los movimientos según el dominio de la
+variable. P5 distingue muestra insuficiente, empate de cuentas y resultado dominante.
+
+Los engines también colocan un `EXECUTIVE_SUMMARY` compacto junto a la
+interpretación detallada. Selecciona conclusiones que el propio pilar ya obtuvo:
+P2 resume FT y el periodo secundario; P3 mantiene cada periodo y su comparabilidad
+de líneas; P4 selecciona contratos principales de `CHECKPOINT_VIEW`; P5 resume
+la memoria 1X2 de tiempo completo por bookmaker. P1 Side y P1 Totals exponen su
+propia síntesis, conservando separados el score direccional y el composite de
+P1 Totals. El adaptador persiste ambos bloques y el logger solo renderiza el
+resumen ejecutivo, con detalle opcional en modo diagnóstico. Esta capa no cambia
+fórmulas, scoring ni señales.
+
+Las lecturas tienen estado de ejecución, estado descriptivo, comparabilidad y
+evidencia por referencia. No se agrega intensidad a P2–P4. Una lectura entre
+periodos describe alineación o diferencia, no oposición sobre el mismo contrato.
+Los logs renderizan este bloque y no deducen sus interpretaciones.
+Ver [persistencia y consultas compactas](mining-persistence.md#interpretación-oficial).
 
 P1 conserva sus propios motores y formatos. Los detalles de cada fórmula están en las guías de [P2](guia-funcional/02-pilar-2-mercado-de-lado.md), [P3](guia-funcional/03-pilar-3-mercado-de-totales.md), [P4](guia-funcional/04-pilar-4-movimiento-temporal.md) y [P5](guia-funcional/05-pilar-5-memoria-de-precios.md).
 

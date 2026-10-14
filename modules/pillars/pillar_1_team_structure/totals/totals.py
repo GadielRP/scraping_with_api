@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from modules.pillars.common import clamp
 from modules.pillars.context import EventContext
+from modules.pillars.evaluation_contracts import EXECUTIVE_SUMMARY_VERSION
 from modules.pillars.instrumentation import record_calculation
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_5_composite_trend_dominance"
+_ENGINE_VERSION = "p1_totals_directional_vol_separated_v2_6_executive_summary"
 
 TOTALS_TEMPORAL_WINDOW_NAMES = ("SHORT", "RECENT", "MID", "FULL")
 
@@ -160,6 +161,7 @@ class P1TotalsOutput:
     active_layers: List[P1TotalsLayerOutput] = field(default_factory=list)
     ignored_layers: List[P1TotalsLayerOutput] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
+    EXECUTIVE_SUMMARY: Dict[str, Any] = field(default_factory=dict)
 
 
 def _clamp_01(value: float) -> float:
@@ -2706,4 +2708,63 @@ def calculate_p1_totals(
         active_layers=active_layers,
         ignored_layers=ignored_layers,
         raw=raw,
+        EXECUTIVE_SUMMARY=build_p1_totals_executive_summary(
+            {
+                "status": "OK",
+                "P1_TOTALS_DIRECTIONAL_SCORE": p1_totals_directional_score,
+                "P1_TOTALS_DIRECTION": p1_totals_direction,
+                "P1_TOTALS_STRENGTH": p1_totals_strength,
+                "P1_TOTALS_COMPOSITE": p1_totals_composite,
+                "P1_TOTALS_COMPOSITE_DIRECTION": p1_totals_composite_direction,
+                "P1_TOTALS_COMPOSITE_STRENGTH": p1_totals_composite_strength,
+            }
+        ),
     )
+
+
+def build_p1_totals_executive_summary(result):
+    """Select the existing directional and composite classifications for P1 Totals."""
+    raw_status = result.get("status")
+    if raw_status == "OK":
+        status = "ACTIVE"
+    elif raw_status in {"ACTIVE", "INSUFFICIENT_DATA", "ERROR", "SKIPPED"}:
+        status = raw_status
+    elif result.get("P1_TOTALS_DIRECTIONAL_SCORE") is not None:
+        status = "ACTIVE"
+    else:
+        status = "INSUFFICIENT_DATA"
+
+    direction_names = {
+        "OVER_PROFILE": "OVER",
+        "UNDER_PROFILE": "UNDER",
+        "NEUTRAL_PROFILE": "NEUTRAL",
+    }
+    direction = direction_names.get(result.get("P1_TOTALS_DIRECTION"))
+    composite_direction = direction_names.get(
+        result.get("P1_TOTALS_COMPOSITE_DIRECTION")
+    )
+    strength = result.get("P1_TOTALS_STRENGTH")
+    composite_strength = result.get("P1_TOTALS_COMPOSITE_STRENGTH")
+    if direction is not None and strength is not None:
+        summary = f"{direction} · {strength}."
+        if composite_direction is not None or composite_strength is not None:
+            summary += (
+                f" Composite adicional: {composite_direction or 'sin dirección'} · "
+                f"{composite_strength or 'sin intensidad'}."
+            )
+    else:
+        summary = (
+            "P1 Totals no produjo una lectura calculada "
+            f"({result.get('reason') or status})."
+        )
+    return {
+        "version": EXECUTIVE_SUMMARY_VERSION,
+        "status": status,
+        "direction": direction,
+        "strength": strength,
+        "directional_score": result.get("P1_TOTALS_DIRECTIONAL_SCORE"),
+        "composite_direction": composite_direction,
+        "composite_strength": composite_strength,
+        "composite_score": result.get("P1_TOTALS_COMPOSITE"),
+        "summary": summary,
+    }

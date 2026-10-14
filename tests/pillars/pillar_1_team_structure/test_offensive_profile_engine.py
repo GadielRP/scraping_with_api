@@ -11,6 +11,7 @@ from modules.pillars.pillar_1_team_structure.module_2.offensive_profile_engine i
 
 def _build_event_context(home_name: str = "Celta Vigo", away_name: str = "Levante UD"):
     return SimpleNamespace(
+        event_id=14083613,
         participants_label=f"{home_name} vs {away_name}",
         home=SimpleNamespace(name=home_name),
         away=SimpleNamespace(name=away_name),

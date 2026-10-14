@@ -1,9 +1,7 @@
 """Human-readable summaries of committed pillar outputs, without input payloads."""
 
-from collections import Counter
 from collections.abc import Mapping
 from logging import INFO
-
 
 _SCOPES = {
     "pillar_1": "P1/SIDE",
@@ -26,18 +24,60 @@ def _scalars(values):
 def _rows(values, indent=2):
     rows = []
     for key, value in values.items():
+        if key in {
+            "evidence",
+            "interpretation_code",
+            "series_refs",
+            "representative_refs",
+        }:
+            continue
         prefix = " " * indent + str(key)
         if isinstance(value, Mapping):
-            rows.append(prefix + ":")
-            rows.extend(_rows(value, indent + 2))
+            if "interpretation_code" in value:
+                fields = "; ".join(
+                    f"{name}={item}"
+                    for name, item in _scalars(value).items()
+                    if name not in {"interpretation_code", "summary"}
+                    and item is not None
+                )
+                rows.append(f"{prefix}: {value['summary']} [{fields}]")
+                if value.get("source_readings"):
+                    rows.extend(_rows(value["source_readings"], indent + 2))
+                if value.get("contract_readings"):
+                    rows.extend(
+                        _rows(
+                            {
+                                f"contract_{i + 1}": reading
+                                for i, reading in enumerate(value["contract_readings"])
+                            },
+                            indent + 2,
+                        )
+                    )
+            else:
+                rows.append(prefix + ":")
+                rows.extend(_rows(value, indent + 2))
+        elif isinstance(value, (list, tuple)) and value and all(
+            isinstance(item, Mapping) for item in value
+        ):
+            rows.append(" " * indent + str(key) + ":")
+            for index, item in enumerate(value, 1):
+                rows.append(" " * (indent + 2) + f"[{index}]")
+                rows.extend(_rows(item, indent + 4))
         else:
             rows.append(f"{prefix}: {value if value is not None else 'no disponible'}")
     return rows
 
 
 def log_pillar_results(
-    logger, *, evaluation_id, event_id, evaluation_as_of, participants, results,
+    logger,
+    *,
+    evaluation_id,
+    event_id,
+    evaluation_as_of,
+    participants,
+    results,
     enabled_pillars,
+    debug_mode=False,
 ):
     """Summarize enabled scopes after the caller commits persistence."""
     if not logger.isEnabledFor(INFO):
@@ -49,64 +89,25 @@ def log_pillar_results(
         result = results[key]
         diagnostics = result.get("diagnostics") or {}
         summary = {
-            "evaluation_id": evaluation_id,
-            "event_id": event_id,
-            "participants": participants,
-            "evaluation_as_of": evaluation_as_of.isoformat(),
-            "status": result["status"],
-            "reason": result.get("reason")
-            or result.get("status_reason")
-            or diagnostics.get("reason"),
+            "status": result.get("status"),
             "signals": diagnostics.get("signals", {}),
+            "target_minute": result.get(
+                "target_minute", result.get("P1_TARGET_MINUTE")
+            ),
+            "EXECUTIVE_SUMMARY": result.get("EXECUTIVE_SUMMARY"),
         }
-        details = diagnostics.get("details")
-        if isinstance(details, Mapping):
-            details = [details]
-        if isinstance(details, list):
-            reasons = [
-                item["reason"] for item in details
-                if isinstance(item, Mapping) and item.get("reason")
-            ]
-            if reasons:
-                summary["diagnostic_reasons"] = dict(Counter(reasons))
-        if key in {"pillar_1", "pillar_1_totals"}:
-            summary["final"] = {
-                field: value
-                for field, value in _scalars(result).items()
-                if field not in {"status", "reason", "status_reason"}
-            }
-            raw = result.get("raw") or {}
-            summary["aggregation"] = {
-                **_scalars(raw), "final": raw.get("final", {})
-            }
-        else:
-            summary["target_minute"] = result.get("target_minute")
-            summary["execution_status"] = result.get("execution_status")
-            summary["selection"] = _scalars(result.get("selection") or {})
-            summary["coverage"] = dict(
-                Counter(item["status"] for item in result.get("coverage", []))
-            )
-            markets = {}
-            for scope, profile in result.get("analysis", {}).items():
-                markets[scope] = {
-                    **_scalars(profile),
-                    "market": _scalars(profile.get("market") or {}),
-                }
-                if "current_price_vector" in profile:
-                    markets[scope]["current_price_vector"] = profile[
-                        "current_price_vector"
-                    ]
-            for signal in result.get("signals", []):
-                evidence = signal.get("evidence") or {}
-                scope = evidence.get("scope", "signals")
-                name = evidence.get("metric", signal["key"])
-                markets.setdefault(scope, {})[name] = {
-                    "status": signal["status"],
-                    "value": signal.get("value"),
-                    "reason": signal.get("reason"),
-                }
-            summary["results_by_market"] = markets
+        if debug_mode and result.get("INTERPRETATION"):
+            summary["INTERPRETATION_DETAIL"] = result["INTERPRETATION"]
+        header = (
+            f"🏁 {label} RESULT — RESUMEN FINAL"
+            f" | evaluation_id={evaluation_id}"
+            f" | event_id={event_id}"
+            f" | participants={participants}"
+            f" | evaluation_as_of={evaluation_as_of.isoformat()}"
+        )
         logger.info(
-            "🏁 %s RESULT — RESUMEN FINAL\n%s\n%s",
-            label, "\n".join(_rows(summary)), "-" * 72,
+            "%s\n%s\n%s",
+            header,
+            "\n".join(_rows(summary)),
+            "-" * 72,
         )

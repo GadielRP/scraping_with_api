@@ -14,6 +14,136 @@ P1 conserva su clasificación original en `calculation_status` cuando aplica.
 Los diagnostics contienen `signals.total_signals`, `computed_signals`, `blocked_signals`,
 `error_signals` y `reasons`, además de los detalles de cobertura.
 
+## Interpretación oficial
+
+P2–P5 agregan `INTERPRETATION` a su resultado canónico. Sus engines construyen
+la lectura determinista antes de persistirla. El adaptador conserva el bloque
+en `pillar_mining_runs.output_payload`; no lo convierte en nuevas señales ni
+repite sus datos como métricas. No requiere tablas, columnas ni migraciones.
+Los registros anteriores permanecen intactos y pueden no tener este bloque.
+
+- El `status` exterior conserva el estado global del pilar. Las lecturas usan
+  `COMPUTED`, `BLOCKED` o `ERROR`; `state` describe su significado.
+- Las direcciones explícitas, `comparability`, `interpretation_code` y campos contractuales son
+  la información estructurada. `summary` es una plantilla legible en español.
+- `evidence` referencia el análisis original y, cuando corresponde, los inputs
+  y muestras. No duplica RAW, trayectorias completas o poblaciones históricas.
+- P2 presenta `scopes`, periodos, mercados, exchange y comparación entre fuentes.
+  Sus representantes y componentes no cuentan como votos independientes.
+  Un periodo `PARTIAL_STRUCTURE` conserva la dirección de las ramas disponibles
+  cuando coinciden; una divergencia o neutralidad parcial no se oculta como consenso.
+- P3 agrega `period_readings.FT` y `period_readings.1H`, con líneas y direcciones
+  individuales, `books_direction` y `representative_direction`. Reúne lecturas
+  repetidas en varios ámbitos sin recalcular el representante. Si hay varios
+  contratos válidos candidatos, informa `AMBIGUOUS_CANDIDATE` y los conserva en
+  `contract_readings`; no elige arbitrariamente una línea principal.
+  `scopes` y `line_structures` conservan todo el detalle. Líneas distintas no
+  implican conflicto direccional.
+- P4 usa interpretación versión **2** y conserva `series` más resúmenes `contracts`
+  por mercado, periodo, línea y vista. `endpoint_direction` expresa la posición
+  final; `net_move_direction`, el movimiento neto; `final_run_direction`, el tramo
+  final; `path_pattern`, el patrón existente. Una serie estable puede terminar
+  AWAY con movimiento `NO_MOVEMENT` y tramo final nulo. Se retiraron de esta
+  interpretación los campos ambiguos `direction` y `direction_at_checkpoint`.
+  El resumen contractual usa los representantes existentes, indicando fuente y
+  serie de origen. Si hay varias fuentes o selecciones sin un representante
+  conjunto, conserva `source_readings` separados y no fabrica una dirección global.
+- P5 conserva interpretaciones por bookmaker. Un DRAW dominante no es lo mismo
+  que un empate entre las cuentas históricas. Solo P5 expone intensidad aquí.
+
+P2, P3 y P5 mantienen interpretación versión 1; P4 usa versión 2. Los engines
+de P2–P5 registran versión `v4.2` para incluir la síntesis ejecutiva.
+
+## Resumen ejecutivo
+
+Cada resultado nuevo incluye `EXECUTIVE_SUMMARY` junto a `INTERPRETATION`.
+El primero selecciona unas pocas conclusiones que ya existen; no ejecuta fórmulas
+ni produce una predicción adicional. El segundo conserva la lectura detallada
+por contrato, periodo, fuente o serie. Ambos se construyen antes de persistir y
+quedan guardados dentro de `pillar_mining_runs.output_payload`.
+
+- P1 Side resume dirección, intensidad estructural y estado final. P1 Totals
+  mantiene separados el score/dirección/intensidad direccionales y los del
+  composite.
+- P2 presenta FT, 1H (o First Five Innings) y su relación entre periodos; las
+  ramas que sustentan cada lectura provienen de `INTERPRETATION`.
+- P3 presenta FT y 1H por separado, conserva las líneas y deja la dirección
+  conjunta vacía cuando los contratos no son comparables.
+- P4 selecciona los contratos principales de `CHECKPOINT_VIEW`: 1X2, Asian
+  Handicap y Over/Under. Para cada uno conserva endpoint, movimiento neto,
+  tramo final y patrón. Las series completas siguen en `INTERPRETATION`.
+- P5 resume las muestras históricas 1X2 de tiempo completo por bookmaker,
+  incluyendo el tamaño y las cuentas HOME/DRAW/AWAY cuando existen.
+
+La cadena es engine del pilar → interpretación → resumen ejecutivo → persistencia.
+Los periodos de P2/P3 incluyen `source_readings`, agrupado en `books`,
+`exchange` y `book_exchange`. Conserva una copia de cada lectura y contrato,
+con sus líneas, dirección, estado, comparabilidad y motivo. La dirección principal
+continúa siendo la de books; exchange se presenta por separado incluso cuando
+books no tiene datos. En P3 una lectura de bookmaker único conserva su dirección
+y línea sin promoverla a representante ni consenso.
+El adaptador solo guarda ambos bloques. El logger imprime el resumen y, con
+diagnóstico activado, agrega `INTERPRETATION_DETAIL` después. Los resúmenes se
+emiten tras confirmar la transacción y solo para pilares habilitados. Los
+resultados omitidos o fallidos reciben el mismo contrato con su estado actual.
+Los motores P1 son `side_engine_multilayer_v3_2_executive_summary` y
+`p1_totals_directional_vol_separated_v2_6_executive_summary`.
+
+Consulta compacta de una evaluación (reemplazar el identificador):
+
+```sql
+SELECT pillar_id, result_scope, status,
+       output_payload #>> '{EXECUTIVE_SUMMARY,summary}' AS executive_summary,
+       output_payload #>> '{INTERPRETATION,summary}' AS summary,
+       output_payload #>> '{EXECUTIVE_SUMMARY,version}' AS executive_summary_version,
+       output_payload #>> '{INTERPRETATION,version}' AS interpretation_version
+FROM pillar_mining_runs
+WHERE evaluation_id = 'TU_EVALUATION_ID'
+ORDER BY pillar_id, result_scope;
+```
+
+Para recuperar la lectura ejecutiva, seleccionar
+`output_payload -> 'EXECUTIVE_SUMMARY'`. Para auditar el resultado completo,
+seleccionar `output_payload -> 'INTERPRETATION'`. Los resúmenes ejecutivos
+compactos de P3/P4 se pueden consultar así:
+
+```sql
+SELECT pillar_id,
+       CASE pillar_id
+         WHEN 'pillar_3_totals_market_context'
+           THEN output_payload #> '{EXECUTIVE_SUMMARY}'
+         WHEN 'pillar_4_temporal_market_drift'
+           THEN output_payload #> '{EXECUTIVE_SUMMARY}'
+       END AS executive_summary
+FROM pillar_mining_runs
+WHERE evaluation_id = 'TU_EVALUATION_ID'
+  AND pillar_id IN ('pillar_3_totals_market_context', 'pillar_4_temporal_market_drift');
+```
+
+Para exportar el detalle de las series P4 sin sus inputs grandes:
+
+```sql
+SELECT x.key AS series_id,
+       x.value ->> 'status' AS status,
+       x.value ->> 'state' AS state,
+       x.value ->> 'endpoint_direction' AS endpoint_direction,
+       x.value ->> 'net_move_direction' AS net_move_direction,
+       x.value ->> 'final_run_direction' AS final_run_direction,
+       x.value ->> 'path_pattern' AS path_pattern,
+       x.value ->> 'summary' AS summary
+FROM pillar_mining_runs r
+CROSS JOIN LATERAL jsonb_each(r.output_payload #> '{INTERPRETATION,series}') x
+WHERE r.evaluation_id = 'TU_EVALUATION_ID'
+  AND r.pillar_id = 'pillar_4_temporal_market_drift'
+ORDER BY x.key;
+```
+
+Los logs `🏁` muestran, en orden, estado, conteos de señales, minuto objetivo y
+`EXECUTIVE_SUMMARY`. Con diagnóstico activado añaden `INTERPRETATION_DETAIL`.
+Por defecto no enumeran ámbitos, contratos, series, métricas analíticas ni
+referencias de auditoría. Se emiten después del commit y solamente para pilares
+habilitados.
+
 ## Preparación y frontera de conocimiento
 
 1. Cargar trayectorias y contexto operativo; completar los enriquecimientos HTTP de P1.

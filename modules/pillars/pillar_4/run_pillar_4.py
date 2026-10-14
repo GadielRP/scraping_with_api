@@ -7,6 +7,7 @@ from modules.pillars.evaluation_contracts import EvaluationResult, SignalResult
 from modules.pillars.market_evaluation import prepare_event_markets, contract_key
 from .periods import P4_PILLAR_ID
 from .signal_engine import ENGINE_VERSION, build_p4_series
+from .trajectory_engine import build_p4_executive_summary, interpret_p4_result
 from .trajectory_policy import extract_p4_trajectory_inputs
 from .diagnostics import log_trajectory_inputs, log_trajectory_diagnostics
 from .provenance import resolve_series_contracts
@@ -256,4 +257,8 @@ def calculate_pillar_4(
     }
     if debug_mode:
         log_trajectory_diagnostics(logger, result)
+    result["INTERPRETATION"] = interpret_p4_result(result)
+    result["EXECUTIVE_SUMMARY"] = build_p4_executive_summary(
+        result, result["INTERPRETATION"]
+    )
     return result

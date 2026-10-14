@@ -13,6 +13,14 @@ from .models import (
     TotalsExchangeSnapshot,
 )
 from .relations import context_direction, direction, relation
+from modules.pillars.evaluation_contracts import (
+    INTERPRETATION_VERSION,
+    EXECUTIVE_SUMMARY_VERSION,
+    interpretation_reading,
+    interpretation_failure_reason,
+    project_executive_sources,
+    executive_source_sentences,
+)
 from .signal_models import (
     BookOUReading,
     BookRelationSignal,
@@ -26,7 +34,7 @@ from .signal_models import (
     RepresentativeSignal,
 )
 
-ENGINE_VERSION = "p3-signal-profile-v3"
+ENGINE_VERSION = "p3-signal-profile-v4.2-executive-summary"
 
 logger = logging.getLogger(__name__)
 
@@ -614,4 +622,454 @@ def build_p3_signal_profile(
     )
 
 
-__all__ = ["ENGINE_VERSION", "build_p3_signal_profile"]
+def _interpret_ou_pair(left, right, representative, *, kind="books", evidence=None):
+    left, right = left or {}, right or {}
+    available = [
+        reading for reading in (left, right) if reading.get("DIRECTION") is not None
+    ]
+    fields = {
+        "left_line": left.get("LINE"),
+        "right_line": right.get("LINE"),
+        "left_direction": left.get("DIRECTION"),
+        "right_direction": right.get("DIRECTION"),
+    }
+    if not available:
+        return interpretation_reading(
+            "MISSING_INPUT",
+            status="BLOCKED",
+            reason="MISSING_INPUT",
+            comparability="UNAVAILABLE",
+            evidence=evidence,
+            **fields
+        )
+    if len(available) == 1:
+        return interpretation_reading(
+            "SINGLE_BOOK_READING" if kind == "books" else "SINGLE_EXCHANGE_READING",
+            direction=available[0]["DIRECTION"],
+            comparability="PARTIAL",
+            evidence=evidence,
+            **fields
+        )
+    if left.get("LINE") != right.get("LINE"):
+        gap = (
+            None
+            if left.get("LINE") is None or right.get("LINE") is None
+            else abs(left["LINE"] - right["LINE"])
+        )
+        return interpretation_reading(
+            "DIFFERENT_LINE_STRUCTURE",
+            status="BLOCKED",
+            reason="INCOMPATIBLE_CONTRACT",
+            comparability="INCOMPARABLE_LINE",
+            line_gap=gap,
+            evidence=evidence,
+            **fields
+        )
+    if representative.get("EDGE") is None:
+        return interpretation_reading(
+            "INCOMPARABLE_CONTRACT",
+            status="BLOCKED",
+            reason="INCOMPATIBLE_CONTRACT",
+            comparability="INCOMPARABLE_CONTRACT",
+            evidence=evidence,
+            **fields
+        )
+    a, b = left["DIRECTION"], right["DIRECTION"]
+    if a == b == "NEUTRAL":
+        state = "NEUTRAL_STRUCTURE"
+    elif "NEUTRAL" in (a, b):
+        state = "PARTIAL_DIRECTIONAL_AGREEMENT"
+    elif a == b:
+        state = "BOOK_CONSENSUS" if kind == "books" else "BACK_LAY_CONSENSUS"
+    else:
+        state = "BOOK_DISAGREEMENT" if kind == "books" else "BACK_LAY_DIVERGENCE"
+    return interpretation_reading(
+        state,
+        direction=representative.get("DIRECTION"),
+        line=left.get("LINE"),
+        evidence=evidence,
+        **fields
+    )
+
+
+def _canonical_ou_periods(scopes, analyses):
+    """Index existing book readings once per period, retaining distinct contracts."""
+    periods = {}
+    for scope, profile in scopes.items():
+        for period, values in profile["periods"].items():
+            entries = periods.setdefault(period, {})
+            books = values["bookmakers"]
+            pin, bet = books["PINNACLE"], books["BET365"]
+            if not any(r["status"] == "COMPUTED" for r in (pin, bet)):
+                continue
+            representative = values["representative"]
+            identity = (
+                pin["line"],
+                pin["direction"],
+                bet["line"],
+                bet["direction"],
+                representative["direction"],
+                values["books"]["state"],
+            )
+            if identity in entries:
+                entries[identity]["evidence"]["scope_refs"].append(scope)
+                continue
+            entries[identity] = {
+                **values["books"],
+                "pinnacle_line": pin["line"],
+                "pinnacle_direction": pin["direction"],
+                "bet365_line": bet["line"],
+                "bet365_direction": bet["direction"],
+                "books_direction": values["books"]["direction"],
+                "representative_direction": representative["direction"],
+                "evidence": {"scope_refs": [scope]},
+            }
+    readings = {}
+    for period, indexed in periods.items():
+        contracts = list(indexed.values())
+        choices = {
+            book: {
+                (r[f"{book}_line"], r[f"{book}_direction"])
+                for r in contracts
+                if r[f"{book}_direction"] is not None
+            }
+            for book in ("pinnacle", "bet365")
+        }
+        refs = [ref for r in contracts for ref in r["evidence"]["scope_refs"]]
+        if any(len(values) > 1 for values in choices.values()):
+            reading = interpretation_reading(
+                "AMBIGUOUS_CANDIDATE",
+                status="BLOCKED",
+                reason="AMBIGUOUS_CANDIDATE",
+                comparability="PARTIAL",
+                books_direction=None,
+                representative_direction=None,
+            )
+        elif len(contracts) == 1:
+            reading = dict(contracts[0])
+        else:
+            pin_line, pin_direction = next(iter(choices["pinnacle"]), (None, None))
+            bet_line, bet_direction = next(iter(choices["bet365"]), (None, None))
+            # A representative must already exist on the same contract in analysis.
+            representative = next(
+                (
+                    analyses[r["evidence"]["scope_refs"][0]][period]["REPRESENTATIVE"]
+                    for r in contracts
+                    if r["pinnacle_line"] == pin_line
+                    and r["bet365_line"] == bet_line
+                    and r["representative_direction"] is not None
+                ),
+                {},
+            )
+            reading = _interpret_ou_pair(
+                {"LINE": pin_line, "DIRECTION": pin_direction},
+                {"LINE": bet_line, "DIRECTION": bet_direction},
+                representative,
+            )
+            reading.update(
+                pinnacle_line=pin_line,
+                pinnacle_direction=pin_direction,
+                bet365_line=bet_line,
+                bet365_direction=bet_direction,
+                books_direction=reading["direction"],
+                representative_direction=representative.get("DIRECTION"),
+            )
+        reading["evidence"] = {"scope_refs": refs}
+        if any(len(values) > 1 for values in choices.values()):
+            reading["contract_readings"] = contracts
+        readings[period] = reading
+    return readings
+
+
+def interpret_p3_result(result):
+    """Retain the line structure, including lines split into analytical lanes."""
+    scopes, structures = {}, {}
+    for scope, profile in result["analysis"].items():
+        periods = {}
+        for period in ("FT", "1H"):
+            values = profile.get(period)
+            if not values:
+                continue
+            pin, b365 = values["PINNACLE"], values["BET365"]
+            representative = values["REPRESENTATIVE"]
+            books = _interpret_ou_pair(
+                pin,
+                b365,
+                representative,
+                evidence={"analysis_ref": f"analysis.{scope}.{period}"},
+            )
+            individual = {}
+            for name, reading in (("PINNACLE", pin), ("BET365", b365)):
+                valid = reading.get("DIRECTION") is not None
+                individual[name] = interpretation_reading(
+                    "BOOK_READING" if valid else "MISSING_INPUT",
+                    direction=reading.get("DIRECTION"),
+                    status="COMPUTED" if valid else "BLOCKED",
+                    reason=None if valid else "MISSING_INPUT",
+                    comparability="PARTIAL" if valid else "UNAVAILABLE",
+                    line=reading.get("LINE"),
+                    evidence={"analysis_ref": f"analysis.{scope}.{period}.{name}"},
+                )
+                if not valid:
+                    reason = interpretation_failure_reason(
+                        result, scope, f"{period}.{name}"
+                    )
+                    state = (
+                        "INCOMPARABLE_CONTRACT"
+                        if reason == "INCOMPATIBLE_CONTRACT"
+                        else reason
+                    )
+                    individual[name] = interpretation_reading(
+                        state,
+                        reason=reason,
+                        status="ERROR" if reason == "CALCULATION_ERROR" else "BLOCKED",
+                        comparability="UNAVAILABLE",
+                        line=reading.get("LINE"),
+                        evidence=individual[name]["evidence"],
+                    )
+                if valid:
+                    structure = structures.setdefault(period, {})
+                    structure.setdefault(
+                        (name, reading.get("LINE")),
+                        {
+                            "bookmaker": name,
+                            "line": reading.get("LINE"),
+                            "direction": reading["DIRECTION"],
+                            "analysis_ref": f"analysis.{scope}.{period}.{name}",
+                        },
+                    )
+            exchange_key = "BETFAIR_FT_OU" if period == "FT" else "BETFAIR_1H_OU"
+            exchange_raw = profile.get(exchange_key) or {}
+            back, lay = exchange_raw.get("BACK") or {}, exchange_raw.get("LAY") or {}
+            line = exchange_raw.get("LINE")
+            exchange = _interpret_ou_pair(
+                {**back, "LINE": line},
+                {**lay, "LINE": line},
+                exchange_raw.get("REPRESENTATIVE") or {},
+                kind="exchange",
+                evidence={"analysis_ref": f"analysis.{scope}.{exchange_key}"},
+            )
+            if exchange["direction"] is not None:
+                structures.setdefault(period, {}).setdefault(
+                    ("BETFAIR", line),
+                    {
+                        "bookmaker": "BETFAIR",
+                        "line": line,
+                        "direction": exchange["direction"],
+                        "analysis_ref": f"analysis.{scope}.{exchange_key}",
+                    },
+                )
+            comparison_key = (
+                "BOOK_EXCHANGE_OU" if period == "FT" else "BOOK_EXCHANGE_1H_OU"
+            )
+            comparison_raw = profile.get(comparison_key) or {}
+            exchange_rep = exchange_raw.get("REPRESENTATIVE") or {}
+            book_line = (
+                pin.get("LINE") if representative.get("EDGE") is not None else None
+            )
+            exchange_direction = exchange_rep.get("DIRECTION")
+            book_direction = representative.get("DIRECTION")
+            fields = {
+                "books_line": book_line,
+                "books_direction": book_direction,
+                "exchange_line": line,
+                "exchange_direction": exchange_direction,
+                "relation": comparison_raw.get("RELATION"),
+                "line_gap": comparison_raw.get("LINE_GAP"),
+            }
+            if book_line is not None and line is not None and book_line != line:
+                comparison = interpretation_reading(
+                    "DIFFERENT_LINE_STRUCTURE",
+                    status="BLOCKED",
+                    reason="INCOMPATIBLE_CONTRACT",
+                    comparability="INCOMPARABLE_LINE",
+                    **fields,
+                )
+            elif book_direction is None or exchange_direction is None:
+                comparison = interpretation_reading(
+                    "PARTIAL_STRUCTURE",
+                    status="BLOCKED",
+                    reason="MISSING_INPUT",
+                    comparability="PARTIAL",
+                    **fields,
+                )
+            elif comparison_raw.get("RELATION") is None:
+                comparison = interpretation_reading(
+                    "INCOMPARABLE_CONTRACT",
+                    status="BLOCKED",
+                    reason="INCOMPATIBLE_CONTRACT",
+                    comparability="INCOMPARABLE_CONTRACT",
+                    **fields,
+                )
+            else:
+                a, b = book_direction, exchange_direction
+                state = (
+                    "NEUTRAL_STRUCTURE"
+                    if a == b == "NEUTRAL"
+                    else (
+                        "PARTIAL_DIRECTIONAL_AGREEMENT"
+                        if "NEUTRAL" in (a, b)
+                        else (
+                            "CROSS_SOURCE_CONSENSUS"
+                            if a == b
+                            else "CROSS_SOURCE_CONFLICT"
+                        )
+                    )
+                )
+                comparison = interpretation_reading(
+                    state, direction=a if a == b else None, **fields
+                )
+            comparison["evidence"] = {
+                "analysis_ref": f"analysis.{scope}.{comparison_key}"
+            }
+            periods[period] = {
+                "bookmakers": individual,
+                "books": books,
+                "exchange": exchange,
+                "representative": interpretation_reading(
+                    (
+                        "REPRESENTATIVE_AVAILABLE"
+                        if representative.get("EDGE") is not None
+                        else "MISSING_INPUT"
+                    ),
+                    direction=book_direction,
+                    status=(
+                        "COMPUTED"
+                        if representative.get("EDGE") is not None
+                        else "BLOCKED"
+                    ),
+                    reason=(
+                        None
+                        if representative.get("EDGE") is not None
+                        else "MISSING_INPUT"
+                    ),
+                    line=book_line,
+                    evidence={
+                        "analysis_ref": f"analysis.{scope}.{period}.REPRESENTATIVE"
+                    },
+                ),
+                "book_exchange": comparison,
+            }
+        cross = profile.get("FT_1H") or {}
+        ft_direction = ((profile.get("FT") or {}).get("REPRESENTATIVE") or {}).get(
+            "DIRECTION"
+        )
+        first_half_direction = (
+            (profile.get("1H") or {}).get("REPRESENTATIVE") or {}
+        ).get("DIRECTION")
+        cross_state = (
+            "PARTIAL_STRUCTURE"
+            if not cross
+            else (
+                "CROSS_PERIOD_CONSENSUS"
+                if ft_direction == first_half_direction
+                else "CROSS_PERIOD_DIFFERENCE"
+            )
+        )
+        scopes[scope] = {
+            "periods": periods,
+            "cross_period": interpretation_reading(
+                cross_state,
+                status="COMPUTED" if cross else "BLOCKED",
+                reason=None if cross else "MISSING_INPUT",
+                comparability="PARTIAL",
+                full_time_direction=ft_direction,
+                first_half_direction=first_half_direction,
+                relation=cross.get("FT_1H_OU_RELATION"),
+                evidence={"analysis_ref": f"analysis.{scope}.FT_1H"},
+            ),
+        }
+    line_structures = {}
+    for period, readings in structures.items():
+        values = list(readings.values())
+        lines = {reading["line"] for reading in values}
+        if len(lines) <= 1:
+            continue
+        line_structures[period] = interpretation_reading(
+            "DIFFERENT_LINE_STRUCTURE",
+            comparability="INCOMPARABLE_LINE",
+            readings=values,
+            representative_direction=None,
+        )
+    return {
+        "version": INTERPRETATION_VERSION,
+        "status": result["status"],
+        "period_readings": _canonical_ou_periods(scopes, result["analysis"]),
+        "scopes": scopes,
+        "line_structures": line_structures,
+        "reasons": result["diagnostics"]["signals"]["reasons"],
+        "summary": "Lectura O/U por periodo y línea; no hay una dirección global agregada.",
+    }
+
+
+def build_p3_executive_summary(result, interpretation=None):
+    """Expose each canonical O/U period reading without merging unlike lines."""
+    interpretation = interpretation or result.get("INTERPRETATION") or interpret_p3_result(result)
+    canonical_periods = interpretation.get("period_readings") or {}
+    period_names = {"FT": "full_time", "1H": "first_half"}
+    readings = {}
+    sentences = []
+    for period, name in period_names.items():
+        source = canonical_periods.get(period)
+        available_periods = [
+            scope["periods"][period]
+            for scope in interpretation.get("scopes", {}).values()
+            if period in scope.get("periods", {})
+        ]
+        if source is None and not available_periods:
+            continue
+        source = source or {}
+        direction = source.get("representative_direction")
+        if direction is None and source.get("status") == "COMPUTED":
+            direction = source.get("direction")
+        line = source.get("line")
+        if line is None and source.get("status") == "COMPUTED":
+            available_lines = {source.get(key) for key in ("pinnacle_line", "bet365_line")} - {None}
+            if len(available_lines) == 1:
+                line = available_lines.pop()
+        reading = {
+            "line": line,
+            "direction": direction,
+            "state": source.get("state"),
+            "status": source.get("status"),
+            "pinnacle_line": source.get("pinnacle_line"),
+            "pinnacle_direction": source.get("pinnacle_direction"),
+            "bet365_line": source.get("bet365_line"),
+            "bet365_direction": source.get("bet365_direction"),
+            "source_readings": project_executive_sources(
+                (role, "Over/Under", available[role])
+                for available in available_periods
+                for role in ("books", "exchange", "book_exchange")
+            ),
+        }
+        readings[name] = reading
+        line = reading["line"]
+        if line is None and reading["pinnacle_line"] == reading["bet365_line"]:
+            line = reading["pinnacle_line"]
+        label = f"{period} {line}" if line is not None else period
+        if reading["state"] == "DIFFERENT_LINE_STRUCTURE":
+            sentences.append(
+                f"En {period}, las líneas {reading['pinnacle_line']} y "
+                f"{reading['bet365_line']} son distintas y no admiten una dirección conjunta."
+            )
+        elif direction is not None:
+            sentences.append(f"{label} presenta orientación {direction}.")
+        elif reading["state"] == "AMBIGUOUS_CANDIDATE":
+            sentences.append(f"{period} conserva candidatos O/U ambiguos.")
+        sentences.extend(executive_source_sentences(period, reading["source_readings"]))
+
+    return {
+        "version": EXECUTIVE_SUMMARY_VERSION,
+        "status": result.get("status"),
+        **readings,
+        "summary": " ".join(sentences)
+        or "P3 no dispone de una lectura ejecutiva calculada para estos periodos.",
+    }
+
+
+__all__ = [
+    "ENGINE_VERSION",
+    "build_p3_executive_summary",
+    "build_p3_signal_profile",
+    "interpret_p3_result",
+]
