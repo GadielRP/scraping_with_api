@@ -85,7 +85,7 @@ def _log_example(logger, event_id, series_id, series, inputs):
         logger.info(
             "P4 example leg | event=%s | leg=%s | delta=end-start=%s-%s=%s | "
             "elapsed=(end_time-start_time)/60=%s min | velocity=delta/elapsed=%s | "
-            "contiguous=%s | direction=%s | move_share=abs(delta)/path=%s",
+            "contiguous=%s | direction=%s | move_share=abs(delta)/path= %s",
             event_id,
             leg["ORDINAL"],
             end["value"],
@@ -100,7 +100,7 @@ def _log_example(logger, event_id, series_id, series, inputs):
     features, signals = series["raw_temporal_features"], series["structural_signals"]
     logger.info(
         "P4 example path | event=%s | net=last-first=%s-%s=%s | "
-        "path=sum(abs(contiguous deltas))=%s | efficiency=abs(net)/path=%s | "
+        "path=sum(abs(contiguous deltas))=%s | efficiency=abs(net)/path= %s | "
         "velocity=net/elapsed=%s | gap=%s | pattern=%s | net_direction=%s | final_run=%s",
         event_id,
         inputs[refs[-1]]["value"],
@@ -139,8 +139,8 @@ def _log_example(logger, event_id, series_id, series, inputs):
     )
     for window in features["WINDOWS"]:
         logger.info(
-            "P4 example window | event=%s | window=%s | net=%s | path=%s | "
-            "share=window_path/total_path=%s | pattern=%s",
+            "P4 example window | event=%s | window=%s | net=%s | path= %s | "
+            "share=window_path/total_path= %s | pattern=%s",
             event_id,
             window["WINDOW"],
             window["WINDOW_NET_MOVE_RAW"],

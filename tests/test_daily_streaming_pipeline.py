@@ -191,6 +191,7 @@ def test_batch_and_final_logs_include_filters_and_rejected_tail_without_more_wri
 
     monkeypatch.setattr(settings, "SOFASCORE", replace(
         settings.SOFASCORE, round_filter_enabled=True,
+        allowed_rounds=frozenset({"regular-season"}),
         filters=replace(
             settings.SOFASCORE.filters, exclude_categories=True, exclude_competitions=True,
             excluded_categories=frozenset({("football", "Filtered Category")}),

@@ -92,7 +92,7 @@ class SofaScoreDebugResponseWriter:
 
         logger.info(
             "Saved raw SofaScore response event_id=%s source_event_id=%s "
-            "minutes_until_start=%s path=%s",
+            "minutes_until_start=%s path= %s",
             event_id,
             source_event_id,
             minutes_until_start,

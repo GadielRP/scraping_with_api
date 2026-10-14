@@ -65,5 +65,10 @@ def run_daily_discovery_job() -> dict | None:
         )
         result = discover_events_for_date(date=target, sports=pending, run_slot=slot)
         for name, count in result.items():
-            stats[name] = stats.get(name, 0) + count
+            if isinstance(count, dict):
+                reasons = stats.setdefault(name, {})
+                for reason, total in count.items():
+                    reasons[reason] = reasons.get(reason, 0) + total
+            else:
+                stats[name] = stats.get(name, 0) + count
     return stats or None

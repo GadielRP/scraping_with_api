@@ -117,7 +117,7 @@ class OddspapiFixtureResponseDebugWriter:
 
         logger.info(
             "Captured Oddspapi fixture with incomplete participant data "
-            "fixture_id=%s issues=%s debug_path=%s",
+            "fixture_id=%s issues=%s debug_path= %s",
             payload.get("fixtureId"),
             ",".join(issues),
             path,

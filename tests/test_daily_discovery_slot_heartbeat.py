@@ -103,6 +103,53 @@ def test_expired_failures_are_not_replayed(progress, monkeypatch):
     assert [(call["date"], call["run_slot"]) for call in calls] == [("2026-10-06", "anticipada")]
 
 
+def test_heartbeat_aggregates_counters_and_filter_reasons_across_passes(progress, monkeypatch):
+    set_now(monkeypatch, "2026-10-06T08:07")
+    results = [
+        {
+            "events_persisted": 3,
+            "events_filtered": 2,
+            "event_filter_reasons": {"round_not_allowed": 2},
+            "source_filter_reasons": {"round_not_allowed": 2},
+            "write_filter_reasons": {},
+            "tournament_filter_reasons": {"excluded_category": 1},
+            "tournament_skip_reasons": {"duplicate": 4},
+        },
+        {
+            "events_persisted": 5,
+            "events_filtered": 4,
+            "event_filter_reasons": {"round_not_allowed": 1, "tennis_ranking_excluded": 3},
+            "source_filter_reasons": {"tennis_ranking_excluded": 3},
+            "write_filter_reasons": {"round_not_allowed": 1},
+            "tournament_filter_reasons": {},
+            "tournament_skip_reasons": {"duplicate": 2},
+        },
+    ]
+    calls = []
+
+    def discover(date, sports, run_slot):
+        calls.append((date, run_slot))
+        for sport in sports:
+            DailyDiscoveryRepository.update_sport_status(date, run_slot, sport, "completed")
+        return results[len(calls) - 1]
+
+    monkeypatch.setattr(daily_job, "discover_events_for_date", discover)
+
+    assert daily_job.run_daily_discovery_job() == {
+        "events_persisted": 8,
+        "events_filtered": 6,
+        "event_filter_reasons": {"round_not_allowed": 3, "tennis_ranking_excluded": 3},
+        "source_filter_reasons": {"round_not_allowed": 2, "tennis_ranking_excluded": 3},
+        "write_filter_reasons": {"round_not_allowed": 1},
+        "tournament_filter_reasons": {"excluded_category": 1},
+        "tournament_skip_reasons": {"duplicate": 6},
+    }
+    assert calls == [("2026-10-06", "anticipada"), ("2026-10-06", "actualizacion")]
+    assert results[0]["event_filter_reasons"] == {"round_not_allowed": 2}
+    assert results[0]["write_filter_reasons"] == {}
+    assert daily_job.run_daily_discovery_job() is None
+
+
 def test_calendar_has_two_starts_and_thirty_minute_retries():
     import schedule
     from infrastructure.scheduler.schedules import configure_calendar

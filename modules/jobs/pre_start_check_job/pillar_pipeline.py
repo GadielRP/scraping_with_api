@@ -186,19 +186,19 @@ def _save_pillar_debug_snapshots(
                 if saved_workbook_path != workbook_path:
                     logger.warning(
                         "Odds trajectory debug workbook target was locked; saved alternate file "
-                        "event_id=%s path=%s",
+                        "event_id=%s path= %s",
                         event_id,
                         saved_workbook_path,
                     )
                 else:
                     logger.info(
-                        "Odds trajectory debug workbook saved event_id=%s path=%s",
+                        "Odds trajectory debug workbook saved event_id=%s path= %s",
                         event_id,
                         saved_workbook_path,
                     )
             except Exception as exc:
                 logger.exception(
-                    "Failed to save odds trajectory debug workbook event_id=%s path=%s exception_class=%s: %s",
+                    "Failed to save odds trajectory debug workbook event_id=%s path= %s exception_class=%s: %s",
                     event_id,
                     workbook_path,
                     type(exc).__name__,
@@ -634,6 +634,7 @@ class EventPillarProcessor:
             evaluation_as_of=evaluation_as_of,
             participants=identity.participants_label,
             results=results,
+            enabled_pillars=self.enabled_pillars,
         )
         return {
             "evaluation_id": evaluation_id,

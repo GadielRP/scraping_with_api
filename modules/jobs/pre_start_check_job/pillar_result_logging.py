@@ -36,12 +36,16 @@ def _rows(values, indent=2):
 
 
 def log_pillar_results(
-    logger, *, evaluation_id, event_id, evaluation_as_of, participants, results
+    logger, *, evaluation_id, event_id, evaluation_as_of, participants, results,
+    enabled_pillars,
 ):
-    """Emit one INFO record per scope only after the caller commits persistence."""
+    """Summarize enabled scopes after the caller commits persistence."""
     if not logger.isEnabledFor(INFO):
         return
     for key, label in _SCOPES.items():
+        pillar_key = "pillar_1" if key == "pillar_1_totals" else key
+        if not enabled_pillars.get(pillar_key, True):
+            continue
         result = results[key]
         diagnostics = result.get("diagnostics") or {}
         summary = {
