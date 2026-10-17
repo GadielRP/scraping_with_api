@@ -17,7 +17,7 @@ from modules.pillars.common import (
     calculate_bias,
     clamp,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import CompetitionContext, EventIdentity
 from modules.pillars.score_series import extract_score_for_against
 
 logger = logging.getLogger(__name__)
@@ -209,14 +209,19 @@ def _max_rank_from_standings(standings: Any) -> Optional[int]:
     return max(ranks)
 
 
-def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_mode: bool = False) -> Tuple[int, str]:
+def _resolve_max_rank(
+    streak_analysis: Any,
+    competition_context: CompetitionContext,
+    debug_mode: bool = False,
+) -> Tuple[int, str]:
     """Resolve competition size using the most specific available source."""
-    competition = getattr(event_context, "competition", None)
-    number_of_teams = _coerce_int(getattr(competition, "number_of_teams", None))
+    number_of_teams = _coerce_int(
+        getattr(competition_context, "number_of_teams", None)
+    )
     if debug_mode:
-        _debug_line("Intento 1: number_of_teams de event_context.competition = %s", _fmt(number_of_teams))
+        _debug_line("Intento 1: number_of_teams de competition_context = %s", _fmt(number_of_teams))
     if number_of_teams is not None and number_of_teams > 1:
-        return number_of_teams, "event_context.competition.number_of_teams"
+        return number_of_teams, "competition_context.number_of_teams"
 
     current_standings = getattr(streak_analysis, "current_standings", None)
     if debug_mode:
@@ -224,11 +229,11 @@ def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_m
     if isinstance(current_standings, dict) and len(current_standings) > 1:
         return len(current_standings), "streak_analysis.current_standings.len"
 
-    standings_response = getattr(competition, "standings_response", None)
+    standings_response = getattr(competition_context, "standings_response", None)
     if debug_mode:
         _debug_line("Intento 3: len de standings_response = %s", _fmt(len(standings_response) if isinstance(standings_response, list) else None))
     if isinstance(standings_response, list) and len(standings_response) > 1:
-        return len(standings_response), "event_context.competition.standings_response.len"
+        return len(standings_response), "competition_context.standings_response.len"
 
     max_rank = _max_rank_from_standings(current_standings)
     if debug_mode:
@@ -240,7 +245,7 @@ def _resolve_max_rank(streak_analysis: Any, event_context: EventContext, debug_m
     if debug_mode:
         _debug_line("Intento 5: max_rank de standings_response = %s", _fmt(max_rank))
     if max_rank is not None and max_rank > 1:
-        return max_rank, "event_context.competition.standings_response.max_rank"
+        return max_rank, "competition_context.standings_response.max_rank"
 
     if debug_mode:
         _debug_line("Intento 6: Usando fallback predeterminado = %d", _MAX_RANK_DEFAULT)
@@ -688,13 +693,14 @@ def _determine_status(home_valid_count: int, away_valid_count: int) -> Tuple[str
 
 def calculate_m7_opponent_expectation_engine(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = event_context.event_id
-    participants = event_context.participants_label or ""
-    home_team = event_context.home.name
-    away_team = event_context.away.name
+    event_id = event_identity.event_id
+    participants = event_identity.participants_label or ""
+    home_team = event_identity.home_team_name
+    away_team = event_identity.away_team_name
     home_results = getattr(streak_analysis, "home_team_results", None) or []
     away_results = getattr(streak_analysis, "away_team_results", None) or []
     current_standings = getattr(streak_analysis, "current_standings", None)
@@ -723,7 +729,9 @@ def calculate_m7_opponent_expectation_engine(
 
         _debug_section("Resolución de max_rank (Tamaño de la Liga)")
 
-    max_rank, max_rank_source = _resolve_max_rank(streak_analysis, event_context, debug_mode)
+    max_rank, max_rank_source = _resolve_max_rank(
+        streak_analysis, competition_context, debug_mode
+    )
 
     if debug_mode:
         _debug_line("max_rank final resuelto = %d (fuente: %s)", max_rank, max_rank_source)

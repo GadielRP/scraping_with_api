@@ -15,7 +15,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventIdentity
 from shared.temporal import from_unix_timestamp
 
 logger = logging.getLogger(__name__)
@@ -301,18 +301,18 @@ def _inactive_result(
 
 def calculate_performance_profile(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = event_context.event_id
+    event_id = event_identity.event_id
     participants = _first_text(
-        event_context.participants_label,
+        event_identity.participants_label,
     )
     home_team = _first_text(
-        event_context.home.name,
+        event_identity.home_team_name,
     )
     away_team = _first_text(
-        event_context.away.name,
+        event_identity.away_team_name,
     )
 
     if debug_mode:

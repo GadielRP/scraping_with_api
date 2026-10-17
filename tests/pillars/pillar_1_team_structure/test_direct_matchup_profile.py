@@ -85,7 +85,9 @@ def test_single_h2h_home_win_is_active_but_sample_discounted():
         h2h_matchup_matches_analyzed=1,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.raw["m3_status"] == "ACTIVE"
     assert result.value == pytest.approx(0.16, rel=1e-12, abs=1e-12)
@@ -111,7 +113,9 @@ def test_no_h2h_returns_inactive_neutral():
         h2h_matchup_matches_analyzed=0,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.value == 0.0
     assert result.bias == "NEUTRAL"
@@ -134,7 +138,9 @@ def test_draw_counts_as_half_result():
         h2h_matchup_matches_analyzed=1,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.raw["h2h_home_wins"] == 0
     assert result.raw["h2h_away_wins"] == 0
@@ -156,7 +162,9 @@ def test_away_h2h_advantage_returns_negative_edge():
         h2h_matchup_matches_analyzed=1,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.raw["win_matchup_edge_raw"] == pytest.approx(-1.0, rel=1e-12, abs=1e-12)
     assert result.raw["points_matchup_edge_raw"] == pytest.approx(-0.3333333333333333, rel=1e-12, abs=1e-12)
@@ -176,7 +184,9 @@ def test_five_matches_sample_factor_caps_at_one():
         h2h_matchup_matches_analyzed=5,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.raw["m3_sample_factor"] == pytest.approx(1.0, rel=1e-12, abs=1e-12)
     assert result.raw["m3_sample_confidence"] == "VERY HIGH"
@@ -192,7 +202,9 @@ def test_more_than_five_matches_sample_factor_caps_at_one():
         h2h_matchup_matches_analyzed=6,
     )
 
-    result = calculate_direct_matchup_profile(streak_analysis, _build_event_context())
+    result = calculate_direct_matchup_profile(
+        streak_analysis, _build_event_context().to_identity()
+    )
 
     assert result.raw["m3_sample_factor"] == pytest.approx(1.0, rel=1e-12, abs=1e-12)
     assert result.raw["m3_sample_confidence"] == "VERY HIGH"

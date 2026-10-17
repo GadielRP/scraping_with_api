@@ -14,7 +14,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventIdentity
 from modules.pillars.score_series import extract_score_for_against
 
 logger = logging.getLogger(__name__)
@@ -270,15 +270,15 @@ def _determine_status(
 
 def calculate_structural_drift_engine(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
     debug_mode: bool = False,
 ) -> ModuleResult:
     home_results: List[Dict[str, Any]] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict[str, Any]] = getattr(streak_analysis, "away_team_results", None) or []
-    home_team = event_context.home.name
-    away_team = event_context.away.name
-    event_id = event_context.event_id
-    participants = event_context.participants_label or ""
+    home_team = event_identity.home_team_name
+    away_team = event_identity.away_team_name
+    event_id = event_identity.event_id
+    participants = event_identity.participants_label or ""
 
     if debug_mode:
         _debug_section("Propósito del módulo")

@@ -27,7 +27,9 @@ def test_pillar_1_team_structure_with_captured_style_inputs():
         h2h_matchup_matches=[{"home_score": 2, "away_score": 1}],
         h2h_matchup_matches_analyzed=1,
     )
-    result = calculate_p1_side(analysis, context, debug_mode=True)
+    result = calculate_p1_side(
+        analysis, context.to_identity(), context.competition, debug_mode=True
+    )
     assert result["event_id"] == context.event_id
     assert result["participants"] == context.participants_label
     assert [module["module_id"] for module in result["modules"]] == [f"M{i}" for i in range(1, 8)]

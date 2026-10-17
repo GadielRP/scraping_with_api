@@ -7,7 +7,7 @@ import math
 from typing import Any, Dict, List
 
 from modules.pillars.common import calculate_bias, clamp, classify_strength
-from modules.pillars.context import EventContext
+from modules.pillars.context import CompetitionContext, EventIdentity
 from modules.pillars.evaluation_contracts import EXECUTIVE_SUMMARY_VERSION
 from modules.pillars.pillar_1_team_structure.module_1.base_strength import (
     calculate_base_strength,
@@ -461,7 +461,8 @@ def _aggregate_multilayer_side_engine_v3(module_results):
 
 def calculate_p1_side(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
     """Calculate Pillar 1 - Team Structure Side components for an event.
@@ -469,7 +470,8 @@ def calculate_p1_side(
     Args:
         streak_analysis: A ``MatchupStreakContext`` produced by the streak
             analysis pipeline.
-        event_context: An ``EventContext``.
+        event_identity: Lightweight event details required by P1.
+        competition_context: Competition metadata required by P1.
         debug_mode: True to log extra details.
 
     Returns:
@@ -478,43 +480,47 @@ def calculate_p1_side(
     """
     m1_result = calculate_base_strength(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
+        competition_context=competition_context,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m1_result))
     m2_result = calculate_performance_profile(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m2_result))
     m3_result = calculate_direct_matchup_profile(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m3_result))
     m4_result = calculate_quality_adjusted_immediate_state_engine(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
+        competition_context=competition_context,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m4_result))
     m5_result = calculate_contextual_competitive_cost_engine(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
+        competition_context=competition_context,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m5_result))
     m6_result = calculate_structural_drift_engine(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m6_result))
     m7_result = calculate_m7_opponent_expectation_engine(
         streak_analysis,
-        event_context=event_context,
+        event_identity=event_identity,
+        competition_context=competition_context,
         debug_mode=debug_mode,
     )
     record_calculation("side_module", result=_serialize_module_result(m7_result))
@@ -533,8 +539,8 @@ def calculate_p1_side(
 
     if debug_mode:
         _debug_section("INICIO P1 SIDE MULTILAYER AGGREGATION")
-        _debug_line("Event ID: %s", _fmt(getattr(m1_result, "event_id", getattr(event_context, "event_id", 0))))
-        _debug_line("Participantes: %s", _fmt(getattr(m1_result, "participants", getattr(event_context, "participants_label", ""))))
+        _debug_line("Event ID: %s", _fmt(getattr(m1_result, "event_id", event_identity.event_id)))
+        _debug_line("Participantes: %s", _fmt(getattr(m1_result, "participants", event_identity.participants_label)))
         _debug_line("Configuración Global / Constantes:")
         _debug_line("  _ENGINE_VERSION: %s", _fmt(_ENGINE_VERSION))
         _debug_line("  _M4_CONTEXT_ADJ_MAX: %s", _fmt(_M4_CONTEXT_ADJ_MAX))
@@ -665,8 +671,9 @@ def calculate_p1_side(
         ],
         "value": pillar_value,
         "raw": {
-            "event_context_present": True,
-            "context_status": event_context.context_status,
+            "event_identity_present": True,
+            "competition_context_present": True,
+            "context_status": event_identity.context_status,
             "engine_version": aggregation_raw["engine_version"],
             "aggregation_mode": aggregation_raw["aggregation_mode"],
             "layer_a": aggregation_raw["layer_a"],

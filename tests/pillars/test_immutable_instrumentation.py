@@ -183,7 +183,10 @@ def totals_streak():
 def test_real_totals_composite_can_be_recovered_continuously():
     with capture_calculations() as trace:
         with calculation_scope("totals"):
-            output = calculate_p1_totals(totals_streak(), _event_context())
+            event = _event_context()
+            output = calculate_p1_totals(
+                totals_streak(), event.to_identity(), event.competition
+            )
     raw = asdict(output)
     run = P1TotalsMiningAdapter().build(_event_context(), raw)
     metrics = {m.name: m.value for m in run.units[0].metrics}
@@ -222,7 +225,10 @@ def test_totals_preserves_completed_components_when_a_later_stage_aborts(monkeyp
     monkeypatch.setattr(totals, "_calculate_league_trend_deltas", lambda *args: {})
     with capture_calculations() as traces:
         with calculation_scope("totals"):
-            output = calculate_p1_totals(totals_streak(), _event_context())
+            event = _event_context()
+            output = calculate_p1_totals(
+                totals_streak(), event.to_identity(), event.competition
+            )
 
     assert output is None
     steps = {step["operation"]: step for step in traces["totals"]}

@@ -17,7 +17,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import EventIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -377,14 +377,14 @@ def _build_inactive_result(
 
 def calculate_direct_matchup_profile(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
     debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M3 - Matchup Engine for an event."""
-    home_team = event_context.home.name
-    away_team = event_context.away.name
-    participants = event_context.participants_label
-    event_id = event_context.event_id
+    home_team = event_identity.home_team_name
+    away_team = event_identity.away_team_name
+    participants = event_identity.participants_label
+    event_id = event_identity.event_id
     h2h_matchup_matches = getattr(streak_analysis, "h2h_matchup_matches", []) or []
     analyzed_total_h2h = getattr(streak_analysis, "h2h_matchup_matches_analyzed", None)
 

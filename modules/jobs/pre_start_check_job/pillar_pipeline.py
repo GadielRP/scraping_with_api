@@ -56,6 +56,9 @@ from modules.pillars.competition_metadata_resolver import (
 from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
+from modules.pillars.pillar_1_team_structure.competition_context_resolver import (
+    resolve_p1_competition_context,
+)
 from modules.pillars.pillar_1_team_structure.side import (
     build_p1_side_executive_summary,
     calculate_p1_side,
@@ -166,14 +169,15 @@ def _write_debug_json(filepath: Path, payload: Any) -> None:
 
 def _save_pillar_debug_snapshots(
     *,
-    event_context: Any,
+    event_identity: Any,
+    competition_context: Any,
     odds_trajectory_context: Any,
     streak_analysis: Any = None,
     competition_slug: str | None = None,
 ) -> None:
     try:
-        event_id = getattr(event_context, "event_id", "unknown_event")
-        participants = getattr(event_context, "participants_label", "unknown_matchup")
+        event_id = getattr(event_identity, "event_id", "unknown_event")
+        participants = getattr(event_identity, "participants_label", "unknown_matchup")
 
         safe_participants = _safe_debug_name(participants)
         competition_folder = (
@@ -183,13 +187,18 @@ def _save_pillar_debug_snapshots(
         debug_dir = (
             Path("debug")
             / "pillar_pipeline_objects"
-            / sport_folder_name(getattr(event_context, "sport", None))
+            / sport_folder_name(getattr(event_identity, "sport", None))
             / competition_folder
             / f"{event_id}_{safe_participants}"
         )
         debug_dir.mkdir(parents=True, exist_ok=True)
 
-        _write_debug_json(debug_dir / f"{event_id}_event_context.json", event_context)
+        _write_debug_json(debug_dir / f"{event_id}_event_identity.json", event_identity)
+        if competition_context is not None:
+            _write_debug_json(
+                debug_dir / f"{event_id}_competition_context.json",
+                competition_context,
+            )
         if odds_trajectory_context is not None:
             _write_debug_json(
                 debug_dir / f"{event_id}_odds_trajectory_context.json",
@@ -201,7 +210,7 @@ def _save_pillar_debug_snapshots(
                     export_odds_trajectory_context_xlsx(
                         odds_trajectory_context,
                         workbook_path,
-                        event_context=event_context,
+                        event_context=event_identity,
                     )
                     or workbook_path
                 )
@@ -227,11 +236,7 @@ def _save_pillar_debug_snapshots(
                     exc,
                 )
 
-        resolved_streak = (
-            streak_analysis
-            if streak_analysis is not None
-            else getattr(event_context, "streak_analysis", None)
-        )
+        resolved_streak = streak_analysis
         if resolved_streak is not None:
             _write_debug_json(
                 debug_dir / f"{event_id}_streak_analysis.json", resolved_streak
@@ -317,6 +322,9 @@ class EventPillarProcessor:
                 apply_competition_metadata_resolution(
                     context, resolve_competition_metadata(context)
                 )
+            context.competition = resolve_p1_competition_context(
+                context.to_identity(), context.competition
+            )
             streak, _ = resolve_matchup_streak_analysis(
                 context, debug_mode=self.debug_mode
             )
@@ -328,7 +336,15 @@ class EventPillarProcessor:
             )
             return {"error_class": type(exc).__name__, "message": str(exc)}
 
-    def _calculate_p1(self, context, skipped, preparation_error, traces):
+    def _calculate_p1(
+        self,
+        event_identity,
+        competition_context,
+        streak_analysis,
+        skipped,
+        preparation_error,
+        traces,
+    ):
         outputs = {}
         for scope, calculator in (
             ("side", calculate_p1_side),
@@ -341,7 +357,7 @@ class EventPillarProcessor:
                 result = _p1_unavailable(
                     "ERROR", "CONTEXT_PREPARATION_ERROR", **preparation_error
                 )
-            elif context.streak_analysis is None:
+            elif streak_analysis is None:
                 result = _p1_unavailable(
                     "INSUFFICIENT_DATA", "MISSING_INPUT", missing=["streak_analysis"]
                 )
@@ -349,8 +365,9 @@ class EventPillarProcessor:
                 try:
                     with calculation_scope(trace_key):
                         native = calculator(
-                            context.streak_analysis,
-                            event_context=context,
+                            streak_analysis,
+                            event_identity=event_identity,
+                            competition_context=competition_context,
                             debug_mode=self.debug_mode,
                         )
                     if native is None:
@@ -390,7 +407,9 @@ class EventPillarProcessor:
                             ]
                 except Exception as exc:
                     logger.exception(
-                        "P1 %s calculation failed event_id=%s", scope, context.event_id
+                        "P1 %s calculation failed event_id=%s",
+                        scope,
+                        event_identity.event_id,
                     )
                     result = _p1_unavailable(
                         "ERROR",
@@ -509,16 +528,10 @@ class EventPillarProcessor:
             if prepared_p5 is not None:
                 prepared_p5 = replace(prepared_p5, selection=selected)
             # Serialize shared material inputs once, before calculations can release their buffers.
-            p1_context = {
-                f.name: getattr(event_context, f.name)
-                for f in fields(event_context)
-                if f.name
-                not in {
-                    "odds_trajectory",
-                    "odds_trajectory_context",
-                    "ft_1x2_odds_trajectory_context",
-                    "dual_report",
-                }
+            p1_inputs = {
+                "event_identity": identity,
+                "competition_context": event_context.competition,
+                "streak_analysis": event_context.streak_analysis,
             }
             snapshot = EvaluationSnapshot(
                 evaluation_id,
@@ -527,7 +540,7 @@ class EventPillarProcessor:
                 context=to_json_value(identity),
                 inputs=to_json_value(
                     {
-                        "p1": p1_context,
+                        "p1": p1_inputs,
                         "odds_observations": raw_odds,
                         "odds_selection": selection,
                         "odds_availability": odds.availability_diagnostics,
@@ -545,7 +558,12 @@ class EventPillarProcessor:
             )
             with capture_calculations() as traces:
                 p1 = self._calculate_p1(
-                    event_context, skipped, preparation_error, traces
+                    identity,
+                    event_context.competition,
+                    event_context.streak_analysis,
+                    skipped,
+                    preparation_error,
+                    traces,
                 )
                 for scope, result in p1.items():
                     result["evaluation_as_of"] = evaluation_as_of
@@ -656,7 +674,8 @@ class EventPillarProcessor:
         # No persistence exception is converted into a pillar signal or swallowed.
         if self.debug_mode:
             _save_pillar_debug_snapshots(
-                event_context=identity,
+                event_identity=identity,
+                competition_context=event_context.competition,
                 odds_trajectory_context=odds,
                 streak_analysis=event_context.streak_analysis,
                 competition_slug=event_context.competition.slug,

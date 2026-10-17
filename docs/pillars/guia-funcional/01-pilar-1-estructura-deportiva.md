@@ -338,7 +338,7 @@ M5 pregunta: **en la fase final de temporada, ¿qué presión comparativa repres
 
 Cuenta filas válidas de clasificación: posición positiva y puntos no negativos. Ese conteo es `n_league`. Para cada participante utiliza su clasificación directa válida o busca la fila por nombre.
 
-La duración se obtiene de `event_context.competition.total_regular_season_games`: el número de partidos de temporada regular por equipo definido para la competición. M5 ya no presupone 38 partidos por contar 18 o más equipos. Si falta una duración positiva y válida, devuelve INSUFFICIENT_DATA con motivo MISSING_TOTAL_SEASON_GAMES; no inventa una fase de temporada.
+La duración se obtiene de `competition_context.total_regular_season_games`: el número de partidos de temporada regular por equipo definido para la competición. M5 ya no presupone 38 partidos por contar 18 o más equipos. Si falta una duración positiva y válida, devuelve INSUFFICIENT_DATA con motivo MISSING_TOTAL_SEASON_GAMES; no inventa una fase de temporada.
 
 `games_played_reference` es el mayor número de partidos disputados entre los participantes y los registros de liga disponibles. No utiliza una cantidad restante diferente para cada participante. Si ninguna fila permite conocer los partidos disputados, devuelve INSUFFICIENT_DATA con motivo MISSING_GAMES_PLAYED. Una referencia válida de cero partidos sí describe el inicio de temporada.
 
@@ -352,68 +352,42 @@ Fuera de la ventana, M5 devuelve INACTIVE con motivo OUTSIDE_LATE_SEASON_WINDOW.
 
 **games_remaining = máximo entre partidos de temporada − referencia disputada y 0.**
 
-**max_points_remaining = 3 × games_remaining.**
+**max_points_remaining = points_per_win × games_remaining.**
 
-El valor 3 es fijo: representa tres puntos posibles por victoria. Con una temporada de 38 y referencia de 32 partidos jugados, quedan 6 y el horizonte es 18 puntos. En Valencia–Real Sociedad, evento 303597, la referencia guardada es 7: madurez 7/38 ≈ 18.42 %, 31 partidos restantes y M5 inactivo. El núcleo deportivo ajustado de aproximadamente −0.092481 conserva su dirección AWAY y fuerza LOW.
+El incremento máximo por partido procede de `competition_context.competitive_rules`: 3 puntos para fútbol, SHL y Liiga; 2 para NHL; 1 victoria para EuroLeague. Las tablas ordenadas por porcentaje requieren soporte adicional y no se convierten en puntos. Con una temporada de 38 y referencia de 32 partidos jugados, quedan 6 y el horizonte es 18 puntos. En Valencia–Real Sociedad, evento 303597, la referencia guardada es 7: madurez 7/38 ≈ 18.42 %, 31 partidos restantes y M5 inactivo. El núcleo deportivo ajustado de aproximadamente −0.092481 conserva su dirección AWAY y fuerza LOW.
 
 `raw.season_applicability` registra la política, el origen de la duración, el mínimo 0.80, la proporción observada y si el análisis es temporalmente aplicable. Entrar en la ventana permite intentar el cálculo; las comprobaciones de datos deportivos siguen siendo necesarias.
 
 ### 8.2. Objetivo y régimen
 
-Solo después de superar la comprobación de madurez se selecciona el objetivo:
+Solo después de superar la comprobación de madurez se consultan las reglas de `competition_context.competitive_rules`. El resolver de P1 las selecciona una vez por evento, mediante la identidad exacta y la temporada explícita, antes de obtener el historial. Puede corregir metadatos completos de caché: NHL 2026/27 tiene 84 partidos. Una temporada diferente no hereda las reglas actuales.
 
-| Situación | `objective_type` |
-|---|---|
-| Liga de al menos 18 equipos y posición entre 1 y 7 | `EUROPE`: zona superior definida por el motor. |
-| Liga de al menos 18 y posición en los últimos tres puestos | `SURVIVAL`: permanencia. |
-| Otras posiciones válidas | `MIDTABLE`: zona intermedia. |
-| Datos que no permiten identificar objetivo | `NONE`. |
+| Objetivo deportivo | `objective_type` | `base_severity` |
+|---|---|---:|
+| Acceder a otra competición | `COMPETITION_QUALIFICATION` | 0.70 |
+| Acceder a otra fase del torneo | `STAGE_QUALIFICATION` | 0.85 |
+| Conservar la categoría | `DIVISION_RETENTION` | 1.00 |
+| Fuera de las zonas de la política, sin una frontera pendiente necesaria | `NO_APPLICABLE_OBJECTIVE` | 0 |
 
-La etiqueta EUROPE expresa la zona que el código define; no verifica por sí misma las plazas internacionales oficiales de cada competición. En ligas con menos de 18 equipos, la selección actual asigna MIDTABLE a todas las posiciones válidas.
+La selección asigna un solo objetivo por equipo según su zona explícita; no depende de que `n_league` alcance 18. La regla contiene destino, vía de acceso, ámbito de tabla, alcance temporal y frontera. Título y siembra quedan fuera de esta política.
 
-La **severidad base** asignada al objetivo es:
+El régimen `QUALIFYING_POSITION` mantiene multiplicador 1.00. `DIRECT_RELEGATION_POSITION` y `RELEGATION_PLAYOFF_POSITION` mantienen 1.25. `NO_APPLICABLE_OBJECTIVE` tiene multiplicador cero.
 
-| Objetivo | `base_severity` |
-|---|---|
-| EUROPE | 0.70 |
-| PLAYOFF | 0.85 |
-| SURVIVAL | 1.00 |
-| MIDTABLE | 0.30 |
-| NONE | 0 |
-
-PLAYOFF tiene un valor en la tabla de severidad, pero la función actual de selección no asigna ese objetivo.
-
-El **régimen** expresa la relación con una zona:
-
-| Régimen | `regime_multiplier` |
-|---|---|
-| `ON_TARGET_ZONE`: dentro del objetivo superior | 1.00 |
-| `OUTSIDE_TARGET`: fuera del objetivo superior | 1.10 |
-| `INSIDE_DANGER`: dentro de peligro | 1.25 |
-| `SAFE_ZONE`: fuera del peligro o zona intermedia | 0.80 |
-| `NONE` | 0 |
-
-Con la selección actual, los equipos EUROPE se encuentran en ON_TARGET_ZONE, los SURVIVAL en INSIDE_DANGER y los MIDTABLE en SAFE_ZONE. Otras ramas están definidas para interpretar objetivos y regímenes, aunque esa selección no las active normalmente.
+Una regla pendiente de clasificación internacional no sustituye una regla confirmada de permanencia que coincide con la posición del equipo. Si para cualquiera de los dos participantes falta una frontera necesaria, M5 devuelve `INSUFFICIENT_DATA`, sin presión operativa para ninguno. No clasifica esa incertidumbre como una conclusión ordinaria de presión cero. La indisponibilidad de M5 no bloquea los demás módulos.
 
 ### 8.3. Punto de corte y distancia
 
-`points_cutoff` representa los puntos de la posición de referencia:
+`points_cutoff` representa los puntos de la posición de referencia configurada:
 
-- EUROPE compara con el puesto 7; si el equipo está exactamente séptimo, compara con el 8.
-- SURVIVAL compara con el puesto `n_league − 3`, inmediatamente por encima de los tres últimos.
-- MIDTABLE toma los puntos propios como referencia, pero asigna una distancia equivalente a todo el horizonte de puntos.
+- Clasificación: referencia de la zona; si el equipo ocupa exactamente esa frontera, compara con el puesto siguiente.
+- Permanencia: último puesto directamente seguro, evitando descenso directo y eliminatoria de permanencia. Por ejemplo, 17 en LaLiga y 15 en Bundesliga.
+- `NO_APPLICABLE_OBJECTIVE`: puntos propios y distancia equivalente al horizonte completo.
 
-Si falta la fila exacta de corte, busca la posición disponible más cercana con puntos válidos; en empate de distancia prioriza el número de posición menor.
+Se conserva la búsqueda de la fila disponible más cercana si falta la fila exacta, con prioridad para la posición menor en empate de distancia. Para una tabla por grupos se exige identificar el grupo y contar con su población prevista; la referencia procede exclusivamente de ese grupo. No se usa la tabla de un grupo argentino para calcular descenso anual o promedios.
 
-`gap` es la distancia:
+`gap` conserva su nombre y fórmula: puntos propios menos corte para clasificación, corte menos puntos propios para permanencia, horizonte completo para `NO_APPLICABLE_OBJECTIVE`. Una distancia negativa se trata como cero al calcular urgencia.
 
-- Dentro de la zona superior: puntos propios menos puntos del corte.
-- Fuera de esa zona: puntos del corte menos puntos propios.
-- Dentro del peligro: puntos del corte menos puntos propios.
-- Fuera del peligro: puntos propios menos puntos del corte.
-- MIDTABLE o NONE: horizonte completo de puntos restantes.
-
-Esta distancia puede mostrar un colchón o el coste de alcanzar otra zona. Para la urgencia, una distancia negativa se trata como cero.
+Los perfiles distinguen objetivos ausentes, fronteras pendientes (`PENDING`) y reglas deportivas configuradas (`CONFIGURED`). Una regla configurada todavía puede requerir soporte de cálculo: porcentajes, Wild Cards y promedios se diagnostican como no soportados; no se aproximan con un corte global. Los veinte perfiles y sus fuentes se documentan en `docs/pillars/competitive-rules.md`.
 
 ### 8.4. Urgencia, coste y comparación
 
@@ -423,15 +397,15 @@ Si el objetivo no existe o no quedan puntos posibles, la urgencia es cero. En ot
 
 **final_cost = base_severity × regime_multiplier × urgency_factor.**
 
-Cuanto más pequeña es la distancia frente a los puntos todavía posibles, más cerca queda la urgencia de 1. Si la distancia alcanza o supera todo ese horizonte, queda en 0. El coste puede superar 1: SURVIVAL con multiplicador 1.25 y urgencia 1 produce 1.25. La limitación de −1 a +1 se aplica al contraste entre costes, no a cada coste individual.
+Cuanto más pequeña es la distancia frente a los puntos todavía posibles, más cerca queda la urgencia de 1. Si la distancia alcanza o supera todo ese horizonte, queda en 0. El coste puede superar 1: `DIVISION_RETENTION` con multiplicador 1.25 y urgencia 1 produce 1.25. La limitación de −1 a +1 se aplica al contraste entre costes, no a cada coste individual.
 
-En MIDTABLE, la distancia asignada coincide con todo el horizonte; con horizonte positivo, la urgencia queda en cero. El objetivo intermedio no produce presión numérica con esta política.
+En `NO_APPLICABLE_OBJECTIVE`, la distancia asignada coincide con todo el horizonte; con horizonte positivo, la urgencia queda en cero. Un equipo fuera de las zonas configuradas no produce presión numérica con esta política.
 
 **M5 = limitar((coste local − coste visitante) ÷ (magnitud del coste local + magnitud del coste visitante)).**
 
 Si ambos costes son cero, M5 es cero y `m5_pressure_side` es NONE. Si el local tiene mayor coste, HOME; si el visitante lo tiene, AWAY. Si solo uno tiene coste positivo, el contraste llega a ±1: expresa asimetría de costes, no certeza de ganar.
 
-Ejemplo dentro de la fase final: quedan 6 partidos de 38, equivalentes a 18 puntos posibles. El local está en SURVIVAL a seis puntos del corte: urgencia 1 − 6/18 ≈ 0.6667; coste 1 × 1.25 × 0.6667 ≈ 0.8333. El visitante está en EUROPE con distancia 9: urgencia 0.50; coste 0.70 × 1 × 0.50 = 0.35. El contraste es aproximadamente 0.4833 ÷ 1.1833 ≈ 0.4085 hacia el local.
+Ejemplo dentro de la fase final: quedan 6 partidos de 38, equivalentes a 18 puntos posibles. El local tiene `DIVISION_RETENTION` a seis puntos del corte: urgencia 1 − 6/18 ≈ 0.6667; coste 1 × 1.25 × 0.6667 ≈ 0.8333. El visitante tiene `COMPETITION_QUALIFICATION` bajo una regla confirmada con distancia 9: urgencia 0.50; coste 0.70 × 1 × 0.50 = 0.35. El contraste es aproximadamente 0.4833 ÷ 1.1833 ≈ 0.4085 hacia el local.
 
 Si la fase de temporada es aplicable pero la información competitiva no permite un estado activo, el módulo deja los costes operativos en cero y explica qué datos faltan. En una ejecución calculada conserva, por equipo, posición, puntos, partidos, objetivo, régimen, corte, distancia, urgencia, severidad, multiplicador y coste; además, el horizonte común y la política de temporada.
 
@@ -703,7 +677,7 @@ Ordena de reciente a antiguo cuando dispone de fechas. Define:
 
 Con 18 partidos válidos del local y 12 del visitante, conserva los 12 más recientes de cada lado. Ese equilibrio afecta las series de estructura, temporalidad, tendencia y variabilidad del encuentro.
 
-Necesita una duración positiva de temporada regular, `TOTAL_SEASON_GAMES`, obtenida de `event_context.competition.total_regular_season_games`.
+Necesita una duración positiva de temporada regular, `TOTAL_SEASON_GAMES`, obtenida de `competition_context.total_regular_season_games`.
 
 ### 12.2. Las cuatro ventanas
 

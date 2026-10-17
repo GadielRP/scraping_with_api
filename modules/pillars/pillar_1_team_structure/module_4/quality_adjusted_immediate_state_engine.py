@@ -112,7 +112,7 @@ Each match record must supply:
 
 League size (n_liga) is resolved from, in priority order:
     1. streak_analysis.current_standings  (number of entries)
-    2. event_context.competition.number_of_teams
+    2. competition_context.number_of_teams
     3. max opponent rank inferred from match records
 """
 
@@ -131,7 +131,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import CompetitionContext, EventIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -377,17 +377,18 @@ def _extract_candidate_ranks(match: Dict[str, Any]) -> List[int]:
 
 def _resolve_n_liga(
     streak_analysis: Any,
-    event_context: EventContext,
+    competition_context: CompetitionContext,
     all_matches: List[dict],
 ) -> Tuple[Optional[int], str]:
     current_standings = getattr(streak_analysis, "current_standings", None)
     if isinstance(current_standings, dict) and len(current_standings) > 0:
         return len(current_standings), "streak_analysis.current_standings.len"
 
-    competition = getattr(event_context, "competition", None)
-    number_of_teams = _coerce_int(getattr(competition, "number_of_teams", None))
+    number_of_teams = _coerce_int(
+        getattr(competition_context, "number_of_teams", None)
+    )
     if number_of_teams is not None and number_of_teams > 1:
-        return number_of_teams, "event_context.competition.number_of_teams"
+        return number_of_teams, "competition_context.number_of_teams"
 
     inferred_ranks: List[int] = []
     for match in all_matches:
@@ -750,15 +751,16 @@ def _build_insufficient_result(
 
 def calculate_quality_adjusted_immediate_state_engine(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
     home_results: List[Dict[str, Any]] = list(getattr(streak_analysis, "home_team_results", None) or [])
     away_results: List[Dict[str, Any]] = list(getattr(streak_analysis, "away_team_results", None) or [])
-    home_team = event_context.home.name or ""
-    away_team = event_context.away.name or ""
-    event_id = event_context.event_id or 0
-    participants = event_context.participants_label or f"{home_team} vs {away_team}"
+    home_team = event_identity.home_team_name or ""
+    away_team = event_identity.away_team_name or ""
+    event_id = event_identity.event_id or 0
+    participants = event_identity.participants_label or f"{home_team} vs {away_team}"
 
     if debug_mode:
         _debug_section("INICIO M4 IMMEDIATE STATE ENGINE")
@@ -823,7 +825,9 @@ def calculate_quality_adjusted_immediate_state_engine(
     ]
     if debug_mode:
         _debug_line("Resolviendo tamaño de la liga (n_liga)...")
-    n_liga, n_liga_source = _resolve_n_liga(streak_analysis, event_context, all_matches)
+    n_liga, n_liga_source = _resolve_n_liga(
+        streak_analysis, competition_context, all_matches
+    )
     if debug_mode:
         _debug_line("  Fuente utilizada: %s", n_liga_source)
         _debug_line("  Valor resuelto (n_liga): %s", _fmt(n_liga))

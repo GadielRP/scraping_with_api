@@ -13,7 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
 from modules.pillars.common import clamp
-from modules.pillars.context import EventContext
+from modules.pillars.context import CompetitionContext, EventIdentity
 from modules.pillars.evaluation_contracts import EXECUTIVE_SUMMARY_VERSION
 from modules.pillars.instrumentation import record_calculation
 
@@ -779,20 +779,23 @@ def _abort(
         _debug_line("Contexto disponible: %s", _fmt(debug_context or {}))
 
 
-def _resolve_event_id(streak_analysis: Any, event_context: Optional[EventContext]) -> int:
-    event_id = event_context.event_id if event_context is not None else 0
+def _resolve_event_id(streak_analysis: Any, event_identity: Optional[EventIdentity]) -> int:
+    event_id = event_identity.event_id if event_identity is not None else 0
     resolved = _to_int(event_id)
     return resolved if resolved is not None else 0
 
 
-def _resolve_participants(streak_analysis: Any, event_context: Optional[EventContext]) -> str:
-    participants = event_context.participants_label if event_context is not None else ""
+def _resolve_participants(streak_analysis: Any, event_identity: Optional[EventIdentity]) -> str:
+    participants = event_identity.participants_label if event_identity is not None else ""
     return str(participants or "")
 
 
-def _resolve_total_season_games(event_context: Optional[EventContext]) -> Optional[int]:
-    competition = getattr(event_context, "competition", None)
-    total_season_games = _to_int(getattr(competition, "total_regular_season_games", None))
+def _resolve_total_season_games(
+    competition_context: Optional[CompetitionContext],
+) -> Optional[int]:
+    total_season_games = _to_int(
+        getattr(competition_context, "total_regular_season_games", None)
+    )
     if total_season_games is None or total_season_games <= 0:
         return None
     return total_season_games
@@ -800,20 +803,20 @@ def _resolve_total_season_games(event_context: Optional[EventContext]) -> Option
 
 def calculate_p1_totals(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> Optional[P1TotalsOutput]:
     """Calculate P1_TOTALS v2.5 directional profile with trend-dominance composite layer."""
-    event_id = _resolve_event_id(streak_analysis, event_context)
-    participants = _resolve_participants(streak_analysis, event_context)
-    home_team_name = event_context.home.name if event_context is not None else None
-    away_team_name = event_context.away.name if event_context is not None else None
+    event_id = _resolve_event_id(streak_analysis, event_identity)
+    participants = _resolve_participants(streak_analysis, event_identity)
+    home_team_name = event_identity.home_team_name if event_identity is not None else None
+    away_team_name = event_identity.away_team_name if event_identity is not None else None
 
-    competition = getattr(event_context, "competition", None)
-    sport = getattr(event_context, "sport", None)
-    competition_name = getattr(competition, "display_name", None)
-    season_name = getattr(event_context, "season_name", None)
-    season_year = getattr(event_context, "season_year", None)
+    sport = getattr(event_identity, "sport", None)
+    competition_name = getattr(competition_context, "display_name", None)
+    season_name = getattr(event_identity, "season_name", None)
+    season_year = getattr(event_identity, "season_year", None)
     season_label = f"{season_name} ({season_year})" if season_name or season_year else "N/A"
 
     if debug_mode:
@@ -826,13 +829,13 @@ def calculate_p1_totals(
         _debug_line("Sport: %s", _fmt(sport))
         _debug_line("Competition: %s", _fmt(competition_name))
         _debug_line("Season: %s", season_label)
-        _debug_line("Context status: %s", _fmt(getattr(event_context, "context_status", None)))
+        _debug_line("Context status: %s", _fmt(getattr(event_identity, "context_status", None)))
         _debug_line(
             "Objetivo del módulo: Evaluar si el ecosistema estructural y temporal de goles del matchup apunta a OVER_PROFILE, UNDER_PROFILE o NEUTRAL_PROFILE."
         )
         _debug_line("P1_TOTALS NO usa odds, línea actual, drift, books, cluster ni mercado.")
 
-    total_season_games = _resolve_total_season_games(event_context)
+    total_season_games = _resolve_total_season_games(competition_context)
     if total_season_games is None:
         _abort(
             "ABORT_TOTAL_SEASON_GAMES_ZERO",
@@ -840,7 +843,7 @@ def calculate_p1_totals(
             participants,
             {
                 "total_regular_season_games": getattr(
-                    competition,
+                    competition_context,
                     "total_regular_season_games",
                     None,
                 )
@@ -852,11 +855,11 @@ def calculate_p1_totals(
     if debug_mode:
         _debug_section("INPUTS BASE")
         _debug_line(
-            "Fuente TOTAL_SEASON_GAMES: event_context.competition.total_regular_season_games"
+            "Fuente TOTAL_SEASON_GAMES: competition_context.total_regular_season_games"
         )
         _debug_formula(
             "TOTAL_SEASON_GAMES",
-            "valor leído desde event_context.competition.total_regular_season_games",
+            "valor leído desde competition_context.total_regular_season_games",
             f"total_regular_season_games = {_fmt(total_season_games)}",
             _fmt(total_season_games),
             "Cantidad esperada de partidos por equipo en la temporada. Este valor define el tamaño objetivo de las ventanas.",
@@ -2464,15 +2467,16 @@ def calculate_p1_totals(
 
     raw = {
         "engine_version": _ENGINE_VERSION,
-        "event_context_present": event_context is not None,
-        "context_status": getattr(event_context, "context_status", None),
+        "event_identity_present": event_identity is not None,
+        "competition_context_present": competition_context is not None,
+        "context_status": getattr(event_identity, "context_status", None),
         "total_season_games": total_season_games,
         "n_avail": n_avail,
         "source_fields": {
             "home_team_results": "streak_analysis.home_team_results",
             "away_team_results": "streak_analysis.away_team_results",
             "league_totals_context": "streak_analysis.league_totals_context",
-            "total_regular_season_games": "event_context.competition.total_regular_season_games",
+            "total_regular_season_games": "competition_context.total_regular_season_games",
         },
         "windows": window_config,
         "structural_core": structural_core,

@@ -9,6 +9,7 @@ signals.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -18,31 +19,27 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, season_key_from_name
+from modules.pillars.context import CompetitionContext, EventIdentity
 
 logger = logging.getLogger(__name__)
 
-POINTS_PER_WIN = 3
-EUROPE_CUTOFF_RANK = 7
-SURVIVAL_DANGER_PLACES = 3
 LATE_SEASON_MIN_COMPLETION_RATIO = 0.80
+NO_APPLICABLE_OBJECTIVE = "NO_APPLICABLE_OBJECTIVE"
 
 BASE_SEVERITY = {
-    "EUROPE": 0.70,
-    "PLAYOFF": 0.85,
-    "SURVIVAL": 1.00,
-    "MIDTABLE": 0.30,
-    "NONE": 0.00,
+    "COMPETITION_QUALIFICATION": 0.70,
+    "STAGE_QUALIFICATION": 0.85,
+    "DIVISION_RETENTION": 1.00,
+    NO_APPLICABLE_OBJECTIVE: 0.00,
 }
 
 REGIME_MULTIPLIER = {
-    "ON_TARGET_ZONE": 1.00,
-    "OUTSIDE_TARGET": 1.10,
-    "INSIDE_DANGER": 1.25,
-    "SAFE_ZONE": 0.80,
-    "NONE": 0.00,
+    "QUALIFYING_POSITION": 1.00,
+    "DIRECT_RELEGATION_POSITION": 1.25,
+    "RELEGATION_PLAYOFF_POSITION": 1.25,
+    NO_APPLICABLE_OBJECTIVE: 0.00,
 }
-
 
 # ---------------------------------------------------------------------------
 # Debug logging helpers
@@ -257,109 +254,107 @@ def _resolve_team_standing(
     return _find_standing_by_team(current_standings, team_name)
 
 
-def _determine_objective_type(
+def _scope_standings(
+    current_standings: Any,
+    standing: Optional[Dict[str, Any]],
+    rule: ObjectiveRule,
+) -> Tuple[Any, Optional[str]]:
+    if rule.ranking_scope == "GLOBAL":
+        return current_standings, None
+    keys = {
+        "GROUP": ("group",),
+        "CONFERENCE": ("conference", "group"),
+        "DIVISION": ("division",),
+        "LEAGUE": ("league", "group"),
+    }.get(rule.ranking_scope)
+    if keys is None:
+        return None, "UNSUPPORTED_RANKING_SCOPE"
+    def group_value(record: Any) -> Optional[str]:
+        if not isinstance(record, dict):
+            return None
+        return next((_normalize_name(record[key]) for key in keys if record.get(key)), None)
+    group = group_value(standing)
+    if group is None:
+        return None, "MISSING_RANKING_GROUP"
+    scoped = {key: record for key, record in _standings_items(current_standings)
+              if group_value(record) == group}
+    if rule.group_size is not None and (
+        _count_valid_standings(scoped) != rule.group_size
+        or any((_extract_rank(record) or 0) > rule.group_size for record in scoped.values())
+    ):
+        return None, "INCOMPLETE_RANKING_GROUP"
+    return scoped, None
+
+
+def _resolve_objective_rule(
     rank: Optional[int],
-    n_league: Optional[int],
-    competition_slug: Optional[str] = None,
-    competition_name: Optional[str] = None,
-) -> str:
-    del competition_slug, competition_name
+    standing: Optional[Dict[str, Any]],
+    current_standings: Any,
+    rules: CompetitionRules,
+) -> Tuple[Optional[ObjectiveRule], Any, Optional[str]]:
+    """One configured zone wins; pending objectives never override that zone."""
+    if rank is None:
+        return None, current_standings, None
+    scope_error = None
+    for rule in rules.objectives:
+        if rule.status != "CONFIGURED" or rule.selection_method != "RANK_RANGE":
+            continue
+        if rule.aggregation_scope != "TOURNAMENT":
+            scope_error = "UNSUPPORTED_AGGREGATION_SCOPE"
+            continue
+        scoped, reason = _scope_standings(current_standings, standing, rule)
+        if reason:
+            scope_error = reason
+            continue
+        if rule.rank_start is not None and rule.rank_start <= rank <= rule.rank_end:
+            return rule, scoped, None
+    if scope_error:
+        return None, None, scope_error
+    for rule in rules.objectives:
+        if rule.status == "PENDING":
+            # Non-tournament tables and reallocations cannot be inferred from
+            # the current table, even if its rank falls outside a base range.
+            return rule, None, "UNRESOLVED_OBJECTIVE_BOUNDARY"
+        if rule.selection_method != "RANK_RANGE":
+            return rule, None, "UNSUPPORTED_OBJECTIVE_SELECTION"
+    return None, current_standings, scope_error
 
-    if rank is None or n_league is None:
-        return "NONE"
-    if rank <= 0 or n_league <= 1:
-        return "NONE"
 
-    if n_league >= 18:
-        if rank <= EUROPE_CUTOFF_RANK:
-            return "EUROPE"
-        survival_cutoff_rank = max(1, n_league - SURVIVAL_DANGER_PLACES + 1)
-        if rank >= survival_cutoff_rank:
-            return "SURVIVAL"
-        return "MIDTABLE"
-
-    return "MIDTABLE"
-
-
-def _determine_regime_state(objective_type: str, rank: Optional[int], n_league: Optional[int]) -> str:
-    if rank is None or rank <= 0 or n_league is None or n_league <= 1:
-        return "NONE"
-
-    if objective_type == "EUROPE":
-        return "ON_TARGET_ZONE" if rank <= EUROPE_CUTOFF_RANK else "OUTSIDE_TARGET"
-
-    if objective_type == "SURVIVAL":
-        danger_cutoff_rank = max(1, n_league - SURVIVAL_DANGER_PLACES + 1)
-        return "INSIDE_DANGER" if rank >= danger_cutoff_rank else "SAFE_ZONE"
-
-    if objective_type == "PLAYOFF":
-        return "ON_TARGET_ZONE"
-
-    if objective_type == "MIDTABLE":
-        return "SAFE_ZONE"
-
-    return "NONE"
+def _determine_regime_state(rule: Optional[ObjectiveRule]) -> str:
+    if rule is None:
+        return NO_APPLICABLE_OBJECTIVE
+    if rule.objective_type == "DIVISION_RETENTION":
+        return ("RELEGATION_PLAYOFF_POSITION" if rule.qualification_path == "RELEGATION_PLAYOFF"
+                else "DIRECT_RELEGATION_POSITION")
+    return "QUALIFYING_POSITION"
 
 
 def _determine_points_cutoff(
-    objective_type: str,
-    regime_state: str,
+    rule: Optional[ObjectiveRule],
     team_rank: Optional[int],
     team_points: Optional[float],
     current_standings: Any,
-    n_league: Optional[int],
 ) -> Optional[float]:
-    del regime_state
-
-    if objective_type == "EUROPE":
-        target_rank = EUROPE_CUTOFF_RANK
-        if team_rank == EUROPE_CUTOFF_RANK:
-            target_rank = EUROPE_CUTOFF_RANK + 1
-        standing = _find_standing_by_rank(current_standings, target_rank)
-        if standing is None or _extract_points(standing) is None:
-            standing = _find_nearest_standing_with_points(current_standings, target_rank)
-        return _extract_points(standing)
-
-    if objective_type == "SURVIVAL":
-        if n_league is None:
-            return None
-        target_rank = max(1, n_league - SURVIVAL_DANGER_PLACES)
-        standing = _find_standing_by_rank(current_standings, target_rank)
-        if standing is None or _extract_points(standing) is None:
-            standing = _find_nearest_standing_with_points(current_standings, target_rank)
-        return _extract_points(standing)
-
-    if objective_type == "MIDTABLE":
+    if rule is None:
         return team_points
-
-    return None
-
-
-def _calculate_gap(
-    objective_type: str,
-    regime_state: str,
-    team_points: Optional[float],
-    points_cutoff: Optional[float],
-    max_points_remaining: Optional[float],
-) -> Optional[float]:
-    if team_points is None or points_cutoff is None:
-        if objective_type in {"MIDTABLE", "NONE"} and max_points_remaining is not None:
-            return max_points_remaining
+    target_rank = rule.reference_rank
+    if target_rank is None:
         return None
+    if rule.objective_type != "DIVISION_RETENTION" and team_rank == target_rank:
+        target_rank += 1
+    standing = _find_nearest_standing_with_points(current_standings, target_rank)
+    return _extract_points(standing)
 
-    if objective_type == "EUROPE":
-        if regime_state == "ON_TARGET_ZONE":
-            return team_points - points_cutoff
-        return points_cutoff - team_points
 
-    if objective_type == "SURVIVAL":
-        if regime_state == "INSIDE_DANGER":
-            return points_cutoff - team_points
-        return team_points - points_cutoff
-
-    if objective_type in {"MIDTABLE", "NONE"}:
+def _calculate_gap(objective_type, regime_state, team_points, points_cutoff, max_points_remaining):
+    if objective_type == NO_APPLICABLE_OBJECTIVE:
         return max_points_remaining
-
+    if team_points is None or points_cutoff is None:
+        return None
+    if objective_type == "DIVISION_RETENTION":
+        return points_cutoff - team_points
+    if objective_type in {"COMPETITION_QUALIFICATION", "STAGE_QUALIFICATION"}:
+        return team_points - points_cutoff
     return None
 
 
@@ -387,8 +382,7 @@ def _build_team_metrics(
     team_name: Optional[str],
     standing: Optional[Dict[str, Any]],
     current_standings: Any,
-    competition_slug: Optional[str],
-    competition_name: Optional[str],
+    rules: CompetitionRules,
     n_league: Optional[int],
     max_points_remaining: Optional[float],
     debug_mode: bool = False,
@@ -396,119 +390,37 @@ def _build_team_metrics(
     points = _extract_points(standing)
     rank = _extract_rank(standing)
     games_played = _extract_games_played(standing)
-    objective_type = _determine_objective_type(rank, n_league, competition_slug, competition_name)
-    regime_state = _determine_regime_state(objective_type, rank, n_league)
+    rule, scoped_standings, rule_reason = _resolve_objective_rule(
+        rank, standing, current_standings, rules,
+    )
+    objective_type = rule.objective_type if rule else (None if rule_reason else NO_APPLICABLE_OBJECTIVE)
+    regime_state = _determine_regime_state(rule) if not rule_reason else None
     base_severity = BASE_SEVERITY.get(objective_type, 0.0)
     regime_multiplier = REGIME_MULTIPLIER.get(regime_state, 0.0)
-    points_cutoff = _determine_points_cutoff(
-        objective_type,
-        regime_state,
-        rank,
-        points,
-        current_standings,
-        n_league,
-    )
+    points_cutoff = (_determine_points_cutoff(rule, rank, points, scoped_standings)
+                     if not rule_reason else None)
     gap = _calculate_gap(objective_type, regime_state, points, points_cutoff, max_points_remaining)
-    urgency_factor, gap_for_urgency, urgency_raw = _calculate_urgency_factor(gap, max_points_remaining)
+    urgency_factor, gap_for_urgency, urgency_raw = (
+        _calculate_urgency_factor(gap, max_points_remaining) if not rule_reason else (0.0, 0.0, 0.0)
+    )
     final_cost = _calculate_final_cost(base_severity, regime_multiplier, urgency_factor)
-
     if debug_mode:
         _debug_section(f"Métricas del equipo: {team_label} ({team_name})")
-        _debug_line("Datos de la tabla: rank=%s, puntos=%s, partidos_jugados=%s", _fmt(rank), _fmt(points), _fmt(games_played))
-        _debug_line("Objetivo y Régimen: objective_type=%s, regime_state=%s", _fmt(objective_type), _fmt(regime_state))
-        _debug_line("Severidad Base (BASE_SEVERITY): %s", _fmt(base_severity))
-        _debug_line("Multiplicador de Régimen (REGIME_MULTIPLIER): %s", _fmt(regime_multiplier))
-
-        if objective_type == "EUROPE":
-            target_rank = EUROPE_CUTOFF_RANK
-            if rank == EUROPE_CUTOFF_RANK:
-                target_rank = EUROPE_CUTOFF_RANK + 1
-            _debug_line("Determinación del cutoff para EUROPE:")
-            ref_standing = _find_standing_by_rank(current_standings, target_rank)
-            if ref_standing is None or _extract_points(ref_standing) is None:
-                ref_standing = _find_nearest_standing_with_points(current_standings, target_rank)
-            ref_name = _extract_record_name(ref_standing)
-            ref_rank_val = _extract_rank(ref_standing)
-            ref_pts_val = _extract_points(ref_standing)
-            ref_gp_val = _extract_games_played(ref_standing)
-            _debug_line("  Rival de referencia (target_rank=%d): equipo=%s | rank=%s | puntos=%s | partidos_jugados=%s", target_rank, _fmt(ref_name), _fmt(ref_rank_val), _fmt(ref_pts_val), _fmt(ref_gp_val))
-            _debug_line("  Puntos de cutoff obtenidos: %s", _fmt(points_cutoff))
-        elif objective_type == "SURVIVAL":
-            if n_league is not None:
-                target_rank = max(1, n_league - SURVIVAL_DANGER_PLACES)
-                _debug_line("Determinación del cutoff para SURVIVAL:")
-                ref_standing = _find_standing_by_rank(current_standings, target_rank)
-                if ref_standing is None or _extract_points(ref_standing) is None:
-                    ref_standing = _find_nearest_standing_with_points(current_standings, target_rank)
-                ref_name = _extract_record_name(ref_standing)
-                ref_rank_val = _extract_rank(ref_standing)
-                ref_pts_val = _extract_points(ref_standing)
-                ref_gp_val = _extract_games_played(ref_standing)
-                _debug_line("  Rival de referencia (target_rank=%d): equipo=%s | rank=%s | puntos=%s | partidos_jugados=%s", target_rank, _fmt(ref_name), _fmt(ref_rank_val), _fmt(ref_pts_val), _fmt(ref_gp_val))
-                _debug_line("  Puntos de cutoff obtenidos: %s", _fmt(points_cutoff))
-        elif objective_type == "MIDTABLE":
-            _debug_line("Determinación del cutoff para MIDTABLE: cutoff = team_points = %s", _fmt(points_cutoff))
-        else:
-            _debug_line("Determinación del cutoff para NONE: cutoff = None")
-
-        # Gap calculation formula and substitution
-        if objective_type == "EUROPE":
-            if regime_state == "ON_TARGET_ZONE":
-                formula_str = "team_points - points_cutoff"
-                sub_str = f"{_fmt(points)} - {_fmt(points_cutoff)}"
-            else:
-                formula_str = "points_cutoff - team_points"
-                sub_str = f"{_fmt(points_cutoff)} - {_fmt(points)}"
-            _debug_formula("GAP_EUROPE", formula_str, sub_str, _fmt(gap), "Diferencia de puntos respecto a la zona europea")
-        elif objective_type == "SURVIVAL":
-            if regime_state == "INSIDE_DANGER":
-                formula_str = "points_cutoff - team_points"
-                sub_str = f"{_fmt(points_cutoff)} - {_fmt(points)}"
-            else:
-                formula_str = "team_points - points_cutoff"
-                sub_str = f"{_fmt(points)} - {_fmt(points_cutoff)}"
-            _debug_formula("GAP_SURVIVAL", formula_str, sub_str, _fmt(gap), "Diferencia de puntos respecto a la zona de permanencia")
-        elif objective_type in {"MIDTABLE", "NONE"}:
-            formula_str = "max_points_remaining"
-            sub_str = f"{_fmt(max_points_remaining)}"
-            _debug_formula("GAP_MIDTABLE_OR_NONE", formula_str, sub_str, _fmt(gap), "Diferencia por defecto para media tabla o sin objetivo")
-        else:
-            _debug_line("GAP: No aplica para objective_type=%s", _fmt(objective_type))
-
-        # Urgency Factor
-        _debug_formula(
-            "URGENCY_FACTOR",
-            "clamp(1.0 - (max(gap, 0.0) / max_points_remaining), 0.0, 1.0)",
-            f"clamp(1.0 - (max({_fmt(gap)}, 0.0) / {_fmt(max_points_remaining)}), 0.0, 1.0)",
-            _fmt(urgency_factor),
-            f"Factor de urgencia con gap corregido para urgencia {_fmt(gap_for_urgency)} y raw={_fmt(urgency_raw)}"
-        )
-
-        # Final Competitive Cost
-        _debug_formula(
-            "FINAL_COMPETITIVE_COST",
-            "base_severity * regime_multiplier * urgency_factor",
-            f"{_fmt(base_severity)} * {_fmt(regime_multiplier)} * {_fmt(urgency_factor)}",
-            _fmt(final_cost),
-            "Costo competitivo final para el equipo"
-        )
-
+        _debug_line("rank=%s points=%s games_played=%s objective_type=%s regime_state=%s reason=%s",
+                    rank, points, games_played, objective_type, regime_state, rule_reason)
+        _debug_line("Regla de competición: %s", _fmt(asdict(rule) if rule else None))
+        _debug_formula("URGENCY_FACTOR", "clamp(1 - max(gap, 0) / max_points_remaining, 0, 1)",
+                       f"gap={gap}, max_points_remaining={max_points_remaining}", urgency_factor)
+        _debug_formula("FINAL_COMPETITIVE_COST", "base_severity * regime_multiplier * urgency_factor",
+                       f"{base_severity} * {regime_multiplier} * {urgency_factor}", final_cost)
     return {
-        "team": team_name,
-        "team_label": team_label,
-        "points": points,
-        "rank": rank,
-        "games_played": games_played,
-        "objective_type": objective_type,
-        "regime_state": regime_state,
-        "points_cutoff": points_cutoff,
-        "gap": gap,
-        "gap_for_urgency": gap_for_urgency,
-        "urgency_factor": urgency_factor,
-        "urgency_formula_raw": urgency_raw,
-        "base_severity": base_severity,
-        "regime_multiplier": regime_multiplier,
-        "final_cost": final_cost,
+        "team": team_name, "team_label": team_label,
+        "points": points, "rank": rank, "games_played": games_played,
+        "objective_type": objective_type, "regime_state": regime_state,
+        "objective_rule": asdict(rule) if rule else None, "rule_reason": rule_reason,
+        "points_cutoff": points_cutoff, "gap": gap, "gap_for_urgency": gap_for_urgency,
+        "urgency_factor": urgency_factor, "urgency_formula_raw": urgency_raw,
+        "base_severity": base_severity, "regime_multiplier": regime_multiplier, "final_cost": final_cost,
     }
 
 
@@ -549,11 +461,14 @@ def _determine_status(
         return "INVALID", "invalid_team_rank"
     if home_metrics["points"] < 0 or away_metrics["points"] < 0:
         return "INVALID", "invalid_team_rank"
+    for metrics in (home_metrics, away_metrics):
+        if metrics["rule_reason"]:
+            return "INSUFFICIENT_DATA", metrics["rule_reason"]
     if (
-        home_metrics["objective_type"] in {"EUROPE", "SURVIVAL"}
+        home_metrics["objective_type"] != NO_APPLICABLE_OBJECTIVE
         and home_metrics["points_cutoff"] is None
     ) or (
-        away_metrics["objective_type"] in {"EUROPE", "SURVIVAL"}
+        away_metrics["objective_type"] != NO_APPLICABLE_OBJECTIVE
         and away_metrics["points_cutoff"] is None
     ):
         return "INSUFFICIENT_DATA", "missing_points_or_rank"
@@ -572,6 +487,8 @@ def _serialize_team_raw(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "games_played": metrics["games_played"],
         "objective_type": metrics["objective_type"],
         "regime_state": metrics["regime_state"],
+        "objective_rule": metrics["objective_rule"],
+        "rule_reason": metrics["rule_reason"],
         "points_cutoff": metrics["points_cutoff"],
         "gap": metrics["gap"],
         "urgency_factor": metrics["urgency_factor"],
@@ -607,17 +524,18 @@ def _determine_season_applicability(
 
 def calculate_contextual_competitive_cost_engine(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
-    event_id = event_context.event_id
-    participants = event_context.participants_label or ""
-    home_team = event_context.home.name
-    away_team = event_context.away.name
-    competition_name = event_context.competition.display_name or event_context.competition.canonical_name
-    competition_slug = event_context.competition.slug or event_context.competition.unique_slug
-    season_id = event_context.season_id
-    season_name = event_context.season_name
+    event_id = event_identity.event_id
+    participants = event_identity.participants_label or ""
+    home_team = event_identity.home_team_name
+    away_team = event_identity.away_team_name
+    competition_name = competition_context.display_name or competition_context.canonical_name
+    competition_slug = competition_context.slug or competition_context.unique_slug
+    season_id = event_identity.season_id
+    season_name = event_identity.season_name
     current_standings = getattr(streak_analysis, "current_standings", None)
 
     home_direct_standing = getattr(streak_analysis, "home_team_current_standing", None)
@@ -628,9 +546,11 @@ def calculate_contextual_competitive_cost_engine(
     home_standing = _resolve_team_standing(current_standings, home_team, home_direct_standing)
     away_standing = _resolve_team_standing(current_standings, away_team, away_direct_standing)
 
+    rules = competition_context.competitive_rules
+    points_per_win = rules.points_per_win if rules else None
     n_league = _count_valid_standings(current_standings)
     total_season_games = _coerce_int(
-        getattr(event_context.competition, "total_regular_season_games", None)
+        getattr(competition_context, "total_regular_season_games", None)
     )
     games_played_home = _extract_games_played(home_standing)
     games_played_away = _extract_games_played(away_standing)
@@ -644,11 +564,20 @@ def calculate_contextual_competitive_cost_engine(
     max_points_remaining: Optional[float] = None
     if total_season_games is not None and total_season_games > 0 and games_played_reference is not None:
         games_remaining = max(total_season_games - games_played_reference, 0)
-        max_points_remaining = float(games_remaining * POINTS_PER_WIN)
+        if points_per_win is not None:
+            max_points_remaining = float(games_remaining * points_per_win)
 
     season_status, season_reason, completion_ratio = _determine_season_applicability(
         total_season_games, games_played_reference,
     )
+    season_applicable = season_status == "ACTIVE"
+    if season_applicable:
+        if rules is None:
+            season_status, season_reason = "INSUFFICIENT_DATA", "MISSING_COMPETITION_RULES"
+        elif rules.season_key != season_key_from_name(season_name):
+            season_status, season_reason = "INSUFFICIENT_DATA", "COMPETITION_RULES_SEASON_MISMATCH"
+        elif rules.ranking_metric not in {"POINTS", "WINS"}:
+            season_status, season_reason = "INSUFFICIENT_DATA", "UNSUPPORTED_RANKING_METRIC"
     context_raw = {
         "event_id": event_id,
         "participants": participants,
@@ -659,7 +588,10 @@ def calculate_contextual_competitive_cost_engine(
         "season_id": season_id,
         "season_name": season_name,
         "n_league": n_league,
-        "points_per_win": POINTS_PER_WIN,
+        "points_per_win": points_per_win,
+        "rules_season_key": rules.season_key if rules else None,
+        "ranking_metric": rules.ranking_metric if rules else None,
+        "rules_source_urls": rules.source_urls if rules else (),
         "total_season_games": total_season_games,
         "games_played_reference": games_played_reference,
         "games_remaining": games_remaining,
@@ -669,7 +601,7 @@ def calculate_contextual_competitive_cost_engine(
             "total_season_games_source": "competition.total_regular_season_games",
             "minimum_completion_ratio": LATE_SEASON_MIN_COMPLETION_RATIO,
             "completion_ratio": completion_ratio,
-            "is_applicable": season_status == "ACTIVE",
+            "is_applicable": season_applicable,
         },
         "current_standings_count": n_league,
         "home_team_current_standing": home_standing,
@@ -714,9 +646,7 @@ def calculate_contextual_competitive_cost_engine(
         _debug_line("No utiliza forma reciente, diferencia de goles, cuotas, H2H, PPG o rachas.")
 
         _debug_section("Parámetros Globales y Constantes")
-        _debug_line("POINTS_PER_WIN: %s", _fmt(POINTS_PER_WIN))
-        _debug_line("EUROPE_CUTOFF_RANK: %s", _fmt(EUROPE_CUTOFF_RANK))
-        _debug_line("SURVIVAL_DANGER_PLACES: %s", _fmt(SURVIVAL_DANGER_PLACES))
+        _debug_line("points_per_win: %s", _fmt(points_per_win))
         _debug_line("BASE_SEVERITY: %s", _fmt(BASE_SEVERITY))
         _debug_line("REGIME_MULTIPLIER: %s", _fmt(REGIME_MULTIPLIER))
 
@@ -760,8 +690,7 @@ def calculate_contextual_competitive_cost_engine(
         team_name=home_team,
         standing=home_standing,
         current_standings=current_standings,
-        competition_slug=competition_slug,
-        competition_name=competition_name,
+        rules=rules,
         n_league=n_league,
         max_points_remaining=max_points_remaining,
         debug_mode=debug_mode,
@@ -771,8 +700,7 @@ def calculate_contextual_competitive_cost_engine(
         team_name=away_team,
         standing=away_standing,
         current_standings=current_standings,
-        competition_slug=competition_slug,
-        competition_name=competition_name,
+        rules=rules,
         n_league=n_league,
         max_points_remaining=max_points_remaining,
         debug_mode=debug_mode,
@@ -807,7 +735,7 @@ def calculate_contextual_competitive_cost_engine(
         m5_edge = clamp(m5_numerator / m5_denominator)
     m5_abs_edge = abs(m5_edge)
     m5_pressure_side = _pressure_side_from_edge(m5_edge)
-    m5_strength = classify_strength(m5_edge)
+    m5_strength = classify_strength(m5_edge) if m5_status == "ACTIVE" else m5_status
 
     if debug_mode:
         _debug_section("Cálculo de Relación y Ventaja (M5_EDGE)")

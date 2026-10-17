@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
+from modules.competition.competitive_rules import CompetitionRules
+
 from shared.temporal import as_utc
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ class CompetitionContext:
     source_unique_tournament_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    competitive_rules: CompetitionRules | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +66,10 @@ class EventIdentity:
     competition_id: Optional[int] = None
     competition_name: Optional[str] = None
     season_id: Optional[int] = None
+    season_name: Optional[str] = None
+    season_year: Optional[int] = None
+    home_team_name: Optional[str] = None
+    away_team_name: Optional[str] = None
     country: Optional[str] = None
     context_status: str = "VALID"
 
@@ -118,6 +125,10 @@ class EventContext:
             competition_id=comp_id,
             competition_name=comp_name,
             season_id=self.season_id,
+            season_name=self.season_name,
+            season_year=self.season_year,
+            home_team_name=getattr(self.home, "name", None),
+            away_team_name=getattr(self.away, "name", None),
             country=self.country,
             context_status=self.context_status,
         )

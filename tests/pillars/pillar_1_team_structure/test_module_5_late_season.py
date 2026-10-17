@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
 from modules.pillars.common import ModuleResult
 from modules.pillars.mining.adapters.pillar_1 import P1SideMiningAdapter
 from modules.pillars.mining.contracts import validate_mining_run
@@ -29,8 +30,30 @@ def _event(total_games=38):
         event_id=303597,
         participants_label="Valencia vs Real Sociedad",
     )
-    event.competition = replace(event.competition, total_regular_season_games=total_games)
+    # Explicit equivalent policy protects numerical parity with the old engine.
+    rules = CompetitionRules(
+        season_key="2025", number_of_teams=20,
+        total_regular_season_games=total_games or 38,
+        points_per_win=3, ranking_metric="POINTS",
+        objectives=(
+            ObjectiveRule("COMPETITION_QUALIFICATION", "TEST_COMPETITION", "DIRECT",
+                          rank_start=1, rank_end=7, reference_rank=7),
+            ObjectiveRule("DIVISION_RETENTION", "CURRENT_DIVISION", "DIRECT_RELEGATION",
+                          rank_start=18, rank_end=20, reference_rank=17),
+        ),
+        source_urls=("test://equivalent-policy",),
+    )
+    event.competition = replace(
+        event.competition, total_regular_season_games=total_games, competitive_rules=rules,
+    )
     return event
+
+
+def _calculate_m5(analysis, event=None):
+    event = event or _event()
+    return m5_engine.calculate_contextual_competitive_cost_engine(
+        analysis, event.to_identity(), event.competition
+    )
 
 
 def _analysis(games_played=35, home_rank=19, away_rank=15):
@@ -110,7 +133,7 @@ def test_valencia_early_season_stops_before_objectives_and_preserves_away_core(m
     analysis = _valencia_analysis()
     before = deepcopy(analysis.current_standings)
     with caplog.at_level(logging.INFO):
-        result = m5_engine.calculate_contextual_competitive_cost_engine(analysis, _event())
+        result = _calculate_m5(analysis)
 
     assert result.raw["m5_status"] == "INACTIVE"
     assert result.raw["m5_status_reason"] == "OUTSIDE_LATE_SEASON_WINDOW"
@@ -143,7 +166,7 @@ def test_valencia_early_season_stops_before_objectives_and_preserves_away_core(m
     (50, 39, "INACTIVE"), (50, 40, "ACTIVE"),
 ])
 def test_late_season_boundary_uses_configured_duration(total, played, expected):
-    result = m5_engine.calculate_contextual_competitive_cost_engine(_analysis(played), _event(total))
+    result = _calculate_m5(_analysis(played), _event(total))
     assert result.raw["m5_status"] == expected
     assert result.raw["total_season_games"] == total
     assert result.raw["games_remaining"] == total - played
@@ -151,11 +174,11 @@ def test_late_season_boundary_uses_configured_duration(total, played, expected):
 
 
 def test_late_season_survival_preserves_original_cost_formulas():
-    result = m5_engine.calculate_contextual_competitive_cost_engine(_analysis(), _event())
+    result = _calculate_m5(_analysis())
     assert result.raw["m5_status"] == "ACTIVE"
     home = result.raw["home"]
-    assert home["objective_type"] == "SURVIVAL"
-    assert home["regime_state"] == "INSIDE_DANGER"
+    assert home["objective_type"] == "DIVISION_RETENTION"
+    assert home["regime_state"] == "DIRECT_RELEGATION_POSITION"
     assert home["points_cutoff"] == 26
     assert home["gap"] == 4
     assert home["urgency_factor"] == pytest.approx(5 / 9)
@@ -168,11 +191,11 @@ def test_late_season_survival_preserves_original_cost_formulas():
 
 
 def test_late_season_europe_calculates_target_pressure():
-    result = m5_engine.calculate_contextual_competitive_cost_engine(_analysis(home_rank=7), _event())
+    result = _calculate_m5(_analysis(home_rank=7))
     home = result.raw["home"]
     assert result.raw["m5_status"] == "ACTIVE"
-    assert home["objective_type"] == "EUROPE"
-    assert home["regime_state"] == "ON_TARGET_ZONE"
+    assert home["objective_type"] == "COMPETITION_QUALIFICATION"
+    assert home["regime_state"] == "QUALIFYING_POSITION"
     assert home["points_cutoff"] == 44
     assert home["gap"] == 2
     assert home["urgency_factor"] == pytest.approx(7 / 9)
@@ -181,7 +204,7 @@ def test_late_season_europe_calculates_target_pressure():
 
 
 def test_applicable_m5_with_no_pressure_is_distinct_from_inactive():
-    result = m5_engine.calculate_contextual_competitive_cost_engine(_analysis(home_rank=12), _event())
+    result = _calculate_m5(_analysis(home_rank=12))
     assert result.raw["m5_status"] == "ACTIVE"
     assert result.raw["m5_edge"] == 0
     assert result.value == 0
@@ -195,7 +218,7 @@ def test_applicable_m5_with_no_pressure_is_distinct_from_inactive():
     (38, 38, "INACTIVE", "NO_REMAINING_SEASON_GAMES"),
 ])
 def test_unresolved_or_finished_season_cannot_generate_pressure(total, played, status, reason):
-    result = m5_engine.calculate_contextual_competitive_cost_engine(_analysis(played), _event(total))
+    result = _calculate_m5(_analysis(played), _event(total))
     assert result.raw["m5_status"] == status
     assert result.raw["m5_status_reason"] == reason
     assert result.raw["m5_edge"] is None
@@ -205,7 +228,7 @@ def test_unresolved_or_finished_season_cannot_generate_pressure(total, played, s
 def test_applicable_m5_still_reports_missing_competitive_data():
     analysis = _analysis()
     analysis.current_standings["Valencia"]["points"] = None
-    result = m5_engine.calculate_contextual_competitive_cost_engine(analysis, _event())
+    result = _calculate_m5(analysis)
     assert result.raw["season_applicability"]["is_applicable"] is True
     assert result.raw["m5_status"] == "INSUFFICIENT_DATA"
     assert result.raw["m5_status_reason"] == "missing_points_or_rank"
@@ -224,7 +247,10 @@ def test_joint_side_execution_keeps_other_module_results_and_shared_inputs(monke
             monkeypatch.setattr(side_engine, function, lambda *args, _module=module, **kwargs: _module)
     analysis = _valencia_analysis()
     before = deepcopy(analysis.current_standings)
-    result = side_engine.calculate_p1_side(analysis, _event())
+    event = _event()
+    result = side_engine.calculate_p1_side(
+        analysis, event.to_identity(), event.competition
+    )
     expected = [side_engine._serialize_module_result(module) for module in modules if module.module_id != "M5"]
     actual = [module for module in result["modules"] if module["module_id"] != "M5"]
     assert actual == expected

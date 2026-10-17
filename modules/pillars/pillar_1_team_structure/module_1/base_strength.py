@@ -30,7 +30,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.pillars.context import EventContext
+from modules.pillars.context import CompetitionContext, EventIdentity
 from shared.temporal import from_unix_timestamp
 
 logger = logging.getLogger(__name__)
@@ -543,7 +543,7 @@ def _season_record_has_required_gd_data(record: Dict[str, Any]) -> bool:
 
 def _extract_team_season_record(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
     side: str,
     fallback_results: List[Dict],
     debug_mode: bool = False,
@@ -552,8 +552,10 @@ def _extract_team_season_record(
     direct_attr = f"{side}_team_current_standing"
 
     direct_current_standing = getattr(streak_analysis, direct_attr, None)
-    team = getattr(event_context, side, None)
-    team_name = getattr(team, "name", None) or _extract_team_name_from_results(fallback_results)
+    team_name = (
+        getattr(event_identity, f"{side}_team_name", None)
+        or _extract_team_name_from_results(fallback_results)
+    )
     current_standings = getattr(streak_analysis, "current_standings", None)
 
     candidates: List[Tuple[str, Optional[Dict[str, Any]]]] = [
@@ -1203,25 +1205,26 @@ def _determine_m1_status(
 
 def calculate_base_strength(
     streak_analysis: Any,
-    event_context: EventContext,
+    event_identity: EventIdentity,
+    competition_context: CompetitionContext,
     debug_mode: bool = False,
 ) -> ModuleResult:
     """Calculate M1 - Base Strength for an event."""
     home_results: List[Dict] = getattr(streak_analysis, "home_team_results", None) or []
     away_results: List[Dict] = getattr(streak_analysis, "away_team_results", None) or []
-    event_id: int = event_context.event_id
-    participants: str = event_context.participants_label
-    competition_id = event_context.competition.competition_id
-    competition_display_name = event_context.competition.display_name or event_context.competition.canonical_name
-    competition_number_of_teams = event_context.competition.number_of_teams
-    competition_number_of_teams_source = event_context.competition.number_of_teams_source
-    total_regular_season_games = getattr(event_context.competition, "total_regular_season_games", None)
-    standings_grouping = getattr(event_context.competition, "standings_grouping", None)
-    league_config_source = getattr(event_context.competition, "league_config_source", None)
+    event_id: int = event_identity.event_id
+    participants: str = event_identity.participants_label
+    competition_id = competition_context.competition_id
+    competition_display_name = competition_context.display_name or competition_context.canonical_name
+    competition_number_of_teams = competition_context.number_of_teams
+    competition_number_of_teams_source = competition_context.number_of_teams_source
+    total_regular_season_games = getattr(competition_context, "total_regular_season_games", None)
+    standings_grouping = getattr(competition_context, "standings_grouping", None)
+    league_config_source = getattr(competition_context, "league_config_source", None)
     expected_league_size = competition_number_of_teams
 
-    home_team_name = event_context.home.name
-    away_team_name = event_context.away.name
+    home_team_name = event_identity.home_team_name
+    away_team_name = event_identity.away_team_name
 
     if debug_mode:
         _debug_section("INICIO")
@@ -1236,8 +1239,8 @@ def calculate_base_strength(
         _debug_line("Esta es la tabla exacta que recibe y procesa el M1 para calcular el record de la temporada y la escala dinámica.")
         
         _event_ts = getattr(streak_analysis, "current_event_timestamp", None)
-        if _event_ts is None and event_context.starts_at:
-            _event_ts = event_context.starts_at.timestamp()
+        if _event_ts is None and event_identity.starts_at:
+            _event_ts = event_identity.starts_at.timestamp()
         if _event_ts:
             import datetime
             _event_date_str = datetime.datetime.fromtimestamp(
@@ -1252,7 +1255,7 @@ def calculate_base_strength(
             _standings_list = _collect_unique_standings(_current_standings)
         else:
             _standings_response = getattr(
-                event_context.competition,
+                competition_context,
                 "standings_response",
                 None,
             )
@@ -1290,8 +1293,8 @@ def calculate_base_strength(
             _debug_line("  #%s %s: %spts (%sW-%sD-%sL, GP:%s) GF:%s GA:%s DIFF:%s", _pos, _name, _pts, _w, _d, _l, _gp, _gf, _ga, _gd_str)
         _debug_line("Total de equipos en la tabla procesada: %s", len(_standings_list))
 
-    home_record = _extract_team_season_record(streak_analysis, event_context, "home", home_results, debug_mode=debug_mode)
-    away_record = _extract_team_season_record(streak_analysis, event_context, "away", away_results, debug_mode=debug_mode)
+    home_record = _extract_team_season_record(streak_analysis, event_identity, "home", home_results, debug_mode=debug_mode)
+    away_record = _extract_team_season_record(streak_analysis, event_identity, "away", away_results, debug_mode=debug_mode)
 
     home_gd_series = _extract_game_gd_series(home_results, "HOME", debug_mode=debug_mode)
     away_gd_series = _extract_game_gd_series(away_results, "AWAY", debug_mode=debug_mode)
@@ -1313,7 +1316,7 @@ def calculate_base_strength(
         home_results,
         away_results,
         competition_standings_response=getattr(
-            event_context.competition,
+            competition_context,
             "standings_response",
             None,
         ),
@@ -1420,7 +1423,8 @@ def calculate_base_strength(
     raw_audit: Dict[str, Any] = {
         "home_team": home_team_name,
         "away_team": away_team_name,
-        "event_context_present": True,
+        "event_identity_present": True,
+        "competition_context_present": True,
         "context_status": "normalized",
         "competition_id": competition_id,
         "competition_display_name": competition_display_name,

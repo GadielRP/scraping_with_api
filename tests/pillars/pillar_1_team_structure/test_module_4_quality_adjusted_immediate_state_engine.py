@@ -72,6 +72,15 @@ def _build_event_context(
     )
 
 
+def _calculate_m4(streak_analysis, event_context=None):
+    event_context = event_context or _build_event_context()
+    return calculate_quality_adjusted_immediate_state_engine(
+        streak_analysis,
+        event_context.to_identity(),
+        event_context.competition,
+    )
+
+
 def _match(
     *,
     event_id: int,
@@ -213,7 +222,7 @@ def test_m4_celta_levante_blueprint_exact_values():
         ],
     )
 
-    result = calculate_quality_adjusted_immediate_state_engine(streak_analysis, _build_event_context())
+    result = _calculate_m4(streak_analysis)
 
     assert result.module_id == "M4"
     assert result.module_name == "Quality-Adjusted Immediate State Engine"
@@ -318,7 +327,7 @@ def test_m4_insufficient_data_when_less_than_3_valid_matches():
         ],
     )
 
-    result = calculate_quality_adjusted_immediate_state_engine(streak_analysis, _build_event_context())
+    result = _calculate_m4(streak_analysis)
 
     assert result.value == 0.0
     assert result.bias == "NEUTRAL"
@@ -419,7 +428,7 @@ def test_m4_degraded_when_between_3_and_4_valid_matches():
         ],
     )
 
-    result = calculate_quality_adjusted_immediate_state_engine(streak_analysis, _build_event_context())
+    result = _calculate_m4(streak_analysis)
 
     assert result.raw["m4_status"] == "DEGRADED"
     assert result.raw["m4_status_reason"] == "partial_window"
@@ -527,7 +536,7 @@ def test_m4_ignores_invalid_matches_and_records_reasons():
         ],
     )
 
-    result = calculate_quality_adjusted_immediate_state_engine(streak_analysis, _build_event_context())
+    result = _calculate_m4(streak_analysis)
 
     home_reasons = {entry["reason"] for entry in result.raw["invalid_home_matches"]}
     away_reasons = {entry["reason"] for entry in result.raw["invalid_away_matches"]}
@@ -643,7 +652,7 @@ def test_m4_zero_denominator_relative_score():
         ],
     )
 
-    result = calculate_quality_adjusted_immediate_state_engine(streak_analysis, _build_event_context())
+    result = _calculate_m4(streak_analysis)
 
     assert result.raw["m4_status"] == "ACTIVE"
     assert result.raw["result_score"] == 0.0
