@@ -13,11 +13,11 @@ from modules.pillars.mining.serialization import to_json_value
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import (
     PillarEvaluation,
-    EventOutcomeObservation,
     PillarMiningMetricValue as MiningMetricModel,
     PillarMiningRun as MiningRunModel,
     PillarMiningUnit as MiningUnitModel,
 )
+from .outcome_observation_repository import get_outcome_observation, get_outcomes_page
 from modules.pillars.mining.contracts import (
     PillarMiningRun,
     iter_unit_layers,
@@ -509,75 +509,22 @@ class PillarMiningRepository:
                 return cls.get_outcomes_page(
                     event_id, cursor=cursor, page_size=page_size, session=owned
                 )
-        query = select(EventOutcomeObservation).where(
-            EventOutcomeObservation.event_id == event_id
+        return get_outcomes_page(
+            session, event_id, cursor=cursor, page_size=page_size
         )
-        if cursor:
-            from datetime import datetime
-            from sqlalchemy import tuple_
-
-            received_at, observation_id = cursor
-            query = query.where(
-                tuple_(
-                    EventOutcomeObservation.received_at,
-                    EventOutcomeObservation.observation_id,
-                )
-                < tuple_(datetime.fromisoformat(received_at), observation_id)
-            )
-        rows = session.scalars(
-            query.order_by(
-                EventOutcomeObservation.received_at.desc(),
-                EventOutcomeObservation.observation_id.desc(),
-            ).limit(page_size + 1)
-        ).all()
-        more, rows = len(rows) > page_size, rows[:page_size]
-        return {
-            "items": [
-                to_json_value(
-                    {
-                        col.name: getattr(row, col.name)
-                        for col in EventOutcomeObservation.__table__.columns
-                    }
-                )
-                for row in rows
-            ],
-            "next_cursor": (
-                (rows[-1].received_at.isoformat(), rows[-1].observation_id)
-                if more
-                else None
-            ),
-        }
 
     @classmethod
-    def get_mining_case(cls, evaluation_id):
+    def get_mining_case(cls, evaluation_id, *, observation_id=None):
+        """Inspect an evaluation with pinned evidence, or the latest if omitted.
+
+        This full audit reader is not a market resolver or a MiningCaseBuilder.
+        """
         with db_manager.get_session() as session:
             evaluation = cls.get_evaluation(evaluation_id, session=session)
-            outcome = session.scalars(
-                select(EventOutcomeObservation)
-                .where(EventOutcomeObservation.event_id == evaluation["event_id"])
-                .order_by(
-                    EventOutcomeObservation.received_at.desc(),
-                    EventOutcomeObservation.observation_id.desc(),
-                )
-                .limit(1)
-            ).first()
+            outcome = get_outcome_observation(
+                session, evaluation["event_id"], observation_id=observation_id
+            )
             return {
                 "evaluation": evaluation,
-                "outcome": (
-                    None
-                    if outcome is None
-                    else {
-                        "observation_id": outcome.observation_id,
-                        "source": outcome.source,
-                        "source_event_id": outcome.source_event_id,
-                        "created_at": outcome.created_at.isoformat(),
-                        "received_at": outcome.received_at.isoformat(),
-                        "source_observed_at": (
-                            outcome.source_observed_at.isoformat()
-                            if outcome.source_observed_at
-                            else None
-                        ),
-                        "payload": outcome.payload,
-                    }
-                ),
+                "outcome": outcome,
             }

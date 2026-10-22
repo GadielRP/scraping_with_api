@@ -159,6 +159,71 @@ def test_operational_deletion_and_later_corrections_cannot_change_snapshot(manag
         )
 
 
+def test_pinned_outcome_survives_later_correction(manager):
+    original = snapshot()
+    with manager.get_session() as session:
+        Repository.append_evaluation(original, session=session)
+        first_id = append_outcome_observation(
+            session, 1, {"home_score": 1, "away_score": 1}
+        )
+    before = Repository.get_mining_case(
+        original.evaluation_id, observation_id=first_id
+    )
+    with manager.get_session() as session:
+        second_id = append_outcome_observation(
+            session, 1, {"home_score": 2, "away_score": 1}
+        )
+    assert Repository.get_mining_case(
+        original.evaluation_id, observation_id=first_id
+    ) == before
+    assert before["outcome"]["event_id"] == 1
+    assert Repository.get_mining_case(original.evaluation_id)["outcome"][
+        "observation_id"
+    ] == second_id
+
+
+def test_pinned_outcome_never_falls_back_to_another_observation(manager):
+    original = snapshot()
+    with manager.get_session() as session:
+        Repository.append_evaluation(original, session=session)
+        append_outcome_observation(session, 1, {"home_score": 2, "away_score": 1})
+        unrelated_id = append_outcome_observation(
+            session, 2, {"home_score": 0, "away_score": 1}
+        )
+    for observation_id in (unrelated_id, str(uuid4())):
+        with pytest.raises(LookupError, match="outcome observation not found for event"):
+            Repository.get_mining_case(
+                original.evaluation_id, observation_id=observation_id
+            )
+
+
+def test_outcome_pages_break_timestamp_ties_without_duplicates(manager):
+    with manager.get_session() as session:
+        ids = [
+            append_outcome_observation(session, 1, {
+                "_outcome_observation": {
+                    "source": "test", "received_at": NOW,
+                    "payload": {"home_score": score, "away_score": 0},
+                }
+            })
+            for score in range(3)
+        ]
+    first = Repository.get_outcomes_page(1, page_size=2)
+    second = Repository.get_outcomes_page(1, page_size=2, cursor=first["next_cursor"])
+    assert [row["observation_id"] for row in first["items"] + second["items"]] == sorted(
+        ids, reverse=True
+    )
+    assert second["next_cursor"] is None
+    assert Repository.get_outcomes_page(999)["items"] == []
+
+
+def test_mining_case_without_outcomes_remains_unresolved(manager):
+    original = snapshot()
+    with manager.get_session() as session:
+        Repository.append_evaluation(original, session=session)
+    assert Repository.get_mining_case(original.evaluation_id)["outcome"] is None
+
+
 @pytest.mark.parametrize(
     "table",
     [

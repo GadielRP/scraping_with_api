@@ -240,7 +240,10 @@ Las escrituras usan lotes y COPY con buffers acotados. Las poblaciones P5 no se 
 - `get_result(run_id)`: salida, señales y primera página de unidades/metrics.
 - `get_units_page(run_id, after_id=…, page_size=…)`: recorrido paginado de toda la jerarquía.
 - `Pillar5PriceMemoryRepository.get_sample_page(sample_id, cursor=…, page_size=…)`: miembros congelados.
-- `get_mining_case(evaluation_id)`: evaluación original y outcome más reciente, sin recalcular pilares.
+- `get_mining_case(evaluation_id, observation_id=…)`: evaluación original y observación
+  exacta del mismo evento, sin recalcular pilares. Un ID inexistente o de otro evento
+  produce `LookupError`; no se sustituye por otra observación. Si se omite el ID,
+  mantiene la lectura exploratoria del outcome más reciente, que puede cambiar.
 - `get_outcomes_page(event_id, …)`: observaciones y correcciones posteriores.
 
 Los outcomes se anexan a `event_outcome_observations` con fuente, ID externo, tiempos y
@@ -248,6 +251,14 @@ payload deportivo original (incluidos periodos/sets cuando están disponibles).
 Una corrección crea otra observación. Los outcomes no actualizan el snapshot y no participan
 en la selección productiva de P5. La resolución de mercados y las métricas predictivas
 pertenecen a minería/investigación futura.
+
+La lectura y paginación de observaciones pertenecen a
+`outcome_observation_repository.py`; minería delega en ese repositorio.
+`append_outcome_observation` devuelve el ID insertado para conservar su identidad.
+El outcome del lector incluye también `event_id`. Estos lectores aún no normalizan
+FT/1H ni resuelven contratos. El lector completo carga los resultados de los pilares;
+el futuro resolver debe consultar únicamente la identidad de la evaluación y su
+observación. Ver el [plan LAB + Outcome Resolver](../plans/lab-outcome-resolver.md).
 
 ## Migración
 
