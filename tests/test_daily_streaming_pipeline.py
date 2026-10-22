@@ -96,6 +96,31 @@ def test_real_batches_persist_complete_source_and_mark_sport_complete(database):
         assert session.query(DailyDiscoveryLog).one().status == "completed"
 
 
+@pytest.mark.parametrize("body,failed", [
+    (b'{"odds":[]}', False),
+    (b'{"odds":[{"id":1}]}', True),
+    (b'{"wrong":{}}', True),
+    (b'{"odds":[],', True),
+])
+def test_daily_odds_empty_array_completes_but_invalid_responses_fail(database, body, failed):
+    class OddsProvider(Provider):
+        def download_json(self, endpoint, body_file, params=None):
+            if "/odds/" in endpoint:
+                body_file.write(body)
+                body_file.seek(0)
+            else:
+                super().download_json(endpoint, body_file, params)
+
+    stats = discover_events_for_date(
+        "2026-10-03", ["football"], "actualizacion", client=OddsProvider(count=1),
+    )
+    assert stats["events_persisted"] == 1
+    assert stats["odds_inserted"] == 0
+    assert stats["sports_failed"] == int(failed)
+    with database.get_session() as session:
+        assert session.query(DailyDiscoveryLog).one().status == ("failed" if failed else "completed")
+
+
 def test_truncation_retains_commits_and_retry_is_idempotent(database, caplog):
     caplog.set_level("INFO", logger="modules.jobs.daily_discovery.pipeline")
     stats = discover_events_for_date(

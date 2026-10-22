@@ -33,7 +33,10 @@ logger = logging.getLogger(__name__)
 def persist_sport_odds(client, date, sport, store, batch_size):
     saved = 0
     with client.open_scheduled_odds(date, sport) as document:
-        for batch in chunks(document_entries(document, "odds", mapping=True), batch_size):
+        # SofaScore represents the empty odds map as [] rather than {}.
+        for batch in chunks(document_entries(
+            document, "odds", mapping=True, allow_empty_array=True,
+        ), batch_size):
             check_execution_budget()
             check_maintenance_capacity()
             members = store.source_members([sid for sid, _ in batch])

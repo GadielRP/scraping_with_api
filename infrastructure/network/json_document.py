@@ -112,17 +112,20 @@ class TokenBoundedReader:
         return data
 
 
-def document_entries(document, field: str | tuple[str, ...], *, mapping=False, controls=None):
+def document_entries(document, field: str | tuple[str, ...], *, mapping=False, controls=None,
+                     allow_empty_array=False):
     """Yield bounded members; exhaustion validates the whole JSON document.
 
     Use an empty field for a root array, or a tuple for supported alternative
     collection paths. Only the requested scalar metadata keys are captured.
+    A mapping may explicitly accept an empty array used by a provider for no data.
     """
     fields = (field,) if isinstance(field, str) else field
     controls = controls if controls is not None else {}
     limits = JobExecutionSettings()
     maximum = limits.json_item_max_bytes
     collection = None
+    empty_mapping_array = False
     builder = None
     depth = size = 0
     member_key = member_prefix = None
@@ -133,9 +136,17 @@ def document_entries(document, field: str | tuple[str, ...], *, mapping=False, c
             "start_map" if mapping else "start_array"
         ):
             collection = prefix
+        elif (collection is None and mapping and allow_empty_array
+              and prefix in fields and event == "start_array"):
+            collection = prefix
+            empty_mapping_array = True
         if prefix in controls and event in ("boolean", "string", "number", "null"):
             controls[prefix] = value
         if collection is None:
+            continue
+        if empty_mapping_array:
+            if prefix.startswith(f"{collection}." if collection else "item"):
+                raise ValueError(f"Provider JSON expected mapping or empty array: {collection}")
             continue
         if mapping and prefix == collection and event == "map_key":
             member_key = value

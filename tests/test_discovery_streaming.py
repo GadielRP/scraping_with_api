@@ -68,6 +68,19 @@ def test_streams_member_keys_nested_payloads_and_pagination_controls():
     ) == [("1", {"markets": []}), ("2", None)]
 
 
+def test_empty_array_mapping_compatibility_is_explicit_and_still_validates_json():
+    assert list(document_entries(BytesIO(b'{"odds":[]}'), "odds", mapping=True,
+                                 allow_empty_array=True)) == []
+    with pytest.raises(ValueError, match="missing required"):
+        list(document_entries(BytesIO(b'{"odds":[]}'), "odds", mapping=True))
+    with pytest.raises(ValueError, match="expected mapping or empty array"):
+        list(document_entries(BytesIO(b'{"odds":[{"id":1}]}'), "odds", mapping=True,
+                              allow_empty_array=True))
+    with pytest.raises(Exception):
+        list(document_entries(BytesIO(b'{"odds":[],'), "odds", mapping=True,
+                              allow_empty_array=True))
+
+
 def test_response_limit_aborts_without_materializing_body():
     file = BytesIO()
     body = JsonDocument(file, 5)
