@@ -11,7 +11,7 @@ from shared.batching import chunks
 logger = logging.getLogger(__name__)
 
 
-def delete_events(db_manager, event_ids):
+def delete_events(db_manager, event_ids, *, event_filter=None):
     settings = DiscardSettings.current()
     evidence = getattr(event_ids, 'evidence', {})
     total = 0
@@ -22,11 +22,21 @@ def delete_events(db_manager, event_ids):
                 EventSourceMapping.event_id.in_(ids)).all()
             lock_event_identities(session, identities)
             events = session.query(Event).filter(Event.id.in_(ids)).order_by(Event.id).with_for_update().all()
-            current_mappings = {(m.source, m.source_event_id): m.event_id for m in session.query(EventSourceMapping).filter(
-                EventSourceMapping.event_id.in_(ids)).all()}
+            mapping_query = session.query(EventSourceMapping).filter(EventSourceMapping.event_id.in_(ids))
+            if event_filter is not None:
+                mapping_query = mapping_query.order_by(EventSourceMapping.mapping_id).with_for_update()
+            current_mappings = {(m.source, m.source_event_id): m.event_id for m in mapping_query.all()}
+            # Maintenance selection may have changed since its keyset page was read.
+            # Recheck after locking events and mappings, before removing any children.
+            eligible_ids = None
+            if event_filter is not None:
+                eligible_ids = {row[0] for row in session.query(Event.id).filter(
+                    Event.id.in_(ids), event_filter).all()}
             result_ids = {r[0] for r in session.query(Result.event_id).filter(Result.event_id.in_(ids)).all()}
             selected = []
             for event in events:
+                if eligible_ids is not None and event.id not in eligible_ids:
+                    continue
                 proof = evidence.get(event.id)
                 if proof and (current_mappings.get((proof.source, proof.source_event_id)) != event.id
                               or event.id in result_ids
