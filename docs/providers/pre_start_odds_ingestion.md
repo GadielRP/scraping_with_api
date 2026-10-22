@@ -830,6 +830,11 @@ record the original mainline flag, price gap, normalized liquidity and discarded
 candidates. Historical ingestion retains the cached line even if subsequent prices
 would favor a different one.
 
+When adaptation uses cached selections, line outcomes must belong to that cache;
+provider `mainLine=true` flags in the retained `/odds` base cannot admit additional
+lines. This applies independently of `persist_main_line_only`. See
+`docs/operations/oddspapi_line_backfill.md` for the offline audit and repair workflow.
+
 `MarketRepository` reconciles superseded quote flags once per batch using indexed
 in-memory state, including newly created choices. It demotes other lines only when
 the incoming family has one selected line, without additional SQL lookups or deleting

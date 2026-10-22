@@ -338,17 +338,26 @@ def test_market_activity_toggle_is_shared_by_adapter_cache_and_exchange_planner(
     assert payload == original
 
 
-def test_historical_ingestion_preserves_cached_line_despite_new_price_balance():
-    payload, index = _fixture([{"prices": [1.4, 3]}, {"prices": [2, 2]}])
+@pytest.mark.parametrize("provider_mainline", [None, True, False])
+@pytest.mark.parametrize("persist_main_line_only", [True, False])
+@pytest.mark.parametrize("cache_arguments", [
+    {"use_mainline_cache": True, "mainline_outcome_ids_by_bookmaker": {"bet365": {"1-0", "1-1"}}},
+    {"mainline_outcome_ids_by_bookmaker": {"bet365": {"1-0", "1-1"}}},
+    {"mainline_outcome_ids": {"1-0", "1-1"}},
+])
+def test_historical_ingestion_preserves_cached_line_despite_new_price_balance(
+    provider_mainline, persist_main_line_only, cache_arguments,
+):
+    payload, index = _fixture([{"prices": [1.4, 3]}, {"prices": [2, 2], "active": False}])
     for market in payload["bookmakerOdds"]["bet365"]["markets"].values():
         for outcome in market["outcomes"].values():
-            outcome["players"]["0"].pop("mainLine")
+            outcome["players"]["0"]["mainLine"] = provider_mainline
     adapted = OddspapiMarketAdapter.from_odds_response(
         payload,
         market_mapping_index=index,
-        use_mainline_cache=True,
-        persist_main_line_only=True,
-        mainline_outcome_ids_by_bookmaker={"bet365": {"1-0", "1-1"}},
+        require_active_quotes=False,
+        persist_main_line_only=persist_main_line_only,
+        **cache_arguments,
     )
     assert [market["lineValue"] for market in adapted["bookmakers"][0]["markets"]] == [
         "1"

@@ -442,7 +442,7 @@ class BackfillRunner:
             )
         else:
             events_total = len(manifest["events"])
-            event_iter = iter(manifest["events"])
+            event_iter = iter(manifest["events"][start:])
         lock_connection = self._acquire_lock()
         checkpoint["status"] = "RUNNING"
         write_json_atomic(self.checkpoint_path, checkpoint)

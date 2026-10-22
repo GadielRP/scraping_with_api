@@ -123,6 +123,11 @@ class OddspapiMarketAdapter:
             for outcome_id in (mainline_outcome_ids or set())
             if str(outcome_id).strip()
         }
+        has_cached_selection = (
+            use_mainline_cache
+            or mainline_outcome_ids is not None
+            or mainline_outcome_ids_by_bookmaker is not None
+        )
         fallback_priority = tuple(
             str(slug).strip()
             for slug in (mainline_fallback_bookmakers or ())
@@ -157,7 +162,7 @@ class OddspapiMarketAdapter:
 
             cached_mainline_ids = set(global_mainline_ids)
             cache_source_slug = None
-            if use_mainline_cache and mainline_outcome_ids_by_bookmaker is not None:
+            if mainline_outcome_ids_by_bookmaker is not None:
                 cached_mainline_ids, cache_source_slug = resolve_mainline_outcome_ids(
                     slug,
                     mainline_outcome_ids_by_bookmaker,
@@ -185,11 +190,7 @@ class OddspapiMarketAdapter:
                     )
 
             selection = LineSelection()
-            if (
-                not use_mainline_cache
-                and not global_mainline_ids
-                and mainline_outcome_ids_by_bookmaker is None
-            ):
+            if not has_cached_selection:
                 selection = select_current_lines(
                     markets_data,
                     market_mapping_index=market_mapping_index,
@@ -329,7 +330,14 @@ class OddspapiMarketAdapter:
                             continue
 
                         main_line = player.get("mainLine")
-                        if normalized_market_id in selection.selected_market_ids:
+                        if market_resolution.requires_line_value and has_cached_selection:
+                            # The cached selection already ranked current lines.
+                            # A provider flag in the retained /odds base must not
+                            # reintroduce a line rejected during that selection.
+                            if normalized_outcome_id not in cached_mainline_ids:
+                                continue
+                            main_line = True
+                        elif normalized_market_id in selection.selected_market_ids:
                             main_line = True
                         elif (
                             main_line is None
