@@ -21,11 +21,15 @@ def _source_id(event):
     return str(event.get("event", event)["id"])
 
 
-def _eligible_events(events, tracked_competitions):
-    eligible = filter_sofascore_events(events, tracked_competitions)
+def _eligible_events(events, tracked_competitions, discovery_source):
+    eligible = filter_sofascore_events(events, tracked_competitions, source=discovery_source)
     if not eligible:
         return []
     blocked = EventRepository.discarded_source_ids("sofascore", [_source_id(e) for e in eligible])
+    logger.info(
+        "Discovery discard memory source=%s events_checked=%s events_blocked=%s",
+        discovery_source, len(eligible), sum(_source_id(e) in blocked for e in eligible),
+    )
     return [event for event in eligible if _source_id(event) not in blocked]
 
 
@@ -66,7 +70,7 @@ def persist_events(
     processed = skipped = 0
     for batch in chunks(events, JobExecutionSettings().event_read_batch_size):
         check_execution_budget()
-        eligible = _eligible_events(batch, tracked_competitions)
+        eligible = _eligible_events(batch, tracked_competitions, discovery_source)
         if not eligible:
             skipped += len(batch)
             continue
@@ -95,7 +99,7 @@ def persist_events_with_odds(
     processed = skipped = 0
     for batch in chunks(events, JobExecutionSettings().event_read_batch_size):
         check_execution_budget()
-        eligible = _eligible_events(batch, tracked_competitions)
+        eligible = _eligible_events(batch, tracked_competitions, discovery_source)
         skipped += len(batch) - len(eligible)
         if not eligible:
             continue
@@ -125,7 +129,7 @@ def fetch_and_persist_events_with_odds(
     processed = skipped = 0
     for batch in chunks(events, JobExecutionSettings().event_read_batch_size):
         check_execution_budget()
-        eligible = _eligible_events(batch, tracked_competitions)
+        eligible = _eligible_events(batch, tracked_competitions, discovery_source)
         skipped += len(batch) - len(eligible)
         if not eligible:
             continue

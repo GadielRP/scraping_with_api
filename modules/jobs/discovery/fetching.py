@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 from infrastructure.settings import discovery as settings
 from modules.jobs.discovery.filters import (
     admit_sofascore_event,
     load_tracked_source_competitions,
     UNRESOLVED_SCOPE,
 )
+from modules.jobs.discovery.summary import log_filter_counts
 from modules.odds_ingestion.fetch_result import OddsFetchStatus
 from modules.sofascore import api_client
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
@@ -33,39 +35,56 @@ def fetch_nearest_team_events(
         else load_tracked_source_competitions("sofascore")
     )
 
-    def fetch_team_event(team_id: int) -> Optional[Dict]:
+    def fetch_team_event(team_id: int):
         try:
             event_response = api_client.get_nearest_event_for_team(team_id)
             if not event_response:
                 logger.debug("No nearest event found for team %s", team_id)
-                return None
+                return None, "no_nearest_event"
 
             admission = admit_sofascore_event(event_response, tracked_competitions)
             if admission.rejection_reason:
                 logger.debug(
                     "Skipping team event team=%s reason=%s", team_id, admission.rejection_reason,
                 )
-                return None
+                return None, admission.rejection_reason
 
             event_data = api_client.normalize_event_payload(
                 admission.raw_event, discovery_source="team_streaks", resolved_round=admission.round_name,
             )
             if not event_data:
                 logger.debug("Failed to structure event data for team %s", team_id)
-                return None
+                return None, "normalization_error"
             logger.debug(
                 "Fetched event %s for team %s",
                 event_data.get("event", event_data).get("id"),
                 team_id,
             )
-            return event_data
+            return event_data, None
         except WorkDeferred:
             raise
         except Exception as exc:
             logger.debug("Error processing team %s: %s", team_id, exc)
-            return None
+            return None, "request_or_normalization_error"
 
-    return [event for event in bounded_results(fetch_team_event, team_ids, max_workers) if event]
+    events = []
+    reasons = Counter()
+    for event, reason in bounded_results(fetch_team_event, team_ids, max_workers):
+        if reason:
+            reasons[reason] += 1
+        else:
+            events.append(event)
+    no_event = reasons.pop("no_nearest_event", 0)
+    errors = reasons.pop("request_or_normalization_error", 0)
+    logger.info(
+        "Discovery team lookup source=team_streaks teams=%s no_nearest_event=%s errors=%s",
+        len(team_ids), no_event, errors,
+    )
+    log_filter_counts(
+        logger, source="team_streaks", stage="nearest_event",
+        received=len(team_ids) - no_event - errors, accepted=len(events), reasons=reasons,
+    )
+    return events
 
 
 @dataclass

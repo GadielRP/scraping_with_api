@@ -13,6 +13,7 @@ from modules.jobs.discovery.filters import (
     UNRESOLVED_SCOPE,
     admit_sofascore_event,
 )
+from modules.jobs.discovery.summary import log_filter_counts
 from modules.sports.catalog import (
     canonical_sport_id,
     sofascore_sport_slug,
@@ -239,7 +240,18 @@ def extract_events_and_odds_from_dropping_response(
             odds_extraction,
         )
 
-        logger.info("Discovery feed admission source=%s rejected=%s", discovery_source, dict(rejected_policy))
+        rejected_policy.update({
+            "unsupported_sport": rejected_unsupported_sport,
+            "untracked_competition": rejected_untracked_competition,
+            "missing_source_competition_ids": rejected_missing_competition_ids,
+            "invalid_event_payload": rejected_invalid_event_payload,
+            "missing_required_fields": missing_required_fields,
+            "normalization_error": normalization_errors,
+        })
+        log_filter_counts(
+            logger, source=discovery_source, stage="feed", received=len(response_events),
+            accepted=len(events), reasons=rejected_policy,
+        )
 
         return events, odds_map
     except WorkDeferred:

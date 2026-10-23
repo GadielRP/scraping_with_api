@@ -55,9 +55,12 @@ def test_shared_discovery_filter_logs_reason_for_each_rejection(monkeypatch, cap
     )
 
     assert [event["event"]["id"] for event in events] == [3]
-    assert "'unsupported_sport': 2" in caplog.text
-    assert "'missing_start_timestamp': 1" in caplog.text
-    assert "'start_too_soon_or_started': 1" in caplog.text
+    counts = dict(line.split() for line in caplog.records[-1].getMessage().splitlines()[1:])
+    assert counts["unsupported_sport"] == "2"
+    assert counts["missing_start_timestamp"] == "1"
+    assert counts["start_too_soon_or_started"] == "1"
+    assert counts["excluded_category"] == counts["round_not_allowed"] == "0"
+    assert "received=5 accepted=1 filtered=4" in caplog.text
 
 
 def test_event_only_persistence_rejects_unsupported_sports(monkeypatch):

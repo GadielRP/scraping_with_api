@@ -109,11 +109,15 @@ def test_dropping_and_secondary_feeds_reject_before_normalization(monkeypatch, c
     normalize.assert_not_called()
 
 
-def test_nearest_team_events_reject_before_normalization(monkeypatch):
+def test_nearest_team_events_reject_before_normalization(monkeypatch, caplog):
     enable_ranking_filter(monkeypatch)
     raw = event(away={"ranking": 120})
     monkeypatch.setattr(fetching.api_client, "get_nearest_event_for_team", lambda _: {"event": raw})
     normalize = Mock()
     monkeypatch.setattr(fetching.api_client, "normalize_event_payload", normalize)
-    assert fetching.fetch_nearest_team_events([123], max_workers=1, tracked_competitions=None) == []
+    with caplog.at_level("INFO", logger=fetching.__name__):
+        assert fetching.fetch_nearest_team_events([123], max_workers=1, tracked_competitions=None) == []
     normalize.assert_not_called()
+    assert "source=team_streaks stage=nearest_event unit=events received=1 accepted=0 filtered=1" in caplog.text
+    counts = dict(line.split() for line in caplog.records[-1].getMessage().splitlines()[1:])
+    assert counts["tennis_ranking_excluded"] == "1"

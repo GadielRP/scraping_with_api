@@ -13,7 +13,7 @@ from modules.jobs.discovery.persistence import (
     fetch_and_persist_events_with_odds,
     persist_events_with_odds,
 )
-from modules.jobs.discovery.summary import log_discovery_summary
+from modules.jobs.discovery.summary import log_discovery_configuration, log_discovery_summary
 from shared.execution_context import check_execution_budget
 from .feeds import run_high_value_streaks, run_team_streaks, run_top_h2h, run_winning_odds
 
@@ -27,6 +27,7 @@ def run_discover_secondary_sources() -> None:
         )
         return
     scope = load_tracked_source_competitions("sofascore")
+    log_discovery_configuration(logger, job="secondary_sources", tracked_competitions=scope)
     if scope is not None and not scope:
         logger.warning(
             "No tracked SofaScore tournament IDs are mapped; skipping secondary discoveries"

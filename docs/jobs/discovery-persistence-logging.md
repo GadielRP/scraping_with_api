@@ -28,6 +28,32 @@ These counts describe received occurrences, whereas `persisted_unique` describes
 canonical identities. The logging counters are bounded by the number of reasons
 and add no database queries or payload retention.
 
+## Loaded policy and admission audit
+
+Each Daily, Dropping Odds and Secondary Sources run logs `Discovery configuration`
+with the loaded SofaScore settings, every shared filter switch and exact denylist,
+configured sports, mapped competition scope, timezone, worker limits and schedules.
+This snapshot reflects the running process; editing `infrastructure/settings/discovery.py`
+requires an application restart before new settings take effect.
+
+`Discovery filters` records have a readable row for every rejection reason,
+including zeros. The header identifies the source, stage, count unit, received,
+accepted and filtered occurrences. Feed extraction includes metadata, policy and
+normalization rejections in the same total. Nearest team event lookups now report
+policy rejections at INFO; missing responses and request errors are separate from
+received event counts. Persistence revalidation names the originating feed and
+logs discard-memory blocks separately. Revalidation counts must not be added to
+feed received counts: these are the same events checked at a later stage.
+
+Daily's final audit separates source, pre-write and tournament filters, followed
+by a compact multiline summary of event writes, skips, failures and odds.
+Accepted means passing that stage's filters, not necessarily persisted.
+Each occurrence is assigned only its first rejection reason, so reason totals
+are disjoint within one stage, not independent evaluations of every filter.
+Tournaments rejected before download have an unknown number of filtered events;
+their event count is explicitly `unknown (not_downloaded)` and is never estimated
+or added to the received event rejection total.
+
 ## Interpretation
 
 Counts describe the events written during one invocation; they are not a snapshot of all events in the database. Totals from separate invocations overlap and cannot be summed to count unique events across a day. Subsequent rescheduling or deletion can change the set selected by Results Collection.

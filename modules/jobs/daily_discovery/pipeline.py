@@ -15,7 +15,9 @@ from infrastructure.settings import discovery as settings
 from infrastructure.settings.job_execution import JobExecutionSettings
 from modules.competition.tracked_competitions import tracked_competition_ids
 from modules.jobs.discovery.filters import load_tracked_source_competitions, sofascore_discovery_sport_slugs
-from modules.jobs.discovery.summary import log_discovery_summary
+from modules.jobs.discovery.summary import (
+    log_daily_filter_summary, log_discovery_configuration, log_discovery_summary,
+)
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.odds_ingestion.adapters.sofascore_market_adapter import SofaScoreMarketAdapter
 from modules.sofascore import api_client
@@ -76,6 +78,7 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
         raise ValueError("Daily discovery requires an explicit pass")
     limits = JobExecutionSettings()
     scope = load_tracked_source_competitions("sofascore")
+    log_discovery_configuration(logger, job="daily_discovery", tracked_competitions=scope)
     if scope is not None and not scope:
         raise ValueError("Configured SofaScore discovery scope has no provider mappings")
     stats = dict.fromkeys(
@@ -168,6 +171,4 @@ def discover_events_for_date(date, sports=None, run_slot=None, *, client=api_cli
             )
             stats["write_filter_reasons"] = dict(write_filter_reasons)
             stats["events_unprocessed"] = stats["events_admitted"] - stats["events_processed"]
-            logger.info(
-                "Daily discovery summary requested_date=%s slot=%s counts=%s", date, run_slot, stats,
-            )
+            log_daily_filter_summary(logger, stats, date=date, run_slot=run_slot)

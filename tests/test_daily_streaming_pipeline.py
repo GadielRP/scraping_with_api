@@ -265,7 +265,8 @@ def test_batch_and_final_logs_include_filters_and_rejected_tail_without_more_wri
     assert stats["tournament_filter_reasons"] == {"excluded_category": 1, "excluded_competition": 1}
     assert stats["events_blocked_by_discard_memory"] == stats["events_unprocessed"] == 0
     assert caplog.records[-1].msg.startswith("Daily discovery summary")
-    assert caplog.records[-1].args[-1] == stats
+    assert "events: received=202 admitted=100 filtered=102 unprocessed=0" in caplog.text
+    assert "unit=tournaments received=3 accepted=1 filtered=2" in caplog.text
     writer.assert_called_once()
     discard_lookup.assert_called_once()
 

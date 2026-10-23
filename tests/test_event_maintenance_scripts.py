@@ -10,7 +10,9 @@ from infrastructure.persistence.models import (
     Bookie, CanonicalMarketType, Competition, Event, EventSourceMapping, Market, Result,
 )
 from infrastructure.settings import discovery
+from infrastructure.persistence.odds_models import MarketChoice, MarketChoiceQuote, MarketChoiceSnapshot
 from scripts.maintenance import prune_events as prune
+from scripts.maintenance import prune_event_source_mappings as mapping_prune
 from scripts.maintenance import reset_oddspapi_has_odds as reset
 
 CUTOFF = datetime(2026, 9, 24, tzinfo=timezone.utc)
@@ -211,3 +213,122 @@ def test_sparse_populations_are_filtered_inside_bounded_id_windows(database, cap
     else:
         assert prune.run(database, states=(('oddspapi', 'true'),),
             all_competitions=True, batch_size=2, after_id=4)['selected'] == 1
+
+
+def test_mapping_prune_requires_explicit_cli_selection(monkeypatch):
+    with pytest.raises(ValueError, match='Specify sources'):
+        mapping_prune.run(None)
+    calls = []
+    monkeypatch.setattr(mapping_prune, 'run', lambda manager, **kwargs: calls.append(kwargs))
+    with pytest.raises(SystemExit):
+        mapping_prune.main([])
+    with pytest.raises(SystemExit):
+        mapping_prune.main(['--source', 'legacy', '--keep-source', 'sofascore'])
+    assert calls == []
+    mapping_prune.main(['--keep-source', 'SOFASCORE', 'oddspapi', '--keep-sources', 'oddsportal'])
+    assert calls[-1]['keep_sources'] == ['sofascore', 'oddspapi', 'oddsportal']
+    assert calls[-1]['sources'] == ()
+    assert calls[-1]['apply'] is False
+    mapping_prune.main(['--source', ' legacy_a ', '--sources', 'legacy_b', '--apply'])
+    assert calls[-1]['sources'] == ['legacy_a', 'legacy_b']
+    assert calls[-1]['keep_sources'] == ()
+    assert calls[-1]['apply'] is True
+
+
+def test_mapping_prune_preserves_events_results_and_same_source_odds(database):
+    add_event(database, 1, states=(('sofascore', True), ('oddspapi', True),
+        ('oddsportal', None), ('legacy_a', False), ('legacy_b', None)), market=True)
+    add_event(database, 2, states=(('legacy_a', True),))
+    with database.get_session() as session:
+        session.add(Result(event_id=1, home_score=2, away_score=1))
+        market_id = session.query(Market.market_id).filter_by(event_id=1).scalar()
+        choice = MarketChoice(market_id=market_id, choice_name='Home')
+        session.add(choice)
+        session.flush()
+        quote = MarketChoiceQuote(choice_id=choice.choice_id, source='legacy_a', current_odds=2)
+        session.add(quote)
+        session.flush()
+        session.add(MarketChoiceSnapshot(quote_id=quote.quote_id, odds_value=2))
+    args = dict(sources=('legacy_a', 'legacy_b'), batch_size=2)
+    preview = mapping_prune.run(database, **args)
+    assert preview['selected'] == 3 and preview['deleted'] == 0
+    with database.get_session() as session:
+        assert session.query(EventSourceMapping).count() == 6
+    first = mapping_prune.run(database, **args, limit=1, apply=True)
+    assert first['selected'] == first['deleted'] == 1
+    rest = mapping_prune.run(database, **args, after_id=first['last_mapping_id'], apply=True)
+    assert rest['deleted'] == 2
+    assert mapping_prune.run(database, **args, apply=True)['selected'] == 0
+    with database.get_session() as session:
+        assert {r.source for r in session.query(EventSourceMapping)} == {'sofascore', 'oddspapi', 'oddsportal'}
+        assert session.query(Event).count() == 2  # Event 2 now has no mappings.
+        assert session.query(Result).one().home_score == 2
+        assert session.query(Market).count() == 1
+        assert session.query(MarketChoice).count() == 1
+        assert session.query(MarketChoiceQuote).one().source == 'legacy_a'
+        assert session.query(MarketChoiceSnapshot).count() == 1
+
+
+def test_mapping_prune_keep_list_and_named_sources_have_no_implicit_protection(database):
+    add_event(database, 1, states=(('sofascore', True), ('oddspapi', True),
+        ('oddsportal', None), ('legacy_a', False)))
+    add_event(database, 2, states=(('legacy_b', None),))
+    assert mapping_prune.run(database, keep_sources=('sofascore', 'oddspapi', 'oddsportal'),
+        batch_size=1, apply=True)['deleted'] == 2
+    # Explicit arguments can also remove one of the currently desired providers.
+    assert mapping_prune.run(database, sources=('oddsportal',), apply=True)['deleted'] == 1
+    assert mapping_prune.run(database, keep_sources=('oddspapi',), apply=True)['deleted'] == 1
+    with database.get_session() as session:
+        assert session.query(EventSourceMapping).one().source == 'oddspapi'
+        assert session.query(Event).count() == 2
+
+
+def test_mapping_prune_bounds_scan_selection_and_delete_queries(database, capsys):
+    import json
+    for eid in range(1, 7):
+        add_event(database, eid, states=(('legacy' if eid % 2 == 0 else 'sofascore', None),))
+    statements = []
+
+    def record(_conn, _cursor, sql, parameters, _context, _many):
+        statements.append((sql.lower(), parameters))
+
+    sql_event.listen(database.engine, 'before_cursor_execute', record)
+    try:
+        result = mapping_prune.run(database, sources=('legacy',), batch_size=2, limit=2, apply=True)
+    finally:
+        sql_event.remove(database.engine, 'before_cursor_execute', record)
+    assert result['scanned'] == 4
+    assert result['selected'] == result['deleted'] == 2
+    assert result['last_mapping_id'] == 4
+    batches = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert all(row['scanned'] <= 2 and row['selected'] <= row['scanned']
+        for row in batches if 'batch' in row)
+    selects = [sql for sql, _ in statements if sql.lstrip().startswith('select')]
+    deletes = [sql for sql, _ in statements if sql.lstrip().startswith('delete')]
+    assert selects and deletes
+    assert all('limit' in sql and 'count(' not in sql and 'max(' not in sql for sql in selects)
+    for sql in selects + deletes:
+        if ' in (' in sql:
+            assert sql.split(' in (', 1)[1].split(')', 1)[0].count('?') <= 2
+    assert mapping_prune.run(database, sources=('legacy',), after_id=4, apply=True)['deleted'] == 1
+
+
+def test_mapping_prune_rechecks_source_at_delete(database):
+    from sqlalchemy import text
+    add_event(database, 1, states=(('legacy', None),))
+    changed = False
+
+    def change_source(connection, _cursor, sql, _parameters, _context, _many):
+        nonlocal changed
+        if not changed and sql.lstrip().lower().startswith('delete from event_source_mappings'):
+            changed = True
+            connection.execute(text("UPDATE event_source_mappings SET source='sofascore'"))
+
+    sql_event.listen(database.engine, 'before_cursor_execute', change_source)
+    try:
+        result = mapping_prune.run(database, keep_sources=('sofascore',), apply=True)
+    finally:
+        sql_event.remove(database.engine, 'before_cursor_execute', change_source)
+    assert changed and result['selected'] == 1 and result['deleted'] == 0
+    with database.get_session() as session:
+        assert session.query(EventSourceMapping).one().source == 'sofascore'

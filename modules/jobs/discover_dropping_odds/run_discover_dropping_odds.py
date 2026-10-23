@@ -11,7 +11,7 @@ from modules.jobs.discovery.filters import (
     sofascore_discovery_sport_routes,
 )
 from modules.jobs.discovery.persistence import persist_events_with_odds
-from modules.jobs.discovery.summary import log_discovery_summary
+from modules.jobs.discovery.summary import log_discovery_configuration, log_discovery_summary
 from modules.sofascore import api_client
 from modules.sports.catalog import configured_sport_ids
 from shared.execution_context import WorkDeferred, check_execution_budget
@@ -35,6 +35,9 @@ def run_discover_dropping_odds() -> None:
         logger.info("Skipping dropping odds calls reason=no_supported_sports_configured")
         return
     tracked_competitions = load_tracked_source_competitions("sofascore")
+    log_discovery_configuration(
+        logger, job="dropping_odds", tracked_competitions=tracked_competitions,
+    )
     if tracked_competitions is not None and not tracked_competitions:
         logger.warning(
             "Skipping dropping odds calls tracked_competitions=0 "

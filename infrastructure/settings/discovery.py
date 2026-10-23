@@ -18,103 +18,166 @@ class DiscoveryFilters:
     excluded_sports: frozenset[str] = frozenset()  # Canonical IDs, e.g. "handball".
     exclude_categories: bool = True
     # Exact (canonical sport ID, SofaScore category name) pairs; never venue country.
-    # Local DB audit 2026-10-22: every stored event in each pair had zero Market
-    # rows. Counts are events / distinct SofaScore tournaments / competition IDs;
-    # they describe that snapshot and are not a guarantee about future events.
+    # Category selectors cover all divisions and genders within that category.
+    # Existing policy exclusions can contain market-bearing events; maintenance
+    # must use --markets absent. New scopes were audited across several months.
+    # Evidence: docs/discovery-expansion-post-prune-2026-10-22.md.
     excluded_categories: frozenset[tuple[str, str]] = frozenset({
-        ("basketball", "Croatia Amateur"),  # 146 events / 13 tournaments / 22 competitions; 0 with markets
-        ("football", "Bosnia & Herzegovina Amateur"),  # 2,114 / 60 / 72; 0 with markets
-        ("football", "Canada Amateur"),  # 66 / 4 / 6; 0 with markets
-        ("football", "Colombia Amateur"),  # 260 / 8 / 16; 0 with markets
-        ("football", "Cuba"),  # 444 / 19 / 32; 0 with markets
-        ("football", "Ecuador Amateur"),  # 288 / 5 / 22; 0 with markets
-        ("football", "Guadeloupe"),  # 169 / 5 / 8; 0 with markets
-        ("football", "Guinea-Bissau"),  # 428 / 12 / 35; 0 with markets
-        ("football", "Haiti"),  # 631 / 43 / 131; 0 with markets
-        ("football", "Kenya Amateur"),  # 335 / 12 / 32; 0 with markets
-        ("football", "Martinique"),  # 125 / 5 / 9; 0 with markets
-        ("football", "Montenegro Amateur"),  # 108 / 4 / 6; 0 with markets
-        ("football", "Morocco Amateur"),  # 188 / 10 / 18; 0 with markets
-        ("football", "Norway Amateur"),  # 613 / 13 / 15; 0 with markets
-        ("football", "Palestine"),  # 351 / 7 / 59; 0 with markets
-        ("football", "Portugal Amateur"),  # 1,351 / 75 / 152; 0 with markets
-        ("football", "Romania Amateur"),  # 4,669 / 138 / 219; 0 with markets
-        ("football", "Russia Amateur"),  # 1,981 / 70 / 98; 0 with markets
-        ("football", "Slovakia Amateur"),  # 459 / 16 / 17; 0 with markets
-        ("football", "Slovenia Amateur"),  # 589 / 23 / 27; 0 with markets
-        ("football", "South Sudan"),  # 102 / 5 / 5; 0 with markets
-        ("football", "Sweden Amateur"),  # 1,275 / 28 / 38; 0 with markets
-        ("football", "Ukraine Amateur"),  # 341 / 17 / 21; 0 with markets
-        ("handball", "Romania Amateur"),  # 514 / 6 / 52; 0 with markets
+        ("basketball", "Croatia Amateur"),  # Basketball; amateur divisions; Croatia; all genders.
+        ("football", "Argentina Amateur"),  # Football; amateur divisions; Argentina; all genders.
+        ("football", "Austria Amateur"),  # Football; amateur divisions; Austria; all genders.
+        ("football", "Belgium Amateur"),  # Football; amateur divisions; Belgium; all genders.
+        ("football", "Bosnia & Herzegovina Amateur"),  # Football; amateur divisions; Bosnia & Herzegovina; all genders.
+        ("football", "Brazil Amateur"),  # Football; amateur divisions; Brazil; all genders.
+        ("football", "Bulgaria Amateur"),  # Football; amateur divisions; Bulgaria; all genders.
+        ("football", "Canada Amateur"),  # Football; amateur divisions; Canada; all genders.
+        ("football", "Colombia Amateur"),  # Football; amateur divisions; Colombia; all genders.
+        ("football", "Croatia Amateur"),  # Football; amateur divisions; Croatia; all genders.
+        ("football", "Cuba"),  # Football; all category divisions; Cuba; all genders.
+        # Keep the configured alternative; current database rows use Czechia Amateur.
+        ("football", "Czech Republic Amateur"),  # Football; amateur divisions; Czech Republic; all genders.
+        ("football", "Czechia Amateur"),  # Football; amateur divisions; Czech Republic; all genders.
+        ("football", "Denmark Amateur"),  # Football; amateur divisions; Denmark; all genders.
+        ("football", "Ecuador Amateur"),  # Football; amateur divisions; Ecuador; all genders.
+        ("football", "England Amateur"),  # Football; amateur divisions; England; all genders.
+        ("football", "Finland Amateur"),  # Football; amateur divisions; Finland; all genders.
+        ("football", "France Amateur"),  # Football; amateur divisions; France; all genders.
+        ("football", "Germany Amateur"),  # Football; amateur divisions; Germany; all genders.
+        ("football", "Greece Amateur"),  # Football; amateur divisions; Greece; all genders.
+        ("football", "Guadeloupe"),  # Football; all category divisions; Guadeloupe; all genders.
+        ("football", "Guinea-Bissau"),  # Football; all category divisions; Guinea-Bissau; all genders.
+        ("football", "Haiti"),  # Football; all category divisions; Haiti; all genders.
+        ("football", "Hungary Amateur"),  # Football; amateur divisions; Hungary; all genders.
+        ("football", "Italy Amateur"),  # Football; amateur divisions; Italy; all genders.
+        ("football", "Kenya Amateur"),  # Football; amateur divisions; Kenya; all genders.
+        ("football", "Martinique"),  # Football; all category divisions; Martinique; all genders.
+        ("football", "Montenegro Amateur"),  # Football; amateur divisions; Montenegro; all genders.
+        ("football", "Morocco Amateur"),  # Football; amateur divisions; Morocco; all genders.
+        ("football", "Netherlands Amateur"),  # Football; amateur divisions; Netherlands; all genders.
+        ("football", "Norway Amateur"),  # Football; amateur divisions; Norway; all genders.
+        ("football", "Palestine"),  # Football; all category divisions; Palestine; all genders.
+        ("football", "Peru Amateur"),  # Football; amateur divisions; Peru; all genders.
+        ("football", "Poland Amateur"),  # Football; amateur divisions; Poland; all genders.
+        ("football", "Portugal Amateur"),  # Football; amateur divisions; Portugal; all genders.
+        ("football", "Romania Amateur"),  # Football; amateur divisions; Romania; all genders.
+        ("football", "Russia Amateur"),  # Football; amateur divisions; Russia; all genders.
+        ("football", "Saint Lucia"),  # Football; all category divisions; Saint Lucia; all genders.
+        ("football", "Sao Tome and Principe"),  # Football; all category divisions; Sao Tome and Principe; all genders.
+        ("football", "Serbia Amateur"),  # Football; amateur divisions; Serbia; all genders.
+        ("football", "Slovakia Amateur"),  # Football; amateur divisions; Slovakia; all genders.
+        ("football", "Slovenia Amateur"),  # Football; amateur divisions; Slovenia; all genders.
+        ("football", "Somalia"),  # Football; all category divisions; Somalia; all genders.
+        ("football", "South Sudan"),  # Football; all category divisions; South Sudan; all genders.
+        ("football", "Spain Amateur"),  # Football; amateur divisions; Spain; all genders.
+        ("football", "Sweden Amateur"),  # Football; amateur divisions; Sweden; all genders.
+        ("football", "Switzerland Amateur"),  # Football; amateur divisions; Switzerland; all genders.
+        ("football", "Turkey Amateur"),  # Football; amateur divisions; Turkey; all genders.
+        ("football", "Ukraine Amateur"),  # Football; amateur divisions; Ukraine; all genders.
+        ("football", "Yemen"),  # Football; all category divisions; Yemen; all genders.
+        ("handball", "Romania Amateur"),  # Handball; amateur divisions; Romania; all genders.
     })
     exclude_competitions: bool = True
-    # SofaScore uniqueTournament IDs, including when evaluating canonical events
-    # for OddsPapi. These are NOT competitions.competition_id or OddsPapi IDs.
+    # SofaScore uniqueTournament IDs, also used for OddsPapi admission.
+    # These are not canonical competition IDs or OddsPapi tournament IDs.
+    # Gender labels describe stored evidence; IDs are matched without a gender filter.
+    # Countries follow SofaScore's competition category labels.
     excluded_sofascore_unique_tournament_ids: frozenset[int] = frozenset({
-        18944,  # Football NCAA I women USA, regular season; 2,634/2,643 lack markets
-        28543,  # Football NCAA II Women USA (1,952 events; all women)
-        36033,  # Football NCAA III Women USA (2,976 events; all women) 
-        15946,  # Football NCAA men; 1,473/1,476 lack markets (division unspecified, likely to be D1 (I))
-        28541,  # Football NCAA II Men USA
-        36031,  # Football NCAA III Men USA
-        27118,  # Football Germany Friendly Games
-        27113,  # Football Bulgaria Friendly Games
-        28932,  # Football Türkiye Friendly Games
-        35960,  # Football England Friendly Games
-        27115,  # Football Netherlands Friendly Games
-        # Additional SofaScore unique tournaments with >=100 stored events and
-        # no market-bearing event in the 2026-10-22 local database audit.
-        23109,  # Football Switzerland 4. Liga FVRZ (360; gender unknown in 26)
-        33809,  # Football Türkiye U14 Gelişim Ligi (558 events; stored as Men)
-        33808,  # Football Türkiye U15 Gelişim Ligi (552 events; stored as Men)
-        37258,  # Football Coupe de France Féminine, regional phase (480 women)
-        22139,  # Football Belarus Vtoraya Liga (438 men)
-        24254,  # Football Romania Campionatul Național U19 (411 men)
-        33800,  # Football Türkiye U16 Gelişim Ligi (358 men)
-        33726,  # Football Türkiye U17 Gelişim Ligi (353 men)
-        37028,  # Football Türkiye U15 Kızlar Gelişim Ligi (345 women)
-        35865,  # Football Poland Klasa B, Zachodniopomorska (335; gender unknown in 66)
-        20373,  # Football Poland Klasa Okręgowa, Zachodniopomorska (317 men)
-        22694,  # Football Brazil U17 Paulista (313 men)
-        22752,  # Football Brazil U15 Paulista (311 men)
-        22800,  # Football England Northern Counties East League (309 men)
-        35742,  # Football Germany Bezirksliga Hamburg (301 men)
-        23095,  # Football Switzerland 3. Liga FVRZ (284; gender unknown in 69)
-        30706,  # Football Italy U17 Allievi Nazionali (275 men)
-        37514,  # Football Italy Campionato Regionale Italiana Serie 2
-        22858,  # Football Nigeria NLO Division Two (270; gender unknown in 113)
-        20426,  # Football Estonia II Liiga (270 men)
-        36637,  # Football Romania Liga Elitelor U16 (269 men)
-        36575,  # Football Romania U15 Liga Elitelor (268 men)
-
-        19510,  # American football NCAA men, regular season USA (division not recorded)
-        32199,  # American football division FBA Men USA
-        32200,  # American football division FCS Men USA 
-        32201,  # American football division interdivisional Men USA 
-
-        19468,  # Baseball Dominican Summer League
-        20468,  # Baseball Pioneer League
-        19464,  # Baseball American Association
-        19466,  # Baseball Atlantic League
-        19465,  # Baseball Frontier League
-        19467,  # Baseball Northwoods League (375 men)
-        19478,  # Baseball Double-A Eastern League (338 men)
-        19481,  # Baseball High-A South Atlantic League (303 men)
-        19480,  # Baseball High-A Midwest League (303 men)
-        19485,  # Baseball Single-A Carolina League (299 men)
-        19477,  # Baseball Double-A Texas League (287 men)
-
-        37825,  # Basketball NCAA Men Philippines
-        23300,  # Basketball France Nationale 3 (274 men)
-
-        9409,   # Handball Club Friendly Games
-        1416,   # Handball 1.Division Denmark
-        13506,  # Handball Division de honor plata Spain
-
-        14317,  # Ice Hockey NCAA I Woman
-        14285,  # Ice Hockey NCAA I Men
-
-        23428,  # Volleyball NCAA women, regular season USA(division not recorded)
+        19510,  # American football; NCAA (division unspecified); USA; men.
+        32199,  # American football; NCAA Division FBS; USA; men.
+        32200,  # American football; NCAA Division FCS; USA; men.
+        32201,  # American football; NCAA Interdivisional; USA; men.
+        19446,  # Baseball; Appalachian League; USA; men.
+        19464,  # Baseball; American Association; USA; men.
+        19465,  # Baseball; Frontier League; USA; men.
+        19466,  # Baseball; Atlantic League; USA; men.
+        19467,  # Baseball; Northwoods League; USA; men.
+        19468,  # Baseball; Dominican Summer League; Dominican Republic; men.
+        19477,  # Baseball; Double-A Texas League; USA; men.
+        19478,  # Baseball; Double-A Eastern League; USA; men.
+        19479,  # Baseball; Double-A Southern League; USA; men.
+        19480,  # Baseball; High-A Midwest League; USA; men.
+        19481,  # Baseball; High-A South Atlantic League; USA; men.
+        19482,  # Baseball; High-A Northwest League; USA; men.
+        19483,  # Baseball; Single-A California League; USA; men.
+        19484,  # Baseball; Single-A Florida State League; USA; men.
+        19485,  # Baseball; Single-A Carolina League; USA; men.
+        20468,  # Baseball; Pioneer League; USA; men.
+        23300,  # Basketball; Nationale 3; France; men.
+        30519,  # Basketball; U18 Paulista; Brazil; men.
+        37825,  # Basketball; NCAA; Philippines; men.
+        1095,   # Football; Second League, Division B, Group 3; Russia; men.
+        2288,   # Football; 2. Frauen-Bundesliga; Germany; women.
+        15946,  # Football; NCAA (division unspecified); USA; men.
+        18944,  # Football; NCAA regular season (division unspecified); USA; women.
+        20373,  # Football; Klasa Okregowa, Zachodniopomorska; Poland; men.
+        20426,  # Football; II Liiga; Estonia; men.
+        20706,  # Football; Second League, Division A; Russia; men.
+        21261,  # Football; III Liiga; Estonia; men.
+        21969,  # Football; Liga de Paysandú; Uruguay; men.
+        22105,  # Football; Tercera División B; Chile; men.
+        22139,  # Football; Vtoraya Liga; Belarus; men.
+        22424,  # Football; San Francisco Soccer Football League; USA; men.
+        22694,  # Football; U17 Paulista; Brazil; boys.
+        22752,  # Football; U15 Paulista; Brazil; boys.
+        22794,  # Football; U17 Campeonato Brasileiro; Brazil; men.
+        22800,  # Football; Northern Counties East League; England; men.
+        22858,  # Football; NLO Division Two; Nigeria; men / unclassified.
+        23095,  # Football; 3. Liga FVRZ; Switzerland; men / unclassified.
+        23109,  # Football; 4. Liga FVRZ; Switzerland; men / unclassified.
+        24172,  # Football; Ardal Leagues; Wales; men.
+        24208,  # Football; Liga de Tineret; Romania; men.
+        24209,  # Football; First League, Women; Russia; women.
+        24254,  # Football; Campionatul National U19; Romania; boys.
+        25272,  # Football; U20 M-League, Division B; Russia; men.
+        25633,  # Football; Altero.lv LIIGA; Latvia; men.
+        26023,  # Football; Dali Dali 3.Līga; Latvia; men.
+        26682,  # Football; Primera A Cochabamba; Bolivia; men.
+        26929,  # Football; Primera A Santa Cruz; Bolivia; men.
+        26947,  # Football; Primera C; Colombia; men.
+        27113,  # Football; club friendly games; Bulgaria; gender unspecified.
+        27115,  # Football; club friendly games; Netherlands; gender unspecified.
+        27118,  # Football; club friendly games; Germany; gender unspecified.
+        27334,  # Football; Primera B Santa Cruz; Bolivia; men.
+        27384,  # Football; Primera B Cochabamba; Bolivia; men.
+        28530,  # Football; U-Sports; Canada; men.
+        28541,  # Football; NCAA Division II; USA; men.
+        28543,  # Football; NCAA Division II; USA; women.
+        28932,  # Football; club friendly games; Turkey; gender unspecified.
+        30424,  # Football; U17 League; Latvia; men.
+        30706,  # Football; U17 Allievi Nazionali; Italy; boys.
+        31970,  # Football; NSW U23 NPL, Women; Australia; women.
+        32146,  # Football; NPL U20 Victoria, Women; Australia; women.
+        32193,  # Football; 1. Division; Luxembourg; men.
+        33726,  # Football; U17 Gelisim Ligi; Turkey; boys.
+        33800,  # Football; U16 Gelisim Ligi; Turkey; boys.
+        33808,  # Football; U15 Gelisim Ligi; Turkey; boys.
+        33809,  # Football; U14 Gelisim Ligi; Turkey; boys.
+        33895,  # Football; Kazakhstan 2nd Division; Kazakhstan; men.
+        34185,  # Football; FaCup La Liga Malloco; Chile; men / unclassified.
+        34268,  # Football; U15 League; Latvia; men.
+        35333,  # Football; Campionatul Național U17; Romania; men.
+        35742,  # Football; Bezirksliga Hamburg; Germany; men.
+        35754,  # Football; CCAA Championship; Canada; men.
+        35865,  # Football; Klasa B, Zachodniopomorska; Poland; men / unclassified.
+        35960,  # Football; club friendly games; England; gender unspecified.
+        36031,  # Football; NCAA Division III; USA; men.
+        36033,  # Football; NCAA Division III; USA; women.
+        36575,  # Football; U15 Liga Elitelor; Romania; boys.
+        36587,  # Football; Liga Elitelor U17; Romania; men.
+        36637,  # Football; Liga Elitelor U16; Romania; boys.
+        37028,  # Football; U15 Kizlar Gelisim Ligi; Turkey; girls.
+        37258,  # Football; Coupe de France regional phase; France; women.
+        37514,  # Football; Campionato Regionale Italiana Serie 2; Italy; gender unconfirmed.
+        921,    # Handball; 2. HBL; Germany; men.
+        1416,   # Handball; 1. Division; Denmark; gender unconfirmed.
+        1420,   # Handball; 1. Divisjon; Norway; men.
+        9409,   # Handball; club friendly games; international; gender unspecified.
+        13506,  # Handball; Division de Honor Plata; Spain; gender unconfirmed.
+        35445,  # Handball; FeMeBal Liga de Honor Plata; Argentina; men.
+        14285,  # Ice hockey; NCAA (division unspecified); USA; men.
+        14317,  # Ice hockey; NCAA (division unspecified); USA; women.
+        28753,  # Ice hockey; U21 Elit; Switzerland; men.
+        23428,  # Volleyball; NCAA regular season (division unspecified); USA; women.
     })
 
     def __post_init__(self):

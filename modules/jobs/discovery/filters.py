@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from infrastructure.settings import discovery as settings
 from infrastructure.settings.discovery import DiscoveryFilters
 from modules.competition.tracked_competitions import tracked_competition_ids
+from modules.jobs.discovery.summary import log_filter_counts
 from modules.sports.catalog import (
     canonical_sport_id,
     configured_sport_ids,
@@ -247,7 +248,7 @@ def admit_sofascore_event(event, scope=None, *, policy=None, now=None) -> Sofasc
     return SofascoreEventAdmission(event, round_name)
 
 
-def filter_sofascore_events(events, scope=None, *, policy=None, now=None):
+def filter_sofascore_events(events, scope=None, *, policy=None, now=None, source="sofascore"):
     """Filter one bounded batch, recording rejected counts rather than payloads."""
     current = now or utc_now()
     counts = Counter()
@@ -257,7 +258,11 @@ def filter_sofascore_events(events, scope=None, *, policy=None, now=None):
         counts[reason or "accepted"] += 1
         if reason is None:
             eligible.append(event)
-    logger.info("Discovery admission source=sofascore counts=%s", dict(counts))
+    accepted = counts.pop("accepted", 0)
+    log_filter_counts(
+        logger, source=source, stage="revalidation", received=accepted + sum(counts.values()),
+        accepted=accepted, reasons=counts,
+    )
     return eligible
 
 
