@@ -21,41 +21,50 @@ Detecta más de una línea distinta con al menos un quote OddspAPI principal,
 sin multiplicar líneas por choices ni por niveles back/lay. Los contadores de
 quotes y snapshots abarcan toda la familia, incluidas líneas antiguas no principales.
 
-`plan` solo lee la base y los JSON. Reutiliza los mappings, `select_current_lines`,
-el extractor de caché y su resolución de donantes. No hace HTTP ni reingesta precios.
-El parámetro `--[no-]require-active-quotes` permite reproducir explícitamente la
-configuración de selección; por defecto usa la configuración local y la registra
-en el manifiesto. La validez individual de los players sigue la política actual.
+`plan` solo lee la base y los JSON originales. Ejecuta `select_current_lines()`
+por casa sobre cada respuesta, con los mappings y criterios actuales de producción.
+La selección no depende de `oddspapi_mainline_outcome_cache` ni de casas donantes:
+funciona aunque la caché no exista o contenga una selección antigua diferente.
+No hace HTTP ni reingesta precios. El parámetro `--[no-]require-active-quotes`
+controla el filtro de mercados inactivos; por defecto usa la configuración local.
+Como en producción, los choices individuales deben estar activos para seleccionar
+una línea, incluso con `--no-require-active-quotes`.
+
+Antes de buscar una selección, las familias cuyo tipo canónico tiene
+`enabled_for_ingestion=false` en la base se planifican con modo
+`disabled_ingestion` y motivo `disabled_for_ingestion`. Ese es el mismo flag
+del catálogo que usa `MarketMappingRepository.build_index()` para excluirlas.
+Se propone eliminar todas sus cuotas OddspAPI y snapshots, y sus choices y
+mercados si quedan vacíos, aunque no haya debug. También se incluyen mercados
+deshabilitados sin línea. Los datos de otros proveedores se conservan.
+No se confunde un mercado habilitado sin selección válida con uno deshabilitado.
 
 El directorio predeterminado es `debug/oddspapi_odds_responses`; se puede cambiar
 con `--debug-root`. Se reconocen nombres antiguos sin momento/endpoint y se excluyen
 los nombres históricos. Cada JSON debe tener `bookmakerOdds` y su fixture debe
 pertenecer al evento indicado por el nombre del archivo.
 
-Los momentos T−120, T−30 y T−5 establecen el orden de captura. Un archivo sin
-momento es utilizable si es la única captura aplicable; varios momentos desconocidos
-o duplicados se reportan como ambiguos. `updatedAt` del fixture y las fechas del
-filesystem no se usan como reloj de observación.
+Si hay varias respuestas aplicables, se usa la que tenga el momento T más cercano
+al inicio (por ejemplo, T−5). La línea elegida por el selector queda como principal;
+se proponen eliminar las cuotas OddspAPI de las otras líneas persistidas de esa
+familia, junto con sus snapshots. Si otro proveedor comparte el mercado, sus cuotas
+se conservan. La tabla de caché no se modifica.
 
-La línea principal se obtiene de la última captura válida aplicable a la familia.
-Las líneas seleccionadas en capturas anteriores conservan su historial y pasan a
-`main_line=false`. Para borrar una alternativa debe estar presente y descartada,
-no haber sido seleccionada en otra captura disponible y sus instrumentos deben
-coincidir con ticks reales del JSON. Además, todas sus observaciones deben pertenecer
-a un único lote verificable compartido con la línea conservada, y sus quotes no
-pueden haber sido creados antes de ese lote. Si hay evidencia histórica anterior
-o insuficiente, se conserva el historial y se corrigen únicamente los flags.
-
-Sin debug utilizable, una caché inequívoca (propia o donante según la política
-existente) solo permite corregir flags. Sin caché válida, sin mercado conservable,
-sin outcomes completos o con una captura anterior al último lote persistido, se
-omite la familia. No se inventan precios ni observaciones. Los archivos inválidos
-también se reportan; un conjunto incompleto no autoriza eliminaciones.
-
-El manifiesto identifica mercados/quotes, línea conservada, selecciones anteriores,
-acciones, hashes de evidencia y estados esperados antes y después. `plan_report.json`
-contiene el resumen y cada omisión. La exportación no sobrescribe un manifiesto
-existente: usar otro nombre para una nueva auditoría.
+Sin una selección actual válida en una respuesta utilizable, o si la línea
+seleccionada no existe en la base, la familia se omite sin proponer eliminaciones.
+`plan_report.json` resume las correcciones y omisiones y contiene `selections`,
+con ruta, hash, momento y diagnósticos del selector por captura y casa, incluidos
+los candidatos descartados y sus motivos. El manifiesto incluye los diagnósticos
+de la familia elegida, IDs, evidencia y estado esperado antes/después.
+El historial de las cuotas conservadas permanece intacto; se propone eliminar
+todo el historial de las cuotas descartadas, sin reconstruir precios desde el JSON.
+La estrategia es `oddspapi_debug_line_repair_v1`; los manifiestos antiguos de
+selección cacheada no se aceptan con esta versión: generar un nuevo plan.
+La exportación no sobrescribe un manifiesto existente: usar otro nombre para una
+nueva ejecución. `plan` recorre todas las familias con línea y todas las
+deshabilitadas de eventos que tengan cuotas OddspAPI, no solo las ambigüedades
+detectadas por `audit`. El estado esperado incluye `enabled_for_ingestion`:
+si el flag cambia antes de aplicar una acción, el evento produce `CONFLICT`.
 
 ## Aplicar primero en la copia local
 
@@ -67,23 +76,22 @@ es `127.0.0.1:5435/sofascore_odds`:
 .venv/Scripts/python.exe -m scripts.maintenance.backfill_oddspapi_lines audit --output exports/oddspapi_line_repair/after
 ```
 
-`apply` no accede a los JSON debug ni recalcula la selección. Reutiliza
-`BackfillRunner` para bloqueo, checkpoints, resultados y reanudación. Cada evento
-es una transacción; primero se comprueban todas sus familias. Un cambio en
-identidad, precios, historial o caché produce `CONFLICT`, sin cambios parciales.
-Errores operativos producen `FAILED` y detienen el avance; se puede reanudar.
+`apply` no accede a los JSON debug ni recalcula la selección. Ejecuta las acciones
+del manifiesto mediante `BackfillRunner`, con checkpoints y resultados. Cada evento
+se aplica en una transacción y se valida contra el estado que leyó `plan`; si los
+registros de una familia cambiaron desde entonces, produce `CONFLICT`. Los errores
+operativos producen `FAILED` y se puede reanudar.
 
 Solo se eliminan los quotes OddspAPI declarados y sus snapshots. Los choices y
 mercados se eliminan si quedan vacíos; otros proveedores conservan sus datos.
-Los flags no cambian el reloj de actualización del precio. Las correcciones de
-caché afectan únicamente a la casa y familia declaradas. Las vistas se invalidan
-con el mecanismo existente, sin forzar una reconstrucción en esta herramienta.
+Los flags no cambian el reloj de actualización del precio. La caché seleccionada
+permanece igual. Las vistas se invalidan con el mecanismo existente.
 
 Repetir el mismo comando reanuda el checkpoint. Para comprobar idempotencia de
 la base, repetir con otro par de archivos `--checkpoint` y `--results`: debe
 producir `ALREADY_CORRECT`. `--limit N` permite ejecutar un subconjunto de eventos.
-La auditoría posterior puede seguir mostrando familias sin evidencia suficiente;
-no se considera correcto resolverlas mediante una elección arbitraria.
+La auditoría posterior puede seguir mostrando familias sin una selección actual
+válida en las respuestas debug disponibles.
 
 ## Llevar el manifiesto al servidor
 
@@ -99,7 +107,7 @@ python -m scripts.maintenance.backfill_oddspapi_lines apply \
   --manifest /ruta/subida/manifest.json \
   --checkpoint /ruta/resultados/server/checkpoint.json \
   --results /ruta/resultados/server/results.jsonl \
-  --expected-db-host sofascore-pg --expected-db-port 5432 \
+  --expected-db-host postgres --expected-db-port 5432 \
   --expected-db-name sofascore_odds --confirm-write
 python -m scripts.maintenance.backfill_oddspapi_lines audit \
   --output /ruta/resultados/server/after

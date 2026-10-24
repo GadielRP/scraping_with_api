@@ -99,6 +99,7 @@ debug_football/
 debug_laliga/
 /.test-tmp/
 .pytest-temp/
+/tmp/
 
 
 # =========================================================

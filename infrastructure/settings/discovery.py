@@ -22,7 +22,9 @@ class DiscoveryFilters:
     # Existing policy exclusions can contain market-bearing events; maintenance
     # must use --markets absent. New scopes were audited across several months.
     # Evidence: docs/discovery-expansion-post-prune-2026-10-22.md.
+    # Additional category evidence: docs/maintenance/discovery-exclusions-2026-10-23.md.
     excluded_categories: frozenset[tuple[str, str]] = frozenset({
+        ("baseball", "Cuba"),  # Baseball; all category divisions; Cuba; all genders.
         ("basketball", "Croatia Amateur"),  # Basketball; amateur divisions; Croatia; all genders.
         ("football", "Argentina Amateur"),  # Football; amateur divisions; Argentina; all genders.
         ("football", "Austria Amateur"),  # Football; amateur divisions; Austria; all genders.
@@ -74,18 +76,30 @@ class DiscoveryFilters:
         ("football", "Turkey Amateur"),  # Football; amateur divisions; Turkey; all genders.
         ("football", "Ukraine Amateur"),  # Football; amateur divisions; Ukraine; all genders.
         ("football", "Yemen"),  # Football; all category divisions; Yemen; all genders.
+        ("handball", "Poland"),  # Handball; all category divisions and cups; Poland; all genders.
+        ("handball", "Croatia"),  # Handball; all category divisions and cups; Croatia; all genders.
+        ("handball", "Portugal"),  # Handball; all category divisions and cups; Portugal; all genders.
+        ("handball", "Romania"),  # Handball; all category divisions and cups; Romania; all genders.
         ("handball", "Romania Amateur"),  # Handball; amateur divisions; Romania; all genders.
+        ("handball", "Russia"),  # Handball; all category divisions and cups; Russia; all genders.
+        ("handball", "Serbia"),  # Handball; all category divisions and cups; Serbia; all genders.
+        ("handball", "Slovenia"),  # Handball; all category divisions and cups; Slovenia; all genders.
+        ("handball", "Tunisia"),  # Handball; all category divisions, including youth; Tunisia; all genders.
+        ("handball", "Turkey"),  # Handball; all category divisions; Turkey; all genders.
+        ("volleyball", "Spain"),  # Volleyball; all category divisions; Spain; all genders.
     })
     exclude_competitions: bool = True
     # SofaScore uniqueTournament IDs, also used for OddsPapi admission.
     # These are not canonical competition IDs or OddsPapi tournament IDs.
     # Gender labels describe stored evidence; IDs are matched without a gender filter.
     # Countries follow SofaScore's competition category labels.
+    # Additional scopes audited 2026-10-23: docs/maintenance/discovery-exclusions-2026-10-23.md.
     excluded_sofascore_unique_tournament_ids: frozenset[int] = frozenset({
         19510,  # American football; NCAA (division unspecified); USA; men.
         32199,  # American football; NCAA Division FBS; USA; men.
         32200,  # American football; NCAA Division FCS; USA; men.
         32201,  # American football; NCAA Interdivisional; USA; men.
+        11394,  # Baseball; Serie Nacional; Cuba; men.
         19446,  # Baseball; Appalachian League; USA; men.
         19464,  # Baseball; American Association; USA; men.
         19465,  # Baseball; Frontier League; USA; men.
@@ -103,6 +117,8 @@ class DiscoveryFilters:
         19485,  # Baseball; Single-A Carolina League; USA; men.
         20468,  # Baseball; Pioneer League; USA; men.
         23300,  # Basketball; Nationale 3; France; men.
+        27700,  # Basketball; Serie B Interregionale; Italy; men.
+        28704,  # Basketball; CBI U15; Brazil; boys.
         30519,  # Basketball; U18 Paulista; Brazil; men.
         37825,  # Basketball; NCAA; Philippines; men.
         1095,   # Football; Second League, Division B, Group 3; Russia; men.
@@ -124,6 +140,7 @@ class DiscoveryFilters:
         22858,  # Football; NLO Division Two; Nigeria; men / unclassified.
         23095,  # Football; 3. Liga FVRZ; Switzerland; men / unclassified.
         23109,  # Football; 4. Liga FVRZ; Switzerland; men / unclassified.
+        23461,  # Football; 3. MFL; North Macedonia; men / unclassified.
         24172,  # Football; Ardal Leagues; Wales; men.
         24208,  # Football; Liga de Tineret; Romania; men.
         24209,  # Football; First League, Women; Russia; women.
@@ -145,6 +162,7 @@ class DiscoveryFilters:
         28932,  # Football; club friendly games; Turkey; gender unspecified.
         30424,  # Football; U17 League; Latvia; men.
         30706,  # Football; U17 Allievi Nazionali; Italy; boys.
+        31773,  # Football; Ligue Inter Regions; Algeria; men.
         31970,  # Football; NSW U23 NPL, Women; Australia; women.
         32146,  # Football; NPL U20 Victoria, Women; Australia; women.
         32193,  # Football; 1. Division; Luxembourg; men.
@@ -173,11 +191,18 @@ class DiscoveryFilters:
         1420,   # Handball; 1. Divisjon; Norway; men.
         9409,   # Handball; club friendly games; international; gender unspecified.
         13506,  # Handball; Division de Honor Plata; Spain; gender unconfirmed.
+        34532,  # Handball; 1. HRL U11; Croatia; boys.
+        34535,  # Handball; 1. HRL U13; Croatia; boys.
+        34536,  # Handball; 1. HRL U14 Zene; Croatia; girls.
+        34537,  # Handball; 1. HRL U15; Croatia; boys.
         35445,  # Handball; FeMeBal Liga de Honor Plata; Argentina; men.
         14285,  # Ice hockey; NCAA (division unspecified); USA; men.
         14317,  # Ice hockey; NCAA (division unspecified); USA; women.
+        24549,  # Ice hockey; U20 Nationell; Sweden; men (U20).
         28753,  # Ice hockey; U21 Elit; Switzerland; men.
+        28754,  # Ice hockey; U20 Extraliga Junioru; Czech Republic; men (U20).
         23428,  # Volleyball; NCAA regular season (division unspecified); USA; women.
+        30109,  # Volleyball; Kadinlar 2. Ligi; Turkey; women.
     })
 
     def __post_init__(self):

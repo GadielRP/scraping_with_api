@@ -1,6 +1,6 @@
 """Audit line ambiguity, export offline corrections, and apply without debug files.
 
-See docs/operations/oddspapi_line_backfill.md for the local/server workflow.
+See docs/maintenance/oddspapi_line_backfill.md for the local/server workflow.
 Only this maintenance script owns repair writes; production selection is reused.
 """
 from __future__ import annotations
@@ -9,7 +9,6 @@ import argparse
 from collections import Counter, defaultdict
 from copy import deepcopy
 import csv
-from datetime import datetime
 from decimal import Decimal
 import hashlib
 import json
@@ -31,15 +30,13 @@ from infrastructure.persistence.models import (
     MarketChoice, MarketChoiceQuote, MarketChoiceSnapshot, OddspapiMainlineOutcomeCache,
 )
 from infrastructure.persistence.repositories.market_mapping_repository import MarketMappingRepository
-from infrastructure.persistence.repositories.oddspapi_mainline_cache_repository import OddspapiMainlineCacheRepository
 from infrastructure.persistence.repositories.reporting_refresh_repository import invalidate_reporting
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.providers.oddspapi.mainline_outcome_extractor import OddspapiMainlineOutcomeExtractor
-from modules.jobs.pre_start_check_job.providers.oddspapi.settings import ODDSPAPI_PRE_START_SETTINGS
-from modules.oddspapi.mainline_cache_ids import resolve_mainline_outcome_ids
 from modules.odds_ingestion.oddspapi_line_selection import select_current_lines
+from modules.oddspapi.format_utils import normalize_source_id
 
-STRATEGY = "oddspapi_cached_line_repair_v1"
+STRATEGY = "oddspapi_debug_line_repair_v1"
 
 
 def _json(value):
@@ -89,7 +86,9 @@ def _load_event(session, event_id, *, lock=False):
                        OddspapiMainlineOutcomeCache.source_outcome_id).all()]
     families = {}
     markets = session.query(Market).join(CanonicalMarketType).filter(
-        Market.event_id == event_id, CanonicalMarketType.requires_line_value.is_(True),
+        Market.event_id == event_id,
+        (CanonicalMarketType.requires_line_value.is_(True)
+         | CanonicalMarketType.enabled_for_ingestion.is_(False)),
     ).options(
         selectinload(Market.canonical_market_type), selectinload(Market.bookie),
         selectinload(Market.choices).selectinload(MarketChoice.quotes).selectinload(MarketChoiceQuote.snapshots),
@@ -103,6 +102,7 @@ def _load_event(session, event_id, *, lock=False):
             "event_id": event_id, "bookie_id": market.bookie_id, "bookmaker_slug": slug,
             "market_type_id": market.market_type_id, "is_live": market.is_live,
             "canonical_market_key": market.canonical_market_type.canonical_market_key,
+            "enabled_for_ingestion": market.canonical_market_type.enabled_for_ingestion,
             "markets": [], "cache": sorted(
                 [c for c in cache if c["bookmaker_slug"] == slug and c["canonical_market_key"] == market.canonical_market_type.canonical_market_key],
                 key=lambda c: (c["source_market_id"], c["source_outcome_id"]),
@@ -142,9 +142,7 @@ def _project(family, action):
     # The state reader scopes markets to those still carrying OddspAPI quotes;
     # shells retained solely for another provider remain outside that scope.
     result["markets"] = [m for m in result["markets"] if _quotes(m)]
-    if action["cache_after"] is not None:
-        result["cache"] = action["cache_after"]
-    return result
+    return result if result["markets"] else None
 
 
 def audit(output, debug_root):
@@ -216,163 +214,103 @@ def audit(output, debug_root):
 
 
 def _captures(paths, state, index, require_active):
+    """Replay the production selector on original responses, without cache input."""
     captures, issues = [], []
     for path in paths:
         try:
             raw = path.read_bytes()
             payload = json.loads(raw)
-            if "bookmakerOdds" not in payload:
+            if not isinstance(payload, dict) or not isinstance(payload.get("bookmakerOdds"), (dict, list)):
                 raise ValueError("not a current /odds payload")
             if str(payload.get("fixtureId")) not in state["fixtures"]:
                 raise ValueError("fixture does not match canonical event mapping")
             moment = re.search(r"_t_(-?\d+)_", path.name)
-            decisions, observed = {}, {}
+            decisions, observed, diagnostics = {}, set(), []
             for slug, book in OddspapiMainlineOutcomeExtractor._entries(payload["bookmakerOdds"]):
-                slug = str(book.get("slug") or slug).lower()
-                selection = select_current_lines(book.get("markets", {}), market_mapping_index=index,
-                    source_sport_id=payload.get("sportId"), require_active_quotes=require_active)
-                for mid, market in OddspapiMainlineOutcomeExtractor._entries(book.get("markets", {})):
+                slug = str(book.get("slug") or slug).strip().lower()
+                markets = book.get("markets", {})
+                selection = select_current_lines(
+                    markets, market_mapping_index=index,
+                    source_sport_id=payload.get("sportId"),
+                    is_live=bool(payload.get("isLive", False)),
+                    require_active_quotes=require_active,
+                )
+                diagnostics.extend({"bookmaker_slug": slug, **d} for d in selection.diagnostics)
+                for mid, market in OddspapiMainlineOutcomeExtractor._entries(markets):
+                    mid = normalize_source_id(mid)
                     resolution = MarketMappingRepository.resolve_market(index, source="oddspapi",
                         source_sport_id=payload.get("sportId"), source_market_id=mid)
-                    if not resolution.resolved or not resolution.requires_line_value or market.get("isLive", False):
+                    if not resolution.resolved or not resolution.requires_line_value or market.get("isLive", payload.get("isLive", False)):
                         continue
                     fk = (slug, resolution.market_type_id, False)
-                    observed.setdefault(fk, {})[Decimal(resolution.source_handicap)] = (mid, market)
+                    observed.add(fk)
                     if mid in selection.selected_market_ids:
                         decisions[fk] = str(Decimal(resolution.source_handicap))
-            outcomes = OddspapiMainlineOutcomeExtractor.extract(payload, market_mapping_index=index,
-                require_active_quotes=require_active, exchange_bookmakers=["betfair-ex"])
             captures.append({"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
-                "moment": int(moment[1]) if moment else None, "payload": payload,
-                "selected": decisions, "observed": observed, "outcomes": outcomes})
+                "moment": int(moment[1]) if moment else None,
+                "selected": decisions, "observed": observed, "diagnostics": diagnostics})
         except (ValueError, TypeError, KeyError) as exc:
             issues.append({"path": str(path), "reason": str(exc)})
     return captures, issues
 
 
-def _action(family, state, captures, index, require_active):
-    """Only delete rejected instruments tied to the same single observed batch."""
+def _action(family, captures):
+    """Remove disabled markets, otherwise keep today's debug-selected line."""
+    if not family["enabled_for_ingestion"]:
+        action = {
+            "family": _family_key(family["bookie_id"], family["market_type_id"], family["is_live"]),
+            "mode": "disabled_ingestion", "selected_line": None, "keep_market_id": None,
+            "evidence": [], "diagnostics": [{
+                "canonicalMarketKey": family["canonical_market_key"],
+                "reason": "disabled_for_ingestion",
+            }], "delete_quote_ids": [], "delete_market_ids": [], "main_line": {},
+        }
+        for market in family["markets"]:
+            action["delete_quote_ids"].extend(q["quote_id"] for q in _quotes(market))
+            if all(q["source"] == "oddspapi" for c in market["choices"] for q in c["quotes"]):
+                action["delete_market_ids"].append(market["market_id"])
+        action["expected_sha256"] = _hash(family)
+        action["after_sha256"] = _hash(_project(family, action))
+        return action, "planned"
     fk = (family["bookmaker_slug"], family["market_type_id"], family["is_live"])
     relevant = [c for c in captures if fk in c["observed"]]
-    good = [c for c in relevant if fk in c["selected"]]
-    selected_before = {Decimal(c["selected"][fk]) for c in good}
-    selected = None
-    evidence = []
-    latest = None
-    if good:
-        if len(relevant) > 1 and any(c["moment"] is None for c in relevant):
-            return None, "ambiguous_capture_order"
-        if len({c["moment"] for c in relevant}) != len(relevant):
-            return None, "duplicate_capture_moment"
-        latest = min(relevant, key=lambda c: c["moment"] if c["moment"] is not None else 0)
-        if fk in latest["selected"]:
-            selected = Decimal(latest["selected"][fk])
-        evidence = [{k: c[k] for k in ("path", "sha256", "moment")} for c in relevant]
-    mode = "debug"
-    cached_ids, donor = resolve_mainline_outcome_ids(family["bookmaker_slug"],
-        {slug: {c["source_outcome_id"] for c in state["cache"] if c["bookmaker_slug"] == slug} for slug in {c["bookmaker_slug"] for c in state["cache"]}},
-        ODDSPAPI_PRE_START_SETTINGS.mainline_cache_fallback_bookmakers)
-    if selected is None:
-        lines = set()
-        for row in state["cache"]:
-            if row["bookmaker_slug"] != donor or row["source_outcome_id"] not in cached_ids:
-                continue
-            resolution = MarketMappingRepository.resolve_market(index, source="oddspapi",
-                source_sport_id=row["source_sport_id"], source_market_id=row["source_market_id"])
-            if resolution.resolved and resolution.market_type_id == family["market_type_id"] and resolution.source_handicap is not None:
-                lines.add(Decimal(resolution.source_handicap))
-        if len(lines) != 1:
-            return None, "missing_or_ambiguous_selection"
-        selected = next(iter(lines))
-        mode = "cache_flags_only"
+    selected_captures = [c for c in relevant if fk in c["selected"]]
+    if not selected_captures:
+        return None, "missing_current_selection_in_debug"
+    # T-5 is the closest saved response to start. If filenames lack a moment,
+    # the existing stable path order provides a deterministic choice.
+    latest = min(selected_captures, key=lambda c: (
+        c["moment"] is None, c["moment"] if c["moment"] is not None else 0,
+    ))
+    selected = Decimal(latest["selected"][fk])
     keep = [m for m in family["markets"] if Decimal(m["line_value"]) == selected]
     if len(keep) != 1:
         return None, "selected_market_missing"
     keep = keep[0]
-    keep_quotes = _quotes(keep)
-    if mode == "debug":
-        expected_ids = {r["source_outcome_id"] for r in latest["outcomes"] if r["bookmaker_slug"] == fk[0] and r["canonical_market_key"] == family["canonical_market_key"]}
-    else:
-        expected_ids = {c["source_outcome_id"] for c in state["cache"] if c["bookmaker_slug"] == donor and c["source_outcome_id"] in cached_ids and c["canonical_market_key"] == family["canonical_market_key"]}
-    if not expected_ids or {q["source_outcome_id"] for q in keep_quotes} != expected_ids:
-        return None, "selected_quotes_incomplete_or_different"
-    keep_batches = {s["collected_at"] for q in keep_quotes for s in q["snapshots"]}
-    if mode == "debug":
-        # A later local/server acquisition cannot be classified from an older file.
-        observed_current = latest["observed"][fk][selected][1]
-        latest_ticks = {(str(oid), str(p.get("changedAt")), Decimal(str(p["price"])).quantize(Decimal(".001")))
-            for oid, outcome in OddspapiMainlineOutcomeExtractor._entries(observed_current.get("outcomes", {}))
-            for p in OddspapiMainlineOutcomeExtractor._players(outcome) if p.get("price") is not None}
-        matching_batches = set()
-        for q in keep_quotes:
-            for s in q["snapshots"]:
-                if any(oid == q["source_outcome_id"] and _same_time(t, s["source_collected_at"]) and price == Decimal(s["odds_value"])
-                       for oid, t, price in latest_ticks):
-                    matching_batches.add(s["collected_at"])
-        family_batches = {s["collected_at"] for m in family["markets"] for q in _quotes(m) for s in q["snapshots"]}
-        if (not matching_batches or not keep_batches or max(keep_batches) not in matching_batches
-                or (family_batches and max(family_batches) > max(matching_batches))):
-            return None, "capture_not_matched_to_latest_persisted_batch"
     action = {"family": _family_key(family["bookie_id"], family["market_type_id"], family["is_live"]),
-        "mode": mode, "selected_line": str(selected), "keep_market_id": keep["market_id"],
-        "historical_selected_lines": sorted(map(str, selected_before)), "evidence": evidence,
-        "cache_donor": donor if mode == "cache_flags_only" else None,
-        "cache_dependency": [c for c in state["cache"] if c["bookmaker_slug"] == donor]
-            if mode == "cache_flags_only" else None,
-        "delete_quote_ids": [], "delete_market_ids": [], "main_line": {}, "cache_after": None,
-        "preserved_unproven_market_ids": []}
+        "mode": "current_debug", "selected_line": str(selected), "keep_market_id": keep["market_id"],
+        "evidence": [{k: latest[k] for k in ("path", "sha256", "moment")}],
+        "diagnostics": [d for d in latest["diagnostics"]
+                        if d["bookmaker_slug"] == family["bookmaker_slug"]
+                        and d.get("canonicalMarketKey") == family["canonical_market_key"]],
+        "delete_quote_ids": [], "delete_market_ids": [], "main_line": {},
+        }
     for market in family["markets"]:
         line = Decimal(market["line_value"])
         quotes = _quotes(market)
-        deletable = mode == "debug" and line not in selected_before
-        observations = [(c, c["observed"][fk].get(line)) for c in relevant]
-        observations = [(c, obs) for c, obs in observations if obs is not None]
-        batches = {s["collected_at"] for q in quotes for s in q["snapshots"]}
-        deletable = deletable and bool(observations) and len(batches) == 1 and batches.issubset(matching_batches)
-        if deletable:
-            batch = datetime.fromisoformat(next(iter(batches)))
-            deletable = all(q["created_at"] and datetime.fromisoformat(q["created_at"]) >= batch for q in quotes)
-        if deletable:
-            # Every instrument must match an actual discarded provider tick.
-            ticks = {(str(mid), str(oid), str(p.get("changedAt")), Decimal(str(p["price"])).quantize(Decimal(".001")))
-                for c, (mid, raw_market) in observations
-                for oid, outcome in OddspapiMainlineOutcomeExtractor._entries(raw_market.get("outcomes", {}))
-                for p in OddspapiMainlineOutcomeExtractor._players(outcome) if p.get("price") is not None}
-            deletable = all(q["exchange_side"] in (None, "back") and q["snapshots"] and all(
-                any(mid == q["source_market_id"] and oid == q["source_outcome_id"] and _same_time(t, s["source_collected_at"])
-                    and price == Decimal(s["odds_value"]) for mid, oid, t, price in ticks)
-                for s in q["snapshots"]) for q in quotes)
-        if deletable:
+        if line != selected:
             action["delete_quote_ids"].extend(q["quote_id"] for q in quotes)
             if all(q["source"] == "oddspapi" for c in market["choices"] for q in c["quotes"]):
                 action["delete_market_ids"].append(market["market_id"])
         else:
             for q in quotes:
-                desired = line == selected
-                if q["main_line"] is not desired:
-                    action["main_line"][str(q["quote_id"])] = desired
-            if line != selected and line not in selected_before:
-                action["preserved_unproven_market_ids"].append(market["market_id"])
-    if mode == "debug":
-        rows = [r for r in latest["outcomes"] if r["bookmaker_slug"] == fk[0] and r["canonical_market_key"] == family["canonical_market_key"]]
-        desired_ids = {(r["source_market_id"], r["source_outcome_id"]) for r in rows}
-        if desired_ids != {(r["source_market_id"], r["source_outcome_id"]) for r in family["cache"]}:
-            captured = datetime.fromisoformat(max(matching_batches))
-            action["cache_after"] = sorted([
-                _json(OddspapiMainlineCacheRepository._normalize_outcome_row(state["event_id"], latest["payload"]["fixtureId"],
-                    str(latest["payload"]["sportId"]), row, captured_at=captured)) for row in rows
-            ], key=lambda r: (r["source_market_id"], r["source_outcome_id"]))
-    if not action["delete_quote_ids"] and not action["main_line"] and action["cache_after"] is None:
+                if q["main_line"] is not True:
+                    action["main_line"][str(q["quote_id"])] = True
+    if not action["delete_quote_ids"] and not action["main_line"]:
         return None, "already_correct"
     action["expected_sha256"] = _hash(family)
     action["after_sha256"] = _hash(_project(family, action))
     return action, "planned"
-
-
-def _same_time(a, b):
-    if not a or not b or a == "None":
-        return False
-    return datetime.fromisoformat(a.replace("Z", "+00:00")) == datetime.fromisoformat(b.replace("Z", "+00:00"))
 
 
 def plan(output, debug_root, *, require_active):
@@ -381,7 +319,7 @@ def plan(output, debug_root, *, require_active):
         raise FileExistsError(f"manifest already exists: {output}")
     files = _files(debug_root)
     index = MarketMappingRepository.build_index()
-    events, skipped = [], []
+    events, skipped, selections = [], [], []
     with db_manager.get_session() as session:
         event_ids = session.scalars(select(Market.event_id).join(MarketChoice).join(MarketChoiceQuote).where(
             MarketChoiceQuote.source == "oddspapi",
@@ -389,13 +327,12 @@ def plan(output, debug_root, *, require_active):
         for number, event_id in enumerate(event_ids, 1):
             state = _load_event(session, event_id)
             captures, issues = _captures(files.get(event_id, []), state, index, require_active)
-            if issues:
-                # An unreadable/mismatched capture may conceal a legitimate
-                # earlier selection; cache fallback must never delete history.
-                captures = []
+            selections.extend({"event_id": event_id, **{k: c[k] for k in (
+                "path", "sha256", "moment", "diagnostics",
+            )}} for c in captures)
             actions = []
             for key, family in state["families"].items():
-                action, reason = _action(family, state, captures, index, require_active)
+                action, reason = _action(family, captures)
                 if action:
                     actions.append(action)
                 else:
@@ -408,8 +345,8 @@ def plan(output, debug_root, *, require_active):
             session.expunge_all()
             if number % 250 == 0:
                 print(f"Scanned {number}/{len(event_ids)} events; planned={len(events)}", flush=True)
-    manifest = build_manifest(strategy=STRATEGY, scope={"source": "oddspapi", "requires_line_value": True},
-        parameters={"require_active_quotes": require_active, "preserve_prior_selections": True},
+    manifest = build_manifest(strategy=STRATEGY, scope={"source": "oddspapi", "requires_line_value_or_disabled": True},
+        parameters={"require_active_quotes": require_active, "selection_source": "select_current_lines"},
         events=sorted(events, key=lambda e: (e["starts_at"], e["event_id"])))
     write_json_atomic(output, manifest)
     summary = {"events_scanned": len(event_ids), "events_planned": len(events),
@@ -419,7 +356,9 @@ def plan(output, debug_root, *, require_active):
         "quote_flags_to_change": sum(len(a["main_line"]) for e in events for a in e["actions"]),
         "omissions": dict(Counter(r["reason"] for r in skipped)),
         "action_modes": dict(Counter(a["mode"] for e in events for a in e["actions"]))}
-    write_json_atomic(output.with_name("plan_report.json"), {"summary": summary, "omissions": skipped})
+    write_json_atomic(output.with_name("plan_report.json"), {
+        "summary": summary, "omissions": skipped, "selections": selections,
+    })
     print(json.dumps(summary, ensure_ascii=False))
     return manifest
 
@@ -435,16 +374,12 @@ class LineRepair:
                 raise BackfillConflict("event/fixture identity changed")
             pending = []
             for action in expected_state["actions"]:
-                if action.get("cache_dependency") is not None:
-                    dependency = [c for c in state["cache"] if c["bookmaker_slug"] == action["cache_donor"]]
-                    if _hash(dependency) != _hash(action["cache_dependency"]):
-                        raise BackfillConflict("cache donor changed")
                 family = state["families"].get(action["family"])
-                if family is None:
-                    raise BackfillConflict(f"family missing: {action['family']}")
                 digest = _hash(family)
                 if digest == action["after_sha256"]:
                     continue
+                if family is None:
+                    raise BackfillConflict(f"family missing: {action['family']}")
                 if digest != action["expected_sha256"]:
                     raise BackfillConflict(f"quotes/history/cache changed for family {action['family']}")
                 pending.append((family, action))
@@ -462,13 +397,6 @@ class LineRepair:
                 market_ids = [m["market_id"] for m in family["markets"]]
                 session.query(MarketChoice).filter(MarketChoice.market_id.in_(market_ids), ~MarketChoice.quotes.any()).delete(synchronize_session=False)
                 session.query(Market).filter(Market.market_id.in_(market_ids), ~Market.choices.any()).delete(synchronize_session=False)
-                if action["cache_after"] is not None:
-                    session.query(OddspapiMainlineOutcomeCache).filter_by(event_id=event_id,
-                        bookmaker_slug=family["bookmaker_slug"], canonical_market_key=family["canonical_market_key"]).delete(synchronize_session=False)
-                    for row in action["cache_after"]:
-                        data = dict(row)
-                        data["captured_at"] = datetime.fromisoformat(data["captured_at"])
-                        session.add(OddspapiMainlineOutcomeCache(**data))
             if pending:
                 session.flush()
                 session.expire_all()
