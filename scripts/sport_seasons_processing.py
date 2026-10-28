@@ -426,6 +426,8 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     logger.info(f"Starting to process {len(events)} events with discovery_source='scraping_on_command'")
 
     processed_count = 0
+    inserted_count = 0
+    updated_count = 0
     skipped_count = 0
     markets_processed_count = 0
     markets_skipped_count = 0
@@ -437,10 +439,13 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     for event_data in events:
         try:
             # Upsert event
-            event = EventRepository.upsert_event(event_data)
+            write_result = EventRepository.batch_upsert_events([event_data], "sofascore", "direct", 1.0)
+            event = next(iter(write_result.events.values()), None)
 
             if event:
                 processed_count += 1
+                inserted_count += write_result.inserted
+                updated_count += write_result.updated
                 event_payload = event_data.get('event', event_data)
                 sofascore_event_id = event_payload['id']
                 event_id = event.id
@@ -582,6 +587,8 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     logger.info("fetched_unique_events: %s", len(events))
     logger.info("duplicate_entries_removed: %s", len(duplicate_ids))
     logger.info("processed_count: %s", processed_count)
+    logger.info("inserted_count: %s", inserted_count)
+    logger.info("updated_count: %s", updated_count)
     logger.info("skipped_count: %s", skipped_count)
     logger.info("fetch_odds: %s", fetch_odds)
     logger.info("markets_processed_count: %s", markets_processed_count)
