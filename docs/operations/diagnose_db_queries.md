@@ -56,8 +56,10 @@ LEFT JOIN event_source_mappings esm
 WHERE esm.source = 'oddspapi'
   AND e.competition_id IN (
       176,  -- NBA
-      318,  -- Brasileirao Serie A
+      174,  -- CBA
+      429,  -- Euroleague
       129,  -- MLB
+      318,  -- Brasileirao Serie A
       167,  -- LaLiga
       88,   -- Serie A
       168,  -- Premier League
@@ -66,13 +68,15 @@ WHERE esm.source = 'oddspapi'
       172,  -- Ligue 1
       2192, -- Liga MX Clausura
       328,  -- Liga MX Apertura
-      429,  -- Euroleague
-      525,  -- Liiga (turned off in tracked_competitions.py)
-      180,  -- SHL (turned off in tracked_competitions.py)
-      5153, -- NFL
+      261,  -- Liga Portugal
+      76,   -- MLS
       310,  -- Liga profesional de futbol argentino Clausura
       2476, -- Liga profesional de futbol argentino Apertura
-      261  -- Liga Portugal
+      317,  -- Eredivisie
+      180,  -- SHL
+      5196, -- NHL
+      554,  -- AHL
+      5153  -- NFL
   )
 ORDER BY e.starts_at DESC;
 ```
@@ -417,4 +421,3 @@ Helps locate quotes that are no longer attached to valid choices or are missing 
 - Use `WHERE` filters early to reduce query costs when scanning large tables.
 - For time-series checks, compare `collected_at`, `current_updated_at`, and `source_collected_at` together to identify delayed or partial ingestion.
 - If you are debugging a specific source, add `mcq.source = '...'` or a `bookie_id` filter to narrow the result set.
-
