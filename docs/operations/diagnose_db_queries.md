@@ -103,6 +103,70 @@ This is a fast way to find untracked or orphaned events.
 
 ## 2. Markets and odds diagnostics
 
+### Event count with and without markets for sources 'sofascore', 'oddspapi'
+
+```sql
+WITH event_market_sources AS (
+    SELECT
+        e.id AS event_id,
+        e.starts_at::date AS event_date,
+
+        COUNT(m.market_id) > 0 AS has_any_market,
+
+        COALESCE(
+            BOOL_OR(mcq.source = 'sofascore'),
+            FALSE
+        ) AS has_sofascore,
+
+        COALESCE(
+            BOOL_OR(mcq.source = 'oddspapi'),
+            FALSE
+        ) AS has_oddspapi
+
+    FROM events e
+
+    LEFT JOIN markets m
+        ON m.event_id = e.id
+
+    LEFT JOIN market_choices mc
+        ON mc.market_id = m.market_id
+
+    LEFT JOIN market_choice_quotes mcq
+        ON mcq.choice_id = mc.choice_id
+
+    GROUP BY
+        e.id,
+        e.starts_at::date
+)
+
+SELECT
+    event_date,
+
+    COUNT(*) AS total_events,
+
+    COUNT(*) FILTER (
+        WHERE has_sofascore
+    ) AS events_with_sofascore_markets,
+
+    COUNT(*) FILTER (
+        WHERE has_oddspapi
+    ) AS events_with_oddspapi_markets,
+
+    COUNT(*) FILTER (
+        WHERE has_sofascore
+          AND has_oddspapi
+    ) AS events_with_both,
+
+    COUNT(*) FILTER (
+        WHERE NOT has_any_market
+    ) AS events_with_no_markets
+
+FROM event_market_sources
+
+GROUP BY event_date
+ORDER BY event_date DESC;
+```
+
 ### Markets per canonical event
 
 ```sql

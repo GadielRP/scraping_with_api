@@ -26,6 +26,16 @@ class DiscoveryFilters:
     excluded_categories: frozenset[tuple[str, str]] = frozenset({
         ("baseball", "Cuba"),  # Baseball; all category divisions; Cuba; all genders.
         ("basketball", "Croatia Amateur"),  # Basketball; amateur divisions; Croatia; all genders.
+        ("basketball", "Bosnia & Herzegovina"),  # Basketball; amateur divisions; Bosnia & Herzegovina; all genders.
+        ("basketball", "Italy Amateur"),  # Basketball; amateur divisions; Italy; all genders.
+        ("basketball", "USA Amateur"),  # Basketball; amateur divisions; USA; all genders.
+        ("basketball", "Brazil Amateur"),  # Basketball; amateur divisions; Brazil; all
+        ("basketball", "Argentina Amateur"),  # Basketball; amateur divisions; Argentina; all genders.
+        ("basketball", "Germany Amateur"),  # Basketball; amateur divisions; Germany; all
+        ("basketball", "Spain Amateur"),  # Basketball; amateur divisions; Spain; all genders.
+        ("basketball", "France Amateur"),  # Basketball; amateur divisions; France; all genders.
+        ("basketball", "Poland Amateur"),  # Basketball; amateur divisions; Poland; all genders.
+        ("basketball", "Greece Amateur"),  # Basketball; amateur divisions; Greece; all genders.
         ("football", "Argentina Amateur"),  # Football; amateur divisions; Argentina; all genders.
         ("football", "Austria Amateur"),  # Football; amateur divisions; Austria; all genders.
         ("football", "Belgium Amateur"),  # Football; amateur divisions; Belgium; all genders.
@@ -33,6 +43,7 @@ class DiscoveryFilters:
         ("football", "Brazil Amateur"),  # Football; amateur divisions; Brazil; all genders.
         ("football", "Bulgaria Amateur"),  # Football; amateur divisions; Bulgaria; all genders.
         ("football", "Canada Amateur"),  # Football; amateur divisions; Canada; all genders.
+        ("football", "USA Amateur"),  # Football; amateur divisions; Chile; all genders.
         ("football", "Colombia Amateur"),  # Football; amateur divisions; Colombia; all genders.
         ("football", "Croatia Amateur"),  # Football; amateur divisions; Croatia; all genders.
         ("football", "Cuba"),  # Football; all category divisions; Cuba; all genders.
@@ -42,6 +53,8 @@ class DiscoveryFilters:
         ("football", "Denmark Amateur"),  # Football; amateur divisions; Denmark; all genders.
         ("football", "Ecuador Amateur"),  # Football; amateur divisions; Ecuador; all genders.
         ("football", "England Amateur"),  # Football; amateur divisions; England; all genders.
+        ("football", "Scotland Amateur"),  # Football; amateur divisions; Scotland; all genders.
+        ("football", "Kuwait Amateur"),  # Football; amateur divisions; Kuwait; all genders.
         ("football", "Finland Amateur"),  # Football; amateur divisions; Finland; all genders.
         ("football", "France Amateur"),  # Football; amateur divisions; France; all genders.
         ("football", "Germany Amateur"),  # Football; amateur divisions; Germany; all genders.
@@ -57,11 +70,15 @@ class DiscoveryFilters:
         ("football", "Morocco Amateur"),  # Football; amateur divisions; Morocco; all genders.
         ("football", "Netherlands Amateur"),  # Football; amateur divisions; Netherlands; all genders.
         ("football", "Norway Amateur"),  # Football; amateur divisions; Norway; all genders.
+        ("football", "North Macedonia"),  # Football; amateur divisions; North Macedonia; all genders.
         ("football", "Palestine"),  # Football; all category divisions; Palestine; all genders.
         ("football", "Peru Amateur"),  # Football; amateur divisions; Peru; all genders.
+        ("football", "Chile Amateur"),  # Football; amateur divisions; Chile; all genders.
+        ("football", "Uruguay Amateur"),  # Football; amateur divisions; Uruguay; all genders.
         ("football", "Poland Amateur"),  # Football; amateur divisions; Poland; all genders.
         ("football", "Portugal Amateur"),  # Football; amateur divisions; Portugal; all genders.
         ("football", "Romania Amateur"),  # Football; amateur divisions; Romania; all genders.
+        ("football", "Armenia Amateur"), # Football; amateur divisions; Armenia; all genders.
         ("football", "Russia Amateur"),  # Football; amateur divisions; Russia; all genders.
         ("football", "Saint Lucia"),  # Football; all category divisions; Saint Lucia; all genders.
         ("football", "Sao Tome and Principe"),  # Football; all category divisions; Sao Tome and Principe; all genders.
@@ -69,6 +86,7 @@ class DiscoveryFilters:
         ("football", "Slovakia Amateur"),  # Football; amateur divisions; Slovakia; all genders.
         ("football", "Slovenia Amateur"),  # Football; amateur divisions; Slovenia; all genders.
         ("football", "Somalia"),  # Football; all category divisions; Somalia; all genders.
+        ("football", "India Amateur"),  # Football; amateur divisions; India; all genders.
         ("football", "South Sudan"),  # Football; all category divisions; South Sudan; all genders.
         ("football", "Spain Amateur"),  # Football; amateur divisions; Spain; all genders.
         ("football", "Sweden Amateur"),  # Football; amateur divisions; Sweden; all genders.
@@ -100,6 +118,9 @@ class DiscoveryFilters:
         32200,  # American football; NCAA Division FCS; USA; men.
         32201,  # American football; NCAA Interdivisional; USA; men.
         11394,  # Baseball; Serie Nacional; Cuba; men.
+        19488,  # Baseball; Liga Mexicana del Pacifico; Mexico; men.
+        11616,  # Baseball; Dominican Republic LIDOM; Dominican Republic; men.
+        11395,  # Baseball; Venezuela LVBP; Venezuela; men.
         19446,  # Baseball; Appalachian League; USA; men.
         19464,  # Baseball; American Association; USA; men.
         19465,  # Baseball; Frontier League; USA; men.

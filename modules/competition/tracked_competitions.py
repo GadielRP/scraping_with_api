@@ -22,8 +22,12 @@ class TrackedCompetition:
 
 _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(176, "NBA", "Basketball"),
-    TrackedCompetition(318, "Brasileirao Serie A", "Football"),
+    TrackedCompetition(174, "CBA", "Basketball"), #china's league
+    TrackedCompetition(429, "Euroleague", "Basketball"),
+
     TrackedCompetition(129, "MLB", "Baseball"),
+
+    TrackedCompetition(318, "Brasileirao Serie A", "Football"),
     TrackedCompetition(167, "LaLiga", "Football"),
     TrackedCompetition(88, "Serie A", "Football"),
     TrackedCompetition(168, "Premier League", "Football"),
@@ -33,19 +37,22 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     TrackedCompetition(2192, "Liga MX Clausura", "Football"),
     TrackedCompetition(328, "Liga MX Apertura", "Football"),
     TrackedCompetition(261, "Liga Portugal", "Football"),
-    TrackedCompetition(429, "Euroleague", "Basketball"),
+    TrackedCompetition(76, "MLS", "Football"),
+    TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
+    TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
+    TrackedCompetition(317, "Eredivisie", "Football"),
 
     # TURNED OFF DUE TO LACK OF ODDS MARKETS DATA: CURRENTLY ODDSPAPI ONLY RETURNS FULL TIME DATA, NO 1ST HALF DATA
     # TrackedCompetition(525, "Liiga", "Ice hockey"),
-    # TrackedCompetition(180, "SHL", "Ice hockey"),    
-    # TrackedCompetition(5196, "NHL", "Ice hockey"),
+    TrackedCompetition(180, "SHL", "Ice hockey"),    
+    TrackedCompetition(5196, "NHL", "Ice hockey"),
+    TrackedCompetition(554, "AHL", "Ice hockey"),
 
-    TrackedCompetition(317, "Eredivisie", "Football"),
+
     TrackedCompetition(5153, "NFL", "American football"),
-    TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
-    TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
 
-    # KNOCKOUT COMPETITIONS, WE DONT SUPPORT FOR NOW BUT MIGHT IN THE FUTURE
+
+    # KNOCKOUT COMPETITIONS, WE DONT SUPPORT THEM YET BUT MIGHT DO IN THE FUTURE
     # TrackedCompetition(348, "UEFA Champions League", "Football"),
     # TrackedCompetition(146, "NBA Playoffs", "Basketball"),
     # TrackedCompetition(360, "Conmebol Libertadores", "Football"),
