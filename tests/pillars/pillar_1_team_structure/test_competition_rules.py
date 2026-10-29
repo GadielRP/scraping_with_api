@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.competition.competitive_rules import season_key_from_name
-from modules.competition.league_config import LEAGUE_CONFIGS, get_league_config
+from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
+from modules.competition.competition_history_config import get_competition_history_config
 from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDS
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import (
     resolve_p1_competition_context,
@@ -14,18 +14,22 @@ from tests.pillars.pillar_1_team_structure.test_module_5_late_season import (
 )
 
 
-PROFILES = {config.code: config for config in LEAGUE_CONFIGS if config.competitive_rules}
+IDS = {
+    "laliga": 167, "premier_league": 168, "serie_a": 88, "bundesliga": 171,
+    "ligue_1": 172, "liga_portugal": 261, "eredivisie": 317, "saudi_pro_league": 50,
+    "brasileirao": 318, "liga_mx_apertura": 328, "liga_mx_clausura": 2192,
+    "liga_profesional_de_argentina_apertura": 2476,
+    "liga_profesional_de_argentina_clausura": 310,
+    "nba": 176, "euroleague": 429, "mlb": 129, "nfl": 5153,
+    "shl": 180, "liiga": 525, "nhl": 5196,
+}
+PROFILES = {code: COMPETITION_PROFILES[cid] for code, cid in IDS.items()}
 
 
 def _configured_event(code, season=None):
-    config = PROFILES[code]
-    rules = config.competitive_rules[0]
-    event = replace(_event(), season_name=season or rules.season_key)
+    event = replace(_event(), season_name=season or PROFILES[code].reference_season)
     event.competition = replace(
-        event.competition, source="sofascore",
-        source_unique_tournament_id=config.primary_identity.source_unique_tournament_id,
-        source_tournament_id=config.primary_identity.source_tournament_id,
-        competitive_rules=None,
+        event.competition, competition_id=IDS[code], competitive_rules=None,
     )
     event.competition = resolve_p1_competition_context(event.to_identity(), event.competition)
     return event
@@ -41,17 +45,18 @@ def _table(size, played, home_rank, away_rank):
     })
 
 
-def test_twenty_profiles_and_operational_allowlist_remain_independent():
-    assert len(PROFILES) == 20
-    assert len(TRACKED_COMPETITION_IDS) == 17
-    assert not {525, 180, 5196} & TRACKED_COMPETITION_IDS
+def test_sporting_profiles_and_operational_allowlist_remain_independent():
+    assert TRACKED_COMPETITION_IDS <= COMPETITION_PROFILES.keys()
+    before = TRACKED_COMPETITION_IDS
+    assert get_competition_profile(525) is COMPETITION_PROFILES[525]
+    assert TRACKED_COMPETITION_IDS == before
     for config in PROFILES.values():
-        rules = config.competitive_rules[0]
+        rules = config
         assert rules.source_urls
-        assert rules.season_key in {"2026", "2026/27"}
-    assert get_league_config(238, 52).code == "liga_portugal"
-    assert get_league_config(155, 143625).code.endswith("argentina_apertura")
-    assert get_league_config(155, 156467).code.endswith("argentina_clausura")
+        assert rules.reference_season in {"2026", "2026/27"}
+    assert get_competition_history_config(238, 52).code == "liga_portugal"
+    assert get_competition_history_config(155, 143625).code.endswith("argentina_apertura")
+    assert get_competition_history_config(155, 156467).code.endswith("argentina_clausura")
 
 
 @pytest.mark.parametrize("code,teams,games,safe", [
@@ -63,7 +68,7 @@ def test_twenty_profiles_and_operational_allowlist_remain_independent():
     ("liiga", 17, 64, 12),
 ])
 def test_retention_boundaries_are_league_specific(code, teams, games, safe):
-    rules = PROFILES[code].competitive_rules[0]
+    rules = PROFILES[code]
     retention = [rule for rule in rules.objectives if rule.objective_type == "DIVISION_RETENTION"]
     assert (rules.number_of_teams, rules.total_regular_season_games) == (teams, games)
     assert {rule.reference_rank for rule in retention} == {safe}
@@ -71,13 +76,10 @@ def test_retention_boundaries_are_league_specific(code, teams, games, safe):
 
 
 def test_brazil_base_allocations_do_not_invent_effective_sudamericana_range():
-    rules = PROFILES["brasileirao"].competitive_rules[0]
+    rules = PROFILES["brasileirao"]
     external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
-    assert [(rule.rank_start, rule.rank_end) for rule in external[:2]] == [(1, 4), (5, 5)]
-    assert all(rule.status == "PENDING" and rule.target_season == "2027" for rule in external)
-    assert external[2].places == 6
-    assert external[2].selection_method == "BEST_ELIGIBLE"
-    assert external[2].rank_start is None
+    assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 6), (7, 12)]
+    assert all(rule.status == "CONFIGURED" and rule.target_season == "2027" for rule in external)
 
 
 def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament():
@@ -85,38 +87,35 @@ def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament()
         "liga_profesional_de_argentina_apertura", "liga_profesional_de_argentina_clausura",
         "liga_mx_apertura", "liga_mx_clausura",
     ):
-        rules = PROFILES[code].competitive_rules[0]
+        rules = PROFILES[code]
         external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
         assert all(rule.aggregation_scope == "SEASON_AGGREGATE" for rule in external)
-    argentina = PROFILES["liga_profesional_de_argentina_apertura"].competitive_rules[0]
+    argentina = PROFILES["liga_profesional_de_argentina_apertura"]
     retention = [rule for rule in argentina.objectives if rule.objective_type == "DIVISION_RETENTION"]
     assert {rule.aggregation_scope for rule in retention} == {"SEASON_AGGREGATE", "MULTISEASON_RECORD"}
     assert all(rule.status == "PENDING" for rule in retention)
 
 
-@pytest.mark.parametrize("label,expected", [
-    ("2026/2027", "2026/27"), ("2026-27", "2026/27"),
-    ("Apertura 2026", "2026"), (None, None), ("2026/28", None),
-])
-def test_explicit_season_labels(label, expected):
-    assert season_key_from_name(label) == expected
+@pytest.mark.parametrize("label", ["Serie A 26/27", "2026/2027", "2025/26", None, "unknown"])
+def test_canonical_id_resolves_current_profile_independently_of_season_label(label):
+    event = _configured_event("serie_a")
+    identity = replace(event.to_identity(), event_id=447123, season_name=label)
+    original = replace(event.competition, number_of_teams=18,
+                       total_regular_season_games=34, competitive_rules=None)
+    resolved = resolve_p1_competition_context(identity, original)
+    assert resolved.competitive_rules is COMPETITION_PROFILES[88]
+    assert resolved.number_of_teams == 20
+    assert resolved.total_regular_season_games == 38
+    assert original.competitive_rules is None
+    assert original.number_of_teams == 18
 
 
-def test_resolver_overrides_complete_cached_metadata_only_for_matching_season():
-    event = _configured_event("nhl")
+def test_resolver_overrides_complete_cached_metadata_with_current_profile():
+    event = _configured_event("nhl", "2025/26")
     assert event.competition.total_regular_season_games == 84
     assert event.competition.number_of_teams_source == "competition_rules"
-    assert asdict(event.competition)["competitive_rules"]["points_per_win"] == 2
+    assert asdict(event.competition)["competitive_rules"]["scoring"]["regulation_win"] == 2
     assert not hasattr(event.competition, "current_standings")
-    previous = replace(event.to_identity(), season_name="2025/26")
-    original = replace(event.competition, total_regular_season_games=82, competitive_rules=None)
-    resolved = resolve_p1_competition_context(previous, original)
-    assert resolved.competitive_rules is None
-    assert resolved.total_regular_season_games == 82
-    assert original.competitive_rules is None
-    assert _configured_event("liga_mx_clausura", "2027").competition.competitive_rules is None
-    missing = replace(event.to_identity(), season_name=None, season_year=2026)
-    assert resolve_p1_competition_context(missing, original).competitive_rules is None
 
 
 def test_input_capture_serializes_competition_rules_without_mutating_the_snapshot():
@@ -133,10 +132,23 @@ def test_input_capture_serializes_competition_rules_without_mutating_the_snapsho
     assert "current_standings" not in captured["competition_context"]
 
 
-def test_variant_without_exact_identity_does_not_pick_another_tournament():
-    event = _configured_event("liga_profesional_de_argentina_apertura")
-    competition = replace(event.competition, source_tournament_id=None)
-    assert resolve_p1_competition_context(event.to_identity(), competition).competitive_rules is None
+def test_canonical_variants_do_not_depend_on_provider_tournament_ids():
+    aperture = _configured_event("liga_profesional_de_argentina_apertura")
+    context = replace(aperture.competition, source_tournament_id=None,
+                      source_unique_tournament_id=None, source=None)
+    resolved = resolve_p1_competition_context(aperture.to_identity(), context)
+    assert resolved.competitive_rules is COMPETITION_PROFILES[2476]
+    clausura = replace(aperture.to_identity(), competition_id=310)
+    assert resolve_p1_competition_context(clausura, context).competitive_rules is COMPETITION_PROFILES[310]
+
+
+@pytest.mark.parametrize("competition_id", [None, 999999])
+def test_missing_or_unknown_canonical_id_does_not_use_name_or_provider_fallback(competition_id):
+    event = _configured_event("serie_a")
+    identity = replace(event.to_identity(), competition_id=competition_id)
+    resolved = resolve_p1_competition_context(identity, event.competition)
+    assert resolved.competitive_rules is None
+    assert resolved.total_regular_season_games is None
 
 
 def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(monkeypatch):
@@ -144,7 +156,6 @@ def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(mo
 
     event = _configured_event("nhl")
     event.competition = replace(event.competition, total_regular_season_games=82, competitive_rules=None)
-    event.competition_metadata_resolved = True
     processor = object.__new__(pipeline.EventPillarProcessor)
     processor.debug_mode = False
     calls = []
@@ -160,12 +171,8 @@ def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(mo
         assert context.competition.competitive_rules is not None
         return streak, False
 
-    def unexpected_metadata(*args, **kwargs):
-        pytest.fail("Complete cached metadata must not require another metadata query")
-
     monkeypatch.setattr(pipeline, "resolve_p1_competition_context", resolve)
     monkeypatch.setattr(pipeline, "resolve_matchup_streak_analysis", history)
-    monkeypatch.setattr(pipeline, "resolve_competition_metadata", unexpected_metadata)
     assert processor._prepare_p1(event) is None
     assert event.streak_analysis is streak
     assert calls == [event.event_id]
@@ -188,13 +195,32 @@ def test_confirmed_retention_wins_over_pending_international_qualification(
 
 
 def test_one_unresolved_team_suppresses_operational_pressure_for_both_teams():
-    result = _calculate_m5(_table(20, 35, 19, 15), _configured_event("laliga"))
-    assert result.raw["home"]["objective_type"] == "DIVISION_RETENTION"
+    # In Liga Profesional Argentina, external qualification is PENDING (SEASON_AGGREGATE).
+    # A team outside the group playoff top 8 encounters the unresolved boundary.
+    analysis = _table(15, 14, 5, 12)
+    for row in analysis.current_standings.values():
+        row["group"] = "A"
+    result = _calculate_m5(analysis, _configured_event("liga_profesional_de_argentina_apertura"))
+    assert result.raw["home"]["objective_type"] == "STAGE_QUALIFICATION"
     assert result.raw["home"]["rule_reason"] is None
     assert result.raw["away"]["rule_reason"] == "UNRESOLVED_OBJECTIVE_BOUNDARY"
     assert result.raw["m5_status"] == "INSUFFICIENT_DATA"
     assert result.value == 0 and result.bias == "NONE"
     assert result.raw["home"]["final_cost"] == result.raw["away"]["final_cost"] == 0
+
+
+def test_configured_european_profile_resolves_safe_zone_for_midtable_teams():
+    # In LaLiga, rank 19 is DIVISION_RETENTION and rank 15 is in the confirmed safe zone (NO_APPLICABLE_OBJECTIVE).
+    result = _calculate_m5(_table(20, 35, 19, 15), _configured_event("laliga"))
+    assert result.raw["home"]["objective_type"] == "DIVISION_RETENTION"
+    assert result.raw["home"]["rule_reason"] is None
+    assert result.raw["away"]["objective_type"] == "NO_APPLICABLE_OBJECTIVE"
+    assert result.raw["away"]["rule_reason"] is None
+    assert result.raw["m5_status"] == "ACTIVE"
+    assert result.raw["m5_pressure_side"] == "HOME"
+    assert result.bias == "HOME"
+    assert result.raw["home"]["final_cost"] > 0
+    assert result.raw["away"]["final_cost"] == 0
 
 
 def test_stage_qualification_and_absent_relegation_use_one_win_unit():
@@ -258,12 +284,42 @@ def test_wild_card_is_not_a_global_top_eight_cutoff():
     assert result.bias == "NONE"
 
 
-def test_missing_and_mismatched_rules_cannot_produce_ordinary_zero_pressure():
+def test_missing_rules_cannot_produce_ordinary_zero_pressure():
     event = _configured_event("laliga")
     event.competition = replace(event.competition, competitive_rules=None)
     result = _calculate_m5(_table(20, 35, 18, 19), event)
     assert result.raw["m5_status_reason"] == "MISSING_COMPETITION_RULES"
-    event = _configured_event("laliga")
-    event.season_name = "2025/26"
+
+
+def test_m5_accepts_current_rules_when_event_has_another_season_label():
+    event = _configured_event("laliga", "2025/26")
     result = _calculate_m5(_table(20, 35, 18, 19), event)
-    assert result.raw["m5_status_reason"] == "COMPETITION_RULES_SEASON_MISMATCH"
+    assert result.raw["m5_status"] == "ACTIVE"
+
+
+@pytest.mark.parametrize("size,expected", [(20, 20), (None, None)])
+def test_m4_and_m7_use_context_size_without_inference_from_table(size, expected):
+    from modules.pillars.pillar_1_team_structure.module_4.quality_adjusted_immediate_state_engine import _resolve_n_liga
+    from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engine import _resolve_max_rank
+
+    event = _configured_event("serie_a")
+    context = replace(event.competition, number_of_teams=size)
+    analysis = _table(18, 8, 16, 17)
+    assert _resolve_n_liga(analysis, context, [ {"opponent_ranking": 30} ])[0] == expected
+    assert _resolve_max_rank(analysis, context)[0] == expected
+
+
+def test_m7_does_not_replace_missing_or_invalid_size_with_twenty():
+    from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engine import (
+        _extract_opponent_rank, _calculate_opponent_strength,
+    )
+    assert _extract_opponent_rank({"opponent_ranking": 10}) == (None, None)
+    assert _calculate_opponent_strength(10, 1) is None
+
+
+def test_unknown_group_from_history_is_not_treated_as_a_real_group():
+    analysis = _table(15, 14, 7, 8)
+    for row in analysis.current_standings.values():
+        row["group"] = "UNKNOWN"
+    result = _calculate_m5(analysis, _configured_event("liga_profesional_de_argentina_apertura"))
+    assert result.raw["m5_status_reason"] == "MISSING_RANKING_GROUP"

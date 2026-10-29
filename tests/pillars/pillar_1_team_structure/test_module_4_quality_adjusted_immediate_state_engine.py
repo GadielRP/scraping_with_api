@@ -50,7 +50,7 @@ def _build_event_context(
         number_of_teams_source="db_cache",
         total_regular_season_games=38,
         standings_grouping="league",
-        league_config_source="test",
+        competition_config_source="test",
         has_standings_source_endpoint=True,
         source_status="normalized",
     )
@@ -228,7 +228,7 @@ def test_m4_celta_levante_blueprint_exact_values():
     assert result.module_name == "Quality-Adjusted Immediate State Engine"
     assert result.raw["engine_profile"] == "quality_adjusted_immediate_state_v2_asymmetric_quality_adjustment"
     assert result.raw["n_liga"] == 20
-    assert result.raw["n_liga_source"] == "streak_analysis.current_standings.len"
+    assert result.raw["n_liga_source"] == "competition_context.number_of_teams"
     assert result.raw["m4_status"] == "ACTIVE"
     assert result.raw["m4_status_reason"] == "active"
     assert result.bias == "AWAY"

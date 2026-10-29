@@ -22,7 +22,6 @@ from modules.pillars.score_series import extract_score_for_against
 
 logger = logging.getLogger(__name__)
 
-_MAX_RANK_DEFAULT = 20
 _INITIAL_SEASON_GAMES_TO_SKIP = 1
 
 _ROE_WEIGHT = 0.60
@@ -159,12 +158,6 @@ def _clamp(value: float, min_value: float = -1.0, max_value: float = 1.0) -> flo
     return clamp(value, min_value, max_value)
 
 
-def _standings_items(standings: Any) -> List[Any]:
-    if isinstance(standings, dict):
-        return list(standings.values())
-    if isinstance(standings, list):
-        return standings
-    return []
 
 
 def _extract_timestamp_value(game: Dict[str, Any]) -> Optional[float]:
@@ -198,58 +191,18 @@ def _extract_rank_from_record(record: Any) -> Optional[int]:
     return None
 
 
-def _max_rank_from_standings(standings: Any) -> Optional[int]:
-    ranks = [
-        rank
-        for rank in (_extract_rank_from_record(item) for item in _standings_items(standings))
-        if rank is not None and rank > 0
-    ]
-    if not ranks:
-        return None
-    return max(ranks)
 
 
 def _resolve_max_rank(
     streak_analysis: Any,
     competition_context: CompetitionContext,
     debug_mode: bool = False,
-) -> Tuple[int, str]:
-    """Resolve competition size using the most specific available source."""
-    number_of_teams = _coerce_int(
-        getattr(competition_context, "number_of_teams", None)
-    )
-    if debug_mode:
-        _debug_line("Intento 1: number_of_teams de competition_context = %s", _fmt(number_of_teams))
-    if number_of_teams is not None and number_of_teams > 1:
-        return number_of_teams, "competition_context.number_of_teams"
-
-    current_standings = getattr(streak_analysis, "current_standings", None)
-    if debug_mode:
-        _debug_line("Intento 2: len de current_standings = %s", _fmt(len(current_standings) if isinstance(current_standings, dict) else None))
-    if isinstance(current_standings, dict) and len(current_standings) > 1:
-        return len(current_standings), "streak_analysis.current_standings.len"
-
-    standings_response = getattr(competition_context, "standings_response", None)
-    if debug_mode:
-        _debug_line("Intento 3: len de standings_response = %s", _fmt(len(standings_response) if isinstance(standings_response, list) else None))
-    if isinstance(standings_response, list) and len(standings_response) > 1:
-        return len(standings_response), "competition_context.standings_response.len"
-
-    max_rank = _max_rank_from_standings(current_standings)
-    if debug_mode:
-        _debug_line("Intento 4: max_rank de current_standings = %s", _fmt(max_rank))
-    if max_rank is not None and max_rank > 1:
-        return max_rank, "streak_analysis.current_standings.max_rank"
-
-    max_rank = _max_rank_from_standings(standings_response)
-    if debug_mode:
-        _debug_line("Intento 5: max_rank de standings_response = %s", _fmt(max_rank))
-    if max_rank is not None and max_rank > 1:
-        return max_rank, "competition_context.standings_response.max_rank"
-
-    if debug_mode:
-        _debug_line("Intento 6: Usando fallback predeterminado = %d", _MAX_RANK_DEFAULT)
-    return _MAX_RANK_DEFAULT, "max_rank_default"
+) -> Tuple[Optional[int], str]:
+    """Use the competition size resolved centrally for this event."""
+    value = _coerce_int(competition_context.number_of_teams)
+    if value is not None and value > 1:
+        return value, "competition_context.number_of_teams"
+    return None, "unresolved"
 
 
 def _extract_opponent_name(game: Dict[str, Any]) -> Optional[str]:
@@ -372,12 +325,14 @@ def _extract_rank_from_current_standings(
 def _extract_opponent_rank(
     game: Dict[str, Any],
     current_standings: Optional[Dict[str, Dict[str, Any]]] = None,
-    max_rank: int = _MAX_RANK_DEFAULT,
+    max_rank: Optional[int] = None,
     team_label: str = "",
     game_index: int = 0,
     debug_mode: bool = False,
 ) -> Tuple[Optional[int], Optional[str]]:
-    """Extract opponent ranking from game payload or standings by rival name."""
+    """Extract opponent ranking using the explicitly resolved competition size."""
+    if max_rank is None or max_rank <= 1:
+        return None, None
     rank = _coerce_int(game.get("opponent_ranking"))
     if rank is not None and 1 <= rank <= max_rank:
         if debug_mode:
@@ -429,7 +384,7 @@ def _extract_opponent_rank(
 
 def _calculate_opponent_strength(opponent_rank: int, max_rank: int) -> Optional[float]:
     if max_rank <= 1:
-        max_rank = _MAX_RANK_DEFAULT
+        return None
     if opponent_rank < 1 or opponent_rank > max_rank:
         return None
     strength = (max_rank - opponent_rank) / float(max_rank - 1)
@@ -712,7 +667,6 @@ def calculate_m7_opponent_expectation_engine(
         _debug_line("Valores positivos favorecen a HOME; valores negativos favorecen a AWAY.")
 
         _debug_section("Parámetros Globales y Constantes")
-        _debug_line("MAX_RANK_DEFAULT: %s", _fmt(_MAX_RANK_DEFAULT))
         _debug_line("INITIAL_SEASON_GAMES_TO_SKIP: %s", _fmt(_INITIAL_SEASON_GAMES_TO_SKIP))
         _debug_line("ROE_WEIGHT: %s", _fmt(_ROE_WEIGHT))
         _debug_line("GDOE_WEIGHT: %s", _fmt(_GDOE_WEIGHT))
@@ -732,6 +686,17 @@ def calculate_m7_opponent_expectation_engine(
     max_rank, max_rank_source = _resolve_max_rank(
         streak_analysis, competition_context, debug_mode
     )
+
+    if max_rank is None:
+        return ModuleResult(
+            pillar_id="pillar_1_team_structure", module_id="M7",
+            module_name="Opponent Expectation Engine",
+            event_id=event_identity.event_id,
+            participants=event_identity.participants_label,
+            value=0.0, bias="NONE", strength="INSUFFICIENT_DATA",
+            raw={"m7_status": "INSUFFICIENT_DATA",
+                 "m7_status_reason": "MISSING_COMPETITION_SIZE"},
+        )
 
     if debug_mode:
         _debug_line("max_rank final resuelto = %d (fuente: %s)", max_rank, max_rank_source)

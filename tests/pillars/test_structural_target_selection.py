@@ -73,7 +73,7 @@ def _event_context() -> EventContext:
             number_of_teams_source="test",
             total_regular_season_games=38,
             standings_grouping="league",
-            league_config_source="test",
+            competition_config_source="test",
             has_standings_source_endpoint=True,
             source_status="normalized",
         ),
@@ -246,10 +246,10 @@ def test_pipeline_groups_debug_snapshots_using_loaded_sport_and_competition(tmp_
     assert processor.process_event(event) is not None
     directory = tmp_path / "debug" / "pillar_pipeline_objects" / "ice_hockey" / "nhl_preseason" / "4004_Home_vs_Away"
     assert {path.name for path in directory.iterdir()} == {
-        "4004_event_context.json", "4004_odds_trajectory_context.json",
+        "4004_event_identity.json", "4004_competition_context.json", "4004_odds_trajectory_context.json",
         "4004_odds_trajectory_context.xlsx",
     }
-    payload = json.loads((directory / "4004_event_context.json").read_text(encoding="utf-8"))
+    payload = json.loads((directory / "4004_event_identity.json").read_text(encoding="utf-8"))
     assert payload["sport"] == "Ice hockey"
     assert payload["participants_label"] == "Home vs Away"
     assert "competition" not in payload  # Preserve the existing identity snapshot.
@@ -259,12 +259,12 @@ def test_pillar_snapshot_files_share_the_existing_event_folder(tmp_path, monkeyp
     monkeypatch.chdir(tmp_path)
     event = _event_context().to_identity()
     pillar_pipeline._save_pillar_debug_snapshots(
-        event_context=event, odds_trajectory_context=_trajectory_context(),
+        event_identity=event, competition_context=_event_context().competition, odds_trajectory_context=_trajectory_context(),
         streak_analysis={"home_streak": 3}, competition_slug="Liga-MX-Apertura",
     )
     directory = tmp_path / "debug" / "pillar_pipeline_objects" / "football" / "liga_mx_apertura" / "4004_Home_vs_Away"
     assert {path.name for path in directory.iterdir()} == {
-        "4004_event_context.json", "4004_odds_trajectory_context.json",
+        "4004_event_identity.json", "4004_competition_context.json", "4004_odds_trajectory_context.json",
         "4004_odds_trajectory_context.xlsx", "4004_streak_analysis.json",
     }
     assert json.loads((directory / "4004_streak_analysis.json").read_text(encoding="utf-8")) == {"home_streak": 3}
@@ -322,7 +322,8 @@ def test_excel_failure_keeps_json_calculations_and_mining(tmp_path, monkeypatch,
     assert "RuntimeError" in caplog.text
     assert "workbook write failed" in caplog.text
     pillar_pipeline._save_pillar_debug_snapshots(
-        event_context=_event_context().to_identity(),
+        event_identity=_event_context().to_identity(),
+        competition_context=_event_context().competition,
         odds_trajectory_context=_trajectory_context(),
         streak_analysis={"home_streak": 3}, competition_slug="league",
     )
@@ -333,14 +334,14 @@ def test_streak_debug_does_not_overwrite_trajectory_artifacts(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     event = _event_context().to_identity()
     pillar_pipeline._save_pillar_debug_snapshots(
-        event_context=event, odds_trajectory_context=_trajectory_context(), competition_slug="league",
+        event_identity=event, competition_context=_event_context().competition, odds_trajectory_context=_trajectory_context(), competition_slug="league",
     )
     directory = tmp_path / "debug/pillar_pipeline_objects/football/league/4004_Home_vs_Away"
     trajectory_files = list(directory.glob("*odds_trajectory_context.*"))
     before = {path: path.read_bytes() for path in trajectory_files}
     assert len(before) == 2
     pillar_pipeline._save_pillar_debug_snapshots(
-        event_context=event, odds_trajectory_context=None,
+        event_identity=event, competition_context=_event_context().competition, odds_trajectory_context=None,
         streak_analysis={"home_streak": 3}, competition_slug="league",
     )
     assert {path: path.read_bytes() for path in trajectory_files} == before

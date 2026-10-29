@@ -1,9 +1,8 @@
-"""Season-scoped sporting facts, independent of tracking and pressure models."""
+"""Sporting facts, independent of tracking and pressure models."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 from typing import Literal
 
 
@@ -14,11 +13,12 @@ ObjectiveType = Literal[
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveRule:
-    """A configured effective zone or a pending allocation, within its profile's season.
+    """A configured effective zone or a pending allocation, within its current competition profile.
 
     CONFIGURED confirms the sporting boundary, not M5's ability to calculate it.
     An omitted objective is absent; NO_APPLICABLE_OBJECTIVE is a team outcome.
-    Sources and the domestic season are inherited from CompetitionRules.
+    Sources and the reference season are inherited from CompetitionRules.
+    The reference season documents the current facts; it does not select events.
     """
 
     objective_type: ObjectiveType
@@ -35,6 +35,7 @@ class ObjectiveRule:
     group_size: int | None = None
     target_season: str | None = None
     note: str = ""
+    ranking_group: str | None = None
 
     def __post_init__(self) -> None:
         if (self.rank_start is None) != (self.rank_end is None):
@@ -46,40 +47,109 @@ class ObjectiveRule:
 
 
 @dataclass(frozen=True, slots=True)
-class CompetitionRules:
-    """Immutable season facts shared by P1 modules; contains no standings/history.
+class ScoringRules:
+    """Points awarded for each outcome, shared by tables and competitive cost."""
 
-    points_per_win is the maximum match increment in the table's existing unit.
-    It does not convert a percentage or average into an additive scoring unit.
+    regulation_win: float
+    overtime_win: float
+    draw: float = 0.0
+    overtime_loss: float = 0.0
+    loss: float = 0.0
+
+    @property
+    def maximum_per_game(self) -> float:
+        return max(self.regulation_win, self.overtime_win, self.draw, self.overtime_loss, self.loss)
+
+    def points(self, stats) -> float:
+        overtime_wins = stats.get("ot_so_wins", 0)
+        overtime_losses = stats.get("ot_losses", 0)
+        return (
+            (stats.get("wins", 0) - overtime_wins) * self.regulation_win
+            + overtime_wins * self.overtime_win
+            + stats.get("draws", 0) * self.draw
+            + overtime_losses * self.overtime_loss
+            + (stats.get("losses", 0) - overtime_losses) * self.loss
+        )
+
+
+FOOTBALL_SCORING = ScoringRules(3, 3, draw=1)
+WINS_SCORING = ScoringRules(1, 1)
+NFL_SCORING = ScoringRules(1, 1, draw=0.5)
+NHL_SCORING = ScoringRules(2, 2, overtime_loss=1)
+HOCKEY_SCORING = ScoringRules(3, 2, overtime_loss=1)
+
+@dataclass(frozen=True, slots=True)
+class RankingCriterion:
+    """One ordered comparison; a mini-table may contain several metrics.
+
+    Missing required data stops the comparison. It never authorizes using a
+    later criterion. ``meetings`` applies per pair, not to the total match count.
     """
 
-    season_key: str
-    number_of_teams: int
-    total_regular_season_games: int
-    points_per_win: float
-    ranking_metric: Literal["POINTS", "WINS", "WIN_PERCENTAGE"]
-    objectives: tuple[ObjectiveRule, ...]
+    metrics: tuple[str, ...]
+    meetings: int = 0
+    only_two: bool = False
+    only_multiple: bool = False
+    reapply: bool = False
+    unavailable: str | None = None
+    final_only: bool = False
+    share_if_incomplete: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class StandingsRules:
+    """Competition-specific ordering, separate from points awarded per game."""
+
+    name: str
+    primary_metric: Literal["points", "wins", "pct"]
+    criteria: tuple[RankingCriterion, ...]
     source_urls: tuple[str, ...]
-    standings_grouping: str = "single_table"
-    points_per_draw: float | None = None
+    in_season_criteria: tuple[RankingCriterion, ...] | None = None
+    record_percentage: bool = False
+    regulation_scores_only: bool = False
+    verified: bool = True
     note: str = ""
 
+
+@dataclass(frozen=True, slots=True)
+class CompetitionRules:
+    """The single sporting configuration for a canonical competition.
+
+    Missing size/duration/objectives mean those facts have not been configured.
+    Reference season and provenance are descriptive, never lookup keys.
+    """
+
+    # Reference season under which these sporting rules, boundaries, and sizes were documented.
+    # NOTE: This is descriptive audit metadata (provenance). It is NEVER used as a lookup filter
+    # or query key, and does not cause events from other seasons to be rejected.
+    reference_season: str
+    number_of_teams: int | None
+    total_regular_season_games: int | None
+    scoring: ScoringRules
+    standings: StandingsRules
+    objectives: tuple[ObjectiveRule, ...] | None
+    source_urls: tuple[str, ...]
+    grouping_method: str = "league_wide"
+    note: str = ""
+
+    @property
+    def season_key(self) -> str:
+        return self.reference_season
+
+    @property
+    def ranking_metric(self) -> str:
+        if self.standings.primary_metric == "pct":
+            return "WIN_PERCENTAGE"
+        return "WINS" if self.standings.primary_metric == "wins" else "POINTS"
+
+    @property
+    def standings_grouping(self) -> str:
+        return "single_table" if self.grouping_method == "league_wide" else "split_tables"
+
     def __post_init__(self) -> None:
-        if self.number_of_teams <= 1 or self.total_regular_season_games <= 0:
-            raise ValueError("competition size and duration must be positive")
-        if self.points_per_win <= 0 or not self.source_urls:
-            raise ValueError("scoring unit and rule provenance are required")
-
-
-def season_key_from_name(season_name: str | None) -> str | None:
-    """Match explicit season labels; never infer a season from today's date/year."""
-    matches = re.findall(r"(?<!\d)((?:19|20)\d{2})(?:\s*[/–—-]\s*(\d{2,4}))?(?!\d)", season_name or "")
-    if len(matches) != 1:
-        return None
-    start, end = matches[0]
-    if not end:
-        return start
-    end_year = int(end) if len(end) == 4 else (int(start) // 100) * 100 + int(end)
-    if end_year != int(start) + 1:
-        return None
-    return f"{start}/{end_year % 100:02d}"
+        if self.number_of_teams is not None and self.number_of_teams <= 1:
+            raise ValueError("competition size must exceed one")
+        if self.total_regular_season_games is not None and self.total_regular_season_games <= 0:
+            raise ValueError("competition duration must be positive")
+        if not self.source_urls:
+            raise ValueError("rule provenance is required")

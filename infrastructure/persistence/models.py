@@ -47,7 +47,7 @@ class Competition(Base):
     number_of_teams = Column(Integer)
     total_regular_season_games = Column(Integer)
     standings_grouping = Column(Text)
-    league_config_source = Column(Text)
+    competition_config_source = Column(Text)
     has_standings_source_endpoint = Column(Boolean, default=True)
     created_at = Column(UTCDateTime(), default=utc_now)
     updated_at = Column(UTCDateTime(), default=utc_now, onupdate=utc_now)

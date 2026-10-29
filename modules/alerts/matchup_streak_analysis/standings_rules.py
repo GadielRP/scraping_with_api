@@ -1,423 +1,217 @@
-"""Pure standings rules for matchup streak analysis.
+"""Pure evaluation of the ordered standings criteria in a competition profile."""
 
-This module contains only deterministic helpers. It has no database access,
-no caching, and no side effects.
-"""
+from collections import Counter, defaultdict
+from fractions import Fraction
+from itertools import combinations
 
-from typing import Dict, List, Optional, Tuple
+from .standings_tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
 
 
-def normalize_result_subtype(raw_subtype: Optional[str], winner: Optional[str]) -> str:
-    """Normalize raw result subtype values to REG/OT/SO/DRAW."""
+def normalize_result_subtype(raw_subtype, winner):
+    """Normalize source result subtypes to REG/OT/SO/DRAW."""
     if winner == "X":
         return "DRAW"
-    if raw_subtype is None:
-        return "REG"
-
-    value = str(raw_subtype).strip().upper()
-    if not value:
-        return "REG"
+    value = str(raw_subtype or "").strip().upper()
     if value in {"DRAW", "X", "TIE"}:
         return "DRAW"
     if "SO" in value or "SHOOT" in value:
         return "SO"
-    if value in {"OT", "OVERTIME"} or "OT" in value or "EXTRA" in value:
+    if "OT" in value or "EXTRA" in value:
         return "OT"
-    if value in {"REG", "REGULATION"} or "REG" in value:
-        return "REG"
     return "REG"
 
 
-def _normalize_team_name_for_sort(team_name: str) -> str:
-    """Normalize team name for deterministic sorting."""
-    return team_name.lower().strip()
-
-
-def build_sort_key(stats: Dict, standings_method: str) -> Tuple:
-    """Build method-specific sort key for deterministic simplified ranking."""
-    if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
-        # Simplified football ranking: points first, then goal differential,
-        # then goals for, with wins as a final generic fallback.
-        return (
-            stats.get("points", 0),
-            stats.get("goal_diff", 0),
-            stats.get("goals_for", 0),
-            stats.get("wins", 0),
-        )
-
-    if standings_method in {"win_pct", "win_pct_half_tie"}:
-        return (
-            stats.get("pct", 0.0) or 0.0,
-            stats.get("wins", 0),
-            stats.get("goal_diff", 0),
-        )
-
-    if standings_method == "wins_h2h":
-        # EuroLeague-style ranking: victories first. Same-win teams with
-        # fewer games played rank higher. Remaining H2H/PD details are
-        # applied by sort_wins_h2h_items when match records are available.
-        games_played = stats.get("games_played", 0) or 0
-        return (
-            stats.get("wins", 0),
-            -int(games_played),
-            stats.get("goal_diff", 0),
-            stats.get("goals_for", 0),
-        )
-
-    if standings_method == "nhl_2_1_0_otl":
-        # TODO: For full NHL exactness, separate ROW/OT/SO wins and other
-        # official tie-break details when the source data supports them.
-        if stats.get("regulation_wins") is not None:
-            return (
-                stats.get("points", 0),
-                stats.get("pct", 0.0) or 0.0,
-                stats.get("regulation_wins", 0),
-                stats.get("wins", 0),
-                stats.get("goal_diff", 0),
-            )
-        return (
-            stats.get("points", 0),
-            stats.get("pct", 0.0) or 0.0,
-            stats.get("wins", 0),
-            stats.get("goal_diff", 0),
-        )
-
-    if standings_method == "hockey_3_2_1_0":
-        # Liiga/SHL-style 3-2-1-0: points, then regulation wins, then GD/GF.
-        # Last-resort official H2H (and Liiga even-strength H2H goals) are
-        # not modeled.
-        return (
-            stats.get("points", 0),
-            stats.get("regulation_wins", 0),
-            stats.get("goal_diff", 0),
-            stats.get("goals_for", 0),
-        )
-
-    return (
-        stats.get("points", 0),
-        stats.get("goal_diff", 0),
-        stats.get("wins", 0),
-    )
-
-
-def build_primary_rank_key(stats: Dict, standings_method: str) -> Tuple:
-    """Build the primary metric key for rank grouping and tie detection."""
-    if standings_method in {"win_pct", "win_pct_half_tie"}:
-        return (stats.get("pct", 0.0) or 0.0,)
-
-    return build_sort_key(stats, standings_method)
-
-
-def build_display_sort_key(team_name: str, stats: Dict, standings_method: str) -> Tuple:
-    """Build deterministic sort key for stable ordering inside a tie cluster."""
-    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(team_name))
-
-    if standings_method in {"win_pct", "win_pct_half_tie"}:
-        return (
-            stats.get("pct", 0.0) or 0.0,
-            inverted_name,
-        )
-
-    base_key = build_sort_key(stats, standings_method)
-    return base_key + (inverted_name,)
-
-
-def assign_positions_with_ties(sorted_items: List[Tuple[str, Dict]], standings_method: str, rank_key_by_team=None) -> Dict[str, Dict]:
-    """Assign competition-style positions while preserving tie clusters."""
-    result = {}
-    current_pos = 1
-    tied_count = 0
-    prev_rank_key = None
-
-    for i, (team_name, stats) in enumerate(sorted_items):
-        if rank_key_by_team is not None and team_name in rank_key_by_team:
-            rank_key = rank_key_by_team[team_name]
-        else:
-            rank_key = build_primary_rank_key(stats, standings_method)
-
-        if i == 0:
-            result[team_name] = {"position": 1, "is_primary_tie": False, "primary_rank_key": rank_key}
-            prev_rank_key = rank_key
-            continue
-
-        if rank_key == prev_rank_key:
-            tied_count += 1
-            if tied_count == 1:
-                prev_team_name = sorted_items[i - 1][0]
-                result[prev_team_name]["is_primary_tie"] = True
-
-            result[team_name] = {"position": current_pos, "is_primary_tie": True, "primary_rank_key": rank_key}
-        else:
-            current_pos += 1 + tied_count
-            tied_count = 0
-            result[team_name] = {"position": current_pos, "is_primary_tie": False, "primary_rank_key": rank_key}
-            prev_rank_key = rank_key
-
+def build_head_to_head_stats(team_names, match_records, scoring, *, regulation_scores_only=False):
+    """Summarize supplied games using shared scoring and the actual game winner."""
+    result = {name: dict(points=0, wins=0, draws=0, losses=0, ot_so_wins=0,
+                         ot_losses=0, matches=0, goals_for=0, goal_diff=0,
+                         away_goals=0, score_quotients=Fraction(0), complete_scores=True)
+              for name in team_names}
+    for match in match_records:
+        home, away = match["home_team"], match["away_team"]
+        home_score, away_score = match["home_score"], match["away_score"]
+        winner = match.get("winner") or ("1" if home_score > away_score else "2" if away_score > home_score else "X")
+        subtype = normalize_result_subtype(match.get("result_subtype"), winner)
+        complete_scores = True
+        if regulation_scores_only and subtype in {"OT", "SO"}:
+            home_score, away_score = match.get("regulation_home_score"), match.get("regulation_away_score")
+            complete_scores = home_score is not None and away_score is not None
+        for team, won_code, scored, conceded, is_away in (
+            (home, "1", home_score, away_score, False), (away, "2", away_score, home_score, True),
+        ):
+            if team not in result:
+                continue
+            stats = result[team]
+            stats["matches"] += 1
+            if winner == "X":
+                stats["draws"] += 1
+            elif winner == won_code:
+                stats["wins"] += 1
+                stats["ot_so_wins"] += subtype in {"OT", "SO"}
+            else:
+                stats["losses"] += 1
+                stats["ot_losses"] += subtype in {"OT", "SO"}
+            stats["complete_scores"] &= complete_scores
+            if complete_scores:
+                stats["goals_for"] += scored
+                stats["goal_diff"] += scored - conceded
+                stats["away_goals"] += scored if is_away else 0
+                if conceded:
+                    stats["score_quotients"] += Fraction(scored, conceded)
+    for stats in result.values():
+        stats["points"] = scoring.points(stats)
     return result
 
 
-def build_football_h2h_stats(team_names, match_records) -> Dict[str, Dict[str, int]]:
-    team_set = set(team_names)
-    h2h_stats = {}
-    for name in team_names:
-        h2h_stats[name] = {
-            "points": 0,
-            "goal_diff": 0,
-            "goals_for": 0,
-            "matches": 0,
-        }
-
-    for match in match_records:
-        home = match["home_team"]
-        away = match["away_team"]
-        if home in team_set and away in team_set:
-            home_score = match["home_score"]
-            away_score = match["away_score"]
-            
-            h2h_stats[home]["goals_for"] += home_score
-            h2h_stats[home]["goal_diff"] += (home_score - away_score)
-            h2h_stats[home]["matches"] += 1
-            
-            h2h_stats[away]["goals_for"] += away_score
-            h2h_stats[away]["goal_diff"] += (away_score - home_score)
-            h2h_stats[away]["matches"] += 1
-            
-            if home_score > away_score:
-                h2h_stats[home]["points"] += 3
-            elif away_score > home_score:
-                h2h_stats[away]["points"] += 3
-            else:
-                h2h_stats[home]["points"] += 1
-                h2h_stats[away]["points"] += 1
-
-    return h2h_stats
+def _complete_home_and_away(names, records):
+    counts = Counter((m["home_team"], m["away_team"]) for m in records)
+    return all(counts[a, b] and counts[b, a] for a, b in combinations(names, 2))
 
 
-def is_football_h2h_cluster_complete(team_names, h2h_stats) -> bool:
-    n = len(team_names)
-    if n <= 1:
-        return False
-    expected_matches = n * (n - 1)  # double round-robin
-    actual_matches = sum(h2h_stats[name]["matches"] for name in team_names) // 2
-    return actual_matches >= expected_matches
+def _without_nhl_odd_games(names, records):
+    """Exclude the first game in the city hosting the extra encounter, per pair."""
+    excluded = set()
+    for a, b in combinations(names, 2):
+        home_a = [i for i, m in enumerate(records) if m["home_team"] == a and m["away_team"] == b]
+        home_b = [i for i, m in enumerate(records) if m["home_team"] == b and m["away_team"] == a]
+        if (len(home_a) + len(home_b)) % 2:
+            extra_home = home_a if len(home_a) > len(home_b) else home_b
+            if extra_home:
+                excluded.add(extra_home[0])
+    return [m for i, m in enumerate(records) if i not in excluded]
 
 
-def sort_football_h2h_items(items, match_records):
-    by_points = {}
-    for team_name, stats in items:
-        pts = stats.get("points", 0)
-        by_points.setdefault(pts, []).append((team_name, stats))
+def rank_standings(items, profile, match_records, *, season_complete=False):
+    """Evaluate rules in order; missing data stops a tie rather than skipping it.
 
-    sorted_items = []
-    rank_key_by_team = {}
-
-    for pts in sorted(by_points.keys(), reverse=True):
-        cluster = by_points[pts]
-        if len(cluster) == 1:
-            name, stats = cluster[0]
-            sorted_items.append((name, stats))
-            rank_key_by_team[name] = (
-                pts,
-                "H2H_COMPLETE",
-                0,
-                0,
-                stats.get("goal_diff", 0),
-                stats.get("goals_for", 0),
-                stats.get("wins", 0),
-            )
-        else:
-            cluster_team_names = [name for name, _ in cluster]
-            h2h_stats = build_football_h2h_stats(cluster_team_names, match_records)
-
-            if is_football_h2h_cluster_complete(cluster_team_names, h2h_stats):
-                def cluster_sort_key(item):
-                    name, stats = item
-                    h2h = h2h_stats[name]
-                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
-                    return (
-                        h2h["points"],
-                        h2h["goal_diff"],
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        stats.get("wins", 0),
-                        inverted_name,
-                    )
-
-                sorted_cluster = sorted(cluster, key=cluster_sort_key, reverse=True)
-                for name, stats in sorted_cluster:
-                    sorted_items.append((name, stats))
-                    h2h = h2h_stats[name]
-                    rank_key_by_team[name] = (
-                        pts,
-                        "H2H_COMPLETE",
-                        h2h["points"],
-                        h2h["goal_diff"],
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        stats.get("wins", 0),
-                    )
-            else:
-                def fallback_sort_key(item):
-                    name, stats = item
-                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
-                    return (
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        stats.get("wins", 0),
-                        inverted_name,
-                    )
-
-                sorted_cluster = sorted(cluster, key=fallback_sort_key, reverse=True)
-                for name, stats in sorted_cluster:
-                    sorted_items.append((name, stats))
-                    rank_key_by_team[name] = (
-                        pts,
-                        "H2H_INCOMPLETE",
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        stats.get("wins", 0),
-                    )
-
-    return sorted_items, rank_key_by_team
-
-
-def build_wins_h2h_stats(team_names, match_records) -> Dict[str, Dict[str, int]]:
-    """Build a wins-based mini-table among a cluster of tied teams."""
-    team_set = set(team_names)
-    h2h_stats = {}
-    for name in team_names:
-        h2h_stats[name] = {
-            "wins": 0,
-            "goal_diff": 0,
-            "goals_for": 0,
-            "matches": 0,
-        }
-
-    for match in match_records:
-        home = match["home_team"]
-        away = match["away_team"]
-        if home in team_set and away in team_set:
-            home_score = match["home_score"]
-            away_score = match["away_score"]
-
-            h2h_stats[home]["goals_for"] += home_score
-            h2h_stats[home]["goal_diff"] += (home_score - away_score)
-            h2h_stats[home]["matches"] += 1
-
-            h2h_stats[away]["goals_for"] += away_score
-            h2h_stats[away]["goal_diff"] += (away_score - home_score)
-            h2h_stats[away]["matches"] += 1
-
-            if home_score > away_score:
-                h2h_stats[home]["wins"] += 1
-            elif away_score > home_score:
-                h2h_stats[away]["wins"] += 1
-
-    return h2h_stats
-
-
-def sort_wins_h2h_items(items, match_records):
-    """Rank by victories, then EuroLeague-style H2H among same-win clusters.
-
-    Official EuroLeague order among teams tied on victories:
-    1. Fewer games played ranks higher
-    2. If all tied teams have met home and away, H2H wins then H2H point
-       difference
-    3. Overall point difference, then points scored
+    Names stabilize display only. They cannot break a sporting tie unless the
+    policy explicitly prescribes alphabetical order (interim KNVB).
     """
-    by_wins: Dict[int, List[Tuple[str, Dict]]] = {}
-    for team_name, stats in items:
-        wins = stats.get("wins", 0)
-        by_wins.setdefault(wins, []).append((team_name, stats))
+    rows = dict(items)
+    records = match_records or []
+    policy = profile.standings
+    criteria = (policy.in_season_criteria if not season_complete and policy.in_season_criteria is not None
+                else policy.criteria)
+    summaries = {}
+    complex_records = None
 
-    sorted_items = []
-    rank_key_by_team = {}
+    def summary(names, head_to_head=False, nhl=False):
+        key = (tuple(sorted(names)), head_to_head, nhl)
+        if key not in summaries:
+            games = [m for m in records if m["home_team"] in names and m["away_team"] in names] if head_to_head else records
+            if nhl:
+                games = _without_nhl_odd_games(names, games)
+            summaries[key] = build_head_to_head_stats(
+                names, games, profile.scoring, regulation_scores_only=policy.regulation_scores_only,
+            )
+        return summaries[key]
 
-    for wins in sorted(by_wins.keys(), reverse=True):
-        cluster = by_wins[wins]
-        by_games_played: Dict[int, List[Tuple[str, Dict]]] = {}
-        for name, stats in cluster:
-            games_played = stats.get("games_played", 0) or 0
-            by_games_played.setdefault(int(games_played), []).append((name, stats))
+    def metric(name, team, names):
+        stats = rows[team]
+        if name == "negative_games_played":
+            return -stats["games_played"]
+        if name == "alphabetical_order":
+            return tuple(-ord(c) for c in team.casefold())
+        if name == "pct":
+            games = stats["games_played"]
+            return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / games if games else Fraction(0)
+        if name in {"nhl_h2h", "ahl_h2h"}:
+            direct = summary(names, True, nhl=name == "nhl_h2h")[team]
+            if not direct["matches"]:
+                return 0
+            return Fraction(str(direct["points"])) / direct["matches"] if len(names) > 2 else direct["points"]
+        if name.startswith("h2h_"):
+            direct = summary(names, True)[team]
+            measure = name[4:]
+            if measure == "win_percentage":
+                return Fraction(direct["wins"], direct["matches"]) if direct["matches"] else Fraction(0)
+            if measure in {"goal_diff", "goals_for", "away_goals"} and not direct["complete_scores"]:
+                return None
+            return direct.get(measure)
+        if policy.regulation_scores_only and name in {"goal_diff", "goals_for", "game_score_quotients"}:
+            scores = summary(names)[team]
+            if not scores["complete_scores"]:
+                return None
+            return round(scores["score_quotients"], 5) if name == "game_score_quotients" else scores[name]
+        return stats.get(name)
 
-        for games_played in sorted(by_games_played.keys()):
-            gp_cluster = by_games_played[games_played]
-            if len(gp_cluster) == 1:
-                name, stats = gp_cluster[0]
-                sorted_items.append((name, stats))
-                rank_key_by_team[name] = (
-                    wins,
-                    -int(games_played),
-                    "H2H_COMPLETE",
-                    0,
-                    0,
-                    stats.get("goal_diff", 0),
-                    stats.get("goals_for", 0),
-                )
-                continue
+    def separate(names, steps, path=()):
+        nonlocal complex_records
+        if len(names) == 1 or not steps:
+            return [(names, path, None)]
+        step, *remaining = steps
+        if len(step.metrics) == 1 and step.metrics[0] in COMPLEX_TIEBREAKS:
+            if complex_records is None:
+                complex_records = TieBreakRecords(records, profile.scoring)
+            return [(cluster, path + ((-index,),), reason)
+                    for index, (cluster, reason) in enumerate(COMPLEX_TIEBREAKS[step.metrics[0]](names, complex_records))]
+        if step.final_only and not season_complete:
+            return separate(names, remaining, path)
+        if (step.only_two and len(names) != 2) or (step.only_multiple and len(names) <= 2):
+            return separate(names, remaining, path)
+        if step.unavailable:
+            return [(names, path, step.unavailable)]
+        if step.meetings:
+            direct_games = [m for m in records if m["home_team"] in names and m["away_team"] in names]
+            if not _complete_home_and_away(names, direct_games):
+                if season_complete:
+                    return [(names, path, "MISSING_HEAD_TO_HEAD_MATCHES")]
+                if step.share_if_incomplete:
+                    return [(names, path, None)]
+                return separate(names, remaining, path)
+        values_by_team = {team: () for team in names}
+        for measure in step.metrics:
+            for team in names:
+                value = metric(measure, team, names)
+                if value is None:
+                    reason = "MISSING_REGULATION_SCORES" if policy.regulation_scores_only else "MISSING_" + measure.upper()
+                    return [(names, path, reason)]
+                values_by_team[team] += (value,)
+            # On a partial H2H split, reapply its first metric to the remaining
+            # clubs before considering the next one (not a lexicographic key).
+            if step.reapply and len(set(values_by_team.values())) > 1:
+                break
+        buckets = defaultdict(list)
+        for team, values in values_by_team.items():
+            buckets[values].append(team)
+        result = []
+        for values in sorted(buckets, reverse=True):
+            subgroup = buckets[values]
+            next_steps = steps if step.reapply and len(buckets) > 1 else remaining
+            if policy.name == "LALIGA" and step.reapply and len(buckets) > 1 and len(subgroup) == 2:
+                next_steps = policy.criteria
+            euro_complete = policy.name == "EUROLEAGUE" and _complete_home_and_away(names, records)
+            if len(buckets) > 1 and (euro_complete or (policy.name == "AHL" and len(subgroup) == 2)):
+                next_steps = criteria
+            result.extend(separate(subgroup, next_steps, path + (values,)))
+        return result
 
-            cluster_team_names = [name for name, _ in gp_cluster]
-            h2h_stats = build_wins_h2h_stats(cluster_team_names, match_records)
+    by_primary = defaultdict(list)
+    for team in rows:
+        by_primary[metric(policy.primary_metric, team, tuple(rows))].append(team)
+    clusters = []
+    for primary in sorted(by_primary, reverse=True):
+        clusters.extend(separate(by_primary[primary], criteria, ((primary,),)))
 
-            if is_football_h2h_cluster_complete(cluster_team_names, h2h_stats):
-                def cluster_sort_key(item):
-                    name, stats = item
-                    h2h = h2h_stats[name]
-                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
-                    return (
-                        h2h["wins"],
-                        h2h["goal_diff"],
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        inverted_name,
-                    )
-
-                sorted_cluster = sorted(gp_cluster, key=cluster_sort_key, reverse=True)
-                for name, stats in sorted_cluster:
-                    sorted_items.append((name, stats))
-                    h2h = h2h_stats[name]
-                    rank_key_by_team[name] = (
-                        wins,
-                        -int(games_played),
-                        "H2H_COMPLETE",
-                        h2h["wins"],
-                        h2h["goal_diff"],
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                    )
-            else:
-                def fallback_sort_key(item):
-                    name, stats = item
-                    inverted_name = tuple(-ord(c) for c in _normalize_team_name_for_sort(name))
-                    return (
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                        inverted_name,
-                    )
-
-                sorted_cluster = sorted(gp_cluster, key=fallback_sort_key, reverse=True)
-                for name, stats in sorted_cluster:
-                    sorted_items.append((name, stats))
-                    rank_key_by_team[name] = (
-                        wins,
-                        -int(games_played),
-                        "H2H_INCOMPLETE",
-                        stats.get("goal_diff", 0),
-                        stats.get("goals_for", 0),
-                    )
-
-    return sorted_items, rank_key_by_team
-
-
-__all__ = [
-    "assign_positions_with_ties",
-    "build_display_sort_key",
-    "build_primary_rank_key",
-    "build_sort_key",
-    "normalize_result_subtype",
-    "build_football_h2h_stats",
-    "build_wins_h2h_stats",
-    "sort_football_h2h_items",
-    "sort_wins_h2h_items",
-    "is_football_h2h_cluster_complete",
-]
+    ordered, positions, offset = [], {}, 1
+    for names, key, reason in clusters:
+        for team in sorted(names, key=str.casefold):
+            ordered.append((team, rows[team]))
+            positions[team] = {
+                "position": None if reason else offset,
+                "is_primary_tie": len(names) > 1,
+                "primary_rank_key": tuple(tuple(float(value) if isinstance(value, Fraction) else value for value in part) for part in key),
+                "ranking_status": "UNRESOLVED" if reason else "SHARED_POSITION" if len(names) > 1 else "RESOLVED",
+                "ranking_reason": reason,
+                "ranking_rules_verified": policy.verified,
+            }
+        offset += len(names)
+    if season_complete and policy.name == "SERIE_A":
+        # Mini-table order seeds a decider; it cannot determine its winner.
+        for names in by_primary.values():
+            occupied = [i + 1 for i, (team, _) in enumerate(ordered) if team in names]
+            if len(names) > 1 and (1 in occupied or (17 in occupied and 18 in occupied)):
+                for team in names:
+                    positions[team].update(position=None, ranking_status="UNRESOLVED",
+                                           ranking_reason="SERIE_A_DECIDER_OR_UEFA_EXCEPTION_REQUIRED")
+    return ordered, positions

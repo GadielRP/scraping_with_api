@@ -18,13 +18,12 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import text
 
 from infrastructure.settings import Config
-from modules.competition.league_config import (
+from modules.competition.competition_history_config import (
     get_collected_season_bundle,
-    get_grouping_method,
     get_included_season_ids,
-    get_standings_method,
 )
 from shared.temporal import from_unix_timestamp, in_timezone
+from modules.competition.competition_profiles import get_competition_profile
 from .historical_form_reporting import (
     format_standings_table_for_telegram,
     send_debug_telegram,
@@ -213,6 +212,7 @@ class HistoricalFormService:
         source_tournament_id: Optional[int],
         current_event_timestamp: Optional[float],
         standings_method: str,
+        competition_id: int,
     ) -> None:
         """Send the current standings table to the personal debug chat."""
         personal_chat_id = os.getenv("PERSONAL_CHAT_ID", "")
@@ -228,6 +228,7 @@ class HistoricalFormService:
             sport,
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
+            competition_id=competition_id,
         )
         current_date = in_timezone(
             from_unix_timestamp(current_event_timestamp),
@@ -255,15 +256,11 @@ class HistoricalFormService:
         send_debug_standings: bool = True,
     ) -> Tuple[List[Dict], int]:
         try:
-            standings_method = get_standings_method(
-                source_unique_tournament_id,
-                source_tournament_id,
-                sport,
-            )
-            grouping_method = get_grouping_method(
-                source_unique_tournament_id,
-                source_tournament_id,
-            )
+            profile = get_competition_profile(competition_id)
+            if profile is None:
+                raise ValueError(f"No competition profile configured for competition_id={competition_id}")
+            standings_method = profile.standings.name
+            grouping_method = profile.grouping_method
             included_season_ids = get_included_season_ids(
                 source_unique_tournament_id,
                 source_tournament_id,
@@ -348,6 +345,7 @@ class HistoricalFormService:
                     source_tournament_id=source_tournament_id,
                     current_event_timestamp=current_event_timestamp,
                     standings_method=standings_method,
+                    competition_id=competition_id,
                 )
 
             return results, win_streak
@@ -358,13 +356,9 @@ class HistoricalFormService:
 
 
 historical_form_service = HistoricalFormService()
-historical_form_processor = historical_form_service
-HistoricalFormProcessor = HistoricalFormService
 
 
 __all__ = [
-    "HistoricalFormProcessor",
     "HistoricalFormService",
-    "historical_form_processor",
     "historical_form_service",
 ]

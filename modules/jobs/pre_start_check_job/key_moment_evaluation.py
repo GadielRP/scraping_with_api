@@ -25,110 +25,11 @@ from modules.jobs.pre_start_check_job.pillar_pipeline import (
     evaluate_and_calculate_pillars_batch,
 )
 from modules.jobs.pre_start_check_job.timing import minutes_until_start
-from modules.pillars.competition_metadata_resolver import (
-    apply_competition_metadata_resolution,
-    mark_competition_metadata_refresh_attempted,
-    resolve_competition_metadata,
-)
 from modules.pillars.context import EventContext, build_event_context
 from modules.sofascore import api_client
 from modules.sports.catalog import is_supported_sport_name
 
 logger = logging.getLogger(__name__)
-
-
-def enrich_event_context_competition_metadata(
-    event_context,
-    event_obj,
-    missing_competition_ids: set[int],
-) -> None:
-    """Resolve competition metadata and batch known missing standings endpoints."""
-    logger.info(
-        "Pre-start metadata check for event %s: competition_id=%s "
-        "source_unique_tournament_id=%s season_id=%s number_of_teams=%s "
-        "total_regular_season_games=%s standings_grouping=%s league_config_source=%s",
-        event_context.event_id,
-        getattr(event_context.competition, "competition_id", None),
-        getattr(event_context.competition, "source_unique_tournament_id", None),
-        getattr(event_context, "season_id", None),
-        getattr(event_context.competition, "number_of_teams", None),
-        getattr(event_context.competition, "total_regular_season_games", None),
-        getattr(event_context.competition, "standings_grouping", None),
-        getattr(event_context.competition, "league_config_source", None),
-    )
-    resolution = resolve_competition_metadata(
-        event_context,
-        standings_endpoint_missing_competition_ids=missing_competition_ids,
-    )
-    apply_competition_metadata_resolution(event_context, resolution)
-    event_context.competition.standings_response = resolution.raw.get(
-        "standings_response_raw"
-    )
-
-    competition_id = event_context.competition.competition_id
-    standings_missing = (
-        event_context.competition.has_standings_source_endpoint is False
-        or resolution.raw.get("skip_reason")
-        == "known_missing_standings_source_endpoint"
-    )
-    if (
-        competition_id is not None
-        and standings_missing
-        and int(competition_id) not in missing_competition_ids
-    ):
-        missing_competition_ids.add(int(competition_id))
-        logger.info(
-            "Pre-start metadata marked competition_id=%s as missing standings "
-            "endpoint in memory",
-            competition_id,
-        )
-
-    logger.info(
-        "Pre-start metadata resolution result for event %s: source=%s "
-        "standings_called=%s should_persist=%s number_of_teams=%s "
-        "total_regular_season_games=%s standings_grouping=%s skip_reason=%s",
-        event_context.event_id,
-        resolution.league_config_source,
-        resolution.standings_called,
-        resolution.should_persist,
-        resolution.number_of_teams,
-        resolution.total_regular_season_games,
-        resolution.standings_grouping,
-        resolution.raw.get("skip_reason"),
-    )
-
-    if not resolution.should_persist or competition_id is None:
-        return
-
-    try:
-        with db_manager.get_session() as session:
-            updated = CompetitionRepository.update_competition_metadata_if_better(
-                session=session,
-                competition_id=competition_id,
-                number_of_teams=resolution.number_of_teams,
-                total_regular_season_games=resolution.total_regular_season_games,
-                standings_grouping=resolution.standings_grouping,
-                league_config_source=resolution.league_config_source,
-            )
-        mark_competition_metadata_refresh_attempted(competition_id)
-        logger.info(
-            "Competition metadata resolved for event_id=%s competition_id=%s "
-            "source=%s standings_called=%s persisted=%s",
-            event_context.event_id,
-            competition_id,
-            resolution.league_config_source,
-            resolution.standings_called,
-            updated,
-        )
-    except Exception as exc:
-        mark_competition_metadata_refresh_attempted(competition_id)
-        logger.warning(
-            "Failed to persist competition metadata for event_id=%s "
-            "competition_id=%s: %s",
-            event_context.event_id,
-            competition_id,
-            exc,
-        )
 
 
 def flush_missing_standings_endpoints(missing_competition_ids: set[int]) -> None:
@@ -294,11 +195,7 @@ def _build_evaluation_payloads(
     key_event_ids: set[int],
     missing_competition_ids: set[int],
 ) -> list[EventContext]:
-    """Build EventContext, enrich competition metadata, then return typed EventContexts.
-
-    Two explicit phases (logged separately):
-    1. EventContext construction from DB event + optional tennis snapshot
-    2. Competition metadata enrichment on each built context
+    """Build event contexts; P1 resolves the shared sporting profile before history.
     """
     # --- Phase 1: EventContext construction ---
     logger.info(
@@ -376,33 +273,7 @@ def _build_evaluation_payloads(
         skipped_non_regular,
     )
 
-    # --- Phase 2: Competition metadata enrichment ---
-    logger.info(
-        "🏟️ START competition metadata enrichment "
-        "(contexts=%s)",
-        len(prepared),
-    )
-    contexts: list[EventContext] = []
-    for item in prepared:
-        event_obj = item["event_obj"]
-        event_context = item["event_context"]
-
-        enrich_event_context_competition_metadata(
-            event_context,
-            event_obj,
-            missing_competition_ids,
-        )
-        event_context.competition_metadata_resolved = True
-        contexts.append(event_context)
-
-    logger.info(
-        "🏟️ END competition metadata enrichment "
-        "(enriched=%s contexts=%s missing_standings_competitions=%s)",
-        len(contexts),
-        len(contexts),
-        len(missing_competition_ids),
-    )
-    return contexts
+    return [item["event_context"] for item in prepared]
 
 
 def _log_debug_payloads(contexts: list[EventContext]) -> None:

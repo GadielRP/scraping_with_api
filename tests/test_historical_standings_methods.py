@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from modules.alerts.matchup_streak_analysis import standings_engine as se
-from modules.competition.league_config import (
-    get_grouping_method,
-    get_league_config,
-    get_standings_method,
+from modules.competition.competition_history_config import (
+    get_competition_history_config,
 )
+
+from modules.competition.competition_profiles import get_competition_profile
 
 NBA_UNIQUE_TOURNAMENT_ID = 132
 SHL_UNIQUE_TOURNAMENT_ID = 261
@@ -71,13 +71,16 @@ def _compute(monkeypatch, season_id, rows, sport, source_unique_tournament_id=No
         "get_session",
         lambda: _fake_session_ctx(rows),
     )
+    competition_id = {"Football": 168, "Basketball": 174, "American football": 5153, "Ice hockey": 5196}[sport]
+    competition_id = {SHL_UNIQUE_TOURNAMENT_ID: 180, NBA_UNIQUE_TOURNAMENT_ID: 176}.get(source_unique_tournament_id, competition_id)
     simulator = se.HistoricalStandingsCalculator()
-    return simulator._calculate_standings_internal(
+    return simulator._calculate_standings_bundle_internal(
         season_id=season_id,
         cutoff_timestamp=2_000_000_000.0,
         sport=sport,
         source_unique_tournament_id=source_unique_tournament_id,
-    )
+        competition_id=competition_id,
+    )["standings"]
 
 
 def test_football_3_1_0_points(monkeypatch):
@@ -156,7 +159,7 @@ def test_shl_hockey_3_2_1_0_and_league_wide(monkeypatch):
     assert standings["SHL Team A"]["position"] < standings["SHL Team B"]["position"]
     assert standings["SHL Team A"]["group"] is None
     assert standings["SHL Team A"]["conference"] is None
-    assert get_grouping_method(SHL_UNIQUE_TOURNAMENT_ID) == "league_wide"
+    assert get_competition_profile(180).grouping_method == "league_wide"
 
 
 def test_grouped_unmapped_team_warned_not_dropped(monkeypatch, caplog):
@@ -165,7 +168,6 @@ def test_grouped_unmapped_team_warned_not_dropped(monkeypatch, caplog):
     ]
 
     # Pin the toggle so the test is independent of the local .env value.
-    monkeypatch.setattr(se.Config, "MATCHUP_STANDINGS_GROUP_BY_CONFERENCE", True)
     caplog.set_level("WARNING")
     standings = _compute(
         monkeypatch,
@@ -185,15 +187,15 @@ def test_grouped_unmapped_team_warned_not_dropped(monkeypatch, caplog):
 
 
 def test_saudi_pro_league_uses_football_h2h_method():
-    assert get_standings_method(SAUDI_PRO_LEAGUE_UNIQUE_TOURNAMENT_ID) == "football_3_1_0_h2h"
+    assert get_competition_profile(50).standings.name == "SAUDI_PRO_LEAGUE"
 
 
 def test_liga_mx_apertura_and_clausura_are_collected_with_gd_method():
-    apertura = get_league_config(
+    apertura = get_competition_history_config(
         LIGA_MX_APERTURA_UNIQUE_TOURNAMENT_ID,
         LIGA_MX_APERTURA_TOURNAMENT_ID,
     )
-    clausura = get_league_config(
+    clausura = get_competition_history_config(
         LIGA_MX_CLAUSURA_UNIQUE_TOURNAMENT_ID,
         LIGA_MX_CLAUSURA_TOURNAMENT_ID,
     )
@@ -204,13 +206,9 @@ def test_liga_mx_apertura_and_clausura_are_collected_with_gd_method():
     assert clausura.code == "liga_mx_clausura"
     assert apertura.collected is True
     assert clausura.collected is True
-    assert apertura.standings_method == "football_3_1_0"
-    assert clausura.standings_method == "football_3_1_0"
-    assert apertura.number_of_teams == 18
-    assert clausura.number_of_teams == 18
-    assert apertura.total_regular_season_games == 17
-    assert clausura.total_regular_season_games == 17
-    assert apertura.standings_grouping == "single_table"
-    assert clausura.standings_grouping == "single_table"
-    assert get_standings_method(LIGA_MX_APERTURA_UNIQUE_TOURNAMENT_ID) == "football_3_1_0"
-    assert get_standings_method(LIGA_MX_CLAUSURA_UNIQUE_TOURNAMENT_ID) == "football_3_1_0"
+    for competition_id, method in ((328, "LIGA_MX_APERTURA"), (2192, "LIGA_MX_CLAUSURA")):
+        profile = get_competition_profile(competition_id)
+        assert profile.standings.name == method
+        assert profile.number_of_teams == 18
+        assert profile.total_regular_season_games == 17
+        assert profile.standings_grouping == "single_table"

@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
+from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, FOOTBALL_SCORING
+from modules.competition.standings_policies import LALIGA
 from modules.pillars.common import ModuleResult
 from modules.pillars.mining.adapters.pillar_1 import P1SideMiningAdapter
 from modules.pillars.mining.contracts import validate_mining_run
@@ -32,9 +33,9 @@ def _event(total_games=38):
     )
     # Explicit equivalent policy protects numerical parity with the old engine.
     rules = CompetitionRules(
-        season_key="2025", number_of_teams=20,
+        reference_season="2025", number_of_teams=20,
         total_regular_season_games=total_games or 38,
-        points_per_win=3, ranking_metric="POINTS",
+        scoring=FOOTBALL_SCORING, standings=LALIGA,
         objectives=(
             ObjectiveRule("COMPETITION_QUALIFICATION", "TEST_COMPETITION", "DIRECT",
                           rank_start=1, rank_end=7, reference_rank=7),

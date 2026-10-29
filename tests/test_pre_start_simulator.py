@@ -187,58 +187,6 @@ def test_each_pillar_switch_selects_only_that_pillar(simulation, pillar):
     }
 
 
-def test_pillar_defaults_reach_calculation_through_real_metadata_enrichment(
-    simulation, monkeypatch
-):
-    from tests.pillars.test_structural_target_selection import _event_context
-    from modules.pillars import competition_metadata_resolver as resolver
-
-    context = _event_context()
-    context.event_id = 101
-    context.competition.standings_grouping = "single_table"
-    simulation.events[101].round = "regular_season"
-    simulation.runtime.recently_rescheduled = set()
-    simulation.plan.candidates[:] = [simulation.plan.by_event_id[101]]
-    monkeypatch.setattr(simulator, "ENABLE_PILLAR_PIPELINE", True)
-    monkeypatch.setattr(simulator, "ENABLE_PILLAR_1", True)
-    monkeypatch.setattr(
-        simulator.Config, "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS", False
-    )
-    # Keep both Config attributes mandatory: monkeypatch must fail if either
-    # setting is accidentally removed while cleaning unrelated configuration.
-    monkeypatch.setattr(
-        simulator.Config, "FORCE_STANDINGS_COMPETITION_METADATA_REFRESH", False
-    )
-    monkeypatch.setattr(
-        simulator.Config, "ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT", True
-    )
-    monkeypatch.setattr(
-        simulator,
-        "evaluate_pre_start_key_moments",
-        evaluation.evaluate_pre_start_key_moments,
-    )
-    monkeypatch.setattr(evaluation, "build_event_context", lambda **kwargs: context)
-    monkeypatch.setattr(resolver, "get_league_config", lambda **kwargs: None)
-    monkeypatch.setattr(resolver, "_COMPETITION_METADATA_REFRESH_ATTEMPTED", set())
-    monkeypatch.setattr(evaluation, "_load_trajectory_payloads", lambda _: {})
-    monkeypatch.setattr(
-        evaluation,
-        "evaluate_and_calculate_pillars_batch",
-        lambda **kwargs: simulation.calls.append(("pillars", kwargs)),
-    )
-
-    def unexpected_standings(*args, **kwargs):
-        pytest.fail("Complete metadata must not require a standings request")
-
-    monkeypatch.setattr(
-        resolver.api_client, "get_standings_response", unexpected_standings
-    )
-
-    assert simulator.simulate_pre_start_check(101, 5)
-    kwargs = next(kwargs for name, kwargs in simulation.calls if name == "pillars")
-    assert kwargs["events_for_pillars"] == [context]
-    assert context.competition_metadata_resolved is True
-    assert kwargs["enabled_pillars"] == {f"pillar_{i}": i == 1 for i in range(1, 6)}
 
 
 @pytest.mark.parametrize("ingestion", [False, True])

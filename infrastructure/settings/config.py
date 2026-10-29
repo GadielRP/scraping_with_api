@@ -557,10 +557,6 @@ class Config:
     # Matchup streak standings grouping toggle.
     # True keeps natural conference/league grouping when available.
     # False forces league-wide standings.
-    MATCHUP_STANDINGS_GROUP_BY_CONFERENCE = _parse_env_bool(
-        'MATCHUP_STANDINGS_GROUP_BY_CONFERENCE',
-        True
-    )
 
     # Canonical sport IDs; provider endpoint slugs are resolved by each adapter.
     SUPPORTED_SPORTS = _parse_env_list(
@@ -591,14 +587,6 @@ class Config:
     # pillar calculations without coupling infrastructure to pillar code.
     PILLAR_PIPELINE_ENABLED_PILLARS = _parse_pillar_toggle_map()
     ENABLE_LEGACY_ALERT_PIPELINE = _parse_env_bool('ENABLE_LEGACY_ALERT_PIPELINE', True)
-    ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT = _parse_env_bool(
-        'ENABLE_STANDINGS_COMPETITION_METADATA_ENRICHMENT',
-        True,
-    )
-    FORCE_STANDINGS_COMPETITION_METADATA_REFRESH = _parse_env_bool(
-        'FORCE_STANDINGS_COMPETITION_METADATA_REFRESH',
-        False,
-    )
 
     # Discovery sources to allow for alert sending
     DISCOVERY_SOURCES_FOR_ALERTS = _parse_env_list('DISCOVERY_SOURCES_FOR_ALERTS', ['dropping_odds'])

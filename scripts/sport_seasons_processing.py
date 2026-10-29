@@ -22,7 +22,7 @@ event_source_mappings.source_event_id for source='sofascore'.
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from modules.competition.league_config import get_included_season_ids
+from modules.competition.competition_history_config import get_included_season_ids
 from infrastructure.persistence.repositories import (
     EventRepository,
     EventSourceMappingRepository,

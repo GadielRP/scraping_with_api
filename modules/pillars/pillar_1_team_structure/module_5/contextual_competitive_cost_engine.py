@@ -19,7 +19,7 @@ from modules.pillars.common import (
     clamp,
     classify_strength,
 )
-from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, season_key_from_name
+from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
 from modules.pillars.context import CompetitionContext, EventIdentity
 
 logger = logging.getLogger(__name__)
@@ -274,8 +274,10 @@ def _scope_standings(
             return None
         return next((_normalize_name(record[key]) for key in keys if record.get(key)), None)
     group = group_value(standing)
-    if group is None:
+    if group is None or group == "unknown":
         return None, "MISSING_RANKING_GROUP"
+    if rule.ranking_group is not None and group != _normalize_name(rule.ranking_group):
+        return None, "OTHER_RANKING_GROUP"
     scoped = {key: record for key, record in _standings_items(current_standings)
               if group_value(record) == group}
     if rule.group_size is not None and (
@@ -303,6 +305,8 @@ def _resolve_objective_rule(
             scope_error = "UNSUPPORTED_AGGREGATION_SCOPE"
             continue
         scoped, reason = _scope_standings(current_standings, standing, rule)
+        if reason == "OTHER_RANKING_GROUP":
+            continue
         if reason:
             scope_error = reason
             continue
@@ -547,7 +551,7 @@ def calculate_contextual_competitive_cost_engine(
     away_standing = _resolve_team_standing(current_standings, away_team, away_direct_standing)
 
     rules = competition_context.competitive_rules
-    points_per_win = rules.points_per_win if rules else None
+    points_per_win = rules.scoring.maximum_per_game if rules else None
     n_league = _count_valid_standings(current_standings)
     total_season_games = _coerce_int(
         getattr(competition_context, "total_regular_season_games", None)
@@ -574,8 +578,8 @@ def calculate_contextual_competitive_cost_engine(
     if season_applicable:
         if rules is None:
             season_status, season_reason = "INSUFFICIENT_DATA", "MISSING_COMPETITION_RULES"
-        elif rules.season_key != season_key_from_name(season_name):
-            season_status, season_reason = "INSUFFICIENT_DATA", "COMPETITION_RULES_SEASON_MISMATCH"
+        elif rules.objectives is None:
+            season_status, season_reason = "INSUFFICIENT_DATA", "MISSING_OBJECTIVE_RULES"
         elif rules.ranking_metric not in {"POINTS", "WINS"}:
             season_status, season_reason = "INSUFFICIENT_DATA", "UNSUPPORTED_RANKING_METRIC"
     context_raw = {
@@ -589,7 +593,7 @@ def calculate_contextual_competitive_cost_engine(
         "season_name": season_name,
         "n_league": n_league,
         "points_per_win": points_per_win,
-        "rules_season_key": rules.season_key if rules else None,
+        "rules_reference_season": rules.reference_season if rules else None,
         "ranking_metric": rules.ranking_metric if rules else None,
         "rules_source_urls": rules.source_urls if rules else (),
         "total_season_games": total_season_games,

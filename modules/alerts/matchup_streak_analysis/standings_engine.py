@@ -14,21 +14,15 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.settings import Config
 from shared.temporal import from_unix_timestamp
 
-from modules.competition.league_config import (
+from modules.competition.competition_history_config import (
     get_canonical_season_id,
     get_collected_season_bundle,
-    get_grouping_method,
     get_included_season_ids,
-    get_standings_method,
 )
+from modules.competition.competition_profiles import get_competition_profile
+from modules.competition.competitive_rules import CompetitionRules
 from .constants import get_team_group
-from .standings_rules import (
-    assign_positions_with_ties,
-    build_display_sort_key,
-    normalize_result_subtype,
-    sort_football_h2h_items,
-    sort_wins_h2h_items,
-)
+from .standings_rules import normalize_result_subtype, rank_standings
 
 logger = logging.getLogger(__name__)
 
@@ -41,52 +35,40 @@ def _create_team_stats(group: Optional[str]) -> Dict[str, object]:
         "ties": 0,
         "ot_losses": 0,
         "regulation_wins": 0,
+        "regulation_overtime_wins": 0,
         "ot_so_wins": 0,
         "goals_for": 0,
         "goals_against": 0,
         "games_played": 0,
+        "away_goals": 0,
+        "home_goals": 0,
+        "away_goal_diff": 0,
+        "home_goal_diff": 0,
+        "away_wins": 0,
         "group": group,
         "points": 0,
         "pct": None,
     }
 
 
-def _finalize_team_stats(stats: Dict[str, object], standings_method: str) -> None:
+def _finalize_team_stats(stats: Dict[str, object], profile: CompetitionRules) -> None:
     stats["goal_diff"] = stats["goals_for"] - stats["goals_against"]
+    stats["points"] = profile.scoring.points(stats)
+    games = stats["games_played"]
+    stats["pct"] = (
+        stats["points"] / (games * profile.scoring.maximum_per_game) if games else 0.0
+    ) if profile.standings.record_percentage else None
 
-    if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
-        stats["points"] = (stats["wins"] * 3) + stats["draws"]
-        stats["pct"] = None
-    elif standings_method in {"win_pct", "wins_h2h"}:
-        stats["points"] = stats["wins"]
-        stats["pct"] = stats["wins"] / stats["games_played"] if stats["games_played"] > 0 else 0.0
-    elif standings_method == "win_pct_half_tie":
-        standing_points = stats["wins"] + (0.5 * stats["ties"])
-        stats["points"] = standing_points
-        stats["pct"] = standing_points / stats["games_played"] if stats["games_played"] > 0 else 0.0
-    elif standings_method == "nhl_2_1_0_otl":
-        stats["points"] = (stats["wins"] * 2) + stats["ot_losses"]
-        stats["pct"] = stats["points"] / (stats["games_played"] * 2) if stats["games_played"] > 0 else 0.0
-    elif standings_method == "hockey_3_2_1_0":
-        stats["wins"] = stats["regulation_wins"] + stats["ot_so_wins"]
-        stats["points"] = (
-            (stats["regulation_wins"] * 3)
-            + (stats["ot_so_wins"] * 2)
-            + stats["ot_losses"]
-        )
-        stats["pct"] = stats["points"] / (stats["games_played"] * 3) if stats["games_played"] > 0 else 0.0
-    else:
-        stats["points"] = stats["wins"]
-        stats["pct"] = stats["wins"] / stats["games_played"] if stats["games_played"] > 0 else 0.0
 
 
 def _build_team_standing_payload(
     stats: Dict[str, object],
     position_meta: Dict[str, object],
-    standings_method: str,
+    profile: CompetitionRules,
     group_name: Optional[str] = None,
 ) -> Dict[str, object]:
     payload = dict(stats)
+    payload.update(position_meta)
     position = position_meta.get("position")
 
     # Engine-level aliases kept for downstream callers that still expect them.
@@ -96,129 +78,56 @@ def _build_team_standing_payload(
     payload["gp"] = stats.get("games_played")
     payload["goal_diff"] = stats.get("goal_diff")
     payload["diff"] = stats.get("goal_diff")
-    payload["method"] = standings_method
-    payload["standings_method"] = standings_method
+    payload["method"] = profile.standings.name
+    payload["standings_method"] = profile.standings.name
+    payload["ranking_metric"] = profile.ranking_metric
     payload["group"] = group_name
     payload["conference"] = group_name
+    if profile.grouping_method == "ahl_division":
+        payload["division"] = group_name
     payload["is_primary_tie"] = position_meta.get("is_primary_tie")
     payload["primary_rank_key"] = position_meta.get("primary_rank_key")
     return payload
 
 
 def _apply_game_result(
-    team_stats: Dict[str, Dict[str, object]],
-    home_team: str,
-    away_team: str,
-    home_score: int,
-    away_score: int,
-    winner: str,
-    result_subtype: str,
-    standings_method: str,
+    team_stats, home_team, away_team, home_score, away_score, winner, result_subtype=None,
 ) -> None:
-    team_stats[home_team]["goals_for"] += home_score
-    team_stats[home_team]["goals_against"] += away_score
-    team_stats[home_team]["games_played"] += 1
+    """Count outcomes once; scoring rules assign points when a snapshot is built."""
+    home, away = team_stats[home_team], team_stats[away_team]
+    home["home_goals"] += home_score
+    home["home_goal_diff"] += home_score - away_score
+    away["away_goals"] += away_score
+    away["away_goal_diff"] += away_score - home_score
+    for own, scored, conceded in ((home, home_score, away_score), (away, away_score, home_score)):
+        own["goals_for"] += scored
+        own["goals_against"] += conceded
+        own["games_played"] += 1
+    if winner == "X":
+        for stats in (home, away):
+            stats["draws"] += 1
+            stats["ties"] += 1
+    elif winner in {"1", "2"}:
+        won, lost = (home, away) if winner == "1" else (away, home)
+        won["wins"] += 1
+        lost["losses"] += 1
+        subtype = normalize_result_subtype(result_subtype, winner)
+        if winner == "2":
+            won["away_wins"] += 1
+        if subtype != "SO":
+            won["regulation_overtime_wins"] += 1
+        if subtype in {"OT", "SO"}:
+            won["ot_so_wins"] += 1
+            lost["ot_losses"] += 1
+        else:
+            won["regulation_wins"] += 1
 
-    team_stats[away_team]["goals_for"] += away_score
-    team_stats[away_team]["goals_against"] += home_score
-    team_stats[away_team]["games_played"] += 1
-
-    if standings_method in {"football_3_1_0", "football_3_1_0_h2h"}:
-        if winner == "1":
-            team_stats[home_team]["wins"] += 1
-            team_stats[away_team]["losses"] += 1
-        elif winner == "2":
-            team_stats[away_team]["wins"] += 1
-            team_stats[home_team]["losses"] += 1
-        elif winner == "X":
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
-
-    elif standings_method in {"win_pct", "wins_h2h"}:
-        if winner == "1":
-            team_stats[home_team]["wins"] += 1
-            team_stats[away_team]["losses"] += 1
-        elif winner == "2":
-            team_stats[away_team]["wins"] += 1
-            team_stats[home_team]["losses"] += 1
-        elif winner == "X":
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
-
-    elif standings_method == "win_pct_half_tie":
-        if winner == "1":
-            team_stats[home_team]["wins"] += 1
-            team_stats[away_team]["losses"] += 1
-        elif winner == "2":
-            team_stats[away_team]["wins"] += 1
-            team_stats[home_team]["losses"] += 1
-        elif winner == "X":
-            team_stats[home_team]["ties"] += 1
-            team_stats[away_team]["ties"] += 1
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
-
-    elif standings_method == "nhl_2_1_0_otl":
-        if winner == "1":
-            team_stats[home_team]["wins"] += 1
-            team_stats[away_team]["losses"] += 1
-            if result_subtype in {"OT", "SO"}:
-                team_stats[home_team]["ot_so_wins"] += 1
-                team_stats[away_team]["ot_losses"] += 1
-            else:
-                team_stats[home_team]["regulation_wins"] += 1
-        elif winner == "2":
-            team_stats[away_team]["wins"] += 1
-            team_stats[home_team]["losses"] += 1
-            if result_subtype in {"OT", "SO"}:
-                team_stats[away_team]["ot_so_wins"] += 1
-                team_stats[home_team]["ot_losses"] += 1
-            else:
-                team_stats[away_team]["regulation_wins"] += 1
-        elif winner == "X":
-            team_stats[home_team]["ties"] += 1
-            team_stats[away_team]["ties"] += 1
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
-
-    elif standings_method == "hockey_3_2_1_0":
-        if winner == "1":
-            team_stats[away_team]["losses"] += 1
-            if result_subtype in {"OT", "SO"}:
-                team_stats[home_team]["ot_so_wins"] += 1
-                team_stats[away_team]["ot_losses"] += 1
-            else:
-                team_stats[home_team]["regulation_wins"] += 1
-        elif winner == "2":
-            team_stats[home_team]["losses"] += 1
-            if result_subtype in {"OT", "SO"}:
-                team_stats[away_team]["ot_so_wins"] += 1
-                team_stats[home_team]["ot_losses"] += 1
-            else:
-                team_stats[away_team]["regulation_wins"] += 1
-        elif winner == "X":
-            team_stats[home_team]["ties"] += 1
-            team_stats[away_team]["ties"] += 1
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
-
-    else:
-        if winner == "1":
-            team_stats[home_team]["wins"] += 1
-            team_stats[away_team]["losses"] += 1
-        elif winner == "2":
-            team_stats[away_team]["wins"] += 1
-            team_stats[home_team]["losses"] += 1
-        elif winner == "X":
-            team_stats[home_team]["draws"] += 1
-            team_stats[away_team]["draws"] += 1
 
 
 def _register_match_record(
     record: Dict[str, Any],
     team_stats: Dict[str, Dict[str, object]],
-    standings_method: str,
-    grouping_method: str,
+    profile: CompetitionRules,
     season_id: int,
     warned_unknown_group_teams: Set[str],
 ) -> None:
@@ -229,8 +138,8 @@ def _register_match_record(
     for team in (home_team, away_team):
         if team not in team_stats:
             group = None
-            if grouping_method != "league_wide":
-                group = get_team_group(team, grouping_method)
+            if profile.grouping_method != "league_wide":
+                group = get_team_group(team, profile.grouping_method)
                 if not group:
                     if team not in warned_unknown_group_teams:
                         logger.warning(
@@ -251,78 +160,48 @@ def _register_match_record(
         away_score=record["away_score"],
         winner=record["winner"],
         result_subtype=record.get("result_subtype"),
-        standings_method=standings_method,
     )
 
 
 def _finalize_standings_snapshot(
     team_stats: Dict[str, Dict[str, object]],
-    standings_method: str,
-    grouping_method: str,
+    profile: CompetitionRules,
     match_records: Optional[List[Dict[str, object]]],
 ) -> Dict[str, Dict]:
     """Build a standings payload from running stats without mutating them."""
     finalized_stats = {team: dict(stats) for team, stats in team_stats.items()}
     for stats in finalized_stats.values():
-        _finalize_team_stats(stats, standings_method)
-    return _build_standings_payload(finalized_stats, standings_method, grouping_method, match_records)
-
-
-def _sort_standings_items(
-    items,
-    standings_method: str,
-    match_records: Optional[List[Dict[str, object]]],
-) -> Tuple[List[Tuple[str, Dict[str, object]]], Optional[Dict[str, Tuple]]]:
-    if standings_method == "football_3_1_0_h2h":
-        return sort_football_h2h_items(items, match_records or [])
-    if standings_method == "wins_h2h":
-        return sort_wins_h2h_items(items, match_records or [])
-
-    sorted_teams = sorted(
-        items,
-        key=lambda item: build_display_sort_key(item[0], item[1], standings_method),
-        reverse=True,
-    )
-    return sorted_teams, None
+        _finalize_team_stats(stats, profile)
+    return _build_standings_payload(finalized_stats, profile, match_records)
 
 
 def _build_standings_payload(
     team_stats: Dict[str, Dict[str, object]],
-    standings_method: str,
-    grouping_method: str,
+    profile: CompetitionRules,
     match_records: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, Dict]:
     standings: Dict[str, Dict] = {}
 
-    if grouping_method == "league_wide":
-        sorted_teams, rank_key_by_team = _sort_standings_items(
-            team_stats.items(),
-            standings_method,
-            match_records,
-        )
-        positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
-
-        for team_name, stats in sorted_teams:
-            pos_meta = positions[team_name]
-            standings[team_name] = _build_team_standing_payload(stats, pos_meta, standings_method)
-        return standings
-
-    grouped_teams: Dict[str, List[Tuple[str, Dict[str, object]]]] = {}
+    season_complete = bool(
+        profile.total_regular_season_games and profile.number_of_teams
+        and len(team_stats) == profile.number_of_teams
+        and all(stats["games_played"] >= profile.total_regular_season_games for stats in team_stats.values())
+    )
+    grouped_teams: Dict[Optional[str], List[Tuple[str, Dict[str, object]]]] = {}
     for team_name, stats in team_stats.items():
-        group_name = stats.get("group") or "UNKNOWN"
+        group_name = None if profile.grouping_method == "league_wide" else stats.get("group") or "UNKNOWN"
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
-        sorted_teams, rank_key_by_team = _sort_standings_items(
-            teams,
-            standings_method,
-            match_records,
+        sorted_teams, positions = rank_standings(
+            teams, profile, match_records, season_complete=season_complete,
         )
-        positions = assign_positions_with_ties(sorted_teams, standings_method, rank_key_by_team)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
-            standings[team_name] = _build_team_standing_payload(stats, pos_meta, standings_method, group_name)
+            if group_name == "UNKNOWN":
+                pos_meta.update(position=None, ranking_status="UNRESOLVED", ranking_reason="MISSING_GROUP_MEMBERSHIP")
+            standings[team_name] = _build_team_standing_payload(stats, pos_meta, profile, group_name)
 
     return standings
 
@@ -682,25 +561,6 @@ class HistoricalStandingsCalculator:
             send_debug_standings=send_debug_standings,
         )
 
-    @staticmethod
-    def _resolve_methods(
-        sport: Optional[str],
-        source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int],
-    ) -> Tuple[str, str]:
-        """Resolve (standings_method, grouping_method) for a competition scope."""
-        standings_method = get_standings_method(
-            source_unique_tournament_id,
-            source_tournament_id,
-            sport,
-        )
-        grouping_method = get_grouping_method(
-            source_unique_tournament_id,
-            source_tournament_id,
-        )
-        if not getattr(Config, "MATCHUP_STANDINGS_GROUP_BY_CONFERENCE", True):
-            grouping_method = "league_wide"
-        return standings_method, grouping_method
 
     def calculate_standings_timeline(
         self,
@@ -748,11 +608,9 @@ class HistoricalStandingsCalculator:
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
-        standings_method, grouping_method = self._resolve_methods(
-            sport,
-            source_unique_tournament_id,
-            source_tournament_id,
-        )
+        profile = get_competition_profile(competition_id)
+        if profile is None:
+            raise ValueError(f"No competition profile configured for competition_id={competition_id}")
 
         # One league-wide fetch bounded by the latest cutoff covers every
         # earlier snapshot: records are re-filtered in memory per cutoff.
@@ -766,7 +624,6 @@ class HistoricalStandingsCalculator:
             season_year=season_year,
         )
         record_timestamps = [record["starts_at"].timestamp() for record in match_records]
-        needs_h2h_records = standings_method in {"football_3_1_0_h2h", "wins_h2h"}
 
         snapshots: Dict[float, Dict[str, Dict]] = {}
         team_stats: Dict[str, Dict[str, object]] = {}
@@ -778,8 +635,7 @@ class HistoricalStandingsCalculator:
                 _register_match_record(
                     match_records[applied_count],
                     team_stats,
-                    standings_method,
-                    grouping_method,
+                    profile,
                     season_id,
                     warned_unknown_group_teams,
                 )
@@ -787,9 +643,8 @@ class HistoricalStandingsCalculator:
 
             snapshots[cutoff] = _finalize_standings_snapshot(
                 team_stats,
-                standings_method,
-                grouping_method,
-                match_records[:applied_count] if needs_h2h_records else None,
+                profile,
+                match_records[:applied_count],
             )
 
         return snapshots
@@ -805,11 +660,9 @@ class HistoricalStandingsCalculator:
         season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Any]:
-        standings_method, grouping_method = self._resolve_methods(
-            sport,
-            source_unique_tournament_id,
-            source_tournament_id,
-        )
+        profile = get_competition_profile(competition_id)
+        if profile is None:
+            raise ValueError(f"No competition profile configured for competition_id={competition_id}")
 
         canonical_season_id = get_canonical_season_id(
             source_unique_tournament_id,
@@ -831,16 +684,15 @@ class HistoricalStandingsCalculator:
             _register_match_record(
                 row,
                 team_stats,
-                standings_method,
-                grouping_method,
+                profile,
                 season_id,
                 warned_unknown_group_teams,
             )
 
         for stats in team_stats.values():
-            _finalize_team_stats(stats, standings_method)
+            _finalize_team_stats(stats, profile)
 
-        standings = _build_standings_payload(team_stats, standings_method, grouping_method, match_records)
+        standings = _build_standings_payload(team_stats, profile, match_records)
         league_totals_context = _build_league_totals_context(
             season_id=season_id,
             canonical_season_id=canonical_season_id,
@@ -861,39 +713,7 @@ class HistoricalStandingsCalculator:
             "error": None,
         }
 
-    def _calculate_standings_internal(
-        self,
-        season_id: int,
-        cutoff_timestamp: float,
-        sport: str,
-        source_unique_tournament_id: Optional[int] = None,
-        source_tournament_id: Optional[int] = None,
-        send_debug_standings: bool = False,
-    ) -> Dict[str, Dict]:
-        bundle = self._calculate_standings_bundle_internal(
-            season_id=season_id,
-            cutoff_timestamp=cutoff_timestamp,
-            sport=sport,
-            source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
-            send_debug_standings=send_debug_standings,
-        )
-        return bundle.get("standings", {})
 
-    def _compute_standings_internal(
-        self,
-        season_id: int,
-        cutoff_timestamp: float,
-        sport: str,
-        send_debug_standings: bool = False,
-    ) -> Dict[str, Dict]:
-        """Backward-compatible alias kept for older tests and callers."""
-        return self._calculate_standings_internal(
-            season_id=season_id,
-            cutoff_timestamp=cutoff_timestamp,
-            sport=sport,
-            send_debug_standings=send_debug_standings,
-        )
 
     def clear_cache(self):
         """Clear the internal cache."""
@@ -901,13 +721,9 @@ class HistoricalStandingsCalculator:
 
 
 standings_calculator = HistoricalStandingsCalculator()
-standings_simulator = standings_calculator
-StandingsSimulator = HistoricalStandingsCalculator
 
 
 __all__ = [
     "HistoricalStandingsCalculator",
-    "StandingsSimulator",
     "standings_calculator",
-    "standings_simulator",
 ]

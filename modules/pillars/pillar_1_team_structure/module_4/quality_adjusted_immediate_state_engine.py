@@ -110,10 +110,8 @@ Each match record must supply:
     opponent_score    : float (points scored by the opponent)
     startTimestamp    : int   (Unix timestamp, used for recency ordering)
 
-League size (n_liga) is resolved from, in priority order:
-    1. streak_analysis.current_standings  (number of entries)
-    2. competition_context.number_of_teams
-    3. max opponent rank inferred from match records
+League size (n_liga) comes only from competition_context.number_of_teams.
+Available table rows and observed opponent ranks do not redefine competition size.
 """
 
 from __future__ import annotations
@@ -344,35 +342,6 @@ def _extract_event_id(match: Dict[str, Any]) -> Optional[int]:
     return None
 
 
-def _extract_candidate_ranks(match: Dict[str, Any]) -> List[int]:
-    candidate_ranks: List[int] = []
-    for key in (
-        "opponent_ranking",
-        "opponent_rank",
-        "opponent_current_rank",
-        "opponent_standing_rank",
-        "opponent_position",
-        "own_ranking",
-        "own_rank",
-        "team_ranking",
-        "team_current_rank",
-        "rank",
-        "position",
-        "standing_rank",
-    ):
-        rank = _coerce_int(match.get(key))
-        if rank is not None and rank > 0:
-            candidate_ranks.append(rank)
-
-    for nested_key in ("team_standing", "opponent_standing"):
-        nested = match.get(nested_key)
-        if not isinstance(nested, dict):
-            continue
-        for key in ("rank", "position", "current_rank", "standing_rank"):
-            rank = _coerce_int(nested.get(key))
-            if rank is not None and rank > 0:
-                candidate_ranks.append(rank)
-    return candidate_ranks
 
 
 def _resolve_n_liga(
@@ -380,26 +349,10 @@ def _resolve_n_liga(
     competition_context: CompetitionContext,
     all_matches: List[dict],
 ) -> Tuple[Optional[int], str]:
-    current_standings = getattr(streak_analysis, "current_standings", None)
-    if isinstance(current_standings, dict) and len(current_standings) > 0:
-        return len(current_standings), "streak_analysis.current_standings.len"
-
-    number_of_teams = _coerce_int(
-        getattr(competition_context, "number_of_teams", None)
-    )
-    if number_of_teams is not None and number_of_teams > 1:
-        return number_of_teams, "competition_context.number_of_teams"
-
-    inferred_ranks: List[int] = []
-    for match in all_matches:
-        if isinstance(match, dict):
-            inferred_ranks.extend(_extract_candidate_ranks(match))
-
-    if inferred_ranks:
-        inferred_n_liga = max(inferred_ranks)
-        if inferred_n_liga > 1:
-            return inferred_n_liga, "matches.inferred_ranking"
-
+    """Use the competition size resolved centrally for this event."""
+    value = _coerce_int(competition_context.number_of_teams)
+    if value is not None and value > 1:
+        return value, "competition_context.number_of_teams"
     return None, "unresolved"
 
 

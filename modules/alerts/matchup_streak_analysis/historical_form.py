@@ -14,13 +14,12 @@ from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
 from shared.temporal import from_unix_timestamp, in_timezone
 
-from modules.competition.league_config import (
-    get_grouping_method,
+from modules.competition.competition_history_config import (
     get_included_season_ids,
-    get_standings_method,
     is_collected_competition_scope,
 )
-from .historical_form_service import historical_form_processor
+from modules.competition.competition_profiles import get_competition_profile
+from .historical_form_service import historical_form_service
 
 logger = logging.getLogger(__name__)
 
@@ -620,15 +619,11 @@ def get_team_last_results_by_id(
             source_tournament_id,
             season_id_int,
         )
-        standings_method = get_standings_method(
-            source_unique_tournament_id,
-            source_tournament_id,
-            sport,
-        )
-        grouping_method = get_grouping_method(
-            source_unique_tournament_id,
-            source_tournament_id,
-        )
+        profile = get_competition_profile(competition_id)
+        if profile is None:
+            raise ValueError(f"No competition profile configured for competition_id={competition_id}")
+        standings_method = profile.standings.name
+        grouping_method = profile.grouping_method
         logger.info(
             "📊 Using DB-based form retrieval for %s (competition_id=%s, season_id=%s, included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
             team_name,
@@ -640,7 +635,7 @@ def get_team_last_results_by_id(
             standings_method,
             grouping_method,
         )
-        return historical_form_processor.get_team_form_from_db(
+        return historical_form_service.get_team_form_from_db(
             team_name=team_name,
             season_id=season_id_int,
             sport=sport,

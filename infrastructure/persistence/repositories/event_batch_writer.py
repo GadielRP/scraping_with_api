@@ -60,7 +60,7 @@ def _references(session, payloads):
     competitions = {}
     seasons = {}
     competition_fields = ('slug', 'unique_slug', 'category_id', 'category_name', 'number_of_teams',
-                          'total_regular_season_games', 'standings_grouping', 'league_config_source')
+                          'total_regular_season_games', 'standings_grouping', 'competition_config_source')
     for data in payloads.values():
         p = data.get('event', data)
         for role in ('home_participant', 'away_participant'):

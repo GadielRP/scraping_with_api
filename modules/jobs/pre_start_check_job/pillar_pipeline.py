@@ -49,10 +49,6 @@ from modules.pillars.pillar_5.memory_score import (
     interpret_p5_result,
 )
 from modules.pillars.trajectory_selection import select_target_minute
-from modules.pillars.competition_metadata_resolver import (
-    apply_competition_metadata_resolution,
-    resolve_competition_metadata,
-)
 from modules.pillars.streak_analysis_resolver import (
     resolve_matchup_streak_analysis,
 )
@@ -310,18 +306,6 @@ class EventPillarProcessor:
 
     def _prepare_p1(self, context):
         try:
-            competition = context.competition
-            if not context.competition_metadata_resolved and any(
-                getattr(competition, name, None) is None
-                for name in (
-                    "number_of_teams",
-                    "total_regular_season_games",
-                    "standings_grouping",
-                )
-            ):
-                apply_competition_metadata_resolution(
-                    context, resolve_competition_metadata(context)
-                )
             context.competition = resolve_p1_competition_context(
                 context.to_identity(), context.competition
             )

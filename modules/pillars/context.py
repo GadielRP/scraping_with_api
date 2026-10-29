@@ -43,7 +43,7 @@ class CompetitionContext:
     number_of_teams_source: Optional[str]
     total_regular_season_games: Optional[int]
     standings_grouping: Optional[str]
-    league_config_source: Optional[str]
+    competition_config_source: Optional[str]
     has_standings_source_endpoint: Optional[bool]
     source_status: str
     standings_response: Optional[list] = field(default=None, repr=False)
@@ -101,7 +101,6 @@ class EventContext:
     streak_analysis: Optional[Any] = None
     should_send_streak_alert: bool = False
     dual_report: Optional[Any] = None
-    competition_metadata_resolved: bool = False
     success: bool = True
     alert_sent: bool = False
     created_at: Optional[datetime] = None
@@ -304,11 +303,11 @@ def build_event_context(
         category_id=getattr(competition_ref, "category_id", None),
         category_name=getattr(competition_ref, "category_name", None),
         number_of_teams=getattr(competition_ref, "number_of_teams", None),
-        number_of_teams_source=getattr(competition_ref, "league_config_source", None)
+        number_of_teams_source=getattr(competition_ref, "competition_config_source", None)
         or ("db_cache" if getattr(competition_ref, "number_of_teams", None) is not None else "missing"),
         total_regular_season_games=getattr(competition_ref, "total_regular_season_games", None),
         standings_grouping=getattr(competition_ref, "standings_grouping", None),
-        league_config_source=getattr(competition_ref, "league_config_source", None) or "missing",
+        competition_config_source=getattr(competition_ref, "competition_config_source", None) or "missing",
         has_standings_source_endpoint=getattr(competition_ref, "has_standings_source_endpoint", None),
         standings_response=getattr(competition_ref, "standings_response", None),
         source_status="normalized"

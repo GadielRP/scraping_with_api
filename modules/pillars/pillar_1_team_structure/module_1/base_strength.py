@@ -1220,7 +1220,7 @@ def calculate_base_strength(
     competition_number_of_teams_source = competition_context.number_of_teams_source
     total_regular_season_games = getattr(competition_context, "total_regular_season_games", None)
     standings_grouping = getattr(competition_context, "standings_grouping", None)
-    league_config_source = getattr(competition_context, "league_config_source", None)
+    competition_config_source = getattr(competition_context, "competition_config_source", None)
     expected_league_size = competition_number_of_teams
 
     home_team_name = event_identity.home_team_name
@@ -1432,7 +1432,7 @@ def calculate_base_strength(
         "competition_number_of_teams_source": competition_number_of_teams_source,
         "total_regular_season_games": total_regular_season_games,
         "standings_grouping": standings_grouping,
-        "league_config_source": league_config_source,
+        "competition_config_source": competition_config_source,
         "expected_league_size": expected_league_size,
         "home_season_record": home_record,
         "away_season_record": away_record,

@@ -1,9 +1,8 @@
-"""Bind season-specific sporting rules to P1's existing competition context."""
+"""Bind current sporting rules to P1's existing competition context."""
 
 from dataclasses import replace
 
-from modules.competition.competitive_rules import season_key_from_name
-from modules.competition.league_config import LEAGUE_CONFIGS
+from modules.competition.competition_profiles import get_competition_profile
 from modules.pillars.context import CompetitionContext, EventIdentity
 
 
@@ -11,27 +10,15 @@ def resolve_p1_competition_context(
     event_identity: EventIdentity,
     competition_context: CompetitionContext,
 ) -> CompetitionContext:
-    """Pure resolution: exact provider scope and explicit season, with no I/O.
+    """Resolve current facts by canonical ID, with no I/O or season-name parsing.
 
-    Legacy metadata remains available to other modules when the rule season is
-    unknown. Never reuse a current-season profile for a historical event.
+    Unknown IDs have no sporting configuration; cached DB values are not substitutes.
     """
-    season_key = season_key_from_name(event_identity.season_name)
-    config = None
-    if competition_context.source == "sofascore":
-        config = next((
-            candidate for candidate in LEAGUE_CONFIGS
-            if candidate.primary_identity.matches(
-                competition_context.source_unique_tournament_id,
-                competition_context.source_tournament_id,
-            )
-        ), None)
-    rules = next((
-        profile for profile in config.competitive_rules
-        if profile.season_key == season_key
-    ), None) if config else None
+    rules = get_competition_profile(event_identity.competition_id)
     if rules is None:
-        return replace(competition_context, competitive_rules=None)
+        return replace(competition_context, competitive_rules=None, number_of_teams=None,
+                       total_regular_season_games=None, standings_grouping=None,
+                       number_of_teams_source="missing", competition_config_source="missing")
     return replace(
         competition_context,
         competitive_rules=rules,
@@ -39,5 +26,5 @@ def resolve_p1_competition_context(
         number_of_teams_source="competition_rules",
         total_regular_season_games=rules.total_regular_season_games,
         standings_grouping=rules.standings_grouping,
-        league_config_source="competition_rules",
+        competition_config_source="competition_rules",
     )

@@ -45,7 +45,7 @@ def _build_event_context():
         number_of_teams_source="db_cache",
         total_regular_season_games=38,
         standings_grouping="league",
-        league_config_source="test",
+        competition_config_source="test",
         has_standings_source_endpoint=True,
         source_status="normalized",
     )

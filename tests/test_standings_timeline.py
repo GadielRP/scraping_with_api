@@ -7,7 +7,7 @@ calculate_standings_at() calls would, while issuing a single league fetch.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from modules.alerts.matchup_streak_analysis import standings_engine as se
@@ -16,7 +16,7 @@ from modules.alerts.matchup_streak_analysis.historical_form_service import (
 )
 
 SEASON_ID = 90210
-SEASON_START = datetime(2026, 4, 1, 19, 0, 0)
+SEASON_START = datetime(2026, 4, 1, 19, 0, 0, tzinfo=timezone.utc)
 
 
 class _FakeDb:
@@ -98,7 +98,7 @@ def test_timeline_matches_per_cutoff_standings_with_single_fetch(monkeypatch):
     # Baseline: the legacy per-cutoff path issues one league fetch per cutoff.
     per_cutoff_calculator = se.HistoricalStandingsCalculator()
     expected = {
-        cutoff: per_cutoff_calculator.calculate_standings_at(SEASON_ID, cutoff, "Basketball")
+        cutoff: per_cutoff_calculator.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
         for cutoff in cutoffs
     }
     assert len(fake_db.execute_calls) == len(cutoffs)
@@ -109,7 +109,7 @@ def test_timeline_matches_per_cutoff_standings_with_single_fetch(monkeypatch):
     timeline = timeline_calculator.calculate_standings_timeline(
         SEASON_ID,
         cutoffs,
-        "Basketball",
+        "Basketball", competition_id=174,
     )
 
     assert len(fake_db.execute_calls) == 1
@@ -125,7 +125,7 @@ def test_timeline_empty_cutoffs_skips_db(monkeypatch):
     monkeypatch.setattr(se.db_manager, "get_session", fake_db.get_session)
 
     calculator = se.HistoricalStandingsCalculator()
-    assert calculator.calculate_standings_timeline(SEASON_ID, [], "Basketball") == {}
+    assert calculator.calculate_standings_timeline(SEASON_ID, [], "Basketball", competition_id=174) == {}
     assert fake_db.execute_calls == []
 
 
@@ -139,7 +139,7 @@ def test_timeline_returns_empty_standings_per_cutoff_on_error(monkeypatch):
 
     calculator = se.HistoricalStandingsCalculator()
     cutoffs = [SEASON_START.timestamp(), (SEASON_START + timedelta(days=1)).timestamp()]
-    timeline = calculator.calculate_standings_timeline(SEASON_ID, cutoffs, "Basketball")
+    timeline = calculator.calculate_standings_timeline(SEASON_ID, cutoffs, "Basketball", competition_id=174)
 
     assert timeline == {cutoff: {} for cutoff in cutoffs}
 
@@ -156,6 +156,7 @@ def test_get_team_form_from_db_uses_constant_league_fetches(monkeypatch):
         team_name="Hawks",
         season_id=SEASON_ID,
         sport="Basketball",
+        competition_id=174,
         send_debug_standings=False,
     )
 
@@ -178,12 +179,12 @@ def test_get_team_form_from_db_uses_constant_league_fetches(monkeypatch):
     fake_db.execute_calls.clear()
     for result in results:
         cutoff = float(result["startTimestamp"])
-        standings = reference.calculate_standings_at(SEASON_ID, cutoff, "Basketball")
+        standings = reference.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
         expected_own = (standings.get("Hawks") or {}).get("rank") or 0
         expected_opp = (standings.get(result["opponent_name"]) or {}).get("rank") or 0
         assert result["own_ranking"] == expected_own
         assert result["opponent_ranking"] == expected_opp
-        assert result["team_standing"]["standings_method"] == "win_pct"
+        assert result["team_standing"]["standings_method"] == "CBA"
 
 
 def test_get_team_form_from_db_filters_exclude_and_future_events(monkeypatch):
@@ -199,6 +200,7 @@ def test_get_team_form_from_db_filters_exclude_and_future_events(monkeypatch):
         team_name="Hawks",
         season_id=SEASON_ID,
         sport="Basketball",
+        competition_id=174,
         exclude_event_id=3,
         current_event_timestamp=cutoff_ts,
         send_debug_standings=False,
