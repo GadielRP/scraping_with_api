@@ -247,8 +247,10 @@ def test_live_significant_changes_preserve_persistence_control(monkeypatch, atta
         require_active_quotes=False, filter_post_kickoff_ticks=False,
     ))
     player = result.payload["bookmakerOdds"]["pinnacle"]["markets"]["101"]["outcomes"]["201"]["players"]["0"]
-    assert player["price"] == 3.1
-    assert [q.price for q in result.as_of_quotes] == [2.5, 3.1]
+    assert player["price"] == 9
+    assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [
+        (120, 2), (5, 2.5), (0, 9)
+    ]
     assert ("momentQuotes" in player) is attach
 
 

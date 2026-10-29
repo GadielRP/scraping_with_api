@@ -13,7 +13,7 @@ Los umbrales y la política versionada de producto están centralizados en `Odds
 
 Estos umbrales se aplican individualmente a cada combinación bookmaker / mercado / outcome / jugador.
 
-El reader ordena cronológicamente y sanitiza una vez por serie. Apertura, última cuota, detector y fallback comparten los ticks limpios. Se excluyen precios no finitos, cuotas inactivas (`active=false`), precios centinela y ticks posteriores al kickoff (`createdAt > kickoff_utc`). Si falta kickoff, se registra el motivo y se utiliza el comportamiento clásico.
+El reader ordena cronológicamente y sanitiza una vez por serie. Apertura, última cuota, detector y fallback comparten los ticks limpios. Se excluyen precios no finitos, precios centinela y ticks posteriores al kickoff (`createdAt > kickoff_utc`). Las cuotas inactivas (`active=false`) se excluyen únicamente cuando `require_active_quotes=true`; con `false` permanecen elegibles. Si falta kickoff, se registra el motivo y se utiliza el comportamiento clásico.
 
 El detector (`OddspapiHistoricalOddsChangeDetector`) recibe la conversión horaria como dependencia explícita y no importa configuración global, HTTP ni SQL. El DTO se comparte desde `historical_odds_quote.py`.
 

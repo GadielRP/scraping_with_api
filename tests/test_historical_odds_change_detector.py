@@ -31,18 +31,25 @@ def detect(ticks, **kwargs):
     )
 
 
-def test_sanitize_borrows_valid_ticks_and_enforces_cutoff():
+@pytest.mark.parametrize("require_active_quotes", [True, False])
+def test_sanitize_borrows_valid_ticks_and_enforces_cutoff(require_active_quotes):
     valid = tick(1440, 2, active=True)
     unspecified = tick(30, "2.2")
     at_start = tick(0, 2.4, active=None)
-    ticks = [valid, tick(1300, 5, active=False)]
+    inactive = tick(1300, 5, active=False)
+    ticks = [valid, inactive]
     ticks += [
         tick(1200, value)
         for value in (1, 1.01, 0, -1, None, "bad", "nan", "inf", "-inf")
     ]
     ticks += [unspecified, at_start, tick(-1, 9)]
-    cleaned = Detector.sanitize_ticks(ticks, kickoff_utc=KICKOFF)
-    assert cleaned == [valid, unspecified, at_start]
+    cleaned = Detector.sanitize_ticks(
+        ticks, kickoff_utc=KICKOFF, require_active_quotes=require_active_quotes
+    )
+    expected = [valid, unspecified, at_start]
+    if not require_active_quotes:
+        expected.insert(1, inactive)
+    assert cleaned == expected
     assert cleaned[0] is valid
 
 

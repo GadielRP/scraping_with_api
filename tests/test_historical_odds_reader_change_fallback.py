@@ -3,6 +3,8 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
+
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.oddspapi.historical_odds_reader import OddspapiHistoricalOddsReader
 from tests.test_historical_odds_change_detector import KICKOFF, tick
@@ -51,7 +53,7 @@ def test_insufficient_history_falls_back_using_strict_ticks_everywhere():
         tick(0, 1.01),
         tick(-1, 9),
     ]
-    result = read(ticks)
+    result = read(ticks, require_active_quotes=True)
     assert [q.minutes_until_start for q in result.as_of_quotes] == [120, 30, 5, 1, 0]
     assert all(q.price == 2 for q in result.as_of_quotes)
     assert all(
@@ -103,9 +105,29 @@ def test_fallback_does_not_project_into_future_configured_moments():
 
 
 def test_all_invalid_ticks_produce_no_player_or_quotes():
-    result = read([tick(1440, 1), tick(0, 4, active=False)])
+    result = read(
+        [tick(1440, 1), tick(0, 4, active=False)], require_active_quotes=True
+    )
     assert result.as_of_quotes == ()
     assert result.normalized_payload["bookmakerOdds"] == {}
+
+
+@pytest.mark.parametrize("require_active_quotes", [True, False])
+def test_inactive_history_respects_activity_toggle_everywhere(require_active_quotes):
+    result = read(
+        [tick(1440, 2, active=False), tick(10, 2.5, active=False)],
+        require_active_quotes=require_active_quotes,
+    )
+    if require_active_quotes:
+        assert result.as_of_quotes == ()
+        assert result.normalized_payload["bookmakerOdds"] == {}
+    else:
+        assert player(result)["initialPrice"] == 2
+        assert player(result)["price"] == 2.5
+        assert [(q.minutes_until_start, q.price) for q in result.as_of_quotes] == [
+            (120, 2), (30, 2), (10, 2.5), (5, 2.5), (1, 2.5), (0, 2.5)
+        ]
+        assert all(q.active is False for q in result.as_of_quotes)
 
 
 def test_custom_min_price_is_shared_with_opening_and_fallback():

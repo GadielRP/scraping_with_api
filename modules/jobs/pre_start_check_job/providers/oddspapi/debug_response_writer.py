@@ -100,6 +100,16 @@ class OddspapiDebugResponseWriter:
         path = target_directory / filename
 
         try:
+            if endpoint_token == "odds" and path.exists() and not any(
+                isinstance(bookmaker, dict) and bookmaker.get("markets")
+                for bookmaker in (payload.get("bookmakerOdds") or {}).values()
+            ):
+                logger.info(
+                    "Preserved existing OddsPAPI debug response after empty /odds "
+                    "event_id=%s fixture_id=%s path=%s",
+                    event_id, fixture_id, path,
+                )
+                return None
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", encoding="utf-8") as file_handle:
                 json.dump(

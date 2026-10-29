@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from modules.jobs.pre_start_check_job.providers.oddspapi.debug_response_writer import (
     OddspapiDebugResponseWriter,
 )
@@ -35,6 +37,18 @@ def test_debug_response_writer_with_minutes_until_start(tmp_path, monkeypatch):
     with saved_path.open(encoding="utf-8") as f:
         loaded = json.load(f)
         assert loaded == payload
+
+
+@pytest.mark.parametrize("empty_payload", [{}, {"bookmakerOdds": {}}, {"bookmakerOdds": {"bet365": {"markets": {}}}}])
+def test_empty_odds_response_preserves_existing_debug_file(tmp_path, monkeypatch, empty_payload):
+    monkeypatch.setattr(OddspapiDebugResponseWriter, "OUTPUT_DIRECTORY", tmp_path)
+    kwargs = dict(event_id=447124, fixture_id="id1000002371945350",
+                  bookmakers=["bet365"], endpoint="odds", minutes_until_start=5)
+    payload = {"bookmakerOdds": {"bet365": {"markets": {"10168": {"outcomes": {}}}}}}
+    path = OddspapiDebugResponseWriter.save(payload=payload, **kwargs)
+    original = path.read_bytes()
+    assert OddspapiDebugResponseWriter.save(payload=empty_payload, **kwargs) is None
+    assert path.read_bytes() == original
 
 
 def test_debug_response_writer_without_minutes_until_start(tmp_path, monkeypatch):

@@ -123,6 +123,7 @@ class OddspapiHistoricalOddsReader:
                                 ticks,
                                 kickoff_utc=kickoff_utc,
                                 min_price=min_price,
+                                require_active_quotes=require_active_quotes,
                             )
                         # Canonical selections use all admissible ticks before
                         # the significant-change detector reduces this history.

@@ -18,6 +18,7 @@ class OddspapiHistoricalOddsChangeDetector:
         *,
         kickoff_utc: datetime,
         min_price: float = 1.01,
+        require_active_quotes: bool = True,
     ) -> list[tuple[datetime, dict]]:
         """Keep ordered pre-kickoff observations, borrowing the original dicts."""
         cleaned = []
@@ -25,7 +26,7 @@ class OddspapiHistoricalOddsChangeDetector:
             created_at, quote = tick
             if created_at > kickoff_utc:
                 break
-            if quote.get("active") is False:
+            if require_active_quotes and quote.get("active") is False:
                 continue
             try:
                 price = float(quote.get("price"))

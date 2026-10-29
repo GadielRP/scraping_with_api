@@ -802,12 +802,12 @@ Selection is independent per bookmaker, canonical market and period; it does not
 force different bookmakers to share a line.
 
 1. Require a finite line and the complete catalog-defined set of choices (at least
-   two). Reject ambiguous choices, explicitly inactive players, and prices
-   that are not finite decimal odds greater than one. Reject markets with
-   `marketActive=false` only when `REQUIRE_ACTIVE_QUOTES=true`; when the toggle
-   is false, those markets remain eligible in the adapter, mainline cache and
-   exchange historical request planner. Individual players must still be active
-   for current-line selection, independently of the toggle.
+   two). Reject ambiguous choices and prices that are not finite decimal odds
+   greater than one. Reject `active=false` players and `marketActive=false`
+   markets only when `REQUIRE_ACTIVE_QUOTES=true`; when the toggle is false,
+   both remain eligible in the adapter, mainline cache and exchange historical
+   request planner. Historical significant-change sanitation follows the same
+   activity toggle.
 2. Prefer candidates whose **every choice** has provider `mainLine=true`.
    If none qualify, a complete valid alternative with active players can be selected.
 3. Minimize `max(prices) - min(prices)` using Decimal at source precision. This is
@@ -1162,6 +1162,13 @@ Write ownership (`market_write_policy_for_source`):
 | `scripts/development/simulate_pre_start_check.py` | Single-event pre-start simulation that supplies a virtual OddspAPI observation boundary to the production ingestion phase. |
 
 Only `scripts/development/simulate_pre_start_check.py` currently establishes a virtual OddspAPI observation boundary. It derives `available_through_utc` as kickoff minus the simulated minutes and passes it through the production phase. A T−5 simulation executed days after kickoff therefore cannot see later ticks or persist future T−1/T−0 fallback moments. For matching regular bookmakers, the bounded historical payload supplies the simulated current value; bookmakers not requested historically, notably exchanges, remain in the retained `/odds` base. Do not assume `simulate_oddspapi_pre_start_odds.py` has this behavior.
+
+An empty `/odds` response does not overwrite an existing debug file at the same
+request path. This protects pre-match responses when replaying finished events.
+The simulator forces debug mode, so `ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES=false`
+alone does not disable debug writes. A historical replay uses existing mainline
+cache selections; selections discarded by an older policy must first be rebuilt
+from the saved `/odds` response to recover those lines.
 
 ### 10.1 Scheduler verification coverage
 

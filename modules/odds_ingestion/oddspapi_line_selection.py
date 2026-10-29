@@ -147,7 +147,7 @@ def _candidate(
             return None, "ambiguous_choice"
         player = players[0][1]
         price = _finite_decimal(player.get("price"))
-        if player.get("active") is False:
+        if require_active_quotes and player.get("active") is False:
             return None, "inactive_choice"
         if price is None or price <= 1:
             return None, "invalid_choice_price"
@@ -179,8 +179,7 @@ def select_current_lines(
 
     Prices are compared with Decimal at source precision, before persistence
     rounding. Non-line and live markets are outside this policy's scope.
-    Market activity follows require_active_quotes; individual choices must
-    still be active to select a current line.
+    Market and individual choice activity follow require_active_quotes.
     """
     if market_mapping_index is None:
         return LineSelection()
