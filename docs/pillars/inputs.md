@@ -102,7 +102,7 @@ Las banderas de alertas y preparación no representan probabilidades ni pesos de
 | `number_of_teams_source` | De dónde proviene esa cantidad. |
 | `total_regular_season_games` | Partidos previstos por equipo en temporada regular. P1 Totales construye sus ventanas con este dato. |
 | `standings_grouping` | Organización de clasificación, por ejemplo grupos o tabla conjunta. |
-| `league_config_source` | Procedencia de las reglas descriptivas de la liga. |
+| `competition_config_source` | Procedencia de las reglas descriptivas de la liga. |
 | `has_standings_source_endpoint` | Si la fuente dispone de una consulta de clasificación conocida. |
 | `source_status` | Estado de resolución de la identidad de fuente. |
 | `standings_response` | Clasificación disponible para construir el contexto deportivo. |

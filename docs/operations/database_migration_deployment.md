@@ -40,3 +40,7 @@ esa revisión. Si la base todavía no tiene `alembic_version`, verificar
 primero que coincide con el esquema histórico y aplicar la revisión base
 `alembic stamp 20260918_00` antes de ejecutar `up`. La revisión base no crea
 tablas en una base vacía.
+
+## Procedencia de configuración de competición
+
+La revisión `20261029_01` renombra `competitions.league_config_source` a `competition_config_source`. No copia filas ni modifica sus valores. El código nuevo requiere la revisión aplicada; el downgrade restaura el nombre anterior. Las evaluaciones JSON históricas no se reescriben.

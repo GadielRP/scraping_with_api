@@ -596,7 +596,7 @@ CompetitionContext(
     number_of_teams_source: str | None,
     total_regular_season_games: int | None,
     standings_grouping: str | None,
-    league_config_source: str | None,
+    competition_config_source: str | None,
     has_standings_source_endpoint: bool | None,
     source_status: str,
     standings_response: list | None,

@@ -286,7 +286,7 @@ M4 pregunta: **¿qué valor tienen los resultados recientes al considerar la pos
 
 Ordena los partidos del más reciente al más antiguo y busca hasta cinco válidos por equipo. Para esta selección necesita el resultado, ambos marcadores numéricos (`team_score` y `opponent_score`) y `opponent_ranking`. Calcula el margen restando los marcadores. Si un registro no permite el cálculo, continúa buscando en los anteriores; el reporte conserva los descartes y motivos.
 
-El tamaño `n_liga` se obtiene primero de la cantidad de filas de `current_standings`; después, del número de equipos de la competición; como alternativa, de la mayor posición inferida en los registros. La procedencia queda registrada.
+El tamaño `n_liga` se lee exclusivamente de `competition_context.number_of_teams`, resuelto antes del cálculo. La cantidad de filas disponibles y los puestos de los rivales no reemplazan ese valor. Si falta un tamaño válido, el módulo no puede calcularse. La procedencia queda registrada.
 
 Con cinco válidos por lado queda ACTIVE. Con al menos tres por lado, pero menos de cinco en alguno, queda DEGRADED. Con menos de tres en alguno, queda INSUFFICIENT_DATA y no produce una aportación operativa.
 
@@ -352,15 +352,15 @@ Fuera de la ventana, M5 devuelve INACTIVE con motivo OUTSIDE_LATE_SEASON_WINDOW.
 
 **games_remaining = máximo entre partidos de temporada − referencia disputada y 0.**
 
-**max_points_remaining = points_per_win × games_remaining.**
+**max_points_remaining = scoring.maximum_per_game × games_remaining.**
 
-El incremento máximo por partido procede de `competition_context.competitive_rules`: 3 puntos para fútbol, SHL y Liiga; 2 para NHL; 1 victoria para EuroLeague. Las tablas ordenadas por porcentaje requieren soporte adicional y no se convierten en puntos. Con una temporada de 38 y referencia de 32 partidos jugados, quedan 6 y el horizonte es 18 puntos. En Valencia–Real Sociedad, evento 303597, la referencia guardada es 7: madurez 7/38 ≈ 18.42 %, 31 partidos restantes y M5 inactivo. El núcleo deportivo ajustado de aproximadamente −0.092481 conserva su dirección AWAY y fuerza LOW.
+El incremento máximo por partido procede de `competition_context.competitive_rules.scoring`: 3 puntos para fútbol, SHL y Liiga; 2 para NHL; 1 victoria para EuroLeague. Las tablas ordenadas por porcentaje requieren soporte adicional y no se convierten en puntos. Con una temporada de 38 y referencia de 32 partidos jugados, quedan 6 y el horizonte es 18 puntos. En Valencia–Real Sociedad, evento 303597, la referencia guardada es 7: madurez 7/38 ≈ 18.42 %, 31 partidos restantes y M5 inactivo. El núcleo deportivo ajustado de aproximadamente −0.092481 conserva su dirección AWAY y fuerza LOW.
 
 `raw.season_applicability` registra la política, el origen de la duración, el mínimo 0.80, la proporción observada y si el análisis es temporalmente aplicable. Entrar en la ventana permite intentar el cálculo; las comprobaciones de datos deportivos siguen siendo necesarias.
 
 ### 8.2. Objetivo y régimen
 
-Solo después de superar la comprobación de madurez se consultan las reglas de `competition_context.competitive_rules`. El resolver de P1 las selecciona una vez por evento, mediante la identidad exacta y la temporada explícita, antes de obtener el historial. Puede corregir metadatos completos de caché: NHL 2026/27 tiene 84 partidos. Una temporada diferente no hereda las reglas actuales.
+Solo después de superar la comprobación de madurez se consultan las reglas de `competition_context.competitive_rules`. El resolver de P1 las selecciona una vez por evento usando exclusivamente `event_identity.competition_id`, antes de obtener el historial. El catálogo vigente está en `competition_profiles.py`. Puede corregir metadatos completos de caché: el perfil actual de NHL establece 84 partidos. El nombre de temporada no participa en la selección; un evento histórico también recibe el perfil vigente de su competición.
 
 | Objetivo deportivo | `objective_type` | `base_severity` |
 |---|---|---:|
@@ -457,7 +457,7 @@ M7 responde: **¿el equipo consigue resultados y márgenes mejores o peores de l
 
 Retira un partido, el más antiguo, de cada equipo antes de evaluar. Cuando hay fechas ordena para identificarlo; sin ellas utiliza la posición esperada del último elemento de una lista de reciente a antiguo. El registro retirado queda identificado.
 
-El máximo de posiciones `max_rank` se obtiene, por orden, del número de equipos de la competición, cantidades de filas de clasificación, mayores posiciones disponibles y, como último valor, 20.
+El máximo de posiciones `max_rank` se lee exclusivamente de `competition_context.number_of_teams`. Si falta un tamaño válido, M7 devuelve `INSUFFICIENT_DATA` con motivo `MISSING_COMPETITION_SIZE`; no supone 20 equipos ni infiere otro tamaño desde las filas disponibles.
 
 La posición del rival se busca primero en el campo explícito del partido, después en su clasificación incorporada, campos históricos alternativos o la clasificación actual por nombre. Debe estar entre 1 y `max_rank`. La posición propia se conserva como contexto, pero **no interviene en la expectativa que se explica a continuación**.
 
