@@ -7,6 +7,8 @@ network calls, qualification projections or invented last-resort ordering.
 from collections import defaultdict
 from fractions import Fraction
 
+from modules.competition.rule_terms import GroupingMethod
+
 from .constants import get_team_group
 
 
@@ -35,7 +37,7 @@ class TieBreakRecords:
         games = self.against(team, opponents)
         return sum((game[1] for game in games), Fraction(0)) / len(games) if games else Fraction(0)
 
-    def members(self, method, group):
+    def members(self, method: GroupingMethod, group):
         return {team for team in self.games if get_team_group(team, method) == group}
 
     def net_points(self, team, opponents=None):
@@ -73,19 +75,19 @@ def _unavailable(reason):
 def nba_tiebreak(names, records):
     """NBA two-/multi-team orders, including division winners and eligible teams."""
     def group(team):
-        return get_team_group(team, "nba_conference")
+        return get_team_group(team, GroupingMethod.NBA_CONFERENCE)
 
     def division(team):
-        return get_team_group(team, "nba_division")
+        return get_team_group(team, GroupingMethod.NBA_DIVISION)
 
     def eligible(conference):
-        members = records.members("nba_conference", conference)
+        members = records.members(GroupingMethod.NBA_CONFERENCE, conference)
         percentages = sorted((records.percentage(team) for team in members), reverse=True)
         cutoff = percentages[min(9, len(percentages) - 1)] if percentages else Fraction(0)
         return {team for team in members if records.percentage(team) >= cutoff}
 
     def division_winner(team):
-        members = records.members("nba_division", division(team))
+        members = records.members(GroupingMethod.NBA_DIVISION, division(team))
         best = max((records.percentage(name) for name in members), default=Fraction(0))
         leaders = [name for name in members if records.percentage(name) == best]
         if team not in leaders:
@@ -111,9 +113,9 @@ def nba_tiebreak(names, records):
         if len(tied) > 2:
             sequence.append(h2h)
         if len({division(team) for team in tied}) == 1:
-            sequence.append(_comparison(tied, lambda team: records.percentage(team, records.members("nba_division", division(team)))))
+            sequence.append(_comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.NBA_DIVISION, division(team)))))
         sequence.extend((
-            _comparison(tied, lambda team: records.percentage(team, records.members("nba_conference", group(team)))),
+            _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.NBA_CONFERENCE, group(team)))),
             _comparison(tied, lambda team: records.percentage(team, eligible(group(team)))),
         ))
         if len(tied) == 2:
@@ -129,7 +131,7 @@ def mlb_tiebreak(names, records):
     def criteria(tied):
         if len(tied) > 4:
             return [_unavailable("UNIMPLEMENTED_MLB_FIVE_PLUS_TEAM_PROCEDURE")]
-        if any(not get_team_group(team, "mlb_division") or not get_team_group(team, "mlb_league") for team in tied):
+        if any(not get_team_group(team, GroupingMethod.MLB_DIVISION) or not get_team_group(team, GroupingMethod.MLB_LEAGUE) for team in tied):
             return [_comparison(tied, lambda team: records.percentage(team, tied)), _unavailable("MISSING_MLB_GROUP_MEMBERSHIP")]
         def beats_each(team):
             return int(all(records.against(team, {opponent}) and records.percentage(team, {opponent}) > Fraction(1, 2)
@@ -137,8 +139,8 @@ def mlb_tiebreak(names, records):
 
         return ([_comparison(tied, beats_each)] if len(tied) > 2 else []) + [
             _comparison(tied, lambda team: records.percentage(team, tied)),
-            _comparison(tied, lambda team: records.percentage(team, records.members("mlb_division", get_team_group(team, "mlb_division")))),
-            _comparison(tied, lambda team: records.percentage(team, records.members("mlb_league", get_team_group(team, "mlb_league")))),
+            _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_DIVISION, get_team_group(team, GroupingMethod.MLB_DIVISION)))),
+            _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_LEAGUE, get_team_group(team, GroupingMethod.MLB_LEAGUE)))),
             _unavailable("MISSING_ALL_STAR_BREAK_BOUNDARY"),
         ]
     remaining, ranked = list(names), []
@@ -154,10 +156,10 @@ def mlb_tiebreak(names, records):
 def nfl_tiebreak(names, records):
     """Division and wild-card procedures; advance one club, then restart."""
     def division(team):
-        return get_team_group(team, "nfl_division")
+        return get_team_group(team, GroupingMethod.NFL_DIVISION)
 
     def conference(team):
-        return get_team_group(team, "nfl_conference")
+        return get_team_group(team, GroupingMethod.NFL_CONFERENCE)
 
     def opponent_strength(team, victories_only):
         opponents = [opponent for opponent, win, _, _ in records.games[team]
@@ -166,7 +168,7 @@ def nfl_tiebreak(names, records):
         return sum((game[1] for game in games), Fraction(0)) / len(games) if games else Fraction(0)
 
     def combined_rank(team, same_conference):
-        members = records.members("nfl_conference", conference(team)) if same_conference else set(records.games)
+        members = records.members(GroupingMethod.NFL_CONFERENCE, conference(team)) if same_conference else set(records.games)
         scored = {name: sum(game[2] for game in records.games[name]) for name in members}
         allowed = {name: sum(game[3] for game in records.games[name]) for name in members}
         return -(2 + sum(value > scored[team] for value in scored.values())
@@ -178,7 +180,7 @@ def nfl_tiebreak(names, records):
         same_division = len({division(team) for team in tied}) == 1
         common = set.intersection(*(set(game[0] for game in records.games[team]) for team in tied))
         common_metric = _comparison(tied, lambda team: records.percentage(team, common))
-        conf_metric = _comparison(tied, lambda team: records.percentage(team, records.members("nfl_conference", conference(team))))
+        conf_metric = _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.NFL_CONFERENCE, conference(team))))
         def sweep(team):
             against = {opponent: records.against(team, {opponent}) for opponent in tied if opponent != team}
             if all(games and all(game[1] == 1 for game in games) for games in against.values()):
@@ -191,7 +193,7 @@ def nfl_tiebreak(names, records):
                                 else lambda team: records.percentage(team, tied))]
         if same_division:
             sequence.extend((
-                _comparison(tied, lambda team: records.percentage(team, records.members("nfl_division", division(team)))),
+                _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.NFL_DIVISION, division(team)))),
                 common_metric, conf_metric,
             ))
         else:
@@ -203,7 +205,7 @@ def nfl_tiebreak(names, records):
             _comparison(tied, lambda team: opponent_strength(team, False)),
             _comparison(tied, lambda team: combined_rank(team, True)),
             _comparison(tied, lambda team: combined_rank(team, False)),
-            _comparison(tied, lambda team: records.net_points(team, common if same_division else records.members("nfl_conference", conference(team)))),
+            _comparison(tied, lambda team: records.net_points(team, common if same_division else records.members(GroupingMethod.NFL_CONFERENCE, conference(team)))),
             _comparison(tied, records.net_points),
             _unavailable("MISSING_NET_TOUCHDOWNS"),
         ))

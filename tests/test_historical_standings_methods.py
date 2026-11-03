@@ -10,6 +10,7 @@ from modules.competition.competition_history_config import (
 )
 
 from modules.competition.competition_profiles import get_competition_profile
+from modules.competition.rule_terms import GroupingMethod
 
 NBA_UNIQUE_TOURNAMENT_ID = 132
 SHL_UNIQUE_TOURNAMENT_ID = 261
@@ -211,4 +212,4 @@ def test_liga_mx_apertura_and_clausura_are_collected_with_gd_method():
         assert profile.standings.name == method
         assert profile.number_of_teams == 18
         assert profile.total_regular_season_games == 17
-        assert profile.standings_grouping == "single_table"
+        assert profile.grouping_method is GroupingMethod.LEAGUE_WIDE

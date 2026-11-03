@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
-
-ObjectiveType = Literal[
-    "COMPETITION_QUALIFICATION", "STAGE_QUALIFICATION", "DIVISION_RETENTION"
-]
+from .rule_terms import (
+    AggregationScope,
+    CompetitionStage,
+    GroupingMethod,
+    ObjectiveType,
+    QualificationPath,
+    RankingScope,
+    RuleStatus,
+    SelectionMethod,
+    StandingsMetric,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,33 +23,70 @@ class ObjectiveRule:
 
     CONFIGURED confirms the sporting boundary, not M5's ability to calculate it.
     An omitted objective is absent; NO_APPLICABLE_OBJECTIVE is a team outcome.
-    Sources and the reference season are inherited from CompetitionRules.
+    The reference season is inherited from CompetitionRules.
     The reference season documents the current facts; it does not select events.
     """
 
     objective_type: ObjectiveType
-    target: str
-    qualification_path: str
-    ranking_scope: Literal["GLOBAL", "CONFERENCE", "DIVISION", "GROUP", "LEAGUE"] = "GLOBAL"
-    aggregation_scope: Literal["TOURNAMENT", "SEASON_AGGREGATE", "MULTISEASON_RECORD"] = "TOURNAMENT"
-    status: Literal["CONFIGURED", "PENDING"] = "CONFIGURED"
+    qualification_path: QualificationPath | None
+    destination_competition_id: int | None = None
+    destination_competition_name: str | None = None
+    destination_stage: CompetitionStage | None = None
+    ranking_scope: RankingScope = RankingScope.GLOBAL
+    aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT
+    status: RuleStatus = RuleStatus.CONFIGURED
     rank_start: int | None = None
     rank_end: int | None = None
     reference_rank: int | None = None
-    selection_method: str = "RANK_RANGE"
+    selection_method: SelectionMethod = SelectionMethod.RANK_RANGE
     places: int | None = None
     group_size: int | None = None
-    target_season: str | None = None
     note: str = ""
     ranking_group: str | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "objective_type", ObjectiveType(self.objective_type))
+        if self.destination_stage is not None:
+            object.__setattr__(self, "destination_stage", CompetitionStage(self.destination_stage))
+        object.__setattr__(self, "ranking_scope", RankingScope(self.ranking_scope))
+        object.__setattr__(self, "aggregation_scope", AggregationScope(self.aggregation_scope))
+        object.__setattr__(self, "status", RuleStatus(self.status))
+        object.__setattr__(self, "selection_method", SelectionMethod(self.selection_method))
+        if self.qualification_path is not None:
+            object.__setattr__(self, "qualification_path", QualificationPath(self.qualification_path))
+        elif self.status != RuleStatus.PENDING:
+            raise ValueError("only pending objectives may have an unknown qualification path")
+        if self.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
+            if self.destination_competition_id is None:
+                if self.status != RuleStatus.PENDING:
+                    raise ValueError("configured competition qualification requires destination_competition_id")
+            elif not isinstance(self.destination_competition_id, int) or self.destination_competition_id <= 0:
+                raise ValueError("competition qualification requires a positive destination_competition_id")
+            if self.destination_stage is not None:
+                raise ValueError("competition qualification cannot have an internal destination_stage")
+        elif self.objective_type == ObjectiveType.STAGE_QUALIFICATION:
+            if self.destination_stage is None:
+                raise ValueError("stage qualification requires destination_stage")
+            if self.destination_competition_id is not None:
+                raise ValueError("stage qualification cannot target another competition")
+        elif self.destination_competition_id is not None or self.destination_stage is not None:
+            raise ValueError("division retention has no qualification destination")
+        retention_paths = {QualificationPath.DIRECT_RELEGATION, QualificationPath.RELEGATION_PLAYOFF}
+        if self.qualification_path is not None:
+            if self.objective_type == ObjectiveType.DIVISION_RETENTION:
+                if self.qualification_path not in retention_paths:
+                    raise ValueError("division retention requires a relegation path")
+            elif self.qualification_path in retention_paths:
+                raise ValueError("qualification cannot use a relegation path")
         if (self.rank_start is None) != (self.rank_end is None):
             raise ValueError("rank_start and rank_end must be specified together")
         if self.rank_start is not None and not (1 <= self.rank_start <= self.rank_end):
             raise ValueError("invalid objective rank range")
         if self.reference_rank is not None and self.reference_rank < 1:
             raise ValueError("reference_rank must be positive")
+        if (self.status == RuleStatus.CONFIGURED and self.selection_method == SelectionMethod.RANK_RANGE
+                and self.rank_start is None):
+            raise ValueError("configured rank-range selection requires ranks")
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,14 +144,16 @@ class StandingsRules:
     """Competition-specific ordering, separate from points awarded per game."""
 
     name: str
-    primary_metric: Literal["points", "wins", "pct"]
+    primary_metric: StandingsMetric
     criteria: tuple[RankingCriterion, ...]
-    source_urls: tuple[str, ...]
     in_season_criteria: tuple[RankingCriterion, ...] | None = None
     record_percentage: bool = False
     regulation_scores_only: bool = False
     verified: bool = True
     note: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "primary_metric", StandingsMetric(self.primary_metric))
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,11 +161,11 @@ class CompetitionRules:
     """The single sporting configuration for a canonical competition.
 
     Missing size/duration/objectives mean those facts have not been configured.
-    Reference season and provenance are descriptive, never lookup keys.
+    Reference season is descriptive, never a lookup key.
     """
 
     # Reference season under which these sporting rules, boundaries, and sizes were documented.
-    # NOTE: This is descriptive audit metadata (provenance). It is NEVER used as a lookup filter
+    # NOTE: This is descriptive metadata. It is NEVER used as a lookup filter
     # or query key, and does not cause events from other seasons to be rejected.
     reference_season: str
     number_of_teams: int | None
@@ -128,28 +173,12 @@ class CompetitionRules:
     scoring: ScoringRules
     standings: StandingsRules
     objectives: tuple[ObjectiveRule, ...] | None
-    source_urls: tuple[str, ...]
-    grouping_method: str = "league_wide"
+    grouping_method: GroupingMethod = GroupingMethod.LEAGUE_WIDE
     note: str = ""
 
-    @property
-    def season_key(self) -> str:
-        return self.reference_season
-
-    @property
-    def ranking_metric(self) -> str:
-        if self.standings.primary_metric == "pct":
-            return "WIN_PERCENTAGE"
-        return "WINS" if self.standings.primary_metric == "wins" else "POINTS"
-
-    @property
-    def standings_grouping(self) -> str:
-        return "single_table" if self.grouping_method == "league_wide" else "split_tables"
-
     def __post_init__(self) -> None:
+        object.__setattr__(self, "grouping_method", GroupingMethod(self.grouping_method))
         if self.number_of_teams is not None and self.number_of_teams <= 1:
             raise ValueError("competition size must exceed one")
         if self.total_regular_season_games is not None and self.total_regular_season_games <= 0:
             raise ValueError("competition duration must be positive")
-        if not self.source_urls:
-            raise ValueError("rule provenance is required")

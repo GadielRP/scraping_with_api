@@ -5,22 +5,17 @@ historical form retrieval.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.settings import Config
+from modules.competition.rule_terms import GroupingMethod
 from shared.temporal import from_unix_timestamp
 
-from modules.competition.competition_history_config import (
-    get_canonical_season_id,
-    get_collected_season_bundle,
-    get_included_season_ids,
-)
 from modules.competition.competition_profiles import get_competition_profile
 from modules.competition.competitive_rules import CompetitionRules
+from .historical_form_reporting import format_standings_table_for_telegram
 from .constants import get_team_group
 from .standings_rules import normalize_result_subtype, rank_standings
 
@@ -60,7 +55,6 @@ def _finalize_team_stats(stats: Dict[str, object], profile: CompetitionRules) ->
     ) if profile.standings.record_percentage else None
 
 
-
 def _build_team_standing_payload(
     stats: Dict[str, object],
     position_meta: Dict[str, object],
@@ -72,21 +66,15 @@ def _build_team_standing_payload(
     position = position_meta.get("position")
 
     # Engine-level aliases kept for downstream callers that still expect them.
-    payload["position"] = position
     payload["rank"] = position
-    payload["games_played"] = stats.get("games_played")
     payload["gp"] = stats.get("games_played")
-    payload["goal_diff"] = stats.get("goal_diff")
     payload["diff"] = stats.get("goal_diff")
-    payload["method"] = profile.standings.name
     payload["standings_method"] = profile.standings.name
-    payload["ranking_metric"] = profile.ranking_metric
+    payload["ranking_metric"] = profile.standings.primary_metric.name
     payload["group"] = group_name
     payload["conference"] = group_name
-    if profile.grouping_method == "ahl_division":
+    if profile.grouping_method == GroupingMethod.AHL_DIVISION:
         payload["division"] = group_name
-    payload["is_primary_tie"] = position_meta.get("is_primary_tie")
-    payload["primary_rank_key"] = position_meta.get("primary_rank_key")
     return payload
 
 
@@ -123,7 +111,6 @@ def _apply_game_result(
             won["regulation_wins"] += 1
 
 
-
 def _register_match_record(
     record: Dict[str, Any],
     team_stats: Dict[str, Dict[str, object]],
@@ -138,7 +125,7 @@ def _register_match_record(
     for team in (home_team, away_team):
         if team not in team_stats:
             group = None
-            if profile.grouping_method != "league_wide":
+            if profile.grouping_method != GroupingMethod.LEAGUE_WIDE:
                 group = get_team_group(team, profile.grouping_method)
                 if not group:
                     if team not in warned_unknown_group_teams:
@@ -189,7 +176,7 @@ def _build_standings_payload(
     )
     grouped_teams: Dict[Optional[str], List[Tuple[str, Dict[str, object]]]] = {}
     for team_name, stats in team_stats.items():
-        group_name = None if profile.grouping_method == "league_wide" else stats.get("group") or "UNKNOWN"
+        group_name = None if profile.grouping_method == GroupingMethod.LEAGUE_WIDE else stats.get("group") or "UNKNOWN"
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
@@ -209,7 +196,6 @@ def _build_standings_payload(
 def _build_league_totals_context(
     *,
     season_id: int,
-    canonical_season_id: int,
     cutoff_timestamp: float,
     sport: Optional[str],
     source_unique_tournament_id: Optional[int],
@@ -302,7 +288,6 @@ def _build_league_totals_context(
     return {
         "source": "db_standings_calculator",
         "season_id": season_id,
-        "canonical_season_id": canonical_season_id,
         "cutoff_timestamp": cutoff_timestamp,
         "cutoff_rule": "starts_at < cutoff_dt",
         "sport": sport,
@@ -339,56 +324,15 @@ class HistoricalStandingsCalculator:
     def __init__(self):
         self._cache: Dict[Tuple[int, float, str, Optional[int], Optional[int], Optional[int], Optional[int]], Dict[str, Any]] = {}
 
-    def _get_cache_key(
-        self,
-        canonical_season_id: int,
-        cutoff_timestamp: float,
-        sport: Optional[str],
-        source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int],
-        competition_id: Optional[int] = None,
-        season_year: Optional[int] = None,
-    ) -> Tuple[int, float, str, Optional[int], Optional[int], Optional[int], Optional[int]]:
-        return (
-            canonical_season_id,
-            cutoff_timestamp,
-            sport or "",
-            source_unique_tournament_id,
-            source_tournament_id,
-            competition_id,
-            season_year,
-        )
-
     def _fetch_match_records_before_cutoff(
         self,
         season_id: int,
         cutoff_timestamp: float,
-        sport: str,
         source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int],
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         cutoff_dt = from_unix_timestamp(cutoff_timestamp)
-        all_season_ids = get_included_season_ids(
-            source_unique_tournament_id,
-            source_tournament_id,
-            season_id,
-        )
-        collected_bundle = get_collected_season_bundle(
-            source_unique_tournament_id,
-            source_tournament_id,
-            season_id,
-        )
-        included_competition_identities = (
-            collected_bundle.included_competition_identities if collected_bundle else ()
-        )
-        tournament_ids = tuple(
-            identity.source_tournament_id
-            for identity in included_competition_identities
-            if identity.source_tournament_id is not None
-        )
-
         query_sql = """
             SELECT
                 event_id,
@@ -412,16 +356,13 @@ class HistoricalStandingsCalculator:
         elif source_unique_tournament_id is not None:
             query_sql += " AND source_unique_tournament_id = :source_unique_tournament_id"
             query_params["source_unique_tournament_id"] = source_unique_tournament_id
-            if tournament_ids:
-                query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
-                query_params["source_tournament_ids"] = list(tournament_ids)
 
         if season_year is not None:
             query_sql += " AND season_year = :season_year"
             query_params["season_year"] = int(season_year)
         else:
-            query_sql += " AND season_id = ANY(:season_ids)"
-            query_params["season_ids"] = list(all_season_ids)
+            query_sql += " AND season_id = :season_id"
+            query_params["season_id"] = int(season_id)
 
         query_sql += "\n            ORDER BY starts_at\n            "
 
@@ -463,7 +404,6 @@ class HistoricalStandingsCalculator:
         source_tournament_id: Optional[int] = None,
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
-        send_debug_standings: bool = False,
     ) -> Dict[str, Dict]:
         bundle = self.calculate_standings_bundle_at(
             season_id=season_id,
@@ -473,7 +413,6 @@ class HistoricalStandingsCalculator:
             source_tournament_id=source_tournament_id,
             competition_id=competition_id,
             season_year=season_year,
-            send_debug_standings=send_debug_standings,
         )
         return bundle.get("standings", {})
 
@@ -488,15 +427,10 @@ class HistoricalStandingsCalculator:
         season_year: Optional[int] = None,
         send_debug_standings: bool = False,
     ) -> Dict[str, Any]:
-        canonical_season_id = get_canonical_season_id(
-            source_unique_tournament_id,
-            source_tournament_id,
+        cache_key = (
             season_id,
-        )
-        cache_key = self._get_cache_key(
-            canonical_season_id,
             cutoff_timestamp,
-            sport,
+            sport or "",
             source_unique_tournament_id,
             source_tournament_id,
             competition_id,
@@ -506,6 +440,8 @@ class HistoricalStandingsCalculator:
             cached_bundle = self._cache[cache_key]
             # Cached bundles are always stored normalized; return a copy so
             # callers cannot mutate the cached payload.
+            if send_debug_standings:
+                logger.info(format_standings_table_for_telegram(cached_bundle["standings"], "Current standings"))
             return {
                 **cached_bundle,
                 "match_records": _serialize_match_records(cached_bundle.get("match_records", [])),
@@ -520,12 +456,13 @@ class HistoricalStandingsCalculator:
                 source_tournament_id=source_tournament_id,
                 competition_id=competition_id,
                 season_year=season_year,
-                send_debug_standings=send_debug_standings,
             )
             bundle = {
                 **bundle,
                 "match_records": _serialize_match_records(bundle.get("match_records", [])),
             }
+            if send_debug_standings:
+                logger.info(format_standings_table_for_telegram(bundle["standings"], "Current standings"))
             self._cache[cache_key] = bundle
             return bundle
         except Exception as exc:
@@ -538,37 +475,12 @@ class HistoricalStandingsCalculator:
                 "error": str(exc),
             }
 
-    def compute_standings(
-        self,
-        season_id: int,
-        cutoff_timestamp: float,
-        sport: str = None,
-        source_unique_tournament_id: Optional[int] = None,
-        source_tournament_id: Optional[int] = None,
-        competition_id: Optional[int] = None,
-        season_year: Optional[int] = None,
-        send_debug_standings: bool = False,
-    ) -> Dict[str, Dict]:
-        """Backward-compatible alias for older callers."""
-        return self.calculate_standings_at(
-            season_id=season_id,
-            cutoff_timestamp=cutoff_timestamp,
-            sport=sport,
-            source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
-            competition_id=competition_id,
-            season_year=season_year,
-            send_debug_standings=send_debug_standings,
-        )
-
 
     def calculate_standings_timeline(
         self,
         season_id: int,
         cutoff_timestamps: Iterable[float],
-        sport: str = None,
         source_unique_tournament_id: Optional[int] = None,
-        source_tournament_id: Optional[int] = None,
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
@@ -588,9 +500,7 @@ class HistoricalStandingsCalculator:
             return self._calculate_standings_timeline_internal(
                 season_id=season_id,
                 unique_cutoffs=unique_cutoffs,
-                sport=sport,
                 source_unique_tournament_id=source_unique_tournament_id,
-                source_tournament_id=source_tournament_id,
                 competition_id=competition_id,
                 season_year=season_year,
             )
@@ -602,9 +512,7 @@ class HistoricalStandingsCalculator:
         self,
         season_id: int,
         unique_cutoffs: List[float],
-        sport: Optional[str],
         source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int],
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
@@ -617,9 +525,7 @@ class HistoricalStandingsCalculator:
         match_records = self._fetch_match_records_before_cutoff(
             season_id=season_id,
             cutoff_timestamp=unique_cutoffs[-1],
-            sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
             competition_id=competition_id,
             season_year=season_year,
         )
@@ -658,23 +564,15 @@ class HistoricalStandingsCalculator:
         source_tournament_id: Optional[int] = None,
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
-        send_debug_standings: bool = False,
     ) -> Dict[str, Any]:
         profile = get_competition_profile(competition_id)
         if profile is None:
             raise ValueError(f"No competition profile configured for competition_id={competition_id}")
 
-        canonical_season_id = get_canonical_season_id(
-            source_unique_tournament_id,
-            source_tournament_id,
-            season_id,
-        )
         match_records = self._fetch_match_records_before_cutoff(
             season_id=season_id,
             cutoff_timestamp=cutoff_timestamp,
-            sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
             competition_id=competition_id,
             season_year=season_year,
         )
@@ -695,7 +593,6 @@ class HistoricalStandingsCalculator:
         standings = _build_standings_payload(team_stats, profile, match_records)
         league_totals_context = _build_league_totals_context(
             season_id=season_id,
-            canonical_season_id=canonical_season_id,
             cutoff_timestamp=cutoff_timestamp,
             sport=sport,
             source_unique_tournament_id=source_unique_tournament_id,
@@ -712,7 +609,6 @@ class HistoricalStandingsCalculator:
             "status": "ACTIVE",
             "error": None,
         }
-
 
 
     def clear_cache(self):

@@ -33,7 +33,7 @@ def test_one_scoring_change_reaches_standings_tiebreaks_and_m5():
     assert stats["A"]["points"] == mini_table["A"]["points"] == 7
     assert stats["B"]["points"] == mini_table["B"]["points"] == 2
     result = _calculate_m5(_analysis(), event)
-    assert result.raw["max_points_remaining"] == 15
+    assert result.raw["max_points_remaining"] == {"home": 15, "away": 15}
 
 
 def test_column_rename_preserves_data_and_can_be_reversed():

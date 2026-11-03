@@ -4,6 +4,8 @@ from collections import Counter, defaultdict
 from fractions import Fraction
 from itertools import combinations
 
+from modules.competition.rule_terms import StandingsMetric
+
 from .standings_tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
 
 
@@ -112,7 +114,7 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
             return -stats["games_played"]
         if name == "alphabetical_order":
             return tuple(-ord(c) for c in team.casefold())
-        if name == "pct":
+        if name == StandingsMetric.WIN_PERCENTAGE:
             games = stats["games_played"]
             return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / games if games else Fraction(0)
         if name in {"nhl_h2h", "ahl_h2h"}:

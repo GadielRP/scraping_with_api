@@ -15,7 +15,6 @@ from infrastructure.persistence.repositories import SeasonRepository
 from shared.temporal import from_unix_timestamp, in_timezone
 
 from modules.competition.competition_history_config import (
-    get_included_season_ids,
     is_collected_competition_scope,
 )
 from modules.competition.competition_profiles import get_competition_profile
@@ -55,7 +54,7 @@ def _calculate_tennis_total_points(game: Dict, is_team: bool) -> int:
     return period1 + period2 + period3
 
 
-def _calculate_single_ranking(result: str, own_ranking: int, opponent_ranking: int) -> int:
+def _calculate_single_ranking(result: str, own_ranking: Optional[int], opponent_ranking: Optional[int]) -> int:
     """
     Calculate the single ranking for a game based on result and rankings.
 
@@ -75,7 +74,7 @@ def _calculate_single_ranking(result: str, own_ranking: int, opponent_ranking: i
     Returns:
         Single ranking for this game (0 if rankings not available)
     """
-    if own_ranking == 0 or opponent_ranking == 0:
+    if not own_ranking or not opponent_ranking:
         return 0
 
     if result == '1':  # Win
@@ -614,22 +613,16 @@ def get_team_last_results_by_id(
         source_tournament_id=source_tournament_id,
         season_id=season_id_int,
     ):
-        included_season_ids = get_included_season_ids(
-            source_unique_tournament_id,
-            source_tournament_id,
-            season_id_int,
-        )
         profile = get_competition_profile(competition_id)
         if profile is None:
             raise ValueError(f"No competition profile configured for competition_id={competition_id}")
         standings_method = profile.standings.name
         grouping_method = profile.grouping_method
         logger.info(
-            "📊 Using DB-based form retrieval for %s (competition_id=%s, season_id=%s, included_season_ids=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
+            "📊 Using DB-based form retrieval for %s (competition_id=%s, season_id=%s, source_unique_tournament_id=%s, source_tournament_id=%s, standings_method=%s, grouping_method=%s)",
             team_name,
             competition_id,
             season_id,
-            included_season_ids,
             source_unique_tournament_id,
             source_tournament_id,
             standings_method,

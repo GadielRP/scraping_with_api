@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from modules.competition.rule_terms import GroupingMethod
+
 NBA_EASTERN_CONFERENCE = {
     "Atlanta Hawks",
     "Boston Celtics",
@@ -158,7 +160,7 @@ NHL_WESTERN_CONFERENCE = {
 # Current memberships verified against the league publications linked in
 # docs/competition/standings-audit.md. Names match the stored event identities.
 _CURRENT_GROUPS = {
-    "nba_division": {
+    GroupingMethod.NBA_DIVISION: {
         "Atlantic": ("Boston Celtics", "Brooklyn Nets", "New York Knicks", "Philadelphia 76ers", "Toronto Raptors"),
         "Central": ("Chicago Bulls", "Cleveland Cavaliers", "Detroit Pistons", "Indiana Pacers", "Milwaukee Bucks"),
         "Southeast": ("Atlanta Hawks", "Charlotte Hornets", "Miami Heat", "Orlando Magic", "Washington Wizards"),
@@ -166,7 +168,7 @@ _CURRENT_GROUPS = {
         "Pacific": ("Golden State Warriors", "Los Angeles Clippers", "LA Clippers", "Los Angeles Lakers", "Phoenix Suns", "Sacramento Kings"),
         "Southwest": ("Dallas Mavericks", "Houston Rockets", "Memphis Grizzlies", "New Orleans Pelicans", "San Antonio Spurs"),
     },
-    "mlb_division": {
+    GroupingMethod.MLB_DIVISION: {
         "AL East": ("Baltimore Orioles", "Boston Red Sox", "New York Yankees", "Tampa Bay Rays", "Toronto Blue Jays"),
         "AL Central": ("Chicago White Sox", "Cleveland Guardians", "Detroit Tigers", "Kansas City Royals", "Minnesota Twins"),
         "AL West": ("Houston Astros", "Los Angeles Angels", "Athletics", "Oakland Athletics", "Seattle Mariners", "Texas Rangers"),
@@ -174,7 +176,7 @@ _CURRENT_GROUPS = {
         "NL Central": ("Chicago Cubs", "Cincinnati Reds", "Milwaukee Brewers", "Pittsburgh Pirates", "St. Louis Cardinals"),
         "NL West": ("Arizona Diamondbacks", "Colorado Rockies", "Los Angeles Dodgers", "San Diego Padres", "San Francisco Giants"),
     },
-    "nfl_division": {
+    GroupingMethod.NFL_DIVISION: {
         "AFC East": ("Buffalo Bills", "Miami Dolphins", "New England Patriots", "New York Jets"),
         "AFC North": ("Baltimore Ravens", "Cincinnati Bengals", "Cleveland Browns", "Pittsburgh Steelers"),
         "AFC South": ("Houston Texans", "Indianapolis Colts", "Jacksonville Jaguars", "Tennessee Titans"),
@@ -184,7 +186,7 @@ _CURRENT_GROUPS = {
         "NFC South": ("Atlanta Falcons", "Carolina Panthers", "New Orleans Saints", "Tampa Bay Buccaneers"),
         "NFC West": ("Arizona Cardinals", "Los Angeles Rams", "San Francisco 49ers", "Seattle Seahawks"),
     },
-    "mls_conference": {
+    GroupingMethod.MLS_CONFERENCE: {
         "Eastern": (
             "Atlanta United", "Charlotte FC", "Chicago Fire", "Columbus Crew", "DC United",
             "FC Cincinnati", "Inter Miami CF", "CF Montréal", "Nashville SC",
@@ -198,7 +200,7 @@ _CURRENT_GROUPS = {
             "Sporting Kansas City", "St.Louis City", "Vancouver Whitecaps",
         ),
     },
-    "ahl_division": {
+    GroupingMethod.AHL_DIVISION: {
         "Atlantic": (
             "Charlotte Checkers", "Hartford Wolf Pack", "Hershey Bears",
             "Lehigh Valley Phantoms", "Providence Bruins", "Springfield Thunderbirds",
@@ -218,7 +220,7 @@ _CURRENT_GROUPS = {
             "Ontario Reign", "San Diego Gulls", "San Jose Barracuda", "Tucson Roadrunners",
         ),
     },
-    "argentina_zones": {
+    GroupingMethod.ARGENTINA_ZONES: {
         "Group A": (
             "Club Atlético Platense", "Defensa y Justicia", "Central Córdoba", "CA Lanús",
             "Deportivo Riestra", "CA Talleres", "Boca Juniors", "Estudiantes de La Plata",
@@ -240,31 +242,31 @@ _CURRENT_GROUP_INDEX = {
 }
 
 
-def get_team_group(team_name: str, grouping_method: str) -> Optional[str]:
+def get_team_group(team_name: str, grouping_method: GroupingMethod) -> Optional[str]:
     """Return the grouping bucket for a team under the requested grouping method."""
 
     if grouping_method in _CURRENT_GROUP_INDEX:
         return _CURRENT_GROUP_INDEX[grouping_method].get(team_name.casefold())
-    if grouping_method == "nba_conference":
+    if grouping_method == GroupingMethod.NBA_CONFERENCE:
         if team_name in NBA_EASTERN_CONFERENCE:
             return "Eastern"
         if team_name in NBA_WESTERN_CONFERENCE:
             return "Western"
-    elif grouping_method == "nfl_conference":
+    elif grouping_method == GroupingMethod.NFL_CONFERENCE:
         if team_name in NFL_AFC:
             return "AFC"
         if team_name in NFL_NFC:
             return "NFC"
-    elif grouping_method == "mlb_league":
+    elif grouping_method == GroupingMethod.MLB_LEAGUE:
         if team_name in MLB_AMERICAN_LEAGUE:
             return "AL"
         if team_name in MLB_NATIONAL_LEAGUE:
             return "NL"
-    elif grouping_method == "nhl_conference":
+    elif grouping_method == GroupingMethod.NHL_CONFERENCE:
         if team_name in NHL_EASTERN_CONFERENCE:
             return "Eastern"
         if team_name in NHL_WESTERN_CONFERENCE:
             return "Western"
-    elif grouping_method == "league_wide":
+    elif grouping_method == GroupingMethod.LEAGUE_WIDE:
         return None
     return None

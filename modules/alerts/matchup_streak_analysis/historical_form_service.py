@@ -13,15 +13,11 @@ historical_form_reporting.
 
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
 from infrastructure.settings import Config
-from modules.competition.competition_history_config import (
-    get_collected_season_bundle,
-    get_included_season_ids,
-)
 from shared.temporal import from_unix_timestamp, in_timezone
 from modules.competition.competition_profiles import get_competition_profile
 from .historical_form_reporting import (
@@ -51,30 +47,8 @@ def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = Non
     standing["pct"] = standing.get("pct")
     standing["goals_for"] = standing.get("goals_for")
     standing["goals_against"] = standing.get("goals_against")
-    standing["method"] = standing.get("method") or standings_method
     standing["standings_method"] = standing.get("standings_method") or standings_method
     return standing
-
-
-def _get_included_tournament_ids(
-    source_unique_tournament_id: Optional[int],
-    source_tournament_id: Optional[int],
-    season_id: int,
-) -> Tuple[int, ...]:
-    """Return source tournament ids included in the collected season bundle."""
-    collected_bundle = get_collected_season_bundle(
-        source_unique_tournament_id,
-        source_tournament_id,
-        season_id,
-    )
-    included_competition_identities = (
-        collected_bundle.included_competition_identities if collected_bundle else ()
-    )
-    return tuple(
-        identity.source_tournament_id
-        for identity in included_competition_identities
-        if identity.source_tournament_id is not None
-    )
 
 
 class HistoricalFormService:
@@ -98,9 +72,8 @@ class HistoricalFormService:
     @staticmethod
     def _fetch_team_game_rows(
         team_name: str,
-        included_season_ids: Tuple[int, ...],
+        season_id: int,
         source_unique_tournament_id: Optional[int],
-        tournament_ids: Tuple[int, ...],
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> List:
@@ -129,16 +102,13 @@ class HistoricalFormService:
         elif source_unique_tournament_id is not None:
             query_sql += " AND source_unique_tournament_id = :source_unique_tournament_id"
             query_params["source_unique_tournament_id"] = source_unique_tournament_id
-            if tournament_ids:
-                query_sql += " AND source_tournament_id = ANY(:source_tournament_ids)"
-                query_params["source_tournament_ids"] = list(tournament_ids)
 
         if season_year is not None:
             query_sql += " AND season_year = :season_year"
             query_params["season_year"] = int(season_year)
         else:
-            query_sql += " AND season_id = ANY(:season_ids)"
-            query_params["season_ids"] = list(included_season_ids)
+            query_sql += " AND season_id = :season_id"
+            query_params["season_id"] = int(season_id)
 
         query_sql += " AND (home_team = :team_name OR away_team = :team_name) ORDER BY starts_at DESC"
 
@@ -198,8 +168,9 @@ class HistoricalFormService:
             "team_result_code": team_result_code,
             "team_result": team_result,
             "startTimestamp": int(game_timestamp),
-            "opponent_ranking": opponent_standing.get("rank") or 0,
-            "own_ranking": team_standing.get("rank") or 0,
+            "standings_as_of_timestamp": game_timestamp,
+            "opponent_ranking": opponent_standing.get("rank"),
+            "own_ranking": team_standing.get("rank"),
             "team_standing": team_standing,
             "opponent_standing": opponent_standing,
         }
@@ -211,7 +182,6 @@ class HistoricalFormService:
         source_unique_tournament_id: Optional[int],
         source_tournament_id: Optional[int],
         current_event_timestamp: Optional[float],
-        standings_method: str,
         competition_id: int,
     ) -> None:
         """Send the current standings table to the personal debug chat."""
@@ -238,7 +208,6 @@ class HistoricalFormService:
         message = format_standings_table_for_telegram(
             current_standings,
             title,
-            standings_method=standings_method,
         )
         send_debug_telegram(message, personal_chat_id)
 
@@ -261,24 +230,12 @@ class HistoricalFormService:
                 raise ValueError(f"No competition profile configured for competition_id={competition_id}")
             standings_method = profile.standings.name
             grouping_method = profile.grouping_method
-            included_season_ids = get_included_season_ids(
-                source_unique_tournament_id,
-                source_tournament_id,
-                season_id,
-            )
-            tournament_ids = _get_included_tournament_ids(
-                source_unique_tournament_id,
-                source_tournament_id,
-                season_id,
-            )
-
             logger.info(
-                "DB historical form scope for %s: competition_id=%s season_id=%s season_year=%s included_season_ids=%s source_unique_tournament_id=%s source_tournament_id=%s standings_method=%s grouping_method=%s",
+                "DB historical form scope for %s: competition_id=%s season_id=%s season_year=%s source_unique_tournament_id=%s source_tournament_id=%s standings_method=%s grouping_method=%s",
                 team_name,
                 competition_id,
                 season_id,
                 season_year,
-                included_season_ids,
                 source_unique_tournament_id,
                 source_tournament_id,
                 standings_method,
@@ -287,9 +244,8 @@ class HistoricalFormService:
 
             all_rows = self._fetch_team_game_rows(
                 team_name,
-                included_season_ids,
+                season_id,
                 source_unique_tournament_id,
-                tournament_ids,
                 competition_id=competition_id,
                 season_year=season_year,
             )
@@ -316,9 +272,7 @@ class HistoricalFormService:
             standings_by_cutoff = self.standings_calculator.calculate_standings_timeline(
                 season_id,
                 [row.starts_at.timestamp() for row in applicable_rows],
-                sport,
                 source_unique_tournament_id=source_unique_tournament_id,
-                source_tournament_id=source_tournament_id,
                 competition_id=competition_id,
                 season_year=season_year,
             )
@@ -344,7 +298,6 @@ class HistoricalFormService:
                     source_unique_tournament_id=source_unique_tournament_id,
                     source_tournament_id=source_tournament_id,
                     current_event_timestamp=current_event_timestamp,
-                    standings_method=standings_method,
                     competition_id=competition_id,
                 )
 

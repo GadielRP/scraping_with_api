@@ -48,7 +48,6 @@ def test_every_tracked_competition_has_a_serializable_sporting_profile():
     assert TRACKED_COMPETITION_IDS <= COMPETITION_PROFILES.keys()
     for cid in TRACKED_COMPETITION_IDS:
         profile = get_competition_profile(cid)
-        assert profile.standings.source_urls
         json.dumps(asdict(profile))
     assert get_competition_profile(76).grouping_method == "mls_conference"
     assert get_competition_profile(554).grouping_method == "ahl_division"

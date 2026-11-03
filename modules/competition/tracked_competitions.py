@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Mapping
 
+from . import competition_ids
+
 
 @dataclass(frozen=True, slots=True)
 class TrackedCompetition:
@@ -21,35 +23,35 @@ class TrackedCompetition:
 
 
 _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
-    TrackedCompetition(176, "NBA", "Basketball"),
-    TrackedCompetition(174, "CBA", "Basketball"), #china's league
-    TrackedCompetition(429, "Euroleague", "Basketball"),
+    TrackedCompetition(competition_ids.NBA, "NBA", "Basketball"),
+    TrackedCompetition(competition_ids.CBA, "CBA", "Basketball"), #china's league
+    TrackedCompetition(competition_ids.EUROLEAGUE, "Euroleague", "Basketball"),
 
-    TrackedCompetition(129, "MLB", "Baseball"),
+    TrackedCompetition(competition_ids.MLB, "MLB", "Baseball"),
 
-    TrackedCompetition(318, "Brasileirao Serie A", "Football"),
-    TrackedCompetition(167, "LaLiga", "Football"),
-    TrackedCompetition(88, "Serie A", "Football"),
-    TrackedCompetition(168, "Premier League", "Football"),
-    TrackedCompetition(50, "Saudi Pro League", "Football"),
-    TrackedCompetition(171, "Bundesliga", "Football"),
-    TrackedCompetition(172, "Ligue 1", "Football"),
-    TrackedCompetition(2192, "Liga MX Clausura", "Football"),
-    TrackedCompetition(328, "Liga MX Apertura", "Football"),
-    TrackedCompetition(261, "Liga Portugal", "Football"),
-    TrackedCompetition(76, "MLS", "Football"),
-    TrackedCompetition(310, "Liga profesional de futbol argentino Clausura", "Football"),
-    TrackedCompetition(2476, "Liga profesional de futbol argentino Apertura", "Football"),
-    TrackedCompetition(317, "Eredivisie", "Football"),
+    TrackedCompetition(competition_ids.BRASILEIRAO, "Brasileirao Serie A", "Football"),
+    TrackedCompetition(competition_ids.LALIGA, "LaLiga", "Football"),
+    TrackedCompetition(competition_ids.SERIE_A, "Serie A", "Football"),
+    TrackedCompetition(competition_ids.PREMIER_LEAGUE, "Premier League", "Football"),
+    TrackedCompetition(competition_ids.SAUDI_PRO_LEAGUE, "Saudi Pro League", "Football"),
+    TrackedCompetition(competition_ids.BUNDESLIGA, "Bundesliga", "Football"),
+    TrackedCompetition(competition_ids.LIGUE_1, "Ligue 1", "Football"),
+    TrackedCompetition(competition_ids.LIGA_MX_CLAUSURA, "Liga MX Clausura", "Football"),
+    TrackedCompetition(competition_ids.LIGA_MX_APERTURA, "Liga MX Apertura", "Football"),
+    TrackedCompetition(competition_ids.LIGA_PORTUGAL, "Liga Portugal", "Football"),
+    TrackedCompetition(competition_ids.MLS, "MLS", "Football"),
+    TrackedCompetition(competition_ids.ARGENTINA_CLAUSURA, "Liga profesional de futbol argentino Clausura", "Football"),
+    TrackedCompetition(competition_ids.ARGENTINA_APERTURA, "Liga profesional de futbol argentino Apertura", "Football"),
+    TrackedCompetition(competition_ids.EREDIVISIE, "Eredivisie", "Football"),
 
     # TURNED OFF DUE TO LACK OF ODDS MARKETS DATA: CURRENTLY ODDSPAPI ONLY RETURNS FULL TIME DATA, NO 1ST HALF DATA
-    # TrackedCompetition(525, "Liiga", "Ice hockey"),
-    TrackedCompetition(180, "SHL", "Ice hockey"),    
-    TrackedCompetition(5196, "NHL", "Ice hockey"),
-    TrackedCompetition(554, "AHL", "Ice hockey"),
+    # TrackedCompetition(competition_ids.LIIGA, "Liiga", "Ice hockey"),
+    # TrackedCompetition(competition_ids.SHL, "SHL", "Ice hockey"),
+    # TrackedCompetition(competition_ids.NHL, "NHL", "Ice hockey"),
+    # TrackedCompetition(competition_ids.AHL, "AHL", "Ice hockey"),
 
 
-    TrackedCompetition(5153, "NFL", "American football"),
+    TrackedCompetition(competition_ids.NFL, "NFL", "American football"),
 
 
     # KNOCKOUT COMPETITIONS, WE DONT SUPPORT THEM YET BUT MIGHT DO IN THE FUTURE

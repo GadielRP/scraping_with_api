@@ -2,7 +2,7 @@
 
 ## Responsabilidades y flujo
 
-`competitive_rules.py` define los tipos y la puntuación compartida; `standings_policies.py` declara los criterios de clasificación por competición; `competition_profiles.py` asocia cada ID canónico con esas reglas, tamaño, duración y objetivos; `competition_history_config.py` conserva exclusivamente las identidades del proveedor y los ámbitos históricos recolectados. La lista operativa continúa en `tracked_competitions.py`. La [auditoría de clasificaciones](../competition/standings-audit.md) compara los métodos anteriores y actuales para las 22 competiciones activas y señala sus límites.
+`competitive_rules.py` define los tipos y la puntuación compartida; `standings_policies.py` declara los criterios de clasificación por competición; `competition_profiles.py` asocia cada ID canónico con esas reglas, tamaño, duración y objetivos; `competition_history_config.py` conserva exclusivamente las identidades del proveedor y los ámbitos históricos recolectados. La lista operativa continúa en `tracked_competitions.py`.
 
 P1 resuelve el perfil una vez en `_prepare_p1`, antes del historial. `CompetitionContext` transporta los metadatos del perfil y `competitive_rules`. La construcción de tablas consulta ese mismo perfil por el ID canónico del evento, sin inferencia por deporte, nombres o temporada. El historial sigue seleccionando resultados mediante sus IDs de temporada y fechas; esos IDs no eligen otra regla deportiva.
 
@@ -10,7 +10,7 @@ P1 resuelve el perfil una vez en `_prepare_p1`, antes del historial. `Competitio
 
 M1, M4, M7 y Totals leen los metadatos del contexto. M4 y M7 no reconstruyen el tamaño contando filas ni suponiendo 20. M1 conserva la comprobación de cobertura. Las tablas y resultados permanecen en `streak_analysis`.
 
-La captura existente de `p1` incluye identidad, contexto y análisis antes del cálculo. La serialización de dataclasses incorpora las reglas y su procedencia sin añadir argumentos, duplicar el historial ni cambiar `input_refs`. No se alteran los identificadores de módulos ni componentes de minería.
+La captura existente de `p1` incluye identidad, contexto y análisis antes del cálculo. La serialización de dataclasses incorpora las reglas y sus términos canónicos sin añadir argumentos, duplicar el historial ni cambiar `input_refs`. No se alteran los identificadores de módulos ni componentes de minería.
 
 ## Estados y semántica
 
@@ -18,42 +18,13 @@ La captura existente de `p1` incluye identidad, contexto y análisis antes del c
 - **Pendiente (`PENDING`):** el objetivo existe, pero falta determinar su frontera efectiva, elegibilidad o tabla decisoria. Los puestos base conocidos pueden registrarse sin autorizarlos como frontera efectiva.
 - **Configurado (`CONFIGURED`):** regla deportiva confirmada en el perfil. Su cálculo todavía puede requerir soporte de M5.
 
-Cada regla hereda la temporada de referencia y las fuentes de `CompetitionRules`; incorpora destino, temporada de destino cuando es otra competición, vía, ámbito de tabla, alcance temporal, selección, zona y referencia cuando están resueltas. Los campos vacíos expresan información pendiente; no activan valores por defecto deportivos.
+Cada regla hereda la temporada de referencia de `CompetitionRules`; incorpora destino, temporada de destino cuando es otra competición, vía, ámbito de tabla, alcance temporal, selección, zona y referencia cuando están resueltas. Los campos vacíos expresan información pendiente; no activan valores por defecto deportivos.
 
 Los valores canónicos son `COMPETITION_QUALIFICATION`, `STAGE_QUALIFICATION` y `DIVISION_RETENTION`. `NO_APPLICABLE_OBJECTIVE` es el resultado para un equipo fuera de las zonas de la política, siempre que ninguna regla pendiente necesaria impida decidirlo. Se mantienen `objective_type`, `points_cutoff`, `gap`, `n_league`, `base_severity`, `regime_multiplier` y `final_cost`.
 
-## Veinte perfiles iniciales
+## Catálogo y revisión deportiva
 
-Las fuentes se incluyen por perfil en el catálogo. Estos valores iniciales implementan la planificación acordada; no se actualizan mediante consultas durante la ejecución.
-
-| Competición | Temporada | Equipos | Partidos por equipo | Reglas y límites | Fuentes |
-|---|---|---:|---:|---|---|
-| LaLiga | 2026/27 | 20 | 38 | Permanencia 18–20; seguro 17. UEFA pendiente para 2027/28. | [Fuente 1](https://www.laliga.com/noticias/equipos-que-bajan-a-segunda) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Premier League | 2026/27 | 20 | 38 | Permanencia 18–20; seguro 17. UEFA pendiente para 2027/28. | [Fuente 1](https://www.premierleague.com/en/news/4657245/202526-premier-league-relegation-faq) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Serie A | 2026/27 | 20 | 38 | Permanencia 18–20; seguro 17. Desempate excepcional sin zona fija adicional. UEFA pendiente. | [Fuente 1](https://en.legaseriea.it/serie-a/news/180-minutes-left-in-fight-for-survival) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Bundesliga | 2026/27 | 18 | 34 | Descenso 17–18 y eliminatoria 16; seguro 15. UEFA pendiente. | [Fuente 1](https://www.bundesliga.com/en/faq/what-are-the-rules-and-regulations-of-soccer/how-does-promotion-and-relegation-work-in-the-bundesliga-10645) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Ligue 1 | 2026/27 | 18 | 34 | Descenso 17–18 y eliminatoria 16; seguro 15. UEFA pendiente. | [Fuente 1](https://ligue1.com/en/articles/l1_article_3812-) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Liga Portugal | 2026/27 | 18 | 34 | Descenso 17–18 y eliminatoria 16; seguro 15. UEFA pendiente. | [Fuente 1](https://www.ligaportugal.pt/pages/sobre-a-liga) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Eredivisie | 2026/27 | 18 | 34 | Descenso 17–18 y eliminatoria 16; seguro 15. UEFA y participantes del playoff doméstico pendientes. | [Fuente 1](https://www.knvb.nl/downloads/bestand/30062/definitiefcompetitieprogrammavriendenloterijeredivisie) · [Fuente 2](https://www.uefa.com/nationalassociations/uefarankings/accesslist/allcompetitions/) |
-| Saudi Pro League | 2026/27 | 18 | 34 | Descenso 16–18; seguro 15. AFC Champions League Elite / Two pendientes para 2027/28. | [Fuente 1](https://www.sportmonks.com/glossary/saudi-pro-league/) · [Fuente 2](https://www.saff.com.sa/news.php?id=4184) |
-| Brasileirão | 2026 | 20 | 38 | Descenso 17–20; seguro 16. Libertadores: base 1–4 grupos y 5 preliminar, frontera efectiva pendiente. Sudamericana: seis mejores elegibles, sin intervalo fijo. | [Fuente 1](https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_Brasileiro_Serie_A_2026_c984f8cf05.pdf) |
-| Liga MX Apertura | 2026 | 18 | 17 | 1–8 a cuartos, sin Play-In. Sin permanencia. Concacaf Champions Cup pendiente del acumulado y otras vías. | [Fuente 1](https://www.rayados.com/es/noticias/21455/descubre-el-calendario-de-rayados-para-el-torneo-apertura-2026) · [Fuente 2](https://www.si.com/mx/liga-mx/oficial-la-liga-mx-se-queda-sin-ascenso-descenso-y-multas-2026-2027) |
-| Liga MX Clausura | 2026 | 18 | 17 | 1–8 a cuartos, sin Play-In. Sin permanencia. Concacaf pendiente. Solo Clausura 2026, sin extrapolación a 2027. | [Fuente 1](https://www.rayados.com/es/noticias/21455/descubre-el-calendario-de-rayados-para-el-torneo-apertura-2026) · [Fuente 2](https://fmf.mx/docs/reglamentos/458.pdf) |
-| Liga Profesional de Argentina Apertura | 2026 | 30 | 16 | Dos grupos de 15; 1–8 de cada grupo a octavos. Permanencia anual/promedios e internacional pendientes. | [Fuente 1](https://www.ligaprofesional.ar/wp-content/uploads/2026/01/Reglamento-Torneos-LPF-Primera-2026-1.pdf) |
-| Liga Profesional de Argentina Clausura | 2026 | 30 | 16 | Dos grupos de 15; 1–8 de cada grupo a octavos. Permanencia anual/promedios e internacional pendientes. | [Fuente 1](https://www.ligaprofesional.ar/wp-content/uploads/2026/01/Reglamento-Torneos-LPF-Primera-2026-1.pdf) |
-| NBA | 2026/27 | 30 | 82 | Conferencia: 1–6 playoffs y 7–10 Play-In. Sin permanencia ni objetivo internacional. Cálculo por porcentaje no soportado. | [Fuente 1](https://www.nba.com/news/nba-play-in-tournament) · [Fuente 2](https://www.nba.com/news/2026-27-nba-regular-season-schedule) |
-| Euroleague | 2026/27 | 20 | 38 | Tabla general: 1–6 playoffs y 7–10 Play-In. Sin permanencia ni objetivo internacional; unidad de cálculo: victoria. | [Fuente 1](https://mediacentre.euroleague.net/en/app/2/communication/communication/preview/24407) |
-| MLB | 2026 | 30 | 162 | Por liga: tres campeones divisionales y tres Wild Cards. Sin corte global 1–6. Porcentajes y selección compuesta pendientes de soporte. | [Fuente 1](https://www.mlb.com/news/mlb-playoff-format-faq) |
-| NFL | 2026 | 32 | 17 | Por conferencia: cuatro campeones divisionales y tres Wild Cards. Sin corte global 1–7. Porcentajes y selección compuesta pendientes de soporte; empate 0.5. | [Fuente 1](https://operations.nfl.com/media/nppjkdp1/2023-record-and-fact-book.pdf) |
-| SHL | 2026/27 | 14 | 52 | 1–6 cuartos; 7–10 ronda previa; 13–14 permanencia, seguro 12. CHL pendiente. | [Fuente 1](https://www.swehockey.se/toppnyheter/het-premiaerloerdag-foer-shl/) · [Fuente 2](https://www.chl.hockey/en/about-us/chl-format) |
-| Liiga | 2026/27 | 17 | 64 | 1–12 playoffs; accesos internos pendientes. 13–16 permanencia y 17 descenso; seguro 12. CHL pendiente. | [Fuente 1](https://hc.tps.fi/fi-fi/article/uutiset/liiga-tiedottaa-uusi-1410-mallinen-sarjamuoto-kaynnistyy-kaudella-202728/1573/) · [Fuente 2](https://www.chl.hockey/en/about-us/chl-format) |
-| NHL | 2026/27 | 32 | 84 | tres primeros por división y dos Wild Cards por conferencia. Sin permanencia ni internacional. Wild Cards sin soporte; 84 partidos. | [Fuente 1](https://www.nhl.com/news/nhl-stats-pack-2026-27-regular-season-schedule) · [Fuente 2](https://www.nhl.com/info/standings-info/playoff-format) |
-
-Argentina conserva separados los alcances: torneo de 16 partidos y tabla de grupo para fase; acumulado anual de 32 partidos para clasificación internacional y un descenso; registro multitemporada para promedios. El descendido por promedios se excluye al resolver el descenso anual. Ninguna de estas fronteras se deduce de los últimos puestos de un grupo.
-
-Las reglas de acceso internacional europeo obtenidas en 2026/27 apuntan a 2027/28; la lista de acceso de la temporada en curso no determina automáticamente esas plazas. Brasil conserva expresamente la selección de seis elegibles para Sudamericana. Las reasignaciones, campeones y exclusiones siguen pendientes.
-
-Las identidades incorporadas se comprobaron mediante consulta de solo lectura a `competitions`: Portugal, canónica 261, SofaScore 238/52; Argentina Apertura, canónica 2476, SofaScore 155/143625; Clausura, canónica 310, SofaScore 155/156467. No se habilitan competiciones comentadas por tener un perfil.
+Los 25 perfiles se conservan en `competition_profiles.py`. La migración de vocabulario mantiene todos los rangos, cupos, tamaños, puntuaciones y temporadas de referencia actuales. No certifica su exactitud deportiva. Se retiraron las fuentes anteriores y la investigación de fronteras queda para una revisión posterior del vocabulario.
 
 ## Cálculo y diagnósticos de M5
 
@@ -72,7 +43,7 @@ Una zona confirmada de permanencia se selecciona antes de las reglas internacion
 | `MISSING_RANKING_GROUP` / `INCOMPLETE_RANKING_GROUP` | No se identifica la tabla de grupo/división/conferencia o no tiene la población prevista con rangos compatibles. |
 | `UNSUPPORTED_AGGREGATION_SCOPE` | La regla configurada exige otra tabla temporal que M5 no puede calcular. |
 
-Los regímenes y el diagnóstico por equipo se conservan en `raw`, junto con la regla seleccionada, las fuentes, la temporada, la unidad y el estado. `NO_APPLICABLE_OBJECTIVE` con estado `ACTIVE` distingue presión calculada cero de información insuficiente.
+Los regímenes y el diagnóstico por equipo se conservan en `raw`, junto con la regla seleccionada, la temporada, la unidad y el estado. `NO_APPLICABLE_OBJECTIVE` con estado `ACTIVE` distingue presión calculada cero de información insuficiente.
 
 ## Límites y mantenimiento
 
@@ -96,10 +67,32 @@ La comprobación se realizó leyendo los JSON existentes, resolviendo un context
 
 `ScoringRules` define una sola vez los puntos de victoria regular, victoria en prórroga, empate, derrota en prórroga y derrota regular. La tabla general y las minitablas de desempate usan `scoring.points(stats)`; M5 usa `scoring.maximum_per_game` para el horizonte restante. No existe otro `points_per_win` configurable. El campo de diagnóstico de M5 conserva ese nombre como resultado derivado.
 
-`standings` contiene una política propia de la competición, con métrica principal, criterios ordenados, fuentes y confirmaciones pendientes. La puntuación se mantiene separada. Las políticas pueden distinguir tablas provisionales y finales y ejecutar minitablas o los procedimientos de NBA, MLB y NFL. `grouping_method` selecciona tabla general, conferencia, liga, división o grupo, y determina si el contexto describe una tabla única o varias. No hay un interruptor global que cambie esa agrupación.
+`standings` contiene una política propia de la competición, con métrica principal, criterios ordenados y confirmaciones pendientes. La puntuación se mantiene separada. Las políticas pueden distinguir tablas provisionales y finales y ejecutar minitablas o los procedimientos de NBA, MLB y NFL. `grouping_method` selecciona tabla general, conferencia, liga, división o grupo, y determina si el contexto describe una tabla única o varias. No hay un interruptor global que cambie esa agrupación.
 
 Ejemplo Serie A: el perfil 88 utiliza `FOOTBALL_SCORING` y la política `SERIE_A`. Una victoria y un empate producen 4 puntos tanto en la tabla general como en una minitabla. Tres partidos restantes representan un máximo de 9 puntos para M5. Cambiar la puntuación compartida cambia los tres cálculos; cambiar el orden de desempate no cambia cuántos puntos concede una victoria.
 
-Los perfiles de MLS (76), AHL (554) y CBA (174) se detallan en `docs/pillars/mls-ahl-cba-profiles.md`, incluyendo sus fuentes y verificaciones pendientes. WNBA (145) y PFL (5151) conservan objetivos sin configurar (`objectives=None`), que no equivalen a objetivos ausentes.
+M5 calcula los partidos y puntos restantes por participante, utilizando sus propios partidos jugados. El avance global de la liga solo determina la ventana de temporada madura; un tercero que haya terminado su calendario no cierra la ventana de ambos participantes. Los diagnósticos `games_remaining` y `max_points_remaining` contienen las claves `home` y `away`, y cada equipo incluye también sus propios valores.
+
+El flujo propaga `debug_mode` al motor de tablas como `send_debug_standings`. Cuando está activo, la tabla se escribe en el log tanto en cálculos nuevos como en lecturas de caché. Este reporte del motor no envía mensajes de Telegram.
+
+Todos los perfiles comparten los tipos de `rule_terms.py`. PFL conserva `objectives=None`; WNBA conserva sus reglas actuales hasta la revisión deportiva. Ninguna de estas decisiones implica validar sus fronteras.
 
 La agrupación argentina está declarada como grupos. Si los datos no permiten asignar un equipo a su grupo, queda identificado como `UNKNOWN`; no se inventa su pertenencia. M5 exige los grupos y poblaciones correctos para operar. Porcentajes, promedios y Wild Cards siguen teniendo las limitaciones de cálculo documentadas.
+
+## Identidades y términos canónicos
+
+[`competition_ids.py`](../../modules/competition/competition_ids.py) reúne referencias legibles a `competitions.competition_id` y sus nombres. Distingue registros generales y de previa: una clasificación a la previa usa el ID de esa fila, no un ID del proveedor. Los perfiles y el seguimiento usan estas constantes; la pertenencia a seguimiento sigue siendo independiente.
+
+[`rule_terms.py`](../../modules/competition/rule_terms.py) documenta los campos y el vocabulario general: objetivos, vías, estados, selección, ámbitos, agrupación y métrica. `CompetitionStage` contiene únicamente `PLAYOFFS` y `PLAY_IN`. Cuartos, octavos, primera ronda y nombres comerciales se describen en `note` y no se interpretan para calcular resultados.
+
+`target` se eliminó. `COMPETITION_QUALIFICATION` usa `destination_competition_id`, sin fase interna; `STAGE_QUALIFICATION` usa `destination_stage`, sin competición externa; `DIVISION_RETENTION` no usa ninguno. Las dataclasses rechazan combinaciones contradictorias, vías incompatibles y reglas configuradas por rango sin puestos.
+
+`destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
+
+Una previa de Champions se configura con `competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION` y `QualificationPath.QUALIFYING_ROUND`. El ID identifica la fila concreta; la vía conserva el significado deportivo general. Acceder al propio Play-In usa fase `PLAY_IN` y vía `DIRECT`.
+
+Una vía desconocida se representa con `None` únicamente en una regla `PENDING`. También puede faltar el ID de destino en una clasificación externa pendiente cuando no exista una fila general apropiada. No se sustituye por el ID de un grupo o de eliminatorias: el comentario y la nota registran qué identidad falta. Las otras reglas configuradas necesitan un ID positivo de destino.
+
+Las referencias generales de AFC Champions League Two, Libertadores, Sudamericana y FIBA Intercontinental Cup quedaron pendientes porque el catálogo consultado solo contiene filas de grupos, previas o eliminatorias. Se conserva la previa de Libertadores mediante su ID específico. Este ajuste no modifica los rangos ni las cuotas; tres reglas previamente configuradas pasan a pendientes por la identidad ausente.
+
+El catálogo construye `CompetitionRules` directamente. Los constructores de objetivos completan tipo y puesto de referencia. El constructor externo se llama `create_competition_qualification_rule`; no hay un wrapper para generar tuplas de reglas pendientes. Copa del Rey de fútbol (448) y EFL Cup (391) quedan identificadas para definir sus asignaciones después de investigar las condiciones deportivas. No se implementa una política de reasignación supuesta.

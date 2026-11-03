@@ -1,6 +1,6 @@
-"""Competition provider identities and historical collection scopes.
+"""Competition provider identities and collection policy.
 
-This catalogue owns provider identities and historical collection scopes.
+This catalogue owns provider identities and collection policy.
 Scoring, grouping and current sporting facts are configured separately
 in competition_profiles.py; tracking remains in tracked_competitions.py.
 """
@@ -8,7 +8,7 @@ in competition_profiles.py; tracking remains in tracked_competitions.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,75 +18,22 @@ class CompetitionIdentity:
     source_unique_tournament_id: int
     source_tournament_id: Optional[int] = None
 
-    def matches(
-        self,
-        source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int] = None,
-    ) -> bool:
-        if source_unique_tournament_id is None:
-            return False
-        if int(source_unique_tournament_id) != int(self.source_unique_tournament_id):
-            return False
-        if self.source_tournament_id is None:
-            return True
-        if source_tournament_id is None:
-            return False
-        return int(source_tournament_id) == int(self.source_tournament_id)
-
-
-@dataclass(frozen=True, slots=True)
-class CollectedSeasonBundle:
-    """A collected season scope that may span multiple related season ids."""
-
-    canonical_season_id: int
-    included_season_ids: Tuple[int, ...]
-    included_competition_identities: Tuple[CompetitionIdentity, ...]
-
-    def includes_season(self, season_id: Optional[int]) -> bool:
-        return season_id is not None and int(season_id) in self.included_season_ids
-
-    def matches_competition(
-        self,
-        source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int] = None,
-    ) -> bool:
-        if not self.included_competition_identities:
-            return True
-        return any(
-            identity.matches(source_unique_tournament_id, source_tournament_id)
-            for identity in self.included_competition_identities
-        )
-
 
 @dataclass(frozen=True, slots=True)
 class CompetitionHistoryConfig:
-    """Provider identities and historical collection scopes only."""
+    """Provider identity and collection policy only."""
 
     code: str
     display_name: str
     primary_identity: CompetitionIdentity
     collected: bool
-    season_bundles: Tuple[CollectedSeasonBundle, ...] = ()
-
-
-def _bundle(
-    canonical_season_id: int,
-    included_season_ids: Iterable[int],
-    competition_identities: Tuple[CompetitionIdentity, ...] = (),
-) -> CollectedSeasonBundle:
-    return CollectedSeasonBundle(
-        canonical_season_id=canonical_season_id,
-        included_season_ids=tuple(int(season_id) for season_id in included_season_ids),
-        included_competition_identities=competition_identities,
-    )
 
 
 # ---------------------------------------------------------------------------
 # Competition history configurations
 # ---------------------------------------------------------------------------
 
-# NBA special bundles use season ids only. The regular case falls back to the
-# current event season_id dynamically.
+# Collection uses the season_id supplied by each event.
 
 NBA_CONFIG = CompetitionHistoryConfig(
     code="nba",
@@ -148,7 +95,6 @@ NHL_CONFIG = CompetitionHistoryConfig(
     collected=True,
 )
 
-# TODO: Final title/relegation playoff exceptions are not modeled yet.
 SERIE_A_CONFIG = CompetitionHistoryConfig(
     code="serie_a",
     display_name="Serie A",
@@ -301,8 +247,6 @@ EUROLEAGUE_CONFIG = CompetitionHistoryConfig(
     collected=True,
 )
 
-# Liiga uses 3-2-1-0. Official last-resort H2H / even-strength H2H goals
-# after regulation wins, goal difference, and goals for are not modeled.
 LIIGA_CONFIG = CompetitionHistoryConfig(
     code="liiga",
     display_name="Liiga",
@@ -379,56 +323,6 @@ def get_competition_history_config(
     return configs[0]
 
 
-def get_collected_season_bundle(
-    source_unique_tournament_id: Optional[int],
-    source_tournament_id: Optional[int],
-    season_id: Optional[int],
-) -> Optional[CollectedSeasonBundle]:
-    if season_id is None:
-        return None
-
-    history_config = get_competition_history_config(source_unique_tournament_id, source_tournament_id)
-    if history_config is None or not history_config.collected:
-        return None
-
-    # Special bundles only cover exceptional multi-season scopes.
-    # The normal case falls back to the event's own season_id.
-    for bundle in history_config.season_bundles:
-        if bundle.includes_season(season_id) and bundle.matches_competition(
-            source_unique_tournament_id,
-            source_tournament_id,
-        ):
-            return bundle
-
-    return CollectedSeasonBundle(
-        canonical_season_id=int(season_id),
-        included_season_ids=(int(season_id),),
-        included_competition_identities=(),
-    )
-
-
-def get_included_season_ids(
-    source_unique_tournament_id: Optional[int],
-    source_tournament_id: Optional[int],
-    season_id: Optional[int],
-) -> Tuple[int, ...]:
-    bundle = get_collected_season_bundle(source_unique_tournament_id, source_tournament_id, season_id)
-    if bundle is None:
-        return (int(season_id),) if season_id is not None else ()
-    return bundle.included_season_ids
-
-
-def get_canonical_season_id(
-    source_unique_tournament_id: Optional[int],
-    source_tournament_id: Optional[int],
-    season_id: Optional[int],
-) -> int:
-    bundle = get_collected_season_bundle(source_unique_tournament_id, source_tournament_id, season_id)
-    if bundle is None:
-        return int(season_id) if season_id is not None else 0
-    return bundle.canonical_season_id
-
-
 def is_collected_competition_scope(
     source_unique_tournament_id: Optional[int],
     source_tournament_id: Optional[int],
@@ -439,12 +333,8 @@ def is_collected_competition_scope(
 
 
 __all__ = [
-    "CollectedSeasonBundle",
     "CompetitionIdentity",
     "CompetitionHistoryConfig",
-    "get_canonical_season_id",
-    "get_collected_season_bundle",
-    "get_included_season_ids",
     "get_competition_history_config",
     "is_collected_competition_scope",
 ]

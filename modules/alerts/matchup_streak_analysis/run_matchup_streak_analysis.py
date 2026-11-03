@@ -95,7 +95,6 @@ class MatchupStreakContext:
     # {
     #   "source": "db_standings_calculator",
     #   "season_id": int,
-    #   "canonical_season_id": int,
     #   "cutoff_timestamp": float,
     #   "cutoff_rule": "starts_at < cutoff_dt",
     #   "sport": str,
@@ -444,7 +443,9 @@ def build_matchup_streak_context(
                     sport=sport,
                     source_unique_tournament_id=source_unique_tournament_id,
                     source_tournament_id=source_tournament_id,
-                    send_debug_standings=False,
+                    competition_id=resolved_competition_id,
+                    season_year=target_season_year,
+                    send_debug_standings=debug_mode,
                 )
                 bundle_status = standings_bundle.get("status")
                 bundle_error = standings_bundle.get("error")

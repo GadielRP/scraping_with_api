@@ -78,8 +78,8 @@ def test_mls_direct_and_wild_card_match_use_the_correct_conference():
             table[name] = dict(rank=rank, points=100-rank*2, games_played=30, conference=conference)
     result = _calculate_m5(SimpleNamespace(current_standings=table), _resolved_event(76))
     assert result.raw["m5_status"] == "ACTIVE"
-    assert result.raw["home"]["objective_rule"]["target"] == "ROUND_ONE_BEST_OF_THREE"
-    assert result.raw["away"]["objective_rule"]["target"] == "WILD_CARD_MATCH"
+    assert result.raw["home"]["objective_rule"]["destination_stage"] == "PLAYOFFS"
+    assert result.raw["away"]["objective_rule"]["destination_stage"] == "PLAY_IN"
 
 
 def test_cba_declared_retention_does_not_bypass_percentage_calculation_limit():

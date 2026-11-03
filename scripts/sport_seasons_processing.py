@@ -22,7 +22,6 @@ event_source_mappings.source_event_id for source='sofascore'.
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_id
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
-from modules.competition.competition_history_config import get_included_season_ids
 from infrastructure.persistence.repositories import (
     EventRepository,
     EventSourceMappingRepository,
@@ -152,17 +151,6 @@ def describe_event_status(raw_event: Dict) -> str:
     status_type = status.get("type")
     description = status.get("description")
     return f"code={code}, type={status_type}, description={description}"
-
-
-def get_processing_season_ids(source_unique_tournament_id: int, season_id: int) -> tuple[int, ...]:
-    included_season_ids = get_included_season_ids(
-        source_unique_tournament_id=source_unique_tournament_id,
-        source_tournament_id=None,
-        season_id=season_id,
-    )
-    if not included_season_ids:
-        return (int(season_id),)
-    return tuple(int(value) for value in included_season_ids)
 
 
 def get_existing_season_event_ids_from_db(season_ids: tuple[int, ...]) -> set[int]:
@@ -375,31 +363,8 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     logger.info("=" * 80)
 
     # In this script, tournament_id is the SofaScore uniqueTournament.id used by /unique-tournament/{id}/...
-    processing_season_ids = get_processing_season_ids(
-        source_unique_tournament_id=tournament_id,
-        season_id=season_id,
-    )
-    logger.info(
-        "Season scope resolved: requested season_id=%s | processing_season_ids=%s",
-        season_id,
-        processing_season_ids,
-    )
-
-    # Step 1: Fetch all events for every included season in the bundle.
-    events = []
-    for scoped_season_id in processing_season_ids:
-        logger.info(
-            "Fetching events for scoped season_id=%s under unique_tournament_id=%s",
-            scoped_season_id,
-            tournament_id,
-        )
-        scoped_events = fetch_season_events(tournament_id, scoped_season_id)
-        logger.info(
-            "Fetched %s entries for scoped season_id=%s",
-            len(scoped_events),
-            scoped_season_id,
-        )
-        events.extend(scoped_events)
+    processing_season_ids = (int(season_id),)
+    events = fetch_season_events(tournament_id, season_id)
 
     if not events:
         logger.warning(f"No events found for tournament {tournament_id}, season {season_id}")

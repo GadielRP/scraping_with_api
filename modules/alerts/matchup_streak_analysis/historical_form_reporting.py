@@ -18,7 +18,7 @@ _GROUP_ORDER = {
 }
 
 
-def _format_standing_line(team_name: str, stats: Dict, standings_method: str = None) -> str:
+def _format_standing_line(team_name: str, stats: Dict) -> str:
     """Format a single standings row using canonical fields."""
     pos = stats.get("rank") or "?"
     pts = stats.get("points", 0)
@@ -55,7 +55,6 @@ def _group_sort_key(group_name: str) -> tuple:
 def format_standings_table_for_telegram(
     standings: Dict[str, Dict],
     title: str,
-    standings_method: str = None,
 ) -> str:
     """Format standings data into a Telegram-friendly table."""
     message = f"STANDINGS: <b>{title}</b>\n\n"
@@ -64,7 +63,7 @@ def format_standings_table_for_telegram(
     if not has_groups:
         sorted_standings = sorted(standings.items(), key=lambda item: item[1].get("rank") or 999)
         for team_name, stats in sorted_standings:
-            message += _format_standing_line(team_name, stats, standings_method) + "\n"
+            message += _format_standing_line(team_name, stats) + "\n"
         return message
 
     grouped_standings: Dict[str, List[tuple]] = {}
@@ -79,7 +78,7 @@ def format_standings_table_for_telegram(
             key=lambda item: item[1].get("rank") or 999,
         )
         for team_name, stats in sorted_group:
-            message += _format_standing_line(team_name, stats, standings_method) + "\n"
+            message += _format_standing_line(team_name, stats) + "\n"
         message += "\n"
 
     return message
