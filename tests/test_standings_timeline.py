@@ -6,6 +6,11 @@ The timeline must return exactly the same standings that per-cutoff
 calculate_standings_at() calls would, while issuing a single league fetch.
 """
 
+import importlib
+import logging
+
+import pytest
+
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -13,6 +18,10 @@ from types import SimpleNamespace
 from modules.alerts.matchup_streak_analysis import standings_engine as se
 from modules.alerts.matchup_streak_analysis.historical_form_service import (
     HistoricalFormService,
+)
+from modules.pillars.pillar_1_team_structure.module_7.opponent_expectation_engine import (
+    _extract_opponent_rank,
+    calculate_m7_opponent_expectation_engine,
 )
 
 SEASON_ID = 90210
@@ -95,7 +104,7 @@ def test_timeline_matches_per_cutoff_standings_with_single_fetch(monkeypatch):
     cutoffs = [row.starts_at.timestamp() for row in league_rows]
     cutoffs.append((SEASON_START + timedelta(days=30)).timestamp())
 
-    # Baseline: the legacy per-cutoff path issues one league fetch per cutoff.
+    # Independent cutoff requests each issue one league fetch.
     per_cutoff_calculator = se.HistoricalStandingsCalculator()
     expected = {
         cutoff: per_cutoff_calculator.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
@@ -180,11 +189,59 @@ def test_get_team_form_from_db_uses_constant_league_fetches(monkeypatch):
     for result in results:
         cutoff = float(result["startTimestamp"])
         standings = reference.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
-        expected_own = (standings.get("Hawks") or {}).get("rank") or 0
-        expected_opp = (standings.get(result["opponent_name"]) or {}).get("rank") or 0
+        expected_own = (standings.get("Hawks") or {}).get("rank")
+        expected_opp = (standings.get(result["opponent_name"]) or {}).get("rank")
         assert result["own_ranking"] == expected_own
         assert result["opponent_ranking"] == expected_opp
         assert result["team_standing"]["standings_method"] == "CBA"
+        assert result["standings_as_of_timestamp"] == cutoff
+
+
+def test_unresolved_historical_rank_stays_missing_and_aborts_m7(caplog):
+    row = _make_row(21139, 9, "Villarreal", "Valencia", 2, 0, "1")
+    cutoff = row.starts_at.timestamp()
+    result = HistoricalFormService._build_form_result(
+        row,
+        "Villarreal",
+        {cutoff: {"Valencia": {
+            "rank": None,
+            "ranking_status": "UNRESOLVED",
+            "ranking_reason": "MISSING_DISCIPLINARY_RECORD",
+        }}},
+        "LALIGA",
+    )
+    assert result["opponent_ranking"] is None
+    assert result["opponent_standing"]["ranking_reason"] == "MISSING_DISCIPLINARY_RECORD"
+
+    result["opponent_current_rank"] = 12
+    result["opponent_final_real_ranking"] = 12
+    earlier = dict(result, event_id=1, startTimestamp=cutoff - 86400)
+    analysis = SimpleNamespace(
+        home_team_results=[result, earlier], away_team_results=[],
+        current_standings={"Valencia": {"rank": 12}},
+    )
+    event = SimpleNamespace(
+        event_id=21080, participants_label="Villarreal vs Sevilla",
+        home_team_name="Villarreal", away_team_name="Sevilla",
+    )
+    competition = SimpleNamespace(number_of_teams=20)
+    with caplog.at_level(logging.ERROR), pytest.raises(ValueError, match="M7 aborted: missing historical opponent rank"):
+        calculate_m7_opponent_expectation_engine(analysis, event, competition)
+    assert "event_id=21139" in caplog.text
+    assert "MISSING_DISCIPLINARY_RECORD" in caplog.text
+
+
+def test_m7_requires_a_rank_from_the_same_game_cutoff():
+    game = {
+        "startTimestamp": 200.0,
+        "standings_as_of_timestamp": 200.0,
+        "opponent_standing": {"rank": 14, "ranking_status": "RESOLVED"},
+        "opponent_ranking": 12,
+        "opponent_current_rank": 12,
+    }
+    assert _extract_opponent_rank(game, max_rank=20) == (14, "game.opponent_standing.rank")
+    game["standings_as_of_timestamp"] = 300.0
+    assert _extract_opponent_rank(game, max_rank=20) == (None, None)
 
 
 def test_get_team_form_from_db_filters_exclude_and_future_events(monkeypatch):
@@ -207,3 +264,29 @@ def test_get_team_form_from_db_filters_exclude_and_future_events(monkeypatch):
     )
 
     assert [r["event_id"] for r in results] == [6, 1]
+
+
+@pytest.mark.parametrize("debug_mode", [False, True])
+def test_matchup_orchestrator_passes_competition_and_debug_to_standings(monkeypatch, caplog, debug_mode):
+    runner = importlib.import_module("modules.alerts.matchup_streak_analysis.run_matchup_streak_analysis")
+    fake_db = _FakeDb(_make_league_rows())
+    monkeypatch.setattr(se.db_manager, "get_session", fake_db.get_session)
+    monkeypatch.setattr(runner, "standings_calculator", se.HistoricalStandingsCalculator())
+    with caplog.at_level(logging.INFO, logger=se.__name__):
+        for _ in range(2):  # Both a fresh calculation and a cache hit respect debug_mode.
+            result = runner.build_matchup_streak_context(
+                event_id=99, event_custom_id="test", event_start_time=SEASON_START + timedelta(days=9),
+                sport="Basketball", discovery_source="test", source_unique_tournament_id=1562,
+                source_tournament_id=None, competition_name="CBA", competition_slug="cba",
+                season_id=SEASON_ID, season_name="2026", season_year=2026,
+                participants="Hawks vs Bulls", home_team_name="Hawks", away_team_name="Bulls",
+                matchup_events=[], minutes_until_start=5,
+                competition_context=SimpleNamespace(competition_id=174), debug_mode=debug_mode,
+            )
+            assert result is not None
+            assert result.current_standings["Hawks"]["games_played"] == 4
+    standings_logs = [r for r in caplog.records if r.name == se.__name__ and "STANDINGS:" in r.message]
+    assert len(standings_logs) == (2 if debug_mode else 0)
+    assert len(fake_db.execute_calls) == 1
+    assert fake_db.execute_calls[0][1]["competition_id"] == 174
+    assert fake_db.execute_calls[0][1]["season_year"] == 2026

@@ -168,31 +168,6 @@ def _extract_timestamp_value(game: Dict[str, Any]) -> Optional[float]:
     return None
 
 
-def _extract_rank_from_record(record: Any) -> Optional[int]:
-    direct_rank = _coerce_int(record)
-    if direct_rank is not None and direct_rank > 0:
-        return direct_rank
-    if not isinstance(record, dict):
-        return None
-    for key in (
-        "rank",
-        "position",
-        "current_rank",
-        "standing_rank",
-        "ranking",
-        "final_real_ranking",
-        "final_real_rank",
-        "real_ranking",
-        "sofascore_rank",
-    ):
-        rank = _coerce_int(record.get(key))
-        if rank is not None and rank > 0:
-            return rank
-    return None
-
-
-
-
 def _resolve_max_rank(
     streak_analysis: Any,
     competition_context: CompetitionContext,
@@ -234,23 +209,6 @@ def _extract_own_rank(game: Dict[str, Any]) -> Tuple[Optional[int], Optional[str
             return rank, "game.team_standing.position"
 
     return None, None
-
-
-def _normalize_team_name(value: Any) -> str:
-    return str(value).strip().casefold()
-
-
-def _standing_name_matches(standing_key: Any, standing_value: Any, opponent_name: str) -> bool:
-    normalized_opponent = _normalize_team_name(opponent_name)
-    if normalized_opponent and _normalize_team_name(standing_key) == normalized_opponent:
-        return True
-    if not isinstance(standing_value, dict):
-        return False
-    for name_key in ("name", "teamName", "team_name", "short_name", "display_name"):
-        name_value = standing_value.get(name_key)
-        if name_value is not None and _normalize_team_name(name_value) == normalized_opponent:
-            return True
-    return False
 
 
 def _filter_initial_season_games(
@@ -302,83 +260,31 @@ def _filter_initial_season_games(
     return filtered_results, filtered_out_games
 
 
-def _extract_rank_from_current_standings(
-    opponent_name: Optional[str],
-    current_standings: Optional[Dict[str, Dict[str, Any]]],
-) -> Optional[int]:
-    if not opponent_name or not isinstance(current_standings, dict):
-        return None
-
-    direct_record = current_standings.get(opponent_name)
-    direct_rank = _extract_rank_from_record(direct_record)
-    if direct_rank is not None:
-        return direct_rank
-
-    for key, value in current_standings.items():
-        if _standing_name_matches(key, value, opponent_name):
-            rank = _extract_rank_from_record(value)
-            if rank is not None:
-                return rank
-    return None
-
-
 def _extract_opponent_rank(
     game: Dict[str, Any],
-    current_standings: Optional[Dict[str, Dict[str, Any]]] = None,
     max_rank: Optional[int] = None,
     team_label: str = "",
     game_index: int = 0,
     debug_mode: bool = False,
 ) -> Tuple[Optional[int], Optional[str]]:
-    """Extract opponent ranking using the explicitly resolved competition size."""
+    """Use only the standings snapshot computed before this historical game."""
     if max_rank is None or max_rank <= 1:
         return None, None
-    rank = _coerce_int(game.get("opponent_ranking"))
-    if rank is not None and 1 <= rank <= max_rank:
-        if debug_mode:
-            _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_ranking = %d", team_label, game_index, rank)
-        return rank, "game.opponent_ranking"
 
     opponent_standing = game.get("opponent_standing")
-    if isinstance(opponent_standing, dict):
+    game_timestamp = _extract_timestamp_value(game)
+    snapshot_timestamp = _coerce_float(game.get("standings_as_of_timestamp"))
+    if (
+        isinstance(opponent_standing, dict)
+        and opponent_standing.get("ranking_status") != "UNRESOLVED"
+        and game_timestamp is not None
+        and snapshot_timestamp == game_timestamp
+    ):
         rank = _coerce_int(opponent_standing.get("rank"))
         if rank is not None and 1 <= rank <= max_rank:
             if debug_mode:
-                _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_standing.rank = %d", team_label, game_index, rank)
+                _debug_line("    [%s][%d] Rank histórico del rival: %d", team_label, game_index, rank)
             return rank, "game.opponent_standing.rank"
-        rank = _coerce_int(opponent_standing.get("position"))
-        if rank is not None and 1 <= rank <= max_rank:
-            if debug_mode:
-                _debug_line("    [%s][%d] Rank del rival encontrado en: game.opponent_standing.position = %d", team_label, game_index, rank)
-            return rank, "game.opponent_standing.position"
-
-    for key in (
-        "opponent_rank",
-        "opponent_current_rank",
-        "opponent_standing_rank",
-        "opponent_position",
-        "opponent_final_real_ranking",
-        "opponent_final_real_rank",
-        "opponent_real_ranking",
-        "opponent_sofascore_rank",
-        "rival_rank",
-        "rival_position",
-    ):
-        rank = _coerce_int(game.get(key))
-        if rank is not None and 1 <= rank <= max_rank:
-            if debug_mode:
-                _debug_line("    [%s][%d] Rank del rival encontrado en: game.%s = %d", team_label, game_index, key, rank)
-            return rank, f"game.{key}"
-
-    opponent_name = _extract_opponent_name(game)
-    standing_rank = _extract_rank_from_current_standings(opponent_name, current_standings)
-    if standing_rank is not None and 1 <= standing_rank <= max_rank:
-        if debug_mode:
-            _debug_line("    [%s][%d] Rank del rival encontrado buscando por nombre '%s' en standings: %d", team_label, game_index, opponent_name, standing_rank)
-        return standing_rank, "current_standings.by_name.rank"
-    
-    if debug_mode:
-        _debug_line("    [%s][%d] Rank del rival NO pudo ser resuelto para '%s'", team_label, game_index, opponent_name)
     return None, None
 
 
@@ -460,7 +366,6 @@ def _skipped_game(index: int, team_label: str, reason: str, game: Any) -> Dict[s
 
 def _build_team_context_series(
     results: List[Dict[str, Any]],
-    current_standings: Optional[Dict[str, Dict[str, Any]]],
     max_rank: int,
     team_label: str,
     debug_mode: bool = False,
@@ -496,13 +401,18 @@ def _build_team_context_series(
         game_gd = goals_for - goals_against
         
         opponent_rank, opponent_rank_source = _extract_opponent_rank(
-            game, current_standings, max_rank, team_label, index + 1, debug_mode
+            game, max_rank, team_label, index + 1, debug_mode
         )
         if opponent_rank is None:
-            skipped_games.append(_skipped_game(index, team_label, "missing_opponent_rank", game))
-            if debug_mode:
-                _debug_line("    -> Omitido: ranking del rival no encontrado (missing_opponent_rank)")
-            continue
+            standing = game.get("opponent_standing") or {}
+            reason = standing.get("ranking_reason") or "NO_VALID_HISTORICAL_RANK"
+            message = (
+                f"M7 aborted: missing historical opponent rank; event_id={game.get('event_id')} "
+                f"team={team_label} opponent={opp_name} game_date={_format_timestamp(ts)} "
+                f"reason={reason} standings_as_of_timestamp={game.get('standings_as_of_timestamp')}"
+            )
+            logger.error(message)
+            raise ValueError(message)
 
         opp_strength = _calculate_opponent_strength(opponent_rank, max_rank)
         if opp_strength is None:
@@ -658,7 +568,6 @@ def calculate_m7_opponent_expectation_engine(
     away_team = event_identity.away_team_name
     home_results = getattr(streak_analysis, "home_team_results", None) or []
     away_results = getattr(streak_analysis, "away_team_results", None) or []
-    current_standings = getattr(streak_analysis, "current_standings", None)
     initial_games_to_skip = _INITIAL_SEASON_GAMES_TO_SKIP
 
     if debug_mode:
@@ -717,14 +626,12 @@ def calculate_m7_opponent_expectation_engine(
 
     home_series, home_skipped = _build_team_context_series(
         home_results_filtered,
-        current_standings,
         max_rank,
         str(home_team or "HOME"),
         debug_mode,
     )
     away_series, away_skipped = _build_team_context_series(
         away_results_filtered,
-        current_standings,
         max_rank,
         str(away_team or "AWAY"),
         debug_mode,

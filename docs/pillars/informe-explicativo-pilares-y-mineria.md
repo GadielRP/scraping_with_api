@@ -301,7 +301,7 @@ Su puntuación completa se conserva. En la agregación de P1, su influencia se a
 
 **Pregunta:** ¿qué coste competitivo tendría no sumar puntos en este momento de la temporada?
 
-M5 utiliza clasificación, puntos, objetivos, posiciones de corte y partidos restantes. Su aplicabilidad actual exige haber disputado al menos el 80% de la temporada regular.
+M5 utiliza clasificación, puntos, objetivos, posiciones de corte y partidos restantes. Su aplicabilidad actual exige haber disputado al menos el 70% de la temporada regular.
 
 Fuera de esa ventana queda inactivo con su motivo. La falta de participación no significa presión cero observada: significa que esta regla contextual no corresponde o no puede aplicarse.
 

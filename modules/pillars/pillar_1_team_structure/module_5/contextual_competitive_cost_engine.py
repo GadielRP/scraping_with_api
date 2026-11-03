@@ -1,6 +1,6 @@
 """M5 - Contextual Competitive Cost Engine.
 
-After at least 80% of the regular season has been played, this module measures
+After at least 70% of the regular season has been played, this module measures
 how expensive it would be competitively not to add points in the current match.
 It does not use recent form, goal difference, odds, H2H, PPG, streaks, or market
 signals.
@@ -20,17 +20,21 @@ from modules.pillars.common import (
     classify_strength,
 )
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
+from modules.competition.rule_terms import (
+    AggregationScope, ObjectiveType, QualificationPath, RankingScope,
+    RuleStatus, SelectionMethod, StandingsMetric,
+)
 from modules.pillars.context import CompetitionContext, EventIdentity
 
 logger = logging.getLogger(__name__)
 
-LATE_SEASON_MIN_COMPLETION_RATIO = 0.80
+LATE_SEASON_MIN_COMPLETION_RATIO = 0.70
 NO_APPLICABLE_OBJECTIVE = "NO_APPLICABLE_OBJECTIVE"
 
 BASE_SEVERITY = {
-    "COMPETITION_QUALIFICATION": 0.70,
-    "STAGE_QUALIFICATION": 0.85,
-    "DIVISION_RETENTION": 1.00,
+    ObjectiveType.COMPETITION_QUALIFICATION: 0.70,
+    ObjectiveType.STAGE_QUALIFICATION: 0.85,
+    ObjectiveType.DIVISION_RETENTION: 1.00,
     NO_APPLICABLE_OBJECTIVE: 0.00,
 }
 
@@ -259,16 +263,14 @@ def _scope_standings(
     standing: Optional[Dict[str, Any]],
     rule: ObjectiveRule,
 ) -> Tuple[Any, Optional[str]]:
-    if rule.ranking_scope == "GLOBAL":
+    if rule.ranking_scope == RankingScope.GLOBAL:
         return current_standings, None
     keys = {
-        "GROUP": ("group",),
-        "CONFERENCE": ("conference", "group"),
-        "DIVISION": ("division",),
-        "LEAGUE": ("league", "group"),
-    }.get(rule.ranking_scope)
-    if keys is None:
-        return None, "UNSUPPORTED_RANKING_SCOPE"
+        RankingScope.GROUP: ("group",),
+        RankingScope.CONFERENCE: ("conference", "group"),
+        RankingScope.DIVISION: ("division",),
+        RankingScope.LEAGUE: ("league", "group"),
+    }[rule.ranking_scope]
     def group_value(record: Any) -> Optional[str]:
         if not isinstance(record, dict):
             return None
@@ -299,9 +301,9 @@ def _resolve_objective_rule(
         return None, current_standings, None
     scope_error = None
     for rule in rules.objectives:
-        if rule.status != "CONFIGURED" or rule.selection_method != "RANK_RANGE":
+        if rule.status != RuleStatus.CONFIGURED or rule.selection_method != SelectionMethod.RANK_RANGE:
             continue
-        if rule.aggregation_scope != "TOURNAMENT":
+        if rule.aggregation_scope != AggregationScope.TOURNAMENT:
             scope_error = "UNSUPPORTED_AGGREGATION_SCOPE"
             continue
         scoped, reason = _scope_standings(current_standings, standing, rule)
@@ -315,11 +317,11 @@ def _resolve_objective_rule(
     if scope_error:
         return None, None, scope_error
     for rule in rules.objectives:
-        if rule.status == "PENDING":
+        if rule.status == RuleStatus.PENDING:
             # Non-tournament tables and reallocations cannot be inferred from
             # the current table, even if its rank falls outside a base range.
             return rule, None, "UNRESOLVED_OBJECTIVE_BOUNDARY"
-        if rule.selection_method != "RANK_RANGE":
+        if rule.selection_method != SelectionMethod.RANK_RANGE:
             return rule, None, "UNSUPPORTED_OBJECTIVE_SELECTION"
     return None, current_standings, scope_error
 
@@ -327,8 +329,8 @@ def _resolve_objective_rule(
 def _determine_regime_state(rule: Optional[ObjectiveRule]) -> str:
     if rule is None:
         return NO_APPLICABLE_OBJECTIVE
-    if rule.objective_type == "DIVISION_RETENTION":
-        return ("RELEGATION_PLAYOFF_POSITION" if rule.qualification_path == "RELEGATION_PLAYOFF"
+    if rule.objective_type == ObjectiveType.DIVISION_RETENTION:
+        return ("RELEGATION_PLAYOFF_POSITION" if rule.qualification_path == QualificationPath.RELEGATION_PLAYOFF
                 else "DIRECT_RELEGATION_POSITION")
     return "QUALIFYING_POSITION"
 
@@ -344,20 +346,20 @@ def _determine_points_cutoff(
     target_rank = rule.reference_rank
     if target_rank is None:
         return None
-    if rule.objective_type != "DIVISION_RETENTION" and team_rank == target_rank:
+    if rule.objective_type != ObjectiveType.DIVISION_RETENTION and team_rank == target_rank:
         target_rank += 1
     standing = _find_nearest_standing_with_points(current_standings, target_rank)
     return _extract_points(standing)
 
 
-def _calculate_gap(objective_type, regime_state, team_points, points_cutoff, max_points_remaining):
+def _calculate_gap(objective_type, team_points, points_cutoff, max_points_remaining):
     if objective_type == NO_APPLICABLE_OBJECTIVE:
         return max_points_remaining
     if team_points is None or points_cutoff is None:
         return None
-    if objective_type == "DIVISION_RETENTION":
+    if objective_type == ObjectiveType.DIVISION_RETENTION:
         return points_cutoff - team_points
-    if objective_type in {"COMPETITION_QUALIFICATION", "STAGE_QUALIFICATION"}:
+    if objective_type in {ObjectiveType.COMPETITION_QUALIFICATION, ObjectiveType.STAGE_QUALIFICATION}:
         return team_points - points_cutoff
     return None
 
@@ -388,6 +390,7 @@ def _build_team_metrics(
     current_standings: Any,
     rules: CompetitionRules,
     n_league: Optional[int],
+    games_remaining: Optional[int],
     max_points_remaining: Optional[float],
     debug_mode: bool = False,
 ) -> Dict[str, Any]:
@@ -403,16 +406,17 @@ def _build_team_metrics(
     regime_multiplier = REGIME_MULTIPLIER.get(regime_state, 0.0)
     points_cutoff = (_determine_points_cutoff(rule, rank, points, scoped_standings)
                      if not rule_reason else None)
-    gap = _calculate_gap(objective_type, regime_state, points, points_cutoff, max_points_remaining)
+    gap = _calculate_gap(objective_type, points, points_cutoff, max_points_remaining)
     urgency_factor, gap_for_urgency, urgency_raw = (
         _calculate_urgency_factor(gap, max_points_remaining) if not rule_reason else (0.0, 0.0, 0.0)
     )
     final_cost = _calculate_final_cost(base_severity, regime_multiplier, urgency_factor)
+    objective_rule = asdict(rule) if rule else None
     if debug_mode:
         _debug_section(f"Métricas del equipo: {team_label} ({team_name})")
         _debug_line("rank=%s points=%s games_played=%s objective_type=%s regime_state=%s reason=%s",
                     rank, points, games_played, objective_type, regime_state, rule_reason)
-        _debug_line("Regla de competición: %s", _fmt(asdict(rule) if rule else None))
+        _debug_line("Regla de competición: %s", _fmt(objective_rule))
         _debug_formula("URGENCY_FACTOR", "clamp(1 - max(gap, 0) / max_points_remaining, 0, 1)",
                        f"gap={gap}, max_points_remaining={max_points_remaining}", urgency_factor)
         _debug_formula("FINAL_COMPETITIVE_COST", "base_severity * regime_multiplier * urgency_factor",
@@ -420,8 +424,9 @@ def _build_team_metrics(
     return {
         "team": team_name, "team_label": team_label,
         "points": points, "rank": rank, "games_played": games_played,
+        "games_remaining": games_remaining, "max_points_remaining": max_points_remaining,
         "objective_type": objective_type, "regime_state": regime_state,
-        "objective_rule": asdict(rule) if rule else None, "rule_reason": rule_reason,
+        "objective_rule": objective_rule, "rule_reason": rule_reason,
         "points_cutoff": points_cutoff, "gap": gap, "gap_for_urgency": gap_for_urgency,
         "urgency_factor": urgency_factor, "urgency_formula_raw": urgency_raw,
         "base_severity": base_severity, "regime_multiplier": regime_multiplier, "final_cost": final_cost,
@@ -449,7 +454,6 @@ def _determine_status(
     home_metrics: Dict[str, Any],
     away_metrics: Dict[str, Any],
     n_league: Optional[int],
-    max_points_remaining: Optional[float],
 ) -> Tuple[str, str]:
     if current_standings is None:
         return "INSUFFICIENT_DATA", "missing_current_standings"
@@ -476,10 +480,9 @@ def _determine_status(
         and away_metrics["points_cutoff"] is None
     ):
         return "INSUFFICIENT_DATA", "missing_points_or_rank"
-    if max_points_remaining is None:
-        return "INSUFFICIENT_DATA", "no_remaining_points_window"
-    if max_points_remaining <= 0:
-        return "INSUFFICIENT_DATA", "no_remaining_points_window"
+    for metrics in (home_metrics, away_metrics):
+        if metrics["max_points_remaining"] is None or metrics["max_points_remaining"] <= 0:
+            return "INSUFFICIENT_DATA", "no_remaining_points_window"
     return "ACTIVE", "active"
 
 
@@ -489,6 +492,8 @@ def _serialize_team_raw(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "points": metrics["points"],
         "rank": metrics["rank"],
         "games_played": metrics["games_played"],
+        "games_remaining": metrics["games_remaining"],
+        "max_points_remaining": metrics["max_points_remaining"],
         "objective_type": metrics["objective_type"],
         "regime_state": metrics["regime_state"],
         "objective_rule": metrics["objective_rule"],
@@ -512,14 +517,15 @@ def _games_played_reference(values: Iterable[Optional[int]]) -> Optional[int]:
 def _determine_season_applicability(
     total_season_games: Optional[int],
     games_played_reference: Optional[int],
+    remaining_by_team: Iterable[Optional[int]],
 ) -> Tuple[str, str, Optional[float]]:
-    """One policy: at least 80% completed, with regular-season games remaining."""
+    """One policy: at least 70% completed, with regular-season games remaining."""
     if total_season_games is None or total_season_games <= 0:
         return "INSUFFICIENT_DATA", "MISSING_TOTAL_SEASON_GAMES", None
     if games_played_reference is None:
         return "INSUFFICIENT_DATA", "MISSING_GAMES_PLAYED", None
     completion_ratio = games_played_reference / total_season_games
-    if games_played_reference >= total_season_games:
+    if all(remaining == 0 for remaining in remaining_by_team):
         return "INACTIVE", "NO_REMAINING_SEASON_GAMES", completion_ratio
     if completion_ratio < LATE_SEASON_MIN_COMPLETION_RATIO:
         return "INACTIVE", "OUTSIDE_LATE_SEASON_WINDOW", completion_ratio
@@ -564,15 +570,19 @@ def calculate_contextual_competitive_cost_engine(
         *(_extract_games_played(standing) for _, standing in _standings_items(current_standings)),
     ])
 
-    games_remaining: Optional[int] = None
-    max_points_remaining: Optional[float] = None
-    if total_season_games is not None and total_season_games > 0 and games_played_reference is not None:
-        games_remaining = max(total_season_games - games_played_reference, 0)
-        if points_per_win is not None:
-            max_points_remaining = float(games_remaining * points_per_win)
+    games_remaining = {
+        side: max(total_season_games - played, 0)
+        if total_season_games is not None and total_season_games > 0 and played is not None else None
+        for side, played in (("home", games_played_home), ("away", games_played_away))
+    }
+    max_points_remaining = {
+        side: float(remaining * points_per_win)
+        if remaining is not None and points_per_win is not None else None
+        for side, remaining in games_remaining.items()
+    }
 
     season_status, season_reason, completion_ratio = _determine_season_applicability(
-        total_season_games, games_played_reference,
+        total_season_games, games_played_reference, games_remaining.values(),
     )
     season_applicable = season_status == "ACTIVE"
     if season_applicable:
@@ -580,7 +590,7 @@ def calculate_contextual_competitive_cost_engine(
             season_status, season_reason = "INSUFFICIENT_DATA", "MISSING_COMPETITION_RULES"
         elif rules.objectives is None:
             season_status, season_reason = "INSUFFICIENT_DATA", "MISSING_OBJECTIVE_RULES"
-        elif rules.ranking_metric not in {"POINTS", "WINS"}:
+        elif rules.standings.primary_metric not in {StandingsMetric.POINTS, StandingsMetric.WINS}:
             season_status, season_reason = "INSUFFICIENT_DATA", "UNSUPPORTED_RANKING_METRIC"
     context_raw = {
         "event_id": event_id,
@@ -594,8 +604,7 @@ def calculate_contextual_competitive_cost_engine(
         "n_league": n_league,
         "points_per_win": points_per_win,
         "rules_reference_season": rules.reference_season if rules else None,
-        "ranking_metric": rules.ranking_metric if rules else None,
-        "rules_source_urls": rules.source_urls if rules else (),
+        "ranking_metric": rules.standings.primary_metric.name if rules else None,
         "total_season_games": total_season_games,
         "games_played_reference": games_played_reference,
         "games_remaining": games_remaining,
@@ -696,7 +705,8 @@ def calculate_contextual_competitive_cost_engine(
         current_standings=current_standings,
         rules=rules,
         n_league=n_league,
-        max_points_remaining=max_points_remaining,
+        games_remaining=games_remaining["home"],
+        max_points_remaining=max_points_remaining["home"],
         debug_mode=debug_mode,
     )
     away_metrics = _build_team_metrics(
@@ -706,7 +716,8 @@ def calculate_contextual_competitive_cost_engine(
         current_standings=current_standings,
         rules=rules,
         n_league=n_league,
-        max_points_remaining=max_points_remaining,
+        games_remaining=games_remaining["away"],
+        max_points_remaining=max_points_remaining["away"],
         debug_mode=debug_mode,
     )
 
@@ -717,7 +728,7 @@ def calculate_contextual_competitive_cost_engine(
         home_metrics=home_metrics,
         away_metrics=away_metrics,
         n_league=n_league,
-        max_points_remaining=max_points_remaining,
+
     )
 
     if debug_mode:
@@ -835,7 +846,7 @@ def calculate_contextual_competitive_cost_engine(
             "m5_edge": "(FINAL_COST_HOME - FINAL_COST_AWAY) / (abs(FINAL_COST_HOME) + abs(FINAL_COST_AWAY))",
         },
         "sealed_rules": [
-            "M5 applies only after at least 80% of the regular season, with games remaining.",
+            "M5 applies only after at least 70% of the regular season, with games remaining.",
             "M5 measures contextual competitive cost.",
             "M5 does not measure emotional motivation.",
             "M5 does not measure team strength.",

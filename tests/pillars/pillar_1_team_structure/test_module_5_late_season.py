@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import replace
 
 from copy import deepcopy
 from dataclasses import replace
@@ -11,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, FOOTBALL_SCORING
+from modules.competition import competition_ids
+from modules.competition.rule_terms import ObjectiveType, QualificationPath
 from modules.competition.standings_policies import LALIGA
 from modules.pillars.common import ModuleResult
 from modules.pillars.mining.adapters.pillar_1 import P1SideMiningAdapter
@@ -31,18 +32,19 @@ def _event(total_games=38):
         event_id=303597,
         participants_label="Valencia vs Real Sociedad",
     )
-    # Explicit equivalent policy protects numerical parity with the old engine.
+    # Explicit policy isolates the calculations from the production catalogue.
     rules = CompetitionRules(
         reference_season="2025", number_of_teams=20,
         total_regular_season_games=total_games or 38,
         scoring=FOOTBALL_SCORING, standings=LALIGA,
         objectives=(
-            ObjectiveRule("COMPETITION_QUALIFICATION", "TEST_COMPETITION", "DIRECT",
+            ObjectiveRule(ObjectiveType.COMPETITION_QUALIFICATION, QualificationPath.DIRECT,
+                          destination_competition_id=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+                          destination_competition_name="UEFA Champions League",
                           rank_start=1, rank_end=7, reference_rank=7),
-            ObjectiveRule("DIVISION_RETENTION", "CURRENT_DIVISION", "DIRECT_RELEGATION",
+            ObjectiveRule(ObjectiveType.DIVISION_RETENTION, QualificationPath.DIRECT_RELEGATION,
                           rank_start=18, rank_end=20, reference_rank=17),
         ),
-        source_urls=("test://equivalent-policy",),
     )
     event.competition = replace(
         event.competition, total_regular_season_games=total_games, competitive_rules=rules,
@@ -140,7 +142,7 @@ def test_valencia_early_season_stops_before_objectives_and_preserves_away_core(m
     assert result.raw["m5_status_reason"] == "OUTSIDE_LATE_SEASON_WINDOW"
     assert result.raw["games_played_reference"] == 7
     assert result.raw["total_season_games"] == 38
-    assert result.raw["games_remaining"] == 31
+    assert result.raw["games_remaining"] == {"home": 32, "away": 32}
     assert result.raw["season_applicability"]["completion_ratio"] == pytest.approx(7 / 38)
     assert result.raw["m5_edge"] is None
     assert result.value == 0
@@ -170,7 +172,7 @@ def test_late_season_boundary_uses_configured_duration(total, played, expected):
     result = _calculate_m5(_analysis(played), _event(total))
     assert result.raw["m5_status"] == expected
     assert result.raw["total_season_games"] == total
-    assert result.raw["games_remaining"] == total - played
+    assert result.raw["games_remaining"] == {"home": total - played, "away": total - played}
     assert result.raw["season_applicability"]["minimum_completion_ratio"] == 0.8
 
 
@@ -267,3 +269,17 @@ def test_joint_side_execution_keeps_other_module_results_and_shared_inputs(monke
     assert m5_unit.is_valid is False
     assert m5_unit.strength == "INACTIVE"
     assert m5_unit.diagnostics["evidence"]["status_reason"] == "OUTSIDE_LATE_SEASON_WINDOW"
+
+
+@pytest.mark.parametrize("other_played", [36, 38])
+def test_remaining_points_use_each_participant_record(other_played):
+    analysis = _analysis(games_played=35)
+    analysis.current_standings["Real Sociedad"]["games_played"] = 34
+    analysis.current_standings["Team 1"]["games_played"] = other_played
+    result = _calculate_m5(analysis)
+    assert result.raw["m5_status"] == "ACTIVE"
+    assert result.raw["home"]["games_remaining"] == 3
+    assert result.raw["home"]["max_points_remaining"] == 9
+    assert result.raw["away"]["games_remaining"] == 4
+    assert result.raw["away"]["max_points_remaining"] == 12
+    assert result.raw["home"]["urgency_factor"] == pytest.approx(1 - 4 / 9)

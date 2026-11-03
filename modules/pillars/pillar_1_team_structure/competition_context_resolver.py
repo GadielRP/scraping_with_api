@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from modules.competition.competition_profiles import get_competition_profile
+from modules.competition.rule_terms import GroupingMethod
 from modules.pillars.context import CompetitionContext, EventIdentity
 
 
@@ -25,6 +26,6 @@ def resolve_p1_competition_context(
         number_of_teams=rules.number_of_teams,
         number_of_teams_source="competition_rules",
         total_regular_season_games=rules.total_regular_season_games,
-        standings_grouping=rules.standings_grouping,
+        standings_grouping="single_table" if rules.grouping_method == GroupingMethod.LEAGUE_WIDE else "split_tables",
         competition_config_source="competition_rules",
     )

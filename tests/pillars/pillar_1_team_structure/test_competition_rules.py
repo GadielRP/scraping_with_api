@@ -1,9 +1,16 @@
-from dataclasses import asdict, replace
+import json
+from dataclasses import FrozenInstanceError, asdict, replace
 from types import SimpleNamespace
 
 import pytest
 
 from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
+from modules.competition import competition_ids
+from modules.competition.competitive_rules import ObjectiveRule
+from modules.competition.rule_terms import (
+    AggregationScope, CompetitionStage, GroupingMethod, ObjectiveType,
+    QualificationPath, RankingScope, RuleStatus, SelectionMethod, StandingsMetric,
+)
 from modules.competition.competition_history_config import get_competition_history_config
 from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDS
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import (
@@ -52,7 +59,8 @@ def test_sporting_profiles_and_operational_allowlist_remain_independent():
     assert TRACKED_COMPETITION_IDS == before
     for config in PROFILES.values():
         rules = config
-        assert rules.source_urls
+        assert isinstance(rules.grouping_method, GroupingMethod)
+        assert isinstance(rules.standings.primary_metric, StandingsMetric)
         assert rules.reference_season in {"2026", "2026/27"}
     assert get_competition_history_config(238, 52).code == "liga_portugal"
     assert get_competition_history_config(155, 143625).code.endswith("argentina_apertura")
@@ -75,11 +83,132 @@ def test_retention_boundaries_are_league_specific(code, teams, games, safe):
     assert {rank for rule in retention for rank in range(rule.rank_start, rule.rank_end + 1)} == set(range(safe + 1, teams + 1))
 
 
-def test_brazil_base_allocations_do_not_invent_effective_sudamericana_range():
+def test_brazil_qualification_destinations_are_pending_until_general_records_exist():
     rules = PROFILES["brasileirao"]
     external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
-    assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 6), (7, 12)]
-    assert all(rule.status == "CONFIGURED" and rule.target_season == "2027" for rule in external)
+    assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 5), (6, 12)]
+    assert [rule.status for rule in external] == [RuleStatus.PENDING, RuleStatus.CONFIGURED, RuleStatus.PENDING]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("objective_type", "STAGE_QUALIFICATON"),
+    ("destination_stage", "UNKNOWN_STAGE"),
+    ("qualification_path", "UNKNOWN_PATH"),
+    ("ranking_scope", "CONFRENCE"),
+    ("aggregation_scope", "YEARLY"),
+    ("status", "CONFIRMED"),
+    ("selection_method", "UNKNOWN_SELECTION"),
+])
+def test_objective_rejects_unknown_terms(field, value):
+    rule = get_competition_profile(176).objectives[0]
+    with pytest.raises(ValueError):
+        replace(rule, **{field: value})
+
+
+def test_canonical_terms_remain_immutable_and_serialize_as_plain_strings():
+    # Deserialized JSON is validated back into canonical enum members.
+    rule = ObjectiveRule(**json.loads(json.dumps(asdict(get_competition_profile(176).objectives[0]))))
+    assert rule.objective_type is ObjectiveType.STAGE_QUALIFICATION
+    assert rule.destination_stage is CompetitionStage.PLAYOFFS
+    assert rule.destination_competition_id is None
+    assert rule.qualification_path is QualificationPath.DIRECT
+    assert rule.ranking_scope is RankingScope.CONFERENCE
+    assert rule.aggregation_scope is AggregationScope.TOURNAMENT
+    assert rule.status is RuleStatus.CONFIGURED
+    assert rule.selection_method is SelectionMethod.RANK_RANGE
+    assert json.loads(json.dumps(asdict(rule)))["destination_stage"] == "PLAYOFFS"
+    with pytest.raises(FrozenInstanceError):
+        rule.status = RuleStatus.PENDING
+
+
+def test_unknown_route_is_allowed_only_while_the_objective_is_pending():
+    pending = get_competition_profile(328).objectives[1]
+    assert pending.status is RuleStatus.PENDING
+    assert pending.qualification_path is None
+    with pytest.raises(ValueError, match="only pending"):
+        replace(pending, status=RuleStatus.CONFIGURED)
+
+
+@pytest.mark.parametrize("cid,index,stage,path", [
+    (176, 1, CompetitionStage.PLAY_IN, QualificationPath.DIRECT),
+    (429, 1, CompetitionStage.PLAY_IN, QualificationPath.DIRECT),
+    (76, 0, CompetitionStage.PLAYOFFS, QualificationPath.DIRECT),
+    (76, 1, CompetitionStage.PLAY_IN, QualificationPath.DIRECT),
+    (180, 1, CompetitionStage.PLAYOFFS, QualificationPath.DIRECT),
+    (174, 2, CompetitionStage.PLAYOFFS, QualificationPath.DIRECT),
+    (554, 0, CompetitionStage.PLAYOFFS, QualificationPath.DIRECT),
+])
+def test_internal_destinations_use_generic_stages(cid, index, stage, path):
+    rule = get_competition_profile(cid).objectives[index]
+    assert rule.destination_stage is stage
+    assert rule.destination_competition_id is None
+    assert rule.qualification_path is path
+
+
+def test_destination_name_is_stored_and_serialized_independently_of_note():
+    rule = get_competition_profile(competition_ids.LALIGA).objectives[0]
+    assert rule.destination_competition_id == competition_ids.UEFA_CHAMPIONS_LEAGUE == 348
+    assert rule.destination_competition_name == "UEFA Champions League"
+    changed_note = replace(rule, note="Human explanation only.")
+    assert changed_note.destination_competition_name == rule.destination_competition_name
+    assert asdict(rule)["destination_competition_name"] == "UEFA Champions League"
+    renamed = replace(rule, destination_competition_name="Champions League")
+    restored = ObjectiveRule(**json.loads(json.dumps(asdict(renamed))))
+    assert restored.destination_competition_name == "Champions League"
+    assert restored.destination_competition_id == rule.destination_competition_id
+
+
+def test_catalogue_uses_registered_names_and_marks_missing_general_records_pending():
+    assert COMPETITION_PROFILES.keys() <= competition_ids.COMPETITION_NAMES.keys()
+    for profile in COMPETITION_PROFILES.values():
+        for rule in profile.objectives or ():
+            if rule.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
+                assert rule.destination_stage is None
+                assert rule.destination_competition_name
+                if rule.destination_competition_id is None:
+                    assert rule.status is RuleStatus.PENDING
+                    assert "general competition_id not present" in rule.note
+                else:
+                    assert rule.destination_competition_name == competition_ids.COMPETITION_NAMES[rule.destination_competition_id]
+            elif rule.objective_type == ObjectiveType.STAGE_QUALIFICATION:
+                assert rule.destination_competition_id is None
+                assert rule.destination_stage in CompetitionStage
+            else:
+                assert rule.destination_competition_id is None and rule.destination_stage is None
+
+
+def test_qualification_routes_reference_qualification_records():
+    laliga = get_competition_profile(competition_ids.LALIGA)
+    assert laliga.objectives[2].destination_competition_id == competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION == 6138
+    france = get_competition_profile(competition_ids.LIGUE_1)
+    assert france.objectives[1].destination_competition_id == competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION == 6151
+    assert france.objectives[2].destination_competition_id == competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION == 6182
+    brazil = get_competition_profile(competition_ids.BRASILEIRAO)
+    assert brazil.objectives[1].destination_competition_id == competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION == 2748
+    assert brazil.objectives[0].destination_competition_id is None  # Not knockout record 360.
+    assert competition_ids.COPA_DEL_REY == 448  # Football; not the homonymous futsal/basketball/handball cups.
+
+
+@pytest.mark.parametrize("cid,index,changes", [
+    (167, 0, {"destination_stage": CompetitionStage.PLAYOFFS}),
+    (167, 0, {"destination_competition_id": None}),
+    (167, 0, {"qualification_path": QualificationPath.DIRECT_RELEGATION}),
+    (167, 0, {"rank_start": None, "rank_end": None}),
+    (176, 0, {"destination_stage": None}),
+    (176, 0, {"destination_competition_id": competition_ids.UEFA_CHAMPIONS_LEAGUE}),
+    (167, 3, {"destination_competition_id": competition_ids.UEFA_CHAMPIONS_LEAGUE}),
+    (167, 3, {"qualification_path": QualificationPath.DIRECT}),
+])
+def test_objective_fields_must_describe_a_coherent_destination(cid, index, changes):
+    with pytest.raises(ValueError):
+        replace(get_competition_profile(cid).objectives[index], **changes)
+
+
+def test_m5_diagnostic_preserves_destination_id_and_readable_name():
+    result = _calculate_m5(_table(20, 35, 2, 5), _configured_event("laliga"))
+    rule = result.raw["home"]["objective_rule"]
+    assert rule["destination_competition_id"] == 348
+    assert rule["destination_competition_name"] == "UEFA Champions League"
 
 
 def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament():
@@ -151,13 +280,14 @@ def test_missing_or_unknown_canonical_id_does_not_use_name_or_provider_fallback(
     assert resolved.total_regular_season_games is None
 
 
-def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(monkeypatch):
+@pytest.mark.parametrize("debug_mode", [False, True])
+def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(monkeypatch, debug_mode):
     from modules.jobs.pre_start_check_job import pillar_pipeline as pipeline
 
     event = _configured_event("nhl")
     event.competition = replace(event.competition, total_regular_season_games=82, competitive_rules=None)
     processor = object.__new__(pipeline.EventPillarProcessor)
-    processor.debug_mode = False
+    processor.debug_mode = debug_mode
     calls = []
     streak = SimpleNamespace(current_standings={})
 
@@ -166,6 +296,7 @@ def test_pipeline_resolves_once_before_history_even_when_metadata_is_complete(mo
         return resolve_p1_competition_context(identity, competition)
 
     def history(context, **kwargs):
+        assert kwargs["debug_mode"] is debug_mode
         assert calls == [event.event_id]
         assert context.competition.total_regular_season_games == 84
         assert context.competition.competitive_rules is not None
@@ -227,7 +358,7 @@ def test_stage_qualification_and_absent_relegation_use_one_win_unit():
     event = _configured_event("euroleague")
     result = _calculate_m5(_table(20, 35, 10, 19), event)
     assert result.raw["m5_status"] == "ACTIVE"
-    assert result.raw["max_points_remaining"] == 3
+    assert result.raw["max_points_remaining"] == {"home": 3, "away": 3}
     assert result.raw["home"]["objective_type"] == "STAGE_QUALIFICATION"
     assert result.raw["home"]["base_severity"] == 0.85
     assert result.raw["away"]["objective_type"] == "NO_APPLICABLE_OBJECTIVE"
@@ -240,7 +371,7 @@ def test_mexico_qualifies_top_eight_without_play_in():
     for side in ("home", "away"):
         assert result.raw[side]["objective_type"] == "STAGE_QUALIFICATION"
         assert result.raw[side]["objective_rule"]["qualification_path"] == "DIRECT"
-        assert result.raw[side]["objective_rule"]["target"] == "QUARTERFINALS"
+        assert result.raw[side]["objective_rule"]["destination_stage"] == "PLAYOFFS"
 
 
 def test_argentina_uses_each_groups_boundary_and_never_group_relegation():
@@ -280,7 +411,7 @@ def test_wild_card_is_not_a_global_top_eight_cutoff():
     result = _calculate_m5(analysis, _configured_event("nhl"))
     assert result.raw["m5_status"] == "INSUFFICIENT_DATA"
     assert result.raw["m5_status_reason"] == "UNSUPPORTED_OBJECTIVE_SELECTION"
-    assert result.raw["max_points_remaining"] == 18
+    assert result.raw["max_points_remaining"] == {"home": 18, "away": 18}
     assert result.bias == "NONE"
 
 
