@@ -171,6 +171,27 @@ GROUP BY event_date
 ORDER BY event_date DESC;
 ```
 
+### Events without markets for a date
+
+```sql
+SELECT
+	c.competition_id,
+	c.source_unique_tournament_id,
+	c.display_name,
+	c.category_name,
+    e.*
+FROM events e
+LEFT JOIN competitions c on e.competition_id = c.competition_id
+WHERE e.starts_at::date = DATE '2026-10-22'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM markets m
+      WHERE m.event_id = e.id
+  )
+ORDER BY c.category_name, starts_at desc
+```
+
+
 ### Markets per canonical event
 
 ```sql

@@ -37,6 +37,7 @@ class DiscoveryFilters:
         ("basketball", "Poland Amateur"),  # Basketball; amateur divisions; Poland; all genders.
         ("basketball", "Greece Amateur"),  # Basketball; amateur divisions; Greece; all genders.
         ("football", "Argentina Amateur"),  # Football; amateur divisions; Argentina; all genders.
+        ("football", "Mexico Amateur"),  # Football; amateur divisions; Mexico; all genders.
         ("football", "Austria Amateur"),  # Football; amateur divisions; Austria; all genders.
         ("football", "Belgium Amateur"),  # Football; amateur divisions; Belgium; all genders.
         ("football", "Bosnia & Herzegovina Amateur"),  # Football; amateur divisions; Bosnia & Herzegovina; all genders.
