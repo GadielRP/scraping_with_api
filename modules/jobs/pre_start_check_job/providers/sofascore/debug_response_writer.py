@@ -1,27 +1,22 @@
-"""Debug-only persistence for raw SofaScore odds responses."""
+"""SofaScore-specific filenames for the shared debug response writer."""
 
 from __future__ import annotations
 
-import json
-import logging
 from pathlib import Path
 import re
 
-
-from ..debug_paths import event_folder_name, sport_folder_name
-
-logger = logging.getLogger(__name__)
+from ..debug_response_writer import DebugResponseWriter
 
 
 class SofaScoreDebugResponseWriter:
-    """Write the unmodified SofaScore odds body for one event/moment."""
+    """Adapt SofaScore response names and folders to the shared writer."""
 
-    OUTPUT_DIRECTORY = Path("debug") / "sofascore_odds_responses"
+    OUTPUT_ROOT = Path("debug")
+    OUTPUT_DIRECTORY = OUTPUT_ROOT / "sofascore" / "odds_responses"
 
     @staticmethod
     def _filename_token(value: object, *, fallback: str) -> str:
-        token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
-        return token.strip("._-") or fallback
+        return DebugResponseWriter.filename_token(value, fallback=fallback)
 
     @staticmethod
     def _moment_token(minutes_until_start: int | float | None) -> str:
@@ -29,6 +24,36 @@ class SofaScoreDebugResponseWriter:
             return "unknown"
         token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(minutes_until_start).strip())
         return token or "unknown"
+
+    @classmethod
+    def save_response(
+        cls,
+        *,
+        response_type: str,
+        event_id: int,
+        payload: object,
+        competition_slug: str | None = None,
+        sport: str | None = None,
+        home_participant: str | None = None,
+        away_participant: str | None = None,
+        event_label: str | None = None,
+        event_folder: str | None = None,
+    ) -> Path | None:
+        response_token = cls._filename_token(response_type, fallback="response").lower()
+        return DebugResponseWriter.save_response(
+            provider="sofascore",
+            response_type=response_token,
+            output_directory=cls.OUTPUT_ROOT / "sofascore" / f"{response_token}_responses",
+            event_id=event_id,
+            filename=f"{event_id}_{response_token}.json",
+            payload=payload,
+            competition_slug=competition_slug,
+            sport=sport,
+            home_participant=home_participant,
+            away_participant=away_participant,
+            event_label=event_label,
+            event_folder=event_folder,
+        )
 
     @classmethod
     def save(
@@ -45,8 +70,6 @@ class SofaScoreDebugResponseWriter:
         event_label: str | None = None,
         event_folder: str | None = None,
     ) -> Path | None:
-        """Save raw provider JSON without affecting successful ingestion."""
-
         if not isinstance(payload, dict):
             return None
 
@@ -57,45 +80,18 @@ class SofaScoreDebugResponseWriter:
                 f"t_{cls._moment_token(minutes_until_start)}",
             )
         ) + ".json"
-        competition_folder = re.sub(
-            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
-        ).strip("_") or "unknown_competition"
-        folder_name = event_folder or event_folder_name(
-            event_id, home_participant=home_participant,
-            away_participant=away_participant, event_label=event_label,
+        return DebugResponseWriter.save_response(
+            provider="sofascore",
+            response_type="odds",
+            output_directory=cls.OUTPUT_DIRECTORY,
+            event_id=event_id,
+            filename=filename,
+            payload=payload,
+            competition_slug=competition_slug,
+            sport=sport,
+            home_participant=home_participant,
+            away_participant=away_participant,
+            event_label=event_label,
+            event_folder=event_folder,
+            source_event_id=source_event_id,
         )
-        path = cls.OUTPUT_DIRECTORY / sport_folder_name(sport) / competition_folder / folder_name / filename
-
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as file_handle:
-                json.dump(
-                    payload,
-                    file_handle,
-                    ensure_ascii=False,
-                    indent=2,
-                    default=str,
-                )
-                file_handle.write("\n")
-        except (OSError, TypeError, ValueError) as exc:
-            # Debug observability must never turn a successful provider fetch
-            # into a failed production ingestion.
-            logger.warning(
-                "Could not save raw SofaScore debug response event_id=%s "
-                "source_event_id=%s minutes_until_start=%s: %s",
-                event_id,
-                source_event_id,
-                minutes_until_start,
-                exc,
-            )
-            return None
-
-        logger.info(
-            "Saved raw SofaScore response event_id=%s source_event_id=%s "
-            "minutes_until_start=%s path= %s",
-            event_id,
-            source_event_id,
-            minutes_until_start,
-            path,
-        )
-        return path

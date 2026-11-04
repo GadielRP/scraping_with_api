@@ -415,7 +415,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("audit", "plan"):
         p = sub.add_parser(name)
-        p.add_argument("--debug-root", type=Path, default=Path("debug/oddspapi_odds_responses"))
+        p.add_argument("--debug-root", type=Path, default=Path("debug/oddspapi/odds_responses"))
         p.add_argument("--output", type=Path, required=True, help="Audit directory or plan manifest JSON")
         if name == "plan":
             p.add_argument("--require-active-quotes", action=argparse.BooleanOptionalAction,

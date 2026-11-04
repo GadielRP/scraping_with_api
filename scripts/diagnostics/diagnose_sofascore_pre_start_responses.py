@@ -13,7 +13,7 @@ Examples::
 
     python -m scripts.diagnostics.diagnose_sofascore_pre_start_responses
     python -m scripts.diagnostics.diagnose_sofascore_pre_start_responses \
-        --input-dir debug/sofascore_odds_responses \
+        --input-dir debug/sofascore/odds_responses \
         --moments 120,30,5,1,0,-5 \
         --event-id 191099
 """
@@ -38,7 +38,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 
-DEFAULT_INPUT_DIRECTORY = Path("debug") / "sofascore_odds_responses"
+DEFAULT_INPUT_DIRECTORY = Path("debug") / "sofascore" / "odds_responses"
 DEFAULT_MOMENTS = (120, 30, 5, 1, 0, -5)
 REPORT_FILENAME_PREFIX = "sofascore_pre_start_consistency_report"
 _FILENAME_RE = re.compile(

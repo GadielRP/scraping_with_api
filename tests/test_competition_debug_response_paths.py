@@ -44,7 +44,8 @@ def test_event_data_and_oddspapi_candidate_keep_loaded_competition_slug():
 
 
 def test_sofascore_phase_saves_raw_response_in_competition_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", tmp_path)
+    output_directory = tmp_path / "sofascore" / "odds_responses"
+    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", output_directory)
     payload = {"markets": [], "raw": True}
     candidate = {
         "event_id": 238868,
@@ -76,7 +77,7 @@ def test_sofascore_phase_saves_raw_response_in_competition_folder(tmp_path, monk
         tracked_competition_ids=[10],
     )
 
-    path = tmp_path / "football" / "liga_mx_apertura" / "238868_Home_Away" / "238868_9001_t_5.json"
+    path = output_directory / "football" / "liga_mx_apertura" / "238868_Home_Away" / "238868_9001_t_5.json"
     assert json.loads(path.read_text(encoding="utf-8")) == payload
     responses, errors = discover_responses(tmp_path)
     assert not errors
@@ -84,12 +85,13 @@ def test_sofascore_phase_saves_raw_response_in_competition_folder(tmp_path, monk
 
 
 def test_sofascore_writer_without_competition_slug(tmp_path, monkeypatch):
-    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", tmp_path)
+    output_directory = tmp_path / "sofascore" / "odds_responses"
+    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", output_directory)
     path = SofaScoreDebugResponseWriter.save(
         event_id=238868, source_event_id=9001, minutes_until_start=5,
         payload={"markets": []},
     )
-    assert path == tmp_path / "unknown_sport" / "unknown_competition" / "238868" / "238868_9001_t_5.json"
+    assert path == output_directory / "unknown_sport" / "unknown_competition" / "238868" / "238868_9001_t_5.json"
 
 
 def test_oddspapi_diagnostics_find_nested_event_responses(tmp_path):
@@ -102,13 +104,14 @@ def test_oddspapi_diagnostics_find_nested_event_responses(tmp_path):
 
 
 def test_sofascore_writer_normalizes_sport_from_memory(tmp_path, monkeypatch):
-    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", tmp_path)
+    output_directory = tmp_path / "sofascore" / "odds_responses"
+    monkeypatch.setattr(SofaScoreDebugResponseWriter, "OUTPUT_DIRECTORY", output_directory)
     path = SofaScoreDebugResponseWriter.save(
         event_id=374280, source_event_id=16546314, minutes_until_start=120,
         payload={"markets": []}, sport="Ice hockey", competition_slug="nhl",
         home_participant="Boston Bruins", away_participant="Ottawa Senators",
     )
     assert path == (
-        tmp_path / "ice_hockey" / "nhl" / "374280_Boston_Bruins_Ottawa_Senators"
+        output_directory / "ice_hockey" / "nhl" / "374280_Boston_Bruins_Ottawa_Senators"
         / "374280_16546314_t_120.json"
     )

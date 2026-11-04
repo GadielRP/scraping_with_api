@@ -774,7 +774,8 @@ def test_sofascore_debug_mode_saves_raw_response_by_event_and_moment(
     output_path = (
         tmp_path
         / "debug"
-        / "sofascore_odds_responses"
+        / "sofascore"
+        / "odds_responses"
         / "football"
         / "unknown_competition"
         / "101_Home_Away"
@@ -1912,7 +1913,8 @@ def test_debug_mode_saves_raw_oddspapi_response(tmp_path, monkeypatch):
     output_path = (
         tmp_path
         / "debug"
-        / "oddspapi_odds_responses"
+        / "oddspapi"
+        / "odds_responses"
         / "unknown_sport"
         / "unknown_competition"
         / "156608"

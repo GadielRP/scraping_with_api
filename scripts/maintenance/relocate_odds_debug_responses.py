@@ -31,7 +31,13 @@ from shared.batching import chunks
 from modules.jobs.pre_start_check_job.providers.debug_paths import event_folder_name, sport_folder_name
 
 logger = logging.getLogger(__name__)
-PROVIDERS = ("oddspapi_odds_responses", "sofascore_odds_responses")
+PROVIDERS = (
+    "oddspapi/odds_responses",
+    "sofascore/odds_responses",
+    # Continue to collect artifacts written before the provider/type layout.
+    "oddspapi_odds_responses",
+    "sofascore_odds_responses",
+)
 EVENT_DIRECTORY = re.compile(r"^([1-9]\d*)(?:_|$)")
 # A single-ID legacy SofaScore filename may contain a provider ID, not events.id.
 SOFASCORE_FILENAME = re.compile(r"^([1-9]\d*)_\d+_t_")
@@ -58,7 +64,7 @@ def collect_responses(
                 None,
             )
             if match is None:
-                pattern = SOFASCORE_FILENAME if provider == "sofascore_odds_responses" else EVENT_DIRECTORY
+                pattern = SOFASCORE_FILENAME if provider.startswith("sofascore") else EVENT_DIRECTORY
                 match = pattern.match(path.name)
             if match is None:
                 logger.warning("Skipping filename without canonical event ID: %s", path)

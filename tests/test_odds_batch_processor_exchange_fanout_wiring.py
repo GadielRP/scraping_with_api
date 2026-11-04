@@ -402,5 +402,5 @@ def test_debug_response_writer_competition_folder(tmp_path, monkeypatch):
     )
 
     assert saved_path is not None
-    assert saved_path.resolve().parent == tmp_path / "debug" / "oddspapi_odds_responses" / "football" / "laliga" / "286174_Malaga_CF_Villarreal"
+    assert saved_path.resolve().parent == tmp_path / "debug" / "oddspapi" / "odds_responses" / "football" / "laliga" / "286174_Malaga_CF_Villarreal"
     assert saved_path.exists()

@@ -1,24 +1,18 @@
-"""Debug-only persistence for raw OddsPAPI odds responses."""
+"""OddsPAPI-specific filenames and preservation policy for debug responses."""
 
 from __future__ import annotations
 
-import json
-import logging
 from pathlib import Path
 import re
 from typing import Iterable
-import unicodedata
 
-
-from ..debug_paths import event_folder_name, sport_folder_name
-
-logger = logging.getLogger(__name__)
+from ..debug_response_writer import DebugResponseWriter
 
 
 class OddspapiDebugResponseWriter:
-    """Write one deterministic raw-response artifact per provider request."""
+    """Adapt OddsPAPI request metadata to the shared response writer."""
 
-    OUTPUT_DIRECTORY = Path("debug") / "oddspapi_odds_responses"
+    OUTPUT_DIRECTORY = Path("debug") / "oddspapi" / "odds_responses"
     ENDPOINT_FILENAME_LABELS = {
         "historical-odds": "historical",
         "odds": "odds",
@@ -26,14 +20,7 @@ class OddspapiDebugResponseWriter:
 
     @staticmethod
     def _filename_token(value: object, *, fallback: str) -> str:
-        raw = str(value or "").strip()
-        normalized = (
-            unicodedata.normalize("NFKD", raw)
-            .encode("ascii", "ignore")
-            .decode("ascii")
-        )
-        token = re.sub(r"[^A-Za-z0-9._-]+", "_", normalized)
-        return token.strip("._-") or fallback
+        return DebugResponseWriter.filename_token(value, fallback=fallback)
 
     @classmethod
     def _endpoint_token(cls, endpoint: str | None) -> str | None:
@@ -63,83 +50,45 @@ class OddspapiDebugResponseWriter:
         event_label: str | None = None,
         event_folder: str | None = None,
     ) -> Path | None:
-        """Save the raw provider JSON without affecting ingestion on failure."""
-
         if not isinstance(payload, dict):
             return None
-
-        competition_folder = re.sub(
-            r"[^a-z0-9]+", "_", (competition_slug or "").lower()
-        ).strip("_") or "unknown_competition"
-        folder_name = event_folder or event_folder_name(
-            event_id, home_participant=home_participant,
-            away_participant=away_participant, event_label=event_label,
-        )
-        target_directory = cls.OUTPUT_DIRECTORY / sport_folder_name(sport) / competition_folder / folder_name
 
         bookmaker_tokens = [
             cls._filename_token(bookmaker, fallback="bookmaker")
             for bookmaker in bookmakers or []
         ]
-        bookmakers_token = "_".join(bookmaker_tokens) or "all"
-        endpoint_token = cls._endpoint_token(endpoint)
         filename_parts = [
             cls._filename_token(event_id, fallback="event"),
             cls._filename_token(fixture_id, fallback="fixture"),
         ]
         if minutes_until_start is not None:
             filename_parts.append(f"t_{minutes_until_start}")
+        endpoint_token = cls._endpoint_token(endpoint)
         if endpoint_token:
             filename_parts.append(endpoint_token)
         if outcome_id is not None:
             filename_parts.append(
                 f"outcome_{cls._filename_token(outcome_id, fallback='id')}"
             )
-        filename_parts.append(bookmakers_token)
-        filename = "_".join(filename_parts) + ".json"
-        path = target_directory / filename
+        filename_parts.append("_".join(bookmaker_tokens) or "all")
 
-        try:
-            if endpoint_token == "odds" and path.exists() and not any(
-                isinstance(bookmaker, dict) and bookmaker.get("markets")
-                for bookmaker in (payload.get("bookmakerOdds") or {}).values()
-            ):
-                logger.info(
-                    "Preserved existing OddsPAPI debug response after empty /odds "
-                    "event_id=%s fixture_id=%s path=%s",
-                    event_id, fixture_id, path,
-                )
-                return None
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as file_handle:
-                json.dump(
-                    payload,
-                    file_handle,
-                    ensure_ascii=False,
-                    indent=2,
-                    default=str,
-                )
-                file_handle.write("\n")
-        except (OSError, TypeError, ValueError) as exc:
-            # Debug observability must never turn a successful provider fetch
-            # into a failed production ingestion.
-            logger.warning(
-                "Could not save raw OddsPAPI debug response event_id=%s "
-                "fixture_id=%s: %s",
-                event_id,
-                fixture_id,
-                exc,
-            )
-            return None
-
-        logger.info(
-            "Saved raw OddsPAPI response event_id=%s fixture_id=%s minutes_until_start=%s "
-            "endpoint=%s bookmakers=%s path= %s",
-            event_id,
-            fixture_id,
-            minutes_until_start,
-            endpoint_token or "unspecified",
-            ",".join(str(value) for value in bookmakers or []) or "all",
-            path,
+        preserve_existing = endpoint_token == "odds" and not any(
+            isinstance(bookmaker, dict) and bookmaker.get("markets")
+            for bookmaker in (payload.get("bookmakerOdds") or {}).values()
         )
-        return path
+        return DebugResponseWriter.save_response(
+            provider="oddspapi",
+            response_type=endpoint_token or "response",
+            output_directory=cls.OUTPUT_DIRECTORY,
+            event_id=event_id,
+            filename="_".join(filename_parts) + ".json",
+            payload=payload,
+            competition_slug=competition_slug,
+            sport=sport,
+            home_participant=home_participant,
+            away_participant=away_participant,
+            event_label=event_label,
+            event_folder=event_folder,
+            source_event_id=fixture_id,
+            preserve_existing=preserve_existing,
+        )
