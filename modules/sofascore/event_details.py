@@ -105,6 +105,11 @@ def get_event_details(client, event_id: int) -> Optional[Dict]:
     return response["event"]
 
 
+def get_event_comments(client, event_id: int) -> Optional[Dict]:
+    """Fetch comments for a SofaScore event."""
+    return client.request_json(f"/event/{event_id}/comments")
+
+
 def update_event_information_from_response(response: Dict) -> bool:
     try:
         if not response or "event" not in response:

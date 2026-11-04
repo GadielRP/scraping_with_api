@@ -41,6 +41,7 @@ from .discovery_feeds import (
 from .event_details import (
     EventResultsResponse,
     get_event_details,
+    get_event_comments,
     get_event_results,
     update_event_information_from_response,
 )
@@ -749,6 +750,9 @@ class SofaScoreAPI:
 
     def get_event_details(self, event_id: int) -> Optional[Dict]:
         return get_event_details(self, event_id)
+
+    def get_event_comments(self, event_id: int) -> Optional[Dict]:
+        return get_event_comments(self, event_id)
 
     def get_live_events_response_per_sport(self, sport: str) -> Optional[Dict]:
         return get_live_events_response_per_sport(self, sport)
