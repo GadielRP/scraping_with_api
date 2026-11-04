@@ -17,7 +17,10 @@ def run_midnight_sync_job(target_date=None) -> None:
     logger.info("Starting Midnight Sync")
     target_date = target_date or now_in_timezone(Config.TIMEZONE).date() - timedelta(days=1)
     logger.info("Midnight Sync: starting previous-day results collection")
-    result_stats = run_results_collection(target_date, job_name="Results Collection (midnight)")
+    from modules.jobs.discipline_collection_job.after_results import build_after_results_collector
+
+    result_stats = run_results_collection(target_date, job_name="Results Collection (midnight)",
+                                          on_results_committed=build_after_results_collector())
     if result_stats["failed"]:
         logger.warning("Midnight Sync: results remain pending stats=%s", result_stats)
 

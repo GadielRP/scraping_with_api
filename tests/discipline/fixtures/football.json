@@ -1,0 +1,120 @@
+{
+  "comments": [
+    {
+      "text": "Match ends, Getafe 3, Sevilla 1.",
+      "type": "matchEnded",
+      "id": 41208977
+    },
+    {
+      "text": "Attempt blocked. Nemanja Gudelj (Getafe) right footed shot from outside the box is blocked.",
+      "type": "shotBlocked",
+      "isHome": true,
+      "id": 41208817,
+      "periodName": "2ND",
+      "player": {
+        "name": "Nemanja Gudelj",
+        "id": 68332
+      }
+    },
+    {
+      "text": "Manu Bueno (Sevilla) is shown the red card.",
+      "type": "redCard",
+      "isHome": false,
+      "id": 41208788,
+      "periodName": "2ND",
+      "player": {
+        "name": "Manu Bueno",
+        "id": 1142094
+      }
+    },
+    {
+      "text": "Nemanja Gudelj (Getafe) is shown the yellow card for a bad foul.",
+      "type": "yellowCard",
+      "isHome": true,
+      "id": 41208493,
+      "periodName": "2ND",
+      "player": {
+        "name": "Nemanja Gudelj",
+        "id": 68332
+      }
+    },
+    {
+      "text": "Attempt blocked. Manu Bueno (Sevilla) right footed shot from the left side of the box is blocked.",
+      "type": "shotBlocked",
+      "isHome": false,
+      "id": 41208380,
+      "periodName": "2ND",
+      "player": {
+        "name": "Manu Bueno",
+        "id": 1142094
+      }
+    },
+    {
+      "text": "Arouna Sangante (Sevilla) is shown the yellow card.",
+      "type": "yellowCard",
+      "isHome": false,
+      "id": 41208072,
+      "periodName": "2ND",
+      "player": {
+        "name": "Arouna Sangante",
+        "id": 1035988
+      }
+    },
+    {
+      "text": "Lucien Agoumé (Sevilla) is shown the yellow card.",
+      "type": "yellowCard",
+      "isHome": false,
+      "id": 41208073,
+      "periodName": "2ND",
+      "player": {
+        "name": "Lucien Agoumé",
+        "id": 960006
+      }
+    },
+    {
+      "text": "Attempt blocked. Dani Carvajal (Getafe) right footed shot from outside the box is blocked.",
+      "type": "shotBlocked",
+      "isHome": true,
+      "id": 41207472,
+      "periodName": "2ND",
+      "player": {
+        "name": "Dani Carvajal",
+        "id": 138572
+      }
+    },
+    {
+      "text": "Davinchi (Getafe) is shown the yellow card for a bad foul.",
+      "type": "yellowCard",
+      "isHome": true,
+      "id": 41207145,
+      "periodName": "2ND",
+      "player": {
+        "name": "Davinchi",
+        "id": 1918369
+      }
+    },
+    {
+      "text": "Second Half begins Getafe 0, Sevilla 1.",
+      "type": "matchStarted",
+      "id": 41206323,
+      "periodName": "2ND"
+    },
+    {
+      "text": "Gabriel Suazo (Sevilla) is shown the yellow card for a bad foul.",
+      "type": "yellowCard",
+      "isHome": false,
+      "id": 41204892,
+      "periodName": "1ST",
+      "player": {
+        "name": "Gabriel Suazo",
+        "id": 818986
+      }
+    },
+    {
+      "text": "First Half begins.",
+      "type": "matchStarted",
+      "id": 41204019,
+      "periodName": "1ST"
+    }
+  ]
+}

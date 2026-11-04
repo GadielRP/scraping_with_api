@@ -1,0 +1,1 @@
+"""External discipline feed adapters."""

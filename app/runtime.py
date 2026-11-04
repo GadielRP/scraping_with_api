@@ -17,6 +17,9 @@ from shared.runtime_observability import observe_operation
 class ApplicationRuntime:
     def __init__(self):
         self.settings = JobExecutionSettings()
+        from infrastructure.settings.discipline import DisciplineSettings
+
+        self.discipline_settings = DisciplineSettings()
         self.pre_start = PreStartRuntime(EventRepository(), self.settings)
         self.fixtures = FixtureDiscoveryService()
         self.scheduler = None
@@ -28,6 +31,7 @@ class ApplicationRuntime:
         from modules.jobs.results_collection_job import run_results_collection
 
         self.jobs = dict(
+            discipline=self._run_discipline,
             discovery=run_discover_dropping_odds,
             discovery2=run_discover_secondary_sources,
             midnight=run_midnight_sync_job,
@@ -44,6 +48,13 @@ class ApplicationRuntime:
                 run_t_minus_one_odds_job, self.pre_start, debug_mode=Config.global_debug_mode
             ),
         )
+
+    def _run_discipline(self, **kwargs):
+        if kwargs.get("commit") and not self.discipline_settings.full_feed_verified:
+            raise ValueError("Verify the full-match comments contract, then set DisciplineSettings.full_feed_verified=True before --commit")
+        from modules.jobs.discipline_collection_job.composition import build_discipline_runner
+
+        return build_discipline_runner(self.discipline_settings)(**kwargs)
 
     def _run_daily_discovery(self):
         from modules.jobs.daily_discovery import run_daily_discovery_job

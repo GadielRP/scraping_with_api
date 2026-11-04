@@ -27,16 +27,28 @@ def show_status():
         calendar = Scheduler()
         configure_calendar(calendar, JobExecutionSettings())
 
-        print("\n=== SofaScore Odds System Status ===")
-        print(f"Database: {db_status}")
-        print(f"Events in database: {event_count}")
-        print(f"Events with dual-process odds: {odds_count}")
-        print(f"Events with results: {result_count}")
-        print("Pre-start notifications: Active")
-        print("\nConfigured schedules:")
-        for job in calendar.jobs:
-            print(f"  - {job}")
+        width = 52
+        print()
+        print("=" * width)
+        print("SOFASCORE ODDS SYSTEM STATUS".center(width))
+        print("=" * width)
 
-        print("\n" + "=" * 40)
+        print("\nSYSTEM")
+        print(f"  {'Database':<34} {db_status}")
+        print(f"  {'Pre-start notifications':<34} Active")
+
+        print("\nDATA")
+        print(f"  {'Events in database':<34} {event_count:>10,}")
+        print(f"  {'Events with dual-process odds':<34} {odds_count:>10,}")
+        print(f"  {'Events with results':<34} {result_count:>10,}")
+
+        print(f"\nCONFIGURED SCHEDULES ({len(calendar.jobs)})")
+        if calendar.jobs:
+            for job in calendar.jobs:
+                print(f"  - {job}")
+        else:
+            print("  No schedules configured.")
+
+        print("\n" + "=" * width)
     except Exception as exc:
         logger.error(f"Error showing status: {exc}")

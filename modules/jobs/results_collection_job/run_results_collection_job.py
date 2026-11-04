@@ -18,7 +18,7 @@ from shared.execution_context import WorkDeferred
 logger = logging.getLogger(__name__)
 
 
-def run_results_collection(target_date=None, *, job_name=None):
+def run_results_collection(target_date=None, *, job_name=None, on_results_committed=None):
     """Collect one local date, or all sufficiently old incomplete events when omitted."""
     if isinstance(target_date, str):
         target_date = date.fromisoformat(target_date)
@@ -39,7 +39,7 @@ def run_results_collection(target_date=None, *, job_name=None):
             check_maintenance_capacity()
             if is_shutdown_requested():
                 raise KeyboardInterrupt()
-            batch_stats = collect_batch(batch, job_name)
+            batch_stats = collect_batch(batch, job_name, on_results_committed=on_results_committed)
             for key, count in batch_stats.items():
                 stats[key] += count
     except WorkDeferred as exc:

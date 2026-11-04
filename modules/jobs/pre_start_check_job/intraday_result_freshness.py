@@ -11,6 +11,10 @@ from modules.events.discards.contracts import DeletionBatch
 
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
+from infrastructure.settings.job_execution import JobExecutionSettings
+from modules.jobs.results_collection_job.contracts import CommittedResultEvent
+from modules.jobs.discipline_collection_job.after_results import build_after_results_collector
+from shared.batching import chunks
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.sofascore import api_client
 from modules.sofascore.event_details import update_event_information_from_response
@@ -215,8 +219,11 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             else:
                 delete_event_ids.add(delete_event_id)
 
+    confirmed = set()
     if results_to_upsert:
-        upserted_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
+        confirmed = ResultRepository.batch_upsert_results(results_to_upsert)
+        upserted_count = len(confirmed)
+        results_to_upsert.clear()
         stats["results_upserted"] = upserted_count
         logger.info(
             "Intraday result freshness: batch upserted %s result(s)",
@@ -230,6 +237,16 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             "Intraday result freshness: batch deleted %s canceled event(s)",
             deleted_count,
         )
+
+    if confirmed:
+        collect_discipline = build_after_results_collector(origin="intraday")
+        if collect_discipline is not None:
+            committed_events = (
+                CommittedResultEvent(event["id"], event.get("sport"), event.get("competition_id"))
+                for event in candidates if event["id"] in confirmed
+            )
+            for batch in chunks(committed_events, JobExecutionSettings().event_read_batch_size):
+                collect_discipline(batch)
 
     logger.info("Intraday result freshness: job finished with stats=%s", stats)
     return stats

@@ -157,6 +157,15 @@ class StandingsRules:
 
 
 @dataclass(frozen=True, slots=True)
+class DisciplineRules:
+    personal_foul_limit: int
+
+    def __post_init__(self):
+        if self.personal_foul_limit < 1:
+            raise ValueError("personal_foul_limit must be positive")
+
+
+@dataclass(frozen=True, slots=True)
 class CompetitionRules:
     """The single sporting configuration for a canonical competition.
 
@@ -175,6 +184,7 @@ class CompetitionRules:
     objectives: tuple[ObjectiveRule, ...] | None
     grouping_method: GroupingMethod = GroupingMethod.LEAGUE_WIDE
     note: str = ""
+    discipline: DisciplineRules | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "grouping_method", GroupingMethod(self.grouping_method))

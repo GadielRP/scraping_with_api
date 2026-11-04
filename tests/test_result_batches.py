@@ -146,6 +146,39 @@ def test_collection_resumes_only_uncommitted_batches(database, monkeypatch):
     assert stats["updated"] == 3 and stats["failed"] == 0
 
 
+def test_post_commit_handoff_only_contains_confirmed_results(database, monkeypatch):
+    seed(database, 3)
+    monkeypatch.setattr(processor, "normalize_event_payload", fake_normalize)
+    monkeypatch.setattr(processor, "fetch_authoritative_event_response", lambda client, sid, **kw: response(sid))
+    original = ResultRepository.batch_upsert_results
+    monkeypatch.setattr(ResultRepository, "batch_upsert_results",
+                        lambda rows: original([row for row in rows if row[0] != 2]))
+    seen = []
+    def on_committed(events):
+        # A fresh session observes the results before any comments work starts.
+        assert all(ResultRepository.get_result_by_event_id(e.event_id) is not None for e in events)
+        seen.append(tuple(e.event_id for e in events))
+    stats = collection.run_results_collection("2026-10-01", on_results_committed=on_committed)
+    assert seen == [(1,), (3,)]
+    assert stats["updated"] == 2 and stats["failed"] == 1
+
+
+def test_midnight_injects_post_result_step(monkeypatch):
+    midnight = import_module("modules.jobs.midnight_sync_job.run_midnight_sync_job")
+    after = import_module("modules.jobs.discipline_collection_job.after_results")
+    from unittest.mock import Mock
+
+    callback = Mock()
+    results = Mock(return_value={"failed": 0})
+    monkeypatch.setattr(after, "build_after_results_collector", lambda: callback)
+    monkeypatch.setattr(midnight, "run_results_collection", results)
+    monkeypatch.setattr(midnight.prediction_logger, "update_predictions_with_results",
+                        lambda: {"updated": 0, "cancelled": 0})
+    midnight.run_midnight_sync_job(date(2026, 11, 3))
+    results.assert_called_once_with(date(2026, 11, 3), job_name="Results Collection (midnight)",
+                                    on_results_committed=callback)
+
+
 def test_late_metadata_cannot_recreate_deleted_event(database):
     seed(database, 1)
     EventRepository.batch_delete_events([1])

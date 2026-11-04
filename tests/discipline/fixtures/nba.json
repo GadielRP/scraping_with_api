@@ -1,0 +1,796 @@
+{
+  "comments": [
+    {
+      "text": "End of 4th Quarter.",
+      "type": "periodEnd",
+      "sequence": 1793685141541,
+      "id": 41248609,
+      "periodName": "4Q"
+    },
+    {
+      "text": "Miles Bridges personal foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793685069230,
+      "id": 41248596,
+      "periodName": "4Q",
+      "player": {
+        "name": "Miles Bridges",
+        "id": 940806
+      }
+    },
+    {
+      "text": "Gary Payton II personal foul (Take) (Jalen Green draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793684981930,
+      "id": 41248583,
+      "periodName": "4Q",
+      "player": {
+        "name": "Gary Payton II",
+        "id": 855982
+      }
+    },
+    {
+      "text": "Collin Gillespie personal foul (Take) (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793684911529,
+      "id": 41248575,
+      "periodName": "4Q",
+      "player": {
+        "name": "Collin Gillespie",
+        "id": 1178405
+      }
+    },
+    {
+      "text": "Devin Booker turnover (offensive foul)",
+      "type": "possessionChange",
+      "isHome": false,
+      "sequence": 1793684536154,
+      "id": 41248534,
+      "periodName": "4Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Devin Booker offensive foul (De'Anthony Melton draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793684536144,
+      "id": 41248533,
+      "periodName": "4Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Jalen Green shooting foul (Brandin Podziemski draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793684384583,
+      "id": 41248510,
+      "periodName": "4Q",
+      "player": {
+        "name": "Jalen Green",
+        "id": 1133838
+      }
+    },
+    {
+      "text": "Dillon Brooks shooting foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793684314161,
+      "id": 41248503,
+      "periodName": "4Q",
+      "player": {
+        "name": "Dillon Brooks",
+        "id": 885254
+      }
+    },
+    {
+      "text": "De'Anthony Melton personal foul (Loose ball) (Jalen Green draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793684071203,
+      "id": 41248483,
+      "periodName": "4Q",
+      "player": {
+        "name": "De'Anthony Melton",
+        "id": 940779
+      }
+    },
+    {
+      "text": "Oso Ighodaro shooting foul (Charles Bassey draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793683883633,
+      "id": 41248448,
+      "periodName": "4Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Miles Bridges technical foul",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793683304809,
+      "id": 41248322,
+      "periodName": "4Q",
+      "player": {
+        "name": "Miles Bridges",
+        "id": 940806
+      }
+    },
+    {
+      "text": "Charles Bassey personal foul (Jalen Green draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793683304789,
+      "id": 41248320,
+      "periodName": "4Q",
+      "player": {
+        "name": "Charles Bassey",
+        "id": 1133907
+      }
+    },
+    {
+      "text": "Devin Booker shooting foul (Yaxel Lendeborg draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793683232030,
+      "id": 41248298,
+      "periodName": "4Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "De'Anthony Melton shooting foul (Miles Bridges draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793683060930,
+      "id": 41248249,
+      "periodName": "4Q",
+      "player": {
+        "name": "De'Anthony Melton",
+        "id": 940779
+      }
+    },
+    {
+      "text": "Gary Payton II personal foul (Loose ball) (Ryan Dunn draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793682965475,
+      "id": 41248228,
+      "periodName": "4Q",
+      "player": {
+        "name": "Gary Payton II",
+        "id": 855982
+      }
+    },
+    {
+      "text": "Collin Gillespie personal foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793682877679,
+      "id": 41248195,
+      "periodName": "4Q",
+      "player": {
+        "name": "Collin Gillespie",
+        "id": 1178405
+      }
+    },
+    {
+      "text": "Start of 4th Quarter",
+      "type": "periodStart",
+      "sequence": 1793682841962,
+      "id": 41248204,
+      "periodName": "4Q"
+    },
+    {
+      "text": "End of 3rd Quarter.",
+      "type": "periodEnd",
+      "sequence": 1793682665933,
+      "id": 41248162,
+      "periodName": "3Q"
+    },
+    {
+      "text": "Luke Kennard personal foul (Loose ball) (Yaxel Lendeborg draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793682373331,
+      "id": 41248114,
+      "periodName": "3Q",
+      "player": {
+        "name": "Luke Kennard",
+        "id": 885256
+      }
+    },
+    {
+      "text": "Devin Booker personal foul (Charles Bassey draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793682258236,
+      "id": 41248083,
+      "periodName": "3Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Jalen Green personal foul (Yaxel Lendeborg draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793682104053,
+      "id": 41248052,
+      "periodName": "3Q",
+      "player": {
+        "name": "Jalen Green",
+        "id": 1133838
+      }
+    },
+    {
+      "text": "Brandin Podziemski shooting foul (Jalen Green draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793682024159,
+      "id": 41248032,
+      "periodName": "3Q",
+      "player": {
+        "name": "Brandin Podziemski",
+        "id": 1178388
+      }
+    },
+    {
+      "text": "Oso Ighodaro personal foul (Yaxel Lendeborg draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793681947029,
+      "id": 41248011,
+      "periodName": "3Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Yaxel Lendeborg shooting foul (Dillon Brooks draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793681903618,
+      "id": 41248002,
+      "periodName": "3Q",
+      "player": {
+        "name": "Yaxel Lendeborg",
+        "id": 1522486
+      }
+    },
+    {
+      "text": "Luke Kennard shooting foul (Georges Niang draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793681568933,
+      "id": 41247943,
+      "periodName": "3Q",
+      "player": {
+        "name": "Luke Kennard",
+        "id": 885256
+      }
+    },
+    {
+      "text": "Gary Payton II personal foul (Loose ball) (Dillon Brooks draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793681489071,
+      "id": 41247927,
+      "periodName": "3Q",
+      "player": {
+        "name": "Gary Payton II",
+        "id": 855982
+      }
+    },
+    {
+      "text": "Devin Booker personal foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793681153143,
+      "id": 41247856,
+      "periodName": "3Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Stephen Curry shooting foul (Jalen Green draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793681089871,
+      "id": 41247834,
+      "periodName": "3Q",
+      "player": {
+        "name": "Stephen Curry",
+        "id": 817050
+      }
+    },
+    {
+      "text": "Will Richard shooting foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793681019030,
+      "id": 41247819,
+      "periodName": "3Q",
+      "player": {
+        "name": "Will Richard",
+        "id": 1181668
+      }
+    },
+    {
+      "text": "Charles Bassey personal foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680968146,
+      "id": 41247807,
+      "periodName": "3Q",
+      "player": {
+        "name": "Charles Bassey",
+        "id": 1133907
+      }
+    },
+    {
+      "text": "Charles Bassey personal foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680947834,
+      "id": 41247804,
+      "periodName": "3Q",
+      "player": {
+        "name": "Charles Bassey",
+        "id": 1133907
+      }
+    },
+    {
+      "text": "Devin Booker personal foul (Brandin Podziemski draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793680896555,
+      "id": 41247793,
+      "periodName": "3Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Dillon Brooks shooting foul (Charles Bassey draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793680846067,
+      "id": 41247782,
+      "periodName": "3Q",
+      "player": {
+        "name": "Dillon Brooks",
+        "id": 885254
+      }
+    },
+    {
+      "text": "Draymond Green shooting foul (Khaman Maluach draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680429929,
+      "id": 41248651,
+      "periodName": "3Q",
+      "player": {
+        "name": "Draymond Green",
+        "id": 817122
+      }
+    },
+    {
+      "text": "Draymond Green technical foul",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680429969,
+      "id": 41247845,
+      "periodName": "3Q",
+      "player": {
+        "name": "Draymond Green",
+        "id": 817122
+      }
+    },
+    {
+      "text": "Draymond Green ejected from the game (Second Technical)",
+      "type": "ejection",
+      "isHome": true,
+      "sequence": 1793680429999,
+      "id": 41247786,
+      "periodName": "3Q",
+      "player": {
+        "name": "Draymond Green",
+        "id": 817122
+      }
+    },
+    {
+      "text": "Draymond Green technical foul (Double)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680429979,
+      "id": 41247785,
+      "periodName": "3Q",
+      "player": {
+        "name": "Draymond Green",
+        "id": 817122
+      }
+    },
+    {
+      "text": "Dillon Brooks technical foul (Double)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793680429989,
+      "id": 41247775,
+      "periodName": "3Q",
+      "player": {
+        "name": "Dillon Brooks",
+        "id": 885254
+      }
+    },
+    {
+      "text": "Devin Booker personal foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793680384988,
+      "id": 41247675,
+      "periodName": "3Q",
+      "player": {
+        "name": "Devin Booker",
+        "id": 817000
+      }
+    },
+    {
+      "text": "Khaman Maluach shooting foul (Brandin Podziemski draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793680291266,
+      "id": 41247659,
+      "periodName": "3Q",
+      "player": {
+        "name": "Khaman Maluach",
+        "id": 1915077
+      }
+    },
+    {
+      "text": "Will Richard shooting foul (Khaman Maluach draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793680238681,
+      "id": 41247648,
+      "periodName": "3Q",
+      "player": {
+        "name": "Will Richard",
+        "id": 1181668
+      }
+    },
+    {
+      "text": "Start of 3rd Quarter",
+      "type": "periodStart",
+      "sequence": 1793680206063,
+      "id": 41247698,
+      "periodName": "3Q"
+    },
+    {
+      "text": "End of 1st Half.",
+      "type": "periodEnd",
+      "sequence": 1793679279238,
+      "id": 41247492,
+      "periodName": "2Q"
+    },
+    {
+      "text": "Oso Ighodaro turnover (offensive foul)",
+      "type": "possessionChange",
+      "isHome": false,
+      "sequence": 1793679230340,
+      "id": 41247477,
+      "periodName": "2Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Oso Ighodaro offensive foul (Charge) (Draymond Green draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793679230330,
+      "id": 41247476,
+      "periodName": "2Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Stephen Curry personal foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793679031330,
+      "id": 41247423,
+      "periodName": "2Q",
+      "player": {
+        "name": "Stephen Curry",
+        "id": 817050
+      }
+    },
+    {
+      "text": "Oso Ighodaro turnover (offensive foul)",
+      "type": "possessionChange",
+      "isHome": false,
+      "sequence": 1793678788157,
+      "id": 41247341,
+      "periodName": "2Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Oso Ighodaro offensive foul (Will Richard draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793678788147,
+      "id": 41247340,
+      "periodName": "2Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Dillon Brooks personal foul (Draymond Green draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793678714785,
+      "id": 41247319,
+      "periodName": "2Q",
+      "player": {
+        "name": "Dillon Brooks",
+        "id": 885254
+      }
+    },
+    {
+      "text": "Jordan Goodwin shooting foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793678609957,
+      "id": 41247285,
+      "periodName": "2Q",
+      "player": {
+        "name": "Jordan Goodwin",
+        "id": 1134112
+      }
+    },
+    {
+      "text": "Collin Gillespie personal foul (Yaxel Lendeborg draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793678312338,
+      "id": 41247171,
+      "periodName": "2Q",
+      "player": {
+        "name": "Collin Gillespie",
+        "id": 1178405
+      }
+    },
+    {
+      "text": "Yaxel Lendeborg shooting foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793678248270,
+      "id": 41247140,
+      "periodName": "2Q",
+      "player": {
+        "name": "Yaxel Lendeborg",
+        "id": 1522486
+      }
+    },
+    {
+      "text": "Charles Bassey shooting foul (Dillon Brooks draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793678082864,
+      "id": 41247058,
+      "periodName": "2Q",
+      "player": {
+        "name": "Charles Bassey",
+        "id": 1133907
+      }
+    },
+    {
+      "text": "Luke Kennard shooting foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793677691759,
+      "id": 41246884,
+      "periodName": "2Q",
+      "player": {
+        "name": "Luke Kennard",
+        "id": 885256
+      }
+    },
+    {
+      "text": "Luke Kennard shooting foul (Georges Niang draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793677571761,
+      "id": 41246817,
+      "periodName": "2Q",
+      "player": {
+        "name": "Luke Kennard",
+        "id": 885256
+      }
+    },
+    {
+      "text": "Georges Niang shooting foul (Miles Bridges draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793677389830,
+      "id": 41246711,
+      "periodName": "2Q",
+      "player": {
+        "name": "Georges Niang",
+        "id": 846946
+      }
+    },
+    {
+      "text": "Gary Payton II personal foul (Ryan Dunn draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793677283231,
+      "id": 41246670,
+      "periodName": "2Q",
+      "player": {
+        "name": "Gary Payton II",
+        "id": 855982
+      }
+    },
+    {
+      "text": "Start of 2nd Quarter",
+      "type": "periodStart",
+      "sequence": 1793677272147,
+      "id": 41246789,
+      "periodName": "2Q"
+    },
+    {
+      "text": "End of 1st Quarter.",
+      "type": "periodEnd",
+      "sequence": 1793677105030,
+      "id": 41246581,
+      "periodName": "1Q"
+    },
+    {
+      "text": "Brandin Podziemski shooting foul (Oso Ighodaro draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793677007931,
+      "id": 41246538,
+      "periodName": "1Q",
+      "player": {
+        "name": "Brandin Podziemski",
+        "id": 1178388
+      }
+    },
+    {
+      "text": "Suns technical foul (Defensive three second)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793676695641,
+      "id": 41246384,
+      "periodName": "1Q"
+    },
+    {
+      "text": "Oso Ighodaro personal foul (Loose ball) (Charles Bassey draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793676466838,
+      "id": 41246236,
+      "periodName": "1Q",
+      "player": {
+        "name": "Oso Ighodaro",
+        "id": 1179061
+      }
+    },
+    {
+      "text": "Dillon Brooks personal foul (Loose ball) (Gary Payton II draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793676402639,
+      "id": 41246213,
+      "periodName": "1Q",
+      "player": {
+        "name": "Dillon Brooks",
+        "id": 885254
+      }
+    },
+    {
+      "text": "Jordan Goodwin personal foul (Georges Niang draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793676322842,
+      "id": 41246170,
+      "periodName": "1Q",
+      "player": {
+        "name": "Jordan Goodwin",
+        "id": 1134112
+      }
+    },
+    {
+      "text": "Khaman Maluach personal foul (Stephen Curry draws the foul)",
+      "type": "foul",
+      "isHome": false,
+      "sequence": 1793676242913,
+      "id": 41246098,
+      "periodName": "1Q",
+      "player": {
+        "name": "Khaman Maluach",
+        "id": 1915077
+      }
+    },
+    {
+      "text": "Yaxel Lendeborg shooting foul (Miles Bridges draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793675904038,
+      "id": 41245884,
+      "periodName": "1Q",
+      "player": {
+        "name": "Yaxel Lendeborg",
+        "id": 1522486
+      }
+    },
+    {
+      "text": "Will Richard shooting foul (Dillon Brooks draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793675826072,
+      "id": 41245836,
+      "periodName": "1Q",
+      "player": {
+        "name": "Will Richard",
+        "id": 1181668
+      }
+    },
+    {
+      "text": "Yaxel Lendeborg shooting foul (Devin Booker draws the foul)",
+      "type": "foul",
+      "isHome": true,
+      "sequence": 1793675754476,
+      "id": 41245792,
+      "periodName": "1Q",
+      "player": {
+        "name": "Yaxel Lendeborg",
+        "id": 1522486
+      }
+    },
+    {
+      "text": "Start of 1st Quarter",
+      "type": "periodStart",
+      "sequence": 1793675582258,
+      "id": 41245757,
+      "periodName": "1Q"
+    },
+    {
+      "text": "Khaman Maluach vs. Draymond Green (Dillon Brooks gains possession)",
+      "type": "periodStart",
+      "isHome": false,
+      "sequence": 1793675582268,
+      "id": 41245649,
+      "periodName": "1Q"
+    }
+  ]
+}

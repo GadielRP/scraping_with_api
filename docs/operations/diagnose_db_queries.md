@@ -191,6 +191,273 @@ WHERE e.starts_at::date = DATE '2026-10-22'
 ORDER BY c.category_name, starts_at desc
 ```
 
+### Competitions with most events with markets
+```sql
+SELECT
+    c.competition_id,
+    c.source_unique_tournament_id,
+    c.canonical_name AS competition,
+    c.display_name AS name2,
+    c.category_name,
+    e.sport,
+
+    COUNT(*) AS total_events,
+
+    /* EVENTS WITH MARKETS */
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM markets m
+            WHERE m.event_id = e.id
+        )
+    ) AS events_with_markets,
+
+    /* EVENTS WITHOUT MARKETS */
+    COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM markets m
+            WHERE m.event_id = e.id
+        )
+    ) AS events_without_markets,
+
+    /* % WITH MARKETS */
+    ROUND(
+        100.0 *
+        COUNT(*) FILTER (
+            WHERE EXISTS (
+                SELECT 1
+                FROM markets m
+                WHERE m.event_id = e.id
+            )
+        )
+        / NULLIF(COUNT(*), 0),
+        2
+    ) AS pct_with_markets,
+
+    /* =========================
+       ODDSPAPI
+       ========================= */
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+              AND esm.has_odds = TRUE
+        )
+    ) AS oddspapi_has_odds_true,
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+              AND esm.has_odds IS NULL
+        )
+    ) AS oddspapi_has_odds_unknown,
+
+    COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+        )
+    ) AS oddspapi_no_mapping,
+
+    /* =========================
+       SOFASCORE
+       ========================= */
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'sofascore'
+              AND esm.has_odds = TRUE
+        )
+    ) AS sofascore_has_odds_true,
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'sofascore'
+              AND esm.has_odds IS NULL
+        )
+    ) AS sofascore_has_odds_unknown
+
+FROM events e
+
+JOIN competitions c
+    ON c.competition_id = e.competition_id
+
+WHERE e.sport = 'Football'
+
+GROUP BY
+    c.competition_id,
+    c.source_unique_tournament_id,
+    c.canonical_name,
+    c.display_name,
+    c.category_name,
+    e.sport
+
+HAVING COUNT(*) FILTER (
+    WHERE EXISTS (
+        SELECT 1
+        FROM markets m
+        WHERE m.event_id = e.id
+    )
+) > 0
+
+ORDER BY
+    events_with_markets DESC,
+    pct_with_markets DESC;
+```
+
+### Competitions with most events without markets
+```sql
+SELECT
+    c.competition_id,
+    c.source_unique_tournament_id,
+    c.canonical_name AS competition,
+    c.display_name AS name2,
+    c.category_name,
+    e.sport,
+
+    COUNT(*) AS total_events,
+
+    /* MARKETS */
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM markets m
+            WHERE m.event_id = e.id
+        )
+    ) AS events_with_markets,
+
+    COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM markets m
+            WHERE m.event_id = e.id
+        )
+    ) AS events_without_markets,
+
+    ROUND(
+        100.0 * COUNT(*) FILTER (
+            WHERE EXISTS (
+                SELECT 1
+                FROM markets m
+                WHERE m.event_id = e.id
+            )
+        ) / NULLIF(COUNT(*), 0),
+        2
+    ) AS pct_with_markets,
+
+    /* ODDSPAPI */
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+              AND esm.has_odds = TRUE
+        )
+    ) AS oddspapi_has_odds_true,
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+              AND esm.has_odds IS NULL
+        )
+    ) AS oddspapi_has_odds_unknown,
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+              AND esm.has_odds = FALSE
+        )
+    ) AS oddspapi_has_odds_false,
+
+    COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'oddspapi'
+        )
+    ) AS oddspapi_no_mapping,
+
+    /* SOFASCORE */
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'sofascore'
+              AND esm.has_odds = TRUE
+        )
+    ) AS sofascore_has_odds_true,
+
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'sofascore'
+              AND esm.has_odds IS NULL
+        )
+    ) AS sofascore_has_odds_unknown,
+
+    COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM event_source_mappings esm
+            WHERE esm.event_id = e.id
+              AND esm.source = 'sofascore'
+        )
+    ) AS sofascore_no_mapping
+
+FROM events e
+
+JOIN competitions c
+    ON c.competition_id = e.competition_id
+
+WHERE e.sport = 'Football'
+
+GROUP BY
+    c.competition_id,
+    c.source_unique_tournament_id,
+    c.canonical_name,
+    c.display_name,
+    c.category_name,
+    e.sport
+
+HAVING COUNT(*) FILTER (
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM markets m
+        WHERE m.event_id = e.id
+    )
+) > 0
+
+ORDER BY
+    events_without_markets DESC,
+    pct_with_markets ASC;
+```
+
 
 ### Markets per canonical event
 

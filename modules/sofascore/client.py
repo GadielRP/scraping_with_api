@@ -756,6 +756,9 @@ class SofaScoreAPI:
     def get_event_comments(self, event_id: int) -> Optional[Dict]:
         return get_event_comments(self, event_id)
 
+    def open_event_comments(self, sofascore_event_id: int | str) -> AbstractContextManager[JsonDocument]:
+        return open_json_document(self, f"/event/{sofascore_event_id}/comments")
+
     def get_event_statistics(self, event_id: int) -> Optional[Dict]:
         return get_event_statistics(self, event_id)
 

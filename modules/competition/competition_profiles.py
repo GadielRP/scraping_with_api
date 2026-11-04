@@ -11,7 +11,7 @@ from typing import Mapping
 
 from modules.competition import competition_ids, standings_policies
 from modules.competition.competitive_rules import (
-    CompetitionRules, ObjectiveRule, FOOTBALL_SCORING, WINS_SCORING,
+    CompetitionRules, DisciplineRules, ObjectiveRule, FOOTBALL_SCORING, WINS_SCORING,
     NFL_SCORING, NHL_SCORING, HOCKEY_SCORING,
 )
 from modules.competition.rule_terms import (
@@ -287,9 +287,9 @@ COMPETITION_PROFILES: Mapping[int, CompetitionRules] = MappingProxyType({
             create_competition_qualification_rule(
                 start=5,
                 end=5,
-                path=QualificationPath.QUALIFYING_ROUND,
-                destination_competition_id=competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION,
-                destination_competition_name='UEFA Europa League, Qualification',
+                path=QualificationPath.DIRECT,
+                destination_competition_id=competition_ids.UEFA_EUROPA_LEAGUE,
+                destination_competition_name='UEFA Europa League',
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -680,6 +680,7 @@ COMPETITION_PROFILES: Mapping[int, CompetitionRules] = MappingProxyType({
         standings=standings_policies.NBA,
         scoring=WINS_SCORING,
         grouping_method=GroupingMethod.NBA_CONFERENCE,
+        discipline=DisciplineRules(personal_foul_limit=6),
     ),
 
     # euroleague (1-6 Playoffs, 7-10 Play-In; sin descenso)

@@ -35,6 +35,13 @@ class ResultSelection:
     default_cutoff: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class CommittedResultEvent:
+    event_id: int
+    sport: str
+    competition_id: int | None
+
+
 def result_selection(target_date):
     if target_date is not None:
         start, end = local_day_bounds_utc(target_date, Config.TIMEZONE)

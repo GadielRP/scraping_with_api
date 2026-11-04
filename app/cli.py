@@ -17,6 +17,45 @@ from shared.runtime_observability import (
 from .logging_setup import setup_logging
 
 
+def _discipline_selection(args):
+    from modules.discipline.contracts import Selection
+    from shared.temporal import local_day_bounds_utc
+
+    start = end = None
+    if args.date:
+        if args.from_date or args.to_date:
+            raise ValueError("--date and --from-date/--to-date are exclusive")
+        start, end = local_day_bounds_utc(date.fromisoformat(args.date), Config.TIMEZONE)
+    elif args.from_date or args.to_date:
+        if not args.from_date or not args.to_date:
+            raise ValueError("--from-date and --to-date are required together (end exclusive)")
+        start, _ = local_day_bounds_utc(date.fromisoformat(args.from_date), Config.TIMEZONE)
+        end, _ = local_day_bounds_utc(date.fromisoformat(args.to_date), Config.TIMEZONE)
+    if args.limit is not None and args.limit < 1:
+        raise ValueError("--limit must be positive")
+    return Selection(event_id=args.event_id, start=start, end=end,
+                     competition_id=args.competition_id, season_id=args.season_id,
+                     after_event_id=args.after_event_id)
+
+
+def _run_discipline(args, selection):
+    from dataclasses import asdict
+    from app.runtime import ApplicationRuntime
+
+    def show_event(event, report):
+        if selection.event_id is not None:
+            print(json.dumps(dict(event_id=event.event_id, dry_run=not args.commit,
+                                  outcome=report.outcome, acquisition=asdict(report.acquisition)
+                                  if report.acquisition else None),
+                             default=lambda value: sorted(value) if isinstance(value, frozenset) else str(value)))
+
+    summary = ApplicationRuntime().run("discipline", selection=selection,
+                                       limit=args.limit, commit=args.commit, on_event=show_event)
+    print(json.dumps(summary))
+    if summary["failed"]:
+        raise RuntimeError("Discipline collection had failed events; inspect summary and logs")
+
+
 def _run_oddspapi_fixture_discovery(args):
     """Run Oddspapi fixture discovery for a UTC day from the application CLI."""
     logger = logging.getLogger(__name__)
@@ -83,10 +122,17 @@ def _build_parser():
             "status",
             "events",
             "refresh-alerts",
+            "discipline",
         ],
         help="Command to run",
     )
-    parser.add_argument("--limit", type=int, default=10, help="Limit for events display")
+    parser.add_argument("--limit", type=int, default=None, help="Event limit (discipline defaults to 200; display to 10)")
+    parser.add_argument("--event-id", type=int, help="Canonical event ID for discipline")
+    parser.add_argument("--competition-id", type=int, help="Canonical competition ID")
+    parser.add_argument("--season-id", type=int, help="Internal season ID")
+    parser.add_argument("--after-event-id", type=int, default=0, help="Exclusive canonical event cursor")
+    parser.add_argument("--from-date", help="First local date, inclusive")
+    parser.add_argument("--to-date", help="Final local date, exclusive")
     parser.add_argument(
         "--date",
         type=str,
@@ -120,6 +166,7 @@ def _run_command(args):
     from .initialize import initialize_system
 
     target_date = None
+    discipline_selection = _discipline_selection(args) if args.command == "discipline" else None
     if args.command == "results-date":
         if not args.date:
             raise ValueError("results-date requires --date yyyy-mm-dd")
@@ -136,7 +183,9 @@ def _run_command(args):
         "results-all": "results_all",
         "daily-discovery": "daily",
     }
-    if args.command in jobs:
+    if args.command == "discipline":
+        _run_discipline(args, discipline_selection)
+    elif args.command in jobs:
         ApplicationRuntime().run(jobs[args.command])
     elif args.command == "results-date":
         ApplicationRuntime().run("results_date", target_date=target_date)
@@ -145,11 +194,11 @@ def _run_command(args):
     elif args.command == "oddspapi-fixture-discovery":
         _run_oddspapi_fixture_discovery(args)
     elif args.command == "backfill-results":
-        run_backfill_results(args.limit)
+        run_backfill_results(args.limit if args.limit is not None else 10)
     elif args.command == "status":
         show_status()
     elif args.command == "events":
-        show_events(args.limit)
+        show_events(args.limit if args.limit is not None else 10)
     elif args.command == "refresh-alerts":
         summary = ApplicationRuntime().run("view_refresh", force=True, request=True)
         if summary["failed"]:

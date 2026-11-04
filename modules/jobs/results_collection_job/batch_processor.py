@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from time import monotonic
 from collections import Counter
-from .contracts import ResultBatchDeferred, ResultOutcome
+from .contracts import CommittedResultEvent, ResultBatchDeferred, ResultOutcome
 
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
@@ -19,7 +19,7 @@ from shared.temporal import utc_now
 logger = logging.getLogger(__name__)
 
 
-def collect_batch(events, job_name):
+def collect_batch(events, job_name, *, on_results_committed=None):
     stats = dict(updated=0, deferred=0, failed=0, deleted=0)
     deletions = DeletionBatch(origin=job_name)
     results = {}
@@ -127,4 +127,16 @@ def collect_batch(events, job_name):
     logger.info("%s batch outcomes=%s", job_name, dict(outcomes))
     if deferred_reason:
         raise ResultBatchDeferred(deferred_reason, stats) from deferred_reason
+    if on_results_committed is not None and confirmed:
+        committed_events = tuple(
+            CommittedResultEvent(event.id, event.sport, event.competition_id)
+            for event in saved.events.values() if event.id in confirmed
+        )
+        results.clear()
+        metadata.clear()
+        persistable.clear()
+        try:
+            on_results_committed(committed_events)
+        except WorkDeferred as exc:
+            raise ResultBatchDeferred(exc, stats) from exc
     return stats
