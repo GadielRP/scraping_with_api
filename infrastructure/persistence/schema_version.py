@@ -45,6 +45,8 @@ def verify_schema_at_head(engine: Engine) -> bool:
             return False
 
         required_columns = {
+            "disciplinary_incidents": {"id", "event_source_mapping_id", "type", "origin",
+                                       "source_player_id", "player_name", "side", "created_at", "updated_at"},
             "canonical_market_types": {"market_type_id", "requires_line_value"},
             "market_source_mappings": {"market_type_id"},
             "markets": {"market_type_id", "line_value"},
@@ -75,6 +77,24 @@ def verify_schema_at_head(engine: Engine) -> bool:
                 logger.error("Legacy market columns remain in %s: %s", table, sorted(remaining))
                 return False
         if engine.dialect.name == "postgresql":
+            discipline_fks = inspector.get_foreign_keys("disciplinary_incidents")
+            if not any(
+                fk["constrained_columns"] == ["event_source_mapping_id"]
+                and fk["referred_table"] == "event_source_mappings"
+                and fk.get("options", {}).get("ondelete", "").upper() == "CASCADE"
+                for fk in discipline_fks
+            ):
+                logger.error("Disciplinary incidents are missing the cascading mapping FK")
+                return False
+            if not any(index["column_names"] == ["event_source_mapping_id", "type"]
+                       for index in inspector.get_indexes("disciplinary_incidents")):
+                logger.error("Disciplinary incidents are missing the mapping/type index")
+                return False
+            checks = {item["name"] for item in inspector.get_check_constraints("disciplinary_incidents")}
+            if not {"ck_discipline_type", "ck_discipline_origin", "ck_discipline_side",
+                    "ck_discipline_player_id", "ck_discipline_player_name"} <= checks:
+                logger.error("Disciplinary incident checks are missing")
+                return False
             event_fks = inspector.get_foreign_keys("event_source_mappings")
             if not any(
                 fk["constrained_columns"] == ["event_id"]

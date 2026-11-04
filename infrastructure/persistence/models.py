@@ -150,6 +150,10 @@ class EventSourceMapping(Base):
     event = relationship("Event", back_populates="source_mappings")
     source_participant_home = relationship("Participant", foreign_keys=[source_participant_home_id])
     source_participant_away = relationship("Participant", foreign_keys=[source_participant_away_id])
+    disciplinary_incidents = relationship(
+        "DisciplinaryIncident", back_populates="mapping",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint('source', 'source_event_id', name='unique_event_source_mapping'),
@@ -157,6 +161,32 @@ class EventSourceMapping(Base):
         Index('idx_event_source_mappings_source', 'source'),
         Index('idx_event_source_mappings_source_participant_home_id', 'source_participant_home_id'),
         Index('idx_event_source_mappings_source_participant_away_id', 'source_participant_away_id'),
+    )
+
+
+class DisciplinaryIncident(Base):
+    """One acquired incident; player IDs are opaque provider IDs, never team FKs."""
+    __tablename__ = "disciplinary_incidents"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    event_source_mapping_id = Column(Integer, ForeignKey(
+        "event_source_mappings.mapping_id", ondelete="CASCADE"), nullable=False)
+    type = Column(Text, nullable=False)
+    origin = Column(Text, nullable=False)
+    source_player_id = Column(Text)
+    player_name = Column(Text)
+    side = Column(Text, nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    updated_at = Column(UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now)
+
+    mapping = relationship("EventSourceMapping", back_populates="disciplinary_incidents")
+    __table_args__ = (
+        CheckConstraint("type IN ('yellow_card', 'red_card', 'ejection', 'foul_out')", name="ck_discipline_type"),
+        CheckConstraint("origin IN ('reported', 'derived')", name="ck_discipline_origin"),
+        CheckConstraint("side IN ('home', 'away')", name="ck_discipline_side"),
+        CheckConstraint("source_player_id IS NULL OR length(trim(source_player_id)) > 0", name="ck_discipline_player_id"),
+        CheckConstraint("player_name IS NULL OR length(trim(player_name)) > 0", name="ck_discipline_player_name"),
+        Index("ix_disciplinary_incidents_mapping_type", "event_source_mapping_id", "type"),
     )
 
 

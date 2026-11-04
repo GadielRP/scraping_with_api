@@ -41,6 +41,7 @@ class DatabaseManager:
                 cursor = dbapi_connection.cursor()
                 try:
                     cursor.execute("SET TIME ZONE 'UTC'")
+                    dbapi_connection.commit()
                 finally:
                     cursor.close()
         self.SessionLocal = sessionmaker(

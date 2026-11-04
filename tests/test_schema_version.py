@@ -39,6 +39,13 @@ def test_schema_gate_requires_current_revision() -> None:
     head = ScriptDirectory.from_config(AlembicConfig("alembic.ini")).get_current_head()
     with engine.begin() as connection:
         connection.execute(text("UPDATE alembic_version SET version_num = :head"), {"head": head})
+    assert not verify_schema_at_head(engine)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE disciplinary_incidents (id INTEGER, event_source_mapping_id INTEGER, "
+            "type TEXT, origin TEXT, source_player_id TEXT, player_name TEXT, side TEXT, "
+            "created_at DATETIME, updated_at DATETIME)"
+        ))
     assert verify_schema_at_head(engine)
 
 
