@@ -110,6 +110,16 @@ def get_event_comments(client, event_id: int) -> Optional[Dict]:
     return client.request_json(f"/event/{event_id}/comments")
 
 
+def get_event_statistics(client, event_id: int) -> Optional[Dict]:
+    """Fetch statistics for a SofaScore event."""
+    return client.request_json(f"/event/{event_id}/statistics")
+
+
+def get_event_lineups(client, event_id: int) -> Optional[Dict]:
+    """Fetch lineups for a SofaScore event."""
+    return client.request_json(f"/event/{event_id}/lineups")
+
+
 def update_event_information_from_response(response: Dict) -> bool:
     try:
         if not response or "event" not in response:

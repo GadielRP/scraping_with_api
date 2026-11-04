@@ -16,7 +16,7 @@ from shared.temporal import from_unix_timestamp, utc_now
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.alerts import pre_start_notifier
 from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def check_recently_started_events_for_timestamp_corrections(events_started_recen
                 minutes_ago = abs(minutes_since_start(stored_start_time))
 
                 try:
-                    sofascore_event_id = resolve_sofascore_event_id(event_id)
+                    sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
                 except ValueError as exc:
                     logger.warning("Unable to resolve sofascore_event_id for event %s: %s", event_id, exc)
                     return result

@@ -68,7 +68,7 @@ from infrastructure.persistence.models import Event, Result
 from infrastructure.persistence.repositories import ResultRepository, EventRepository
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 try:
@@ -700,7 +700,7 @@ def collect_results_for_events(events: List[Event], day_date: date, test_mode: b
             if update_odds:
                 try:
                     fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
-                        resolve_sofascore_event_id(event.id),
+                        resolve_sofascore_event_identity(event.id).sofascore_event_id,
                         event.slug,
                     )
                     if fetch_result.endpoint_missing:

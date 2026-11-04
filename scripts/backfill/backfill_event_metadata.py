@@ -53,7 +53,7 @@ from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventRepository, ResultRepository
 from infrastructure.settings import Config
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.exceptions import (
     SofaScoreNotFoundException,
     SofaScoreRateLimitException,
@@ -437,7 +437,7 @@ def fetch_event_response_strict(event_id: int) -> Optional[Dict]:
     SofaScoreRateLimitException and SofaScoreNotFoundException propagate.
     """
     try:
-        sofascore_event_id = resolve_sofascore_event_id(event_id)
+        sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
         return api_client.request_json(f"/event/{sofascore_event_id}")
     except ValueError as exc:
         logger.warning("No SofaScore mapping available for canonical event %s: %s", event_id, exc)

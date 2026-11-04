@@ -2,25 +2,41 @@ import argparse
 import json
 
 from modules.sofascore import api_client
-from modules.jobs.pre_start_check_job.providers.sofascore.comments_debug_response_writer import (
-    SofaScoreCommentsDebugResponseWriter,
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
+from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer import (
+    SofaScoreDebugResponseWriter,
 )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Get event comments by event ID")
-    parser.add_argument("event_id", type=int, help="The SofaScore ID of the event")
+    parser.add_argument(
+        "event_id",
+        type=int,
+        help="SofaScore event ID by default, or canonical event ID with --source canonical",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["canonical", "sofascore"],
+        default="sofascore",
+        help="Interpret event_id as a SofaScore or canonical ID",
+    )
     args = parser.parse_args()
 
-    response = api_client.get_event_comments(args.event_id)
+    identity = resolve_sofascore_event_identity(
+        args.event_id,
+        input_id_type=args.source,
+    )
+    response = api_client.get_event_comments(identity.sofascore_event_id)
     if isinstance(response, dict):
-        event = api_client.get_event_details(args.event_id) or {}
+        event = api_client.get_event_details(identity.sofascore_event_id) or {}
         tournament = event.get("tournament") or {}
         unique_tournament = tournament.get("uniqueTournament") or {}
         category = tournament.get("category") or {}
         sport = (category.get("sport") or {}).get("name")
-        SofaScoreCommentsDebugResponseWriter.save(
-            event_id=args.event_id,
+        SofaScoreDebugResponseWriter.save_response(
+            response_type="comments",
+            event_id=identity.canonical_event_id or identity.sofascore_event_id,
             payload=response,
             competition_slug=(
                 unique_tournament.get("slug")

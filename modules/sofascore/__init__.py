@@ -2,7 +2,7 @@
 
 from .client import SofaScoreAPI, api_client
 from .event_normalizer import normalize_event_payload
-from .event_identity import resolve_sofascore_event_id
+from .event_identity import SofaScoreEventIdentity, resolve_sofascore_event_identity
 from .exceptions import (
     SofaScoreChallengeCircuitOpenException,
     SofaScoreChallengeException,
@@ -16,7 +16,8 @@ from .sport_classifier import SPORT_TENNIS, SPORT_TENNIS_DOUBLES, SPORT_UNKNOWN,
 __all__ = [
     "SofaScoreAPI",
     "api_client",
-    "resolve_sofascore_event_id",
+    "SofaScoreEventIdentity",
+    "resolve_sofascore_event_identity",
     "SofaScoreChallengeException",
     "SofaScoreChallengeCircuitOpenException",
     "SofaScoreError",

@@ -8,7 +8,7 @@ from typing import Collection
 
 from infrastructure.settings import Config
 from shared.temporal import as_utc, utc_now
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def should_extract_odds_for_event(
 
     if sofascore_event_id is None:
         try:
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
         except ValueError as exc:
             logger.warning("Unable to resolve sofascore_event_id for canonical event %s: %s", event_id, exc)
             return False, None, False, None

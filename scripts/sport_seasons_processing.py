@@ -20,7 +20,7 @@ event_source_mappings.source_event_id for source='sofascore'.
 """
 
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from infrastructure.persistence.repositories import (
     EventRepository,
@@ -226,7 +226,7 @@ def reconcile_existing_season_events(
             if event_id not in fetched_canonical_event_ids:
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
 
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
             response = api_client.request_json_or_none(f"/event/{sofascore_event_id}")
             if not response or "event" not in response:
                 failed_direct_fetch_count += 1

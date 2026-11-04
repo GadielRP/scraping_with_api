@@ -9,7 +9,7 @@ from infrastructure.persistence.models import Event
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.odds_ingestion import MarketOddsIngestionService
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from modules.jobs.pre_start_check_job.moment_policy import dual_process_moments
 
@@ -59,7 +59,7 @@ def handle_rescheduled_event(event_id: int, event_repo, minutes_until_start: int
             if source_state is not None:
                 sofascore_event_id = int(source_state.source_event_id)
             else:
-                sofascore_event_id = resolve_sofascore_event_id(event_id)
+                sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
 
         fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
             sofascore_event_id,

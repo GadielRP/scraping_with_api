@@ -14,7 +14,7 @@ from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.sofascore import api_client
 from modules.sofascore.event_details import update_event_information_from_response
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.exceptions import SofaScoreNotFoundException
 from modules.sofascore.results_parser import parse_event_result
 
@@ -113,7 +113,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
             minutes_ago = None
 
         try:
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
             try:
                 response = api_client.request_json(f"/event/{sofascore_event_id}")
                 received_at = utc_now()

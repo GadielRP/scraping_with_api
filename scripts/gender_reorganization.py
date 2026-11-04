@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from shared.temporal import utc_now
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from infrastructure.settings import Config
 # Import database dependencies
 from infrastructure.persistence.database import db_manager
@@ -162,7 +162,7 @@ class GenderReorganization:
         """
         try:
             logger.debug(f"✈️Fetching API data for event {event_id}")
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
             
             # Use curl_cffi directly to get the status code for 404 detection
             url = f"{api_client.base_url}/event/{sofascore_event_id}"

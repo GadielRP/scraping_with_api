@@ -30,7 +30,7 @@ from infrastructure.persistence.repositories import (
     ResultRepository,
 )
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.exceptions import (
     SofaScoreChallengeException,
     SofaScoreNotFoundException,
@@ -120,7 +120,7 @@ def update_missing_competition_events(
 
     for idx, event_id in enumerate(event_ids, start=1):
         try:
-            sofascore_event_id = resolve_sofascore_event_id(event_id)
+            sofascore_event_id = resolve_sofascore_event_identity(event_id).sofascore_event_id
 
             try:
                 response = api_client.request_json(f"/event/{sofascore_event_id}")

@@ -3,26 +3,29 @@ import logging
 from app.logging_setup import setup_logging
 import sys
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get event odds by event ID")
-    parser.add_argument("event_id", type=int, help="Canonical event ID by default, or SofaScore event ID if --source sofascore is used")
-    parser.add_argument("--source", choices=["canonical", "sofascore"], default="canonical", help="Interpret event_id as canonical or SofaScore source ID")
+    parser.add_argument("event_id", type=int, help="SofaScore event ID by default, or canonical event ID with --source canonical")
+    parser.add_argument("--source", choices=["canonical", "sofascore"], default="sofascore", help="Interpret event_id as a SofaScore or canonical ID")
     args = parser.parse_args()
 
     setup_logging()
     logger = logging.getLogger(__name__)
 
     try:
-        sofascore_event_id = args.event_id if args.source == "sofascore" else resolve_sofascore_event_id(args.event_id)
-        fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(sofascore_event_id)
+        identity = resolve_sofascore_event_identity(
+            args.event_id,
+            input_id_type=args.source,
+        )
+        fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(identity.sofascore_event_id)
         if fetch_result.endpoint_missing:
             if args.source == "canonical":
                 EventSourceMappingRepository.mark_odds_unavailable(
-                    [args.event_id],
+                    [identity.canonical_event_id],
                     "sofascore",
                 )
             logger.info(

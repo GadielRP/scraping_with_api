@@ -3,12 +3,12 @@ import logging
 from app.logging_setup import setup_logging
 import sys
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get event results or metadata snapshot by event ID")
-    parser.add_argument("event_id", type=int, help="Canonical event ID by default, or SofaScore event ID if --source sofascore is used")
-    parser.add_argument("--source", choices=["canonical", "sofascore"], default="canonical", help="Interpret event_id as canonical or SofaScore source ID")
+    parser.add_argument("event_id", type=int, help="SofaScore event ID by default, or canonical event ID with --source canonical")
+    parser.add_argument("--source", choices=["canonical", "sofascore"], default="sofascore", help="Interpret event_id as a SofaScore or canonical ID")
     parser.add_argument("--update-time", action="store_true", help="Check and update starting time")
     parser.add_argument("--update-court-type", action="store_true", help="Update tennis court/ground type and rankings")
     parser.add_argument("--return-snapshot", action="store_true", help="Return metadata snapshot instead of parsed results")
@@ -20,15 +20,13 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     try:
-        if args.source == "canonical":
-            canonical_event_id = args.event_id
-            sofascore_event_id = resolve_sofascore_event_id(args.event_id)
-        else:
-            canonical_event_id = None
-            sofascore_event_id = args.event_id
+        identity = resolve_sofascore_event_identity(
+            args.event_id,
+            input_id_type=args.source,
+        )
         response = api_client.get_event_results(
-            sofascore_event_id,
-            canonical_event_id=canonical_event_id,
+            identity.sofascore_event_id,
+            canonical_event_id=identity.canonical_event_id,
             update_time=args.update_time,
             update_court_type=args.update_court_type,
             minutes_until_start=args.minutes_until_start,

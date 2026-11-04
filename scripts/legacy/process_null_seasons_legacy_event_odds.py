@@ -22,7 +22,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Event
 from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
 from modules.sofascore import api_client
-from modules.sofascore.event_identity import resolve_sofascore_event_id
+from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.odds_fetcher import SofaScoreOddsFetcher
 from infrastructure.persistence.repositories import EventSourceMappingRepository
 from modules.jobs.pre_start_check_job.odds_extraction import extract_final_odds_from_response
@@ -183,7 +183,7 @@ def process_event(event_id: int, slug: str):
         # 1. Update final odds (matches Job E logic)
         try:
             fetch_result = SofaScoreOddsFetcher(api_client).fetch_odds(
-                resolve_sofascore_event_id(event_id),
+                resolve_sofascore_event_identity(event_id).sofascore_event_id,
                 slug,
             )
             if fetch_result.endpoint_missing:
