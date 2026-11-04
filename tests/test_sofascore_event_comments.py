@@ -31,13 +31,42 @@ def test_client_get_event_comments_delegates_to_endpoint_helper():
 
 def test_script_prints_response_as_json(monkeypatch, capsys):
     response = {"comments": [{"text": "Good game"}]}
+    event = {
+        "slug": "sevilla-barcelona",
+        "tournament": {
+            "category": {"sport": {"name": "Football"}},
+            "uniqueTournament": {"slug": "la-liga"},
+        },
+        "homeTeam": {"name": "Sevilla"},
+        "awayTeam": {"name": "Barcelona"},
+    }
     monkeypatch.setattr(sys, "argv", ["get_event_comments.py", "12345"])
     monkeypatch.setattr(
         get_event_comments_script.api_client,
         "get_event_comments",
         Mock(return_value=response),
     )
+    monkeypatch.setattr(
+        get_event_comments_script.api_client,
+        "get_event_details",
+        Mock(return_value=event),
+    )
+    save = Mock()
+    monkeypatch.setattr(
+        get_event_comments_script.SofaScoreCommentsDebugResponseWriter,
+        "save",
+        save,
+    )
 
     get_event_comments_script.main()
 
     assert json.loads(capsys.readouterr().out) == response
+    save.assert_called_once_with(
+        event_id=12345,
+        payload=response,
+        competition_slug="la-liga",
+        sport="Football",
+        home_participant="Sevilla",
+        away_participant="Barcelona",
+        event_label="sevilla-barcelona",
+    )
