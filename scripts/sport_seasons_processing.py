@@ -14,6 +14,7 @@ tournament/season and:
 2. Writes the SofaScore source mapping (source_event_id, tournament, season)
 3. Saves all available betting markets (MarketOddsIngestionService), unless --skip-odds
 4. Extracts and saves results for finished events
+5. With --with-discipline, collects disciplinary incidents after result commits
 
 Event.id is the internal canonical ID. SofaScore's event ID lives on
 event_source_mappings.source_event_id for source='sofascore'.
@@ -42,6 +43,11 @@ from modules.events.discards.contracts import DeletionBatch
 from modules.sofascore.results_parser import parse_event_result
 import argparse
 import time
+from infrastructure.settings.discipline import DisciplineSettings
+from infrastructure.settings.job_execution import JobExecutionSettings
+from modules.jobs.discipline_collection_job.post_results import build_post_results_collector
+from modules.jobs.results_collection_job.contracts import CommittedResultEvent
+from modules.discipline.contracts import Outcome
 
 # Setup logging
 logging.basicConfig(
@@ -193,11 +199,25 @@ def get_season_events_missing_from_view(
         return [row[0] for row in rows if row[0]]
 
 
+def _flush_results(results, references, collect_discipline):
+    """Commit one bounded batch, then hand off only confirmed scalar references."""
+    if not results:
+        return 0
+    confirmed = ResultRepository.batch_upsert_results(results)
+    committed = tuple(ref for ref in references if ref.event_id in confirmed)
+    results.clear()
+    references.clear()
+    if collect_discipline is not None and committed:
+        collect_discipline(committed)
+    return len(confirmed)
+
+
 def reconcile_existing_season_events(
     season_ids: tuple[int, ...],
     fetched_canonical_event_ids: set[int],
     canceled_event_ids_to_delete: DeletionBatch,
     cutoff_time=None,
+    collect_discipline=None,
 ) -> dict:
     if cutoff_time is None:
         cutoff_time = utc_now()
@@ -220,8 +240,13 @@ def reconcile_existing_season_events(
     results_to_upsert: List[Tuple[int, Dict]] = []
     still_pending = 0
     failed_direct_fetch_count = 0
+    references = []
+    results_inserted_or_updated = 0
+    batch_size = JobExecutionSettings().event_write_batch_size
 
     for event_id in candidate_ids:
+        if len(results_to_upsert) >= batch_size:
+            results_inserted_or_updated += _flush_results(results_to_upsert, references, collect_discipline)
         try:
             if event_id not in fetched_canonical_event_ids:
                 logger.info("Reconciling season event %s not returned by current season endpoint", event_id)
@@ -238,7 +263,8 @@ def reconcile_existing_season_events(
             event_payload = dict(event_data.get("event", event_data))
             event_payload.pop("discovery_source", None)
             event_data["event"] = event_payload
-            if EventRepository.upsert_event(event_data):
+            saved_event = EventRepository.upsert_event(event_data)
+            if saved_event:
                 reconciled_metadata += 1
 
             parsed = parse_event_result({"event": raw_event})
@@ -255,6 +281,8 @@ def reconcile_existing_season_events(
 
             if result_data:
                 results_to_upsert.append((event_id, result_data))
+                if collect_discipline is not None and saved_event is not None:
+                    references.append(CommittedResultEvent(saved_event.id, saved_event.sport, saved_event.competition_id))
             else:
                 still_pending += 1
                 logger.info(
@@ -266,14 +294,8 @@ def reconcile_existing_season_events(
             failed_direct_fetch_count += 1
             logger.error("Error reconciling event %s: %s", event_id, exc)
 
-    results_inserted_or_updated = 0
-    if results_to_upsert:
-        results_inserted_or_updated = len(ResultRepository.batch_upsert_results(results_to_upsert))
-        logger.info(
-            "Batch upserted %s reconciliation results for %s events",
-            results_inserted_or_updated,
-            len(results_to_upsert),
-        )
+    results_inserted_or_updated += _flush_results(results_to_upsert, references, collect_discipline)
+    logger.info("Committed reconciliation results=%s", results_inserted_or_updated)
 
     return {
         "reconciled_metadata": reconciled_metadata,
@@ -344,7 +366,7 @@ def fetch_season_events(tournament_id: int, season_id: int) -> List[Dict]:
     logger.info(f"Fetching complete. Total events extracted: {len(all_events)}")
     return all_events
 
-def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
+def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True, *, with_discipline: bool = False):
     """
     Fetch and process all events for a given season.
     Works for any sport/competition.
@@ -356,7 +378,28 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
         tournament_id: The SofaScore unique tournament ID
         season_id: The SofaScore season ID
         fetch_odds: When False, skip SofaScore odds fetch/ingestion
+        with_discipline: Collect comments through the shared discipline runner
     """
+    if with_discipline and not DisciplineSettings().full_feed_verified:
+        raise ValueError("--with-discipline requires DisciplineSettings.full_feed_verified=True")
+    comments_fetched_count = 0
+    incident_inserted_event_ids: set[int] = set()
+
+    def record_discipline_event(event, report):
+        nonlocal comments_fetched_count
+        acquisition = report.acquisition
+        if acquisition is not None:
+            comments_fetched_count += acquisition.comments_count
+        if (report.outcome == Outcome.UPDATED and acquisition is not None
+                and acquisition.incidents):
+            incident_inserted_event_ids.add(event.event_id)
+
+    collect_discipline = (build_post_results_collector(
+                              origin="season",
+                              enabled=True,
+                              on_event=record_discipline_event,
+                          )
+                          if with_discipline else None)
     logger.info("=" * 80)
     logger.info(f"Processing Season: Tournament {tournament_id}, Season {season_id}")
     logger.info("fetch_odds: %s", fetch_odds)
@@ -400,8 +443,13 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     canceled_event_ids_to_delete = DeletionBatch(origin="sport_seasons_processing")
     missing_odds_event_ids = set()
     odds_fetcher = SofaScoreOddsFetcher(api_client) if fetch_odds else None
+    references = []
+    results_processed_count = 0
+    batch_size = JobExecutionSettings().event_write_batch_size
 
     for event_data in events:
+        if len(results_to_upsert) >= batch_size:
+            results_processed_count += _flush_results(results_to_upsert, references, collect_discipline)
         try:
             # Upsert event
             write_result = EventRepository.batch_upsert_events([event_data], "sofascore", "direct", 1.0)
@@ -489,6 +537,8 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
 
                         if result_data:
                             results_to_upsert.append((event_id, result_data))
+                            if collect_discipline is not None:
+                                references.append(CommittedResultEvent(event.id, event.sport, event.competition_id))
                             logger.debug(
                                 "Queued results for event %s: %s-%s",
                                 event_id,
@@ -512,14 +562,8 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
             logger.error(f"Error processing event {event_payload.get('id')}: {e}")
             continue
 
-    results_processed_count = 0
-    if results_to_upsert:
-        results_processed_count = len(ResultRepository.batch_upsert_results(results_to_upsert))
-        logger.info(
-            "Batch upserted results for %s/%s finished events",
-            results_processed_count,
-            len(results_to_upsert),
-        )
+    results_processed_count += _flush_results(results_to_upsert, references, collect_discipline)
+    logger.info("Committed season results=%s", results_processed_count)
 
     reconciliation_cutoff_time = utc_now()
     if fetch_odds:
@@ -532,6 +576,7 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
         fetched_canonical_event_ids=fetched_canonical_event_ids,
         canceled_event_ids_to_delete=canceled_event_ids_to_delete,
         cutoff_time=reconciliation_cutoff_time,
+        collect_discipline=collect_discipline,
     )
 
     canceled_events_deleted = 0
@@ -565,6 +610,12 @@ def process_season(tournament_id: int, season_id: int, fetch_odds: bool = True):
     logger.info("canceled_events_queued: %s", len(canceled_event_ids_to_delete))
     logger.info("canceled_events_deleted: %s", canceled_events_deleted)
     logger.info("failed_direct_fetch_count: %s", reconciliation_stats["failed_direct_fetch_count"])
+    if with_discipline:
+        logger.info("discipline_comments_fetched: %s", comments_fetched_count)
+        logger.info(
+            "discipline_events_with_incident_insertions: %s",
+            len(incident_inserted_event_ids),
+        )
     logger.info("=" * 80)
 
 def main():
@@ -630,6 +681,11 @@ Common tournament IDs:
         help='Skip SofaScore odds fetch and market ingestion (events and results only)'
     )
     parser.add_argument(
+        '--with-discipline',
+        action='store_true',
+        help='Collect disciplinary incidents from comments after result commits; respects discipline settings'
+    )
+    parser.add_argument(
         '--skip-db-init',
         action='store_true',
         help='Skip database initialization (use only if schema is up to date)'
@@ -654,7 +710,7 @@ Common tournament IDs:
             s_name = season['season_name']
             
             logger.info(f"[{i+1}/{len(season_to_process)}] Auto-processing: {s_name} (ID: {s_id}, Tournament: {t_id})")
-            process_season(t_id, s_id, fetch_odds=not args.skip_odds)
+            process_season(t_id, s_id, fetch_odds=not args.skip_odds, with_discipline=args.with_discipline)
             
             if i < len(season_to_process) - 1:
                 logger.info("Waiting 60 seconds before next season to avoid detection...")
@@ -672,6 +728,7 @@ Common tournament IDs:
                 matched_season['tournament_id'],
                 matched_season['season_id'],
                 fetch_odds=not args.skip_odds,
+                with_discipline=args.with_discipline,
             )
         else:
             logger.error(f"❌ No season found with name: '{args.season_name}' in season_to_process list.")
@@ -681,7 +738,7 @@ Common tournament IDs:
     
     elif args.season_id and args.tournament:
         # Process the single season provided via CLI
-        process_season(args.tournament, args.season_id, fetch_odds=not args.skip_odds)
+        process_season(args.tournament, args.season_id, fetch_odds=not args.skip_odds, with_discipline=args.with_discipline)
     
     else:
         logger.error("❌ Missing arguments. Provide EITHER (--auto) OR (--season_name NAME) OR (season_id -t tournament_id)")

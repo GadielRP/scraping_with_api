@@ -1,8 +1,10 @@
 import argparse
 import json
+import sys
 
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_identity
+from modules.sofascore.exceptions import SofaScoreNotFoundException
 from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer import (
     SofaScoreDebugResponseWriter,
 )
@@ -27,7 +29,16 @@ def main() -> None:
         args.event_id,
         input_id_type=args.source,
     )
-    response = api_client.get_event_comments(identity.sofascore_event_id)
+    try:
+        response = api_client.get_event_comments(identity.sofascore_event_id)
+    except SofaScoreNotFoundException as exc:
+        print(
+            f"SofaScore did not find the comments resource: "
+            f"endpoint={exc.endpoint} event_id={identity.sofascore_event_id} "
+            f"(HTTP {exc.status_code}).",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
     if isinstance(response, dict):
         event = api_client.get_event_details(identity.sofascore_event_id) or {}
         tournament = event.get("tournament") or {}

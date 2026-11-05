@@ -1,8 +1,8 @@
 # Incidencias disciplinarias
 
 Implementación sobre `0efc8499b324c09db6985e8ee26a137333a1cb77`; head previo de
-Alembic `20261029_01`, nuevo head `20261104_01`. No se modifica la recolección de
-resultados ni se escribe en observaciones.
+Alembic `20261029_01`; incidencias en `20261104_01` y totales en `20261104_02`.
+No se escribe disciplina en observaciones.
 
 ## Componentes y vocabulario
 
@@ -64,7 +64,8 @@ partidos. El adaptador exige inicio y final de partido (en básquetbol, final de
 colección no vacía y ausencia de indicadores conocidos de páginas pendientes.
 HTTP fallido, 404, JSON truncado, colección ausente/inválida, límites excedidos
 o lados inválidos nunca producen una escritura parcial. Una lista vacía conserva
-lo previo. Un feed válido sin incidencias puede borrar las anteriores de su alcance.
+lo previo. Un feed válido sin incidencias tampoco elimina el detalle anterior;
+para fútbol se intenta recuperar totales desde statistics.
 
 **Control de validación del proveedor:** cuando `DisciplineSettings.full_feed_verified`
 es `False`, la CLI permite dry-run, pero la composición rechaza
@@ -110,6 +111,52 @@ sola fila por evento; mappings ausentes o ambiguos se contabilizan como conflict
 Las consultas por mapping usan los índices existentes, sin agrupar todo el histórico
 en cada página. No se filtra por ausencia de incidencias, para permitir correcciones.
 
+## Totales y fallback de statistics
+
+`disciplinary_incidents_totals` conserva un agregado vigente por
+`(event_source_mapping_id, type, side)`, con `count >= 0`, endpoint (`comments`
+o `statistics`) y timestamps UTC. Esa combinación es su PK; no se duplica
+`event_id` ni se añade un índice redundante. El mapping identifica al proveedor,
+partido externo y participantes. No hay destinatarios ficticios en esta tabla.
+
+La adquisición combina detalle y agregados antes de escribir. Comments utilizable
+con incidencias genera totales para sus tipos administrados y ambos lados,
+incluidos ceros. Comments sin incidencias no autoriza un reemplazo destructivo.
+En fútbol, 404, colección vacía, ausencia de incidencias, documento inválido,
+feed incompleto o fallo ordinario de adquisición disparan el fallback.
+Cancelación, deadline y agotamiento de recursos no inician otra solicitud.
+
+`statistics_for_all_events=False` configura ese comportamiento. Con `True` se
+consulta statistics para todos los partidos de fútbol seleccionados, aunque
+comments tenga incidencias. Las demás rutas y filtros de selección se conservan.
+Básquetbol no consulta statistics: sus faltas de equipo no identifican expulsados.
+
+`open_event_statistics` usa descarga temporal y lectura incremental con los mismos
+límites de transporte. El parser separado acepta solo `period="ALL"`, claves
+`yellowCards` y `redCards`, y pares `homeValue`/`awayValue` enteros no negativos
+(sin booleanos). No suma periodos parciales ni convierte una clave ausente en cero.
+Valores contradictorios repetidos o documentos truncados invalidan la adquisición.
+Una métrica inválida se omite; las demás métricas válidas pueden actualizarse.
+
+En una ejecución, los agregados utilizables de statistics prevalecen sobre los
+de comments para el mismo tipo y lado. Otros alcances permanecen intactos salvo
+que comments aporte un agregado válido. Statistics nunca reemplaza incidencias
+individuales. Por eso el detalle conservado puede diferir del último total.
+Si ambas fuentes son inutilizables se conserva todo lo anterior. Un cero explícito
+de statistics sí puede actualizar el total a cero sin borrar destinatarios previos.
+
+`replace_acquisition(context, acquisition, dry_run=False)` mantiene locks y
+revalidación del contexto y publica detalle y totales en una sola transacción.
+Solo actualiza agregados cuya cantidad o endpoint cambió, conservando timestamps
+en repeticiones idénticas. `get_team_season_totals` usa el agregado si existe y,
+si falta, cuenta las incidencias de ese alcance en SQL. Nunca suma ambos.
+`get_event_totals(source, event_id)` devuelve los agregados adquiridos y su endpoint;
+la ausencia de un agregado no demuestra un cero real ni cobertura histórica.
+
+La CLI incluye agregados y diagnósticos en el dry-run de un evento. El job registra
+los totales con su endpoint, `statistics_reason`, y contadores `statistics_attempted`
+y `statistics_used`. Todos los puntos de entrada comparten esta adquisición.
+
 ## Migración y operación
 
 Aplicar el cambio de esquema mediante Alembic; el arranque solo verifica esquema:
@@ -131,8 +178,10 @@ solo evento muestra incidencias normalizadas; el resumen incluye `dry_run`,
 `scanned`, `updated`, `unchanged`, `unavailable`, `invalid`, `deferred`,
 `mapping_conflict`, `failed`, `last_processed_event_id` y `limit_reached`.
 
-La migración crea solo la tabla e índice. El downgrade elimina ambos y pierde
-todos los datos disciplinarios; no ejecutarlo en datos reales para probarlo.
+La revisión `20261104_01` crea incidencias y su índice. La `20261104_02` añade
+únicamente la tabla de totales, sin backfill. El downgrade de esta última elimina
+los agregados y conserva las incidencias; no ejecutar downgrades en datos reales
+para probarlos.
 
 Al habilitar `after_midnight_results_enabled` y `full_feed_verified`, midnight
 inyecta un callback en `run_results_collection`. Después de cada lote confirmado,
@@ -179,6 +228,23 @@ filtra por separado los candidatos de intraday mediante
 Para recibir competiciones no seguidas desde esa ruta también debe desactivarse
 ese filtro de origen. Los comandos manuales mantienen su selección explícita.
 
+El script de temporadas admite `--with-discipline` en sus modos de temporada
+individual, `--season_name` y `--auto`:
+
+```bash
+python -m scripts.sport_seasons_processing 100772 -t 132 --skip-odds --with-discipline
+```
+
+El flag activa la recolección del script independientemente de los toggles de
+midnight/intraday, manteniendo `full_feed_verified` y `tracked_competitions_only`.
+Se aplica tanto a eventos del endpoint de temporada como a los resultados de su
+reconciliación. Los resultados se confirman en lotes de `event_write_batch_size`
+y se entregan solo referencias confirmadas al callback compartido. Los comentarios
+se procesan incrementalmente y no se guardan como respuestas raw. Sin el flag,
+el script no solicita comentarios. El script conserva su modo habitual de escritura;
+este flag no es un dry-run. Las incidencias fallidas se registran para recuperación
+manual, igual que en las otras rutas.
+
 ## Validación reproducible
 
 `tests/discipline/fixtures/` contiene versiones mínimas de los dos ejemplos,
@@ -213,7 +279,8 @@ Medición local del 4 de noviembre de 2026, un proceso limpio por fila:
 Cada partido produjo una tarjeta. La instrumentación agrega coste de CPU; estos
 tiempos no representan latencia HTTP ni constituyen un SLA de producción.
 
-En PostgreSQL 17 desechable también se ejecutó `EXPLAIN (ANALYZE, BUFFERS)` de los
+Antes de incorporar los agregados, en PostgreSQL 17 desechable se ejecutó
+`EXPLAIN (ANALYZE, BUFFERS)` de los
 totales con datos sintéticos: 10.000 eventos, 60.000 incidencias y 100 equipos.
 La consulta devolvió las 600 tarjetas esperadas para el equipo seleccionado en
 17,681 ms, con 934 buffers compartidos encontrados en caché. Usó `BitmapOr` sobre

@@ -46,6 +46,12 @@ def test_schema_gate_requires_current_revision() -> None:
             "type TEXT, origin TEXT, source_player_id TEXT, player_name TEXT, side TEXT, "
             "created_at DATETIME, updated_at DATETIME)"
         ))
+    assert not verify_schema_at_head(engine)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE disciplinary_incidents_totals (event_source_mapping_id INTEGER, "
+            "type TEXT, side TEXT, count INTEGER, endpoint TEXT, created_at DATETIME, updated_at DATETIME)"
+        ))
     assert verify_schema_at_head(engine)
 
 

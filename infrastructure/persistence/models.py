@@ -154,6 +154,10 @@ class EventSourceMapping(Base):
         "DisciplinaryIncident", back_populates="mapping",
         cascade="all, delete-orphan", passive_deletes=True,
     )
+    disciplinary_incidents_totals = relationship(
+        "DisciplinaryIncidentTotal", back_populates="mapping",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint('source', 'source_event_id', name='unique_event_source_mapping'),
@@ -187,6 +191,27 @@ class DisciplinaryIncident(Base):
         CheckConstraint("source_player_id IS NULL OR length(trim(source_player_id)) > 0", name="ck_discipline_player_id"),
         CheckConstraint("player_name IS NULL OR length(trim(player_name)) > 0", name="ck_discipline_player_name"),
         Index("ix_disciplinary_incidents_mapping_type", "event_source_mapping_id", "type"),
+    )
+
+
+class DisciplinaryIncidentTotal(Base):
+    """Latest acquired aggregate per provider mapping, type and side."""
+    __tablename__ = "disciplinary_incidents_totals"
+
+    event_source_mapping_id = Column(Integer, ForeignKey(
+        "event_source_mappings.mapping_id", ondelete="CASCADE"), primary_key=True)
+    type = Column(Text, primary_key=True)
+    side = Column(Text, primary_key=True)
+    count = Column(Integer, nullable=False)
+    endpoint = Column(Text, nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utc_now)
+    updated_at = Column(UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now)
+    mapping = relationship("EventSourceMapping", back_populates="disciplinary_incidents_totals")
+    __table_args__ = (
+        CheckConstraint("type IN ('yellow_card', 'red_card', 'ejection', 'foul_out')", name="ck_discipline_totals_type"),
+        CheckConstraint("side IN ('home', 'away')", name="ck_discipline_totals_side"),
+        CheckConstraint("count >= 0", name="ck_discipline_totals_count"),
+        CheckConstraint("endpoint IN ('comments', 'statistics')", name="ck_discipline_totals_endpoint"),
     )
 
 

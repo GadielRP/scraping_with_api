@@ -13,6 +13,10 @@ from infrastructure.settings.job_execution import JobExecutionSettings
 from shared.execution_context import check_execution_budget
 
 
+class JsonDocumentLimitExceeded(ValueError):
+    """Resource exhaustion must not trigger another provider acquisition."""
+
+
 class JsonDocument:
     """A disk-backed response body with an enforced download size limit."""
 
@@ -24,7 +28,7 @@ class JsonDocument:
     def write(self, data: bytes) -> int:
         check_execution_budget()
         if self.size + len(data) > self.maximum:
-            raise ValueError("Provider response exceeds byte budget")
+            raise JsonDocumentLimitExceeded("Provider response exceeds byte budget")
         count = self.file.write(data)
         self.size += count
         return count
@@ -91,7 +95,7 @@ class TokenBoundedReader:
                 boundary = pattern.search(data, offset)
                 self.token_bytes += (boundary.start() if boundary else len(data)) - offset
                 if self.token_bytes > self.maximum:
-                    raise ValueError("Provider JSON token exceeds byte budget")
+                    raise JsonDocumentLimitExceeded("Provider JSON token exceeds byte budget")
                 if boundary is None:
                     break
                 byte = data[boundary.start()]
@@ -99,7 +103,7 @@ class TokenBoundedReader:
                 if not self.string:
                     self.depth += int(byte in (123, 91)) - int(byte in (125, 93))
                     if self.depth > self.maximum_depth:
-                        raise ValueError("Provider JSON nesting exceeds depth budget")
+                        raise JsonDocumentLimitExceeded("Provider JSON nesting exceeds depth budget")
                 if self.string and byte == 92:
                     self.token_bytes += 1
                     self.escaped = True
@@ -108,7 +112,7 @@ class TokenBoundedReader:
                         self.string = not self.string
                     self.token_bytes = 0
             if self.token_bytes > self.maximum:
-                raise ValueError("Provider JSON token exceeds byte budget")
+                raise JsonDocumentLimitExceeded("Provider JSON token exceeds byte budget")
         return data
 
 
@@ -159,7 +163,7 @@ def document_entries(document, field: str | tuple[str, ...], *, mapping=False, c
         if builder is not None:
             size += len(str(value).encode("utf-8")) + 16
             if size > maximum:
-                raise ValueError(f"Provider JSON element exceeds budget field={collection}")
+                raise JsonDocumentLimitExceeded(f"Provider JSON element exceeds budget field={collection}")
             builder.event(event, value)
             depth += int(event in ("start_map", "start_array"))
             depth -= int(event in ("end_map", "end_array"))

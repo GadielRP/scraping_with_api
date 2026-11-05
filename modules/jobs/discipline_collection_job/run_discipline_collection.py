@@ -6,7 +6,7 @@ from time import monotonic
 from infrastructure.runtime.resource_budget import check_maintenance_capacity
 from infrastructure.settings.job_execution import JobExecutionSettings
 from modules.competition.tracked_competitions import is_tracked_competition
-from modules.discipline.contracts import Outcome
+from modules.discipline.contracts import DisciplineEndpoint, Outcome
 from shared.execution_context import (
     ExecutionContext, Priority, WorkDeferred, check_execution_budget,
     current_execution, execution_scope,
@@ -24,7 +24,7 @@ def run_discipline_collection(service, repository, settings, *, selection=None,
         raise ValueError("limit must be positive")
     stats = dict.fromkeys(("scanned", "skipped_untracked", "updated", "unchanged",
                           "unavailable", "invalid", "deferred", "mapping_conflict",
-                          "failed"), 0)
+                          "failed", "statistics_attempted", "statistics_used"), 0)
     stats.update(last_processed_event_id=selection.after_event_id, dry_run=not commit, limit_reached=False)
     parent = current_execution() or ExecutionContext("discipline", Priority.MAINTENANCE)
     deadline = monotonic() + settings.budget_seconds
@@ -57,6 +57,13 @@ def run_discipline_collection(service, repository, settings, *, selection=None,
                         outcome = Outcome.FAILED
                     else:
                         outcome = report.outcome
+                        acquisition = report.acquisition
+                        if acquisition is not None:
+                            stats["statistics_attempted"] += int(acquisition.statistics_attempted)
+                            stats["statistics_used"] += int(any(t.endpoint == DisciplineEndpoint.STATISTICS for t in acquisition.totals))
+                            logger.info("Discipline totals event_id=%s statistics_attempted=%s statistics_reason=%s totals=%s",
+                                        event.event_id, acquisition.statistics_attempted, acquisition.statistics_reason,
+                                        [(t.type.value, t.side.value, t.count, t.endpoint.value) for t in acquisition.totals])
                         if on_event is not None:
                             on_event(event, report)
                         logger.info("Discipline event_id=%s outcome=%s incidents=%s reason=%s dry_run=%s",

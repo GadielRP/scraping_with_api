@@ -165,12 +165,12 @@ def test_post_commit_handoff_only_contains_confirmed_results(database, monkeypat
 
 def test_midnight_injects_post_result_step(monkeypatch):
     midnight = import_module("modules.jobs.midnight_sync_job.run_midnight_sync_job")
-    after = import_module("modules.jobs.discipline_collection_job.after_results")
+    post_results = import_module("modules.jobs.discipline_collection_job.post_results")
     from unittest.mock import Mock
 
     callback = Mock()
     results = Mock(return_value={"failed": 0})
-    monkeypatch.setattr(after, "build_after_results_collector", lambda: callback)
+    monkeypatch.setattr(post_results, "build_post_results_collector", lambda: callback)
     monkeypatch.setattr(midnight, "run_results_collection", results)
     monkeypatch.setattr(midnight.prediction_logger, "update_predictions_with_results",
                         lambda: {"updated": 0, "cancelled": 0})

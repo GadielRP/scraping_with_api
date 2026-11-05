@@ -20,6 +20,11 @@ class Origin(str, Enum):
     DERIVED = "derived"
 
 
+class DisciplineEndpoint(str, Enum):
+    COMMENTS = "comments"
+    STATISTICS = "statistics"
+
+
 class Side(str, Enum):
     HOME = "home"
     AWAY = "away"
@@ -79,11 +84,34 @@ class DisciplineFact:
 
 
 @dataclass(frozen=True, slots=True)
+class DisciplineTotalDraft:
+    type: IncidentType
+    side: Side
+    count: int
+    endpoint: DisciplineEndpoint
+
+    def __post_init__(self):
+        object.__setattr__(self, "type", IncidentType(self.type))
+        object.__setattr__(self, "side", Side(self.side))
+        object.__setattr__(self, "endpoint", DisciplineEndpoint(self.endpoint))
+        if isinstance(self.count, bool) or not isinstance(self.count, int) or self.count < 0:
+            raise ValueError("Discipline totals require a nonnegative integer")
+
+
+@dataclass(frozen=True, slots=True)
 class Acquisition:
     outcome: Outcome
     incidents: tuple[IncidentDraft, ...] = ()
     managed_types: frozenset[IncidentType] = frozenset()
     reason: str | None = None
+    comments_count: int = 0
+    totals: tuple[DisciplineTotalDraft, ...] = ()
+    statistics_attempted: bool = False
+    statistics_reason: str | None = None
+
+    @property
+    def managed_total_scopes(self):
+        return frozenset((total.type, total.side) for total in self.totals)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,8 +169,8 @@ class IncidentProvider(Protocol):
 
 class IncidentStore(Protocol):
     def iter_candidates(self, selection: Selection, page_size: int): ...
-    def replace_snapshot(self, context: DisciplineEventContext, incidents: tuple[IncidentDraft, ...],
-                         managed_types: frozenset[IncidentType], *, dry_run: bool = False) -> Outcome: ...
+    def replace_acquisition(self, context: DisciplineEventContext, acquisition: Acquisition,
+                            *, dry_run: bool = False) -> Outcome: ...
 
 
 class EventExclusion(Protocol):

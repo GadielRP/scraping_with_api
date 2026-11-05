@@ -9,10 +9,11 @@ from shared.execution_context import WorkDeferred
 logger = logging.getLogger(__name__)
 
 
-def build_after_results_collector(*, origin="midnight"):
+def build_post_results_collector(*, origin="midnight", enabled=None, on_event=None):
     settings = DisciplineSettings()
-    enabled = {"midnight": settings.after_midnight_results_enabled,
-               "intraday": settings.after_intraday_results_enabled}[origin]
+    if enabled is None:
+        enabled = {"midnight": settings.after_midnight_results_enabled,
+                   "intraday": settings.after_intraday_results_enabled}[origin]
     if not enabled:
         return None
     if not settings.full_feed_verified:
@@ -30,7 +31,12 @@ def build_after_results_collector(*, origin="midnight"):
         if not ids:
             return
         try:
-            summary = run(selection=Selection(event_ids=ids), limit=len(ids), commit=True)
+            summary = run(
+                selection=Selection(event_ids=ids),
+                limit=len(ids),
+                commit=True,
+                on_event=on_event,
+            )
             logger.info("%s discipline confirmed=%s eligible=%s summary=%s", origin, len(events), len(ids), summary)
         except WorkDeferred:
             raise

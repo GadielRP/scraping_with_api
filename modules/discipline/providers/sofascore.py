@@ -1,14 +1,21 @@
 """SofaScore's comments schema is confined to this incremental adapter."""
 import re
+import logging
+from collections import Counter
+from dataclasses import replace
 
 from ijson import JSONError
 
-from infrastructure.network.json_document import document_entries
+from infrastructure.network.json_document import document_entries, JsonDocumentLimitExceeded
 from modules.competition.competition_profiles import get_competition_profile
 from modules.sofascore.exceptions import SofaScoreNotFoundException
-from ..contracts import Acquisition, DisciplineFact, FactKind, Outcome, Side
+from ..contracts import Acquisition, DisciplineEndpoint, DisciplineFact, DisciplineTotalDraft, FactKind, Outcome, Side
 from ..policies import DisciplineLimitExceeded, evaluate_facts
 from infrastructure.settings.discipline import DisciplineSettings
+from shared.execution_context import check_execution_budget, WorkDeferred
+from .sofascore_statistics import SofaScoreDisciplineStatisticsProvider
+
+logger = logging.getLogger(__name__)
 
 
 def _text(value):
@@ -37,6 +44,40 @@ class SofaScoreDisciplineProvider:
     def acquire(self, context):
         if context.source != "sofascore" or context.sport not in ("Football", "Basketball"):
             return Acquisition(Outcome.INVALID, reason="unsupported_source_or_sport")
+        try:
+            comments = self._acquire_comments(context)
+        except (WorkDeferred, MemoryError, RecursionError):
+            raise
+        except Exception as exc:
+            logger.warning("Discipline comments acquisition failed event_id=%s error=%s",
+                           context.event_id, type(exc).__name__)
+            comments = Acquisition(Outcome.FAILED, reason="comments_acquisition_failed")
+        if comments.outcome == Outcome.DEFERRED:
+            return comments
+        usable = comments.outcome == Outcome.READY and bool(comments.incidents)
+        result = comments if usable else replace(comments, incidents=(), managed_types=frozenset())
+        if usable:
+            counts = Counter((incident.type, incident.side) for incident in comments.incidents)
+            result = replace(result, totals=tuple(
+                DisciplineTotalDraft(kind, side, counts[kind, side], DisciplineEndpoint.COMMENTS)
+                for kind in sorted(comments.managed_types) for side in Side))
+        elif result.outcome == Outcome.READY:
+            result = replace(result, outcome=Outcome.UNAVAILABLE, reason="no_comment_incidents")
+        if context.sport == "Football" and (self.settings.statistics_for_all_events or not usable):
+            check_execution_budget()
+            statistics = SofaScoreDisciplineStatisticsProvider(self.client).acquire(context)
+            if statistics.outcome == Outcome.DEFERRED:
+                return replace(statistics, statistics_attempted=True, comments_count=comments.comments_count)
+            totals = {(total.type, total.side): total for total in result.totals}
+            for total in statistics.totals:
+                totals[total.type, total.side] = total
+            result = replace(result, totals=tuple(totals.values()), statistics_attempted=True,
+                             statistics_reason=statistics.reason)
+            if statistics.outcome == Outcome.READY:
+                result = replace(result, outcome=Outcome.READY)
+        return result
+
+    def _acquire_comments(self, context):
         profile = get_competition_profile(context.competition_id)
         rules = profile.discipline if profile else None
         controls = dict.fromkeys(("hasNextPage", "hasNext", "nextPage", "nextCursor"))
@@ -86,24 +127,30 @@ class SofaScoreDisciplineProvider:
         try:
             with self.client.open_event_comments(context.source_event_id) as document:
                 result = evaluate_facts(context.sport, facts(document), rules, self.settings)
+            result = replace(result, comments_count=coverage["count"])
             if result.outcome != Outcome.READY:
                 return result
             if not coverage["count"]:
-                return Acquisition(Outcome.UNAVAILABLE, reason="empty_comments")
+                return Acquisition(Outcome.UNAVAILABLE, reason="empty_comments",
+                                   comments_count=coverage["count"])
             if any(value not in (None, False, "", 0) for value in controls.values()):
-                return Acquisition(Outcome.UNAVAILABLE, reason="pagination_not_exhausted")
+                return Acquisition(Outcome.UNAVAILABLE, reason="pagination_not_exhausted",
+                                   comments_count=coverage["count"])
             complete = (coverage["start"] and coverage["end"] if context.sport == "Football" else
                         coverage["start"] and coverage["ended_period"] >= 4 and
                         coverage["ended_period"] >= coverage["started_period"])
             if not complete:
-                return Acquisition(Outcome.UNAVAILABLE, reason="missing_match_boundaries")
+                return Acquisition(Outcome.UNAVAILABLE, reason="missing_match_boundaries",
+                                   comments_count=coverage["count"])
             return result
         except SofaScoreNotFoundException:
             return Acquisition(Outcome.UNAVAILABLE, reason="comments_not_found")
-        except DisciplineLimitExceeded as exc:
-            return Acquisition(Outcome.DEFERRED, reason=f"limit:{exc}")
+        except (DisciplineLimitExceeded, JsonDocumentLimitExceeded) as exc:
+            return Acquisition(Outcome.DEFERRED, reason=f"limit:{exc}",
+                               comments_count=coverage["count"])
         except (ValueError, JSONError):
-            return Acquisition(Outcome.INVALID, reason="invalid_comments_document")
+            return Acquisition(Outcome.INVALID, reason="invalid_comments_document",
+                               comments_count=coverage["count"])
 
     @staticmethod
     def _foul_kind(item):

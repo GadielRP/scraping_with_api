@@ -2,7 +2,7 @@
 import logging
 from collections import Counter
 from time import monotonic
-from infrastructure.persistence.models import Event, EventSourceMapping, Result, EventObservation, Season, DisciplinaryIncident
+from infrastructure.persistence.models import Event, EventSourceMapping, Result, EventObservation, Season, DisciplinaryIncident, DisciplinaryIncidentTotal
 from infrastructure.persistence.event_identity_lock import lock_event_identities
 from modules.events.discards.settings import DiscardSettings
 from .event_discard_repository import EventDiscardRepository
@@ -54,6 +54,8 @@ def delete_events(db_manager, event_ids, *, event_filter=None):
             session.query(EventObservation).filter(EventObservation.event_id.in_(deleted_ids)).delete(synchronize_session=False)
             # Explicit for SQLite tests and non-cascading legacy schemas too.
             mappings = session.query(EventSourceMapping.mapping_id).filter(EventSourceMapping.event_id.in_(deleted_ids))
+            session.query(DisciplinaryIncidentTotal).filter(
+                DisciplinaryIncidentTotal.event_source_mapping_id.in_(mappings)).delete(synchronize_session=False)
             session.query(DisciplinaryIncident).filter(
                 DisciplinaryIncident.event_source_mapping_id.in_(mappings)).delete(synchronize_session=False)
             session.query(EventSourceMapping).filter(EventSourceMapping.event_id.in_(deleted_ids)).delete(synchronize_session=False)

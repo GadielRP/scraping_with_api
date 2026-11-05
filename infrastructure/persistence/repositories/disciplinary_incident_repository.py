@@ -1,12 +1,12 @@
 """Scalar keyset reads, atomic multiset reconciliation and SQL team totals."""
 from collections import Counter
 
-from sqlalchemy import and_, delete, func, insert, or_, select
+from sqlalchemy import and_, delete, func, insert, or_, select, tuple_, union_all
 
 from infrastructure.persistence.event_identity_lock import lock_event_identities
-from infrastructure.persistence.models import DisciplinaryIncident as Incident, Event, EventSourceMapping as Mapping, Result
+from infrastructure.persistence.models import DisciplinaryIncident as Incident, DisciplinaryIncidentTotal as Total, Event, EventSourceMapping as Mapping, Result
 from modules.discipline.contracts import (
-    DisciplineEventContext, IncidentType, Origin, Outcome, Side, TeamSeasonTotals,
+    DisciplineEventContext, DisciplineTotalDraft, IncidentType, Origin, Outcome, Side, TeamSeasonTotals,
 )
 from shared.execution_context import check_execution_budget
 from shared.temporal import utc_now
@@ -67,12 +67,18 @@ class DisciplinaryIncidentRepository:
             if selection.event_ids and len(batch) < page_size:
                 break
 
-    def replace_snapshot(self, context, incidents, managed_types, *, dry_run=False):
-        managed = frozenset(IncidentType(value) for value in managed_types)
-        if not managed:
-            raise ValueError("A snapshot must declare its managed types")
+    def replace_acquisition(self, context, acquisition, *, dry_run=False):
+        if acquisition.outcome != Outcome.READY:
+            raise ValueError("Only a ready acquisition can be persisted")
+        managed = frozenset(IncidentType(value) for value in acquisition.managed_types)
+        total_values = {(item.type.value, item.side.value): (item.count, item.endpoint.value)
+                        for item in acquisition.totals}
+        if len(total_values) != len(acquisition.totals):
+            raise ValueError("Duplicate aggregate scope")
+        if not managed and not total_values:
+            raise ValueError("An acquisition must declare a writable scope")
         values = []
-        for incident in incidents:
+        for incident in acquisition.incidents:
             kind, origin, side = IncidentType(incident.type), Origin(incident.origin), Side(incident.side)
             player_id, name = incident.source_player_id, incident.player_name
             if kind not in managed:
@@ -100,29 +106,77 @@ class DisciplinaryIncidentRepository:
                 return Outcome.MAPPING_CONFLICT
             scope = (Incident.event_source_mapping_id == context.mapping_id, Incident.type.in_([t.value for t in managed]))
             existing = session.execute(select(Incident.type, Incident.origin, Incident.source_player_id,
-                Incident.player_name, Incident.side).where(*scope)).all()
-            if Counter(tuple(row) for row in existing) == Counter(values):
+                Incident.player_name, Incident.side).where(*scope)).all() if managed else []
+            detail_changed = Counter(tuple(row) for row in existing) != Counter(values)
+            current_totals = {}
+            if total_values:
+                rows = session.execute(select(Total.type, Total.side, Total.count, Total.endpoint).where(
+                    Total.event_source_mapping_id == context.mapping_id,
+                    tuple_(Total.type, Total.side).in_(tuple(total_values)))).all()
+                current_totals = {(kind, side): (count, endpoint) for kind, side, count, endpoint in rows}
+            changes = {key: value for key, value in total_values.items() if current_totals.get(key) != value}
+            if not detail_changed and not changes:
                 return Outcome.UNCHANGED
             if dry_run:
                 return Outcome.UPDATED
             check_execution_budget()
-            session.execute(delete(Incident).where(*scope))
-            if values:
-                now = utc_now()
-                session.execute(insert(Incident), [dict(event_source_mapping_id=context.mapping_id,
-                    type=kind, origin=origin, source_player_id=player_id, player_name=name, side=side,
-                    created_at=now, updated_at=now) for kind, origin, player_id, name, side in values])
+            now = utc_now()
+            if detail_changed:
+                session.execute(delete(Incident).where(*scope))
+                if values:
+                    session.execute(insert(Incident), [dict(event_source_mapping_id=context.mapping_id,
+                        type=kind, origin=origin, source_player_id=player_id, player_name=name, side=side,
+                        created_at=now, updated_at=now) for kind, origin, player_id, name, side in values])
+            if changes:
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+                statement = (pg_insert if session.get_bind().dialect.name == "postgresql" else sqlite_insert)(Total).values([
+                    dict(event_source_mapping_id=context.mapping_id, type=kind, side=side, count=count,
+                         endpoint=endpoint, created_at=now, updated_at=now)
+                    for (kind, side), (count, endpoint) in changes.items()])
+                session.execute(statement.on_conflict_do_update(
+                    index_elements=["event_source_mapping_id", "type", "side"],
+                    set_={"count": statement.excluded.count, "endpoint": statement.excluded.endpoint,
+                          "updated_at": statement.excluded.updated_at}))
         return Outcome.UPDATED
+
+    @staticmethod
+    def _effective_totals(mapping_ids):
+        # Explicit zero overrides prior detail. Legacy scopes without aggregates
+        # are counted once; SQL never adds detail on top of an acquired total.
+        legacy = select(Incident.event_source_mapping_id, Incident.type, Incident.side,
+                        func.count().label("count")).where(Incident.event_source_mapping_id.in_(mapping_ids), ~select(Total.type).where(
+                            Total.event_source_mapping_id == Incident.event_source_mapping_id,
+                            Total.type == Incident.type, Total.side == Incident.side).exists()
+                        ).group_by(Incident.event_source_mapping_id, Incident.type, Incident.side)
+        acquired = select(Total.event_source_mapping_id, Total.type, Total.side, Total.count).where(
+            Total.event_source_mapping_id.in_(mapping_ids))
+        return union_all(acquired, legacy).subquery()
+
+    def get_event_totals(self, source, event_id):
+        """Acquired scopes with provenance; missing rows do not prove zero coverage."""
+        with self.database.get_session() as session:
+            rows = session.execute(select(Total.type, Total.side, Total.count, Total.endpoint).join(
+                Mapping, Mapping.mapping_id == Total.event_source_mapping_id).where(
+                    Mapping.source == source, Mapping.event_id == event_id).order_by(
+                        Total.event_source_mapping_id, Total.type, Total.side)).all()
+        return tuple(DisciplineTotalDraft(*row) for row in rows)
 
     def get_team_season_totals(self, source, participant_id, competition_id, season_id):
         if any(value is None for value in (source, participant_id, competition_id, season_id)):
             raise ValueError("Source, participant, competition and season are required")
         with self.database.get_session() as session:
+            # Restrict mappings before grouping legacy detail, rather than
+            # aggregating the full history for a single team's season query.
+            mappings = select(Mapping.mapping_id).join(Event, Event.id == Mapping.event_id).where(
+                Mapping.source == source, Event.competition_id == competition_id, Event.season_id == season_id,
+                or_(Mapping.source_participant_home_id == participant_id,
+                    Mapping.source_participant_away_id == participant_id)).cte("discipline_team_mappings")
+            effective = self._effective_totals(select(mappings.c.mapping_id))
             counts = session.execute(select(*[
-                func.count().filter(Incident.type == kind.value) for kind in IncidentType
-            ]).select_from(Incident).join(Mapping, Incident.event_source_mapping_id == Mapping.mapping_id)
-                .join(Event, Event.id == Mapping.event_id).where(
-                    Mapping.source == source, Event.competition_id == competition_id, Event.season_id == season_id,
-                    or_(and_(Incident.side == Side.HOME.value, Mapping.source_participant_home_id == participant_id),
-                        and_(Incident.side == Side.AWAY.value, Mapping.source_participant_away_id == participant_id)))).one()
+                func.coalesce(func.sum(effective.c.count).filter(effective.c.type == kind.value), 0) for kind in IncidentType
+            ]).select_from(effective).join(Mapping, effective.c.event_source_mapping_id == Mapping.mapping_id)
+                .where(
+                    or_(and_(effective.c.side == Side.HOME.value, Mapping.source_participant_home_id == participant_id),
+                        and_(effective.c.side == Side.AWAY.value, Mapping.source_participant_away_id == participant_id)))).one()
         return TeamSeasonTotals(*counts)

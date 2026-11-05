@@ -2,9 +2,12 @@ import json
 import sys
 from unittest.mock import Mock
 
+import pytest
+
 from modules.sofascore.client import SofaScoreAPI
 from modules.sofascore.event_details import get_event_comments
 from modules.sofascore.event_details import get_event_statistics
+from modules.sofascore.exceptions import SofaScoreNotFoundException
 from scripts.sofascore import get_event_comments as get_event_comments_script
 
 
@@ -108,3 +111,31 @@ def test_script_prints_response_as_json(monkeypatch, capsys):
         away_participant="Barcelona",
         event_label="sevilla-barcelona",
     )
+
+
+def test_script_reports_not_found_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["get_event_comments.py", "9001", "--source", "sofascore"],
+    )
+    monkeypatch.setattr(
+        get_event_comments_script,
+        "resolve_sofascore_event_identity",
+        Mock(return_value=Mock(canonical_event_id=12345, sofascore_event_id=9001)),
+    )
+    monkeypatch.setattr(
+        get_event_comments_script.api_client,
+        "get_event_comments",
+        Mock(side_effect=SofaScoreNotFoundException(9001, "/event/9001/comments")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        get_event_comments_script.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert captured.out == ""
+    assert "endpoint=/event/9001/comments" in captured.err
+    assert "event_id=9001" in captured.err
+    assert "Traceback" not in captured.err

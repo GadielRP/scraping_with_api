@@ -21,6 +21,5 @@ class DisciplineService:
             if acquisition.outcome != Outcome.READY:
                 return EventReport(acquisition.outcome, acquisition)
             check_execution_budget()
-            outcome = self.store.replace_snapshot(context, acquisition.incidents,
-                                                  acquisition.managed_types, dry_run=not commit)
+            outcome = self.store.replace_acquisition(context, acquisition, dry_run=not commit)
             return EventReport(outcome, acquisition)

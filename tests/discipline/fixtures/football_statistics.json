@@ -1,0 +1,61 @@
+{
+  "statistics": [
+    {
+      "period": "ALL",
+      "groups": [
+        {
+          "statisticsItems": [
+            {
+              "key": "yellowCards",
+              "homeValue": 2,
+              "awayValue": 3
+            },
+            {
+              "key": "redCards",
+              "homeValue": 0,
+              "awayValue": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "period": "1ST",
+      "groups": [
+        {
+          "statisticsItems": [
+            {
+              "key": "yellowCards",
+              "homeValue": 0,
+              "awayValue": 1
+            },
+            {
+              "key": "redCards",
+              "homeValue": 0,
+              "awayValue": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "period": "2ND",
+      "groups": [
+        {
+          "statisticsItems": [
+            {
+              "key": "yellowCards",
+              "homeValue": 2,
+              "awayValue": 2
+            },
+            {
+              "key": "redCards",
+              "homeValue": 0,
+              "awayValue": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

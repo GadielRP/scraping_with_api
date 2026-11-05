@@ -45,6 +45,8 @@ def verify_schema_at_head(engine: Engine) -> bool:
             return False
 
         required_columns = {
+            "disciplinary_incidents_totals": {"event_source_mapping_id", "type", "side", "count",
+                                             "endpoint", "created_at", "updated_at"},
             "disciplinary_incidents": {"id", "event_source_mapping_id", "type", "origin",
                                        "source_player_id", "player_name", "side", "created_at", "updated_at"},
             "canonical_market_types": {"market_type_id", "requires_line_value"},
@@ -77,6 +79,26 @@ def verify_schema_at_head(engine: Engine) -> bool:
                 logger.error("Legacy market columns remain in %s: %s", table, sorted(remaining))
                 return False
         if engine.dialect.name == "postgresql":
+            totals_table = "disciplinary_incidents_totals"
+            if inspector.get_pk_constraint(totals_table)["constrained_columns"] != ["event_source_mapping_id", "type", "side"]:
+                logger.error("Discipline totals primary key is invalid")
+                return False
+            if not any(fk["constrained_columns"] == ["event_source_mapping_id"]
+                       and fk["referred_table"] == "event_source_mappings"
+                       and fk.get("options", {}).get("ondelete", "").upper() == "CASCADE"
+                       for fk in inspector.get_foreign_keys(totals_table)):
+                logger.error("Discipline totals cascading mapping FK is missing")
+                return False
+            checks = {item["name"] for item in inspector.get_check_constraints(totals_table)}
+            if not {"ck_discipline_totals_type", "ck_discipline_totals_side", "ck_discipline_totals_count",
+                    "ck_discipline_totals_endpoint"} <= checks:
+                logger.error("Discipline totals checks are missing")
+                return False
+            columns = {item["name"]: item for item in inspector.get_columns(totals_table)}
+            if any(not getattr(columns[name]["type"], "timezone", False)
+                   for name in ("created_at", "updated_at")):
+                logger.error("Discipline totals timestamps must have timezone")
+                return False
             discipline_fks = inspector.get_foreign_keys("disciplinary_incidents")
             if not any(
                 fk["constrained_columns"] == ["event_source_mapping_id"]

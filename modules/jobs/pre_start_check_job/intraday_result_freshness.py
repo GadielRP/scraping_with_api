@@ -13,7 +13,7 @@ from infrastructure.persistence.repositories import EventRepository, ResultRepos
 from infrastructure.settings import Config
 from infrastructure.settings.job_execution import JobExecutionSettings
 from modules.jobs.results_collection_job.contracts import CommittedResultEvent
-from modules.jobs.discipline_collection_job.after_results import build_after_results_collector
+from modules.jobs.discipline_collection_job.post_results import build_post_results_collector
 from shared.batching import chunks
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
 from modules.sofascore import api_client
@@ -239,7 +239,7 @@ def process_intraday_result_freshness(events: List[Dict]) -> Dict[str, int]:
         )
 
     if confirmed:
-        collect_discipline = build_after_results_collector(origin="intraday")
+        collect_discipline = build_post_results_collector(origin="intraday")
         if collect_discipline is not None:
             committed_events = (
                 CommittedResultEvent(event["id"], event.get("sport"), event.get("competition_id"))
