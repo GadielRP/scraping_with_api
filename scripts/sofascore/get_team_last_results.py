@@ -3,6 +3,11 @@ import argparse
 import logging
 from app.logging_setup import setup_logging
 import sys
+from scripts.sofascore.debug import (
+    add_debug_file_argument,
+    log_debug_file,
+    save_response_for_debug,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get team last results")
@@ -10,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("--singles", action="store_true", help="Set if querying tennis singles results")
     parser.add_argument("--doubles", action="store_true", help="Set if querying tennis doubles results")
     parser.add_argument("--index", type=int, default=0, help="The batch fetch index (defaults to 0)")
+    add_debug_file_argument(parser)
     args = parser.parse_args()
 
     setup_logging()
@@ -22,9 +28,15 @@ if __name__ == "__main__":
             is_tennis_doubles=args.doubles,
             fetch_index=args.index
         )
+        debug_path = (
+            save_response_for_debug(__name__.rsplit(".", 1)[-1], response)
+            if args.save_debug
+            else None
+        )
         logger.info(f"Last results response for team {args.team_id} (singles: {args.singles}, doubles: {args.doubles}, index: {args.index}):\n")
         import json
         print(json.dumps(response, indent=4))
+        log_debug_file(debug_path)
     except Exception as e:
         logger.error(f"Error getting last results for team {args.team_id}: {e}")
         sys.exit(1)
