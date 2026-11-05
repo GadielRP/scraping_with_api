@@ -7,7 +7,7 @@ class DisciplineSettings:
     after_midnight_results_enabled: bool = True
     after_intraday_results_enabled: bool = True
     tracked_competitions_only: bool = True
-    statistics_for_all_events: bool = False
+    statistics_for_all_events: bool = True
     # Set only after verifying the provider's full-match, nonpaginated contract.
     full_feed_verified: bool = True
     max_events: int = 200
