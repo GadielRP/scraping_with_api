@@ -16,8 +16,8 @@ class SofaScoreDisciplineStatisticsProvider:
         self.client = client
 
     def acquire(self, context):
-        if context.sport != "Football" or context.source != "sofascore":
-            return Acquisition(Outcome.UNAVAILABLE, reason="unsupported_statistics_sport")
+        if context.source != "sofascore":
+            return Acquisition(Outcome.UNAVAILABLE, reason="unsupported_statistics_source")
         values = {}
         keys = {"yellowCards": IncidentType.YELLOW_CARD, "redCards": IncidentType.RED_CARD}
         try:
@@ -41,7 +41,7 @@ class SofaScoreDisciplineStatisticsProvider:
             totals = tuple(DisciplineTotalDraft(kind, side, count, DisciplineEndpoint.STATISTICS)
                            for kind, pair in values.items() for side, count in zip(Side, pair))
             return Acquisition(Outcome.READY, totals=totals) if totals else Acquisition(
-                Outcome.UNAVAILABLE, reason="no_discipline_statistics")
+                Outcome.UNAVAILABLE, reason="no_discipline_incidents_statistics")
         except (WorkDeferred, MemoryError, RecursionError):
             raise
         except JsonDocumentLimitExceeded:

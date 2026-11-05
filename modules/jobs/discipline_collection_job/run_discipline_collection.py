@@ -22,7 +22,7 @@ def run_discipline_collection(service, repository, settings, *, selection=None,
     maximum = settings.max_events if limit is None else limit
     if maximum < 1:
         raise ValueError("limit must be positive")
-    stats = dict.fromkeys(("scanned", "skipped_untracked", "updated", "unchanged",
+    stats = dict.fromkeys(("scanned", "skipped_unsupported_sport", "skipped_untracked", "updated", "unchanged",
                           "unavailable", "invalid", "deferred", "mapping_conflict",
                           "failed", "statistics_attempted", "statistics_used"), 0)
     stats.update(last_processed_event_id=selection.after_event_id, dry_run=not commit, limit_reached=False)
@@ -33,13 +33,21 @@ def run_discipline_collection(service, repository, settings, *, selection=None,
         with execution_scope(context):
             for batch in repository.iter_candidates(selection, JobExecutionSettings().event_read_batch_size):
                 for event in batch:
-                    if settings.tracked_competitions_only and not is_tracked_competition(
-                        event.competition_id
-                    ):
-                        stats["skipped_untracked"] += 1
+                    skip_reason = (
+                        "unsupported_sport" if event.sport not in settings.supported_sports
+                        else "untracked_competition"
+                        if settings.tracked_competitions_only
+                        and not is_tracked_competition(event.competition_id)
+                        else None
+                    )
+                    if skip_reason is not None:
+                        stats["skipped_unsupported_sport" if skip_reason == "unsupported_sport"
+                              else "skipped_untracked"] += 1
                         logger.info(
-                            "Discipline skipped untracked competition event_id=%s competition_id=%s",
+                            "Discipline skipped event_id=%s reason=%s sport=%s competition_id=%s",
                             event.event_id,
+                            skip_reason,
+                            event.sport,
                             event.competition_id,
                         )
                         continue

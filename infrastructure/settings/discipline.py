@@ -6,6 +6,7 @@ from dataclasses import dataclass
 class DisciplineSettings:
     after_midnight_results_enabled: bool = True
     after_intraday_results_enabled: bool = True
+    supported_sports: tuple[str, ...] = ("Football", "Basketball")
     tracked_competitions_only: bool = True
     statistics_for_all_events: bool = True
     # Set only after verifying the provider's full-match, nonpaginated contract.

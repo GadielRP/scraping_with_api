@@ -29,8 +29,7 @@ class DisciplinaryIncidentRepository:
     def iter_candidates(self, selection, page_size):
         if page_size < 1:
             raise ValueError("page_size must be positive")
-        filters = [Event.sport.in_(("Football", "Basketball")),
-                   select(Result.event_id).where(Result.event_id == Event.id,
+        filters = [select(Result.event_id).where(Result.event_id == Event.id,
                        Result.home_score.isnot(None), Result.away_score.isnot(None)).exists()]
         if selection.event_id is not None:
             filters.append(Event.id == selection.event_id)

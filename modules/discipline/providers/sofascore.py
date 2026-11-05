@@ -42,8 +42,8 @@ class SofaScoreDisciplineProvider:
         self.settings = settings or DisciplineSettings()
 
     def acquire(self, context):
-        if context.source != "sofascore" or context.sport not in ("Football", "Basketball"):
-            return Acquisition(Outcome.INVALID, reason="unsupported_source_or_sport")
+        if context.source != "sofascore":
+            return Acquisition(Outcome.INVALID, reason="unsupported_source")
         try:
             comments = self._acquire_comments(context)
         except (WorkDeferred, MemoryError, RecursionError):
@@ -63,7 +63,7 @@ class SofaScoreDisciplineProvider:
                 for kind in sorted(comments.managed_types) for side in Side))
         elif result.outcome == Outcome.READY:
             result = replace(result, outcome=Outcome.UNAVAILABLE, reason="no_comment_incidents")
-        if context.sport == "Football" and (self.settings.statistics_for_all_events or not usable):
+        if self.settings.statistics_for_all_events or not usable:
             check_execution_budget()
             statistics = SofaScoreDisciplineStatisticsProvider(self.client).acquire(context)
             if statistics.outcome == Outcome.DEFERRED:

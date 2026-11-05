@@ -126,10 +126,16 @@ En fútbol, 404, colección vacía, ausencia de incidencias, documento inválido
 feed incompleto o fallo ordinario de adquisición disparan el fallback.
 Cancelación, deadline y agotamiento de recursos no inician otra solicitud.
 
-`statistics_for_all_events=False` configura ese comportamiento. Con `True` se
-consulta statistics para todos los partidos de fútbol seleccionados, aunque
-comments tenga incidencias. Las demás rutas y filtros de selección se conservan.
-Básquetbol no consulta statistics: sus faltas de equipo no identifican expulsados.
+`DisciplineSettings.supported_sports` configura en un único lugar los deportes
+que acepta el runner (por defecto Football y Basketball). La elegibilidad de
+deporte y, si aplica, de competición seguida se evalúa en el runner; el callback,
+repositorio y proveedores no mantienen listas duplicadas de deportes.
+
+`statistics_for_all_events=False` consulta statistics solo cuando comments no
+aporta incidencias utilizables. Con `True` se consulta para cada evento admitido,
+sea cual sea su deporte. El parser únicamente usa `yellowCards` y `redCards` en
+`period="ALL"`; no deduce expulsiones desde `totalFouls` ni otras estadísticas
+de equipo.
 
 `open_event_statistics` usa descarga temporal y lectura incremental con los mismos
 límites de transporte. El parser separado acepta solo `period="ALL"`, claves
@@ -189,9 +195,9 @@ inyecta un callback en `run_results_collection`. Después de cada lote confirmad
 deporte y competición), solo para los IDs confirmados por el writer de resultados.
 `updated` cuenta upserts confirmados; no necesariamente inserciones nuevas.
 
-El callback filtra en memoria con `is_tracked_competition` y los deportes soportados
-(Football/Basketball), usando los metadatos ya devueltos por `batch_upsert_events`.
-El runner recibe `Selection(event_ids=...)`; hace una consulta por página para
+El callback entrega los IDs confirmados usando los metadatos ya devueltos por
+`batch_upsert_events`. El runner aplica `supported_sports` y
+`tracked_competitions_only` en un único punto. Hace una consulta por página para
 resolver mappings y comprobar el resultado completo, sin consulta de high-water
 adicional ni selección por fechas. Las lecturas bajo bloqueo del writer siguen
 siendo necesarias para coordinar cambios y borrados concurrentes.

@@ -2,7 +2,6 @@
 import logging
 
 from infrastructure.settings.discipline import DisciplineSettings
-from modules.competition.tracked_competitions import is_tracked_competition
 from modules.discipline.contracts import Selection
 from shared.execution_context import WorkDeferred
 
@@ -24,10 +23,7 @@ def build_post_results_collector(*, origin="midnight", enabled=None, on_event=No
     run = build_discipline_runner(settings)
 
     def collect(events):
-        ids = tuple(event.event_id for event in events
-                    if event.sport in ("Football", "Basketball")
-                    and (not settings.tracked_competitions_only
-                         or is_tracked_competition(event.competition_id)))
+        ids = tuple(event.event_id for event in events)
         if not ids:
             return
         try:
@@ -37,11 +33,11 @@ def build_post_results_collector(*, origin="midnight", enabled=None, on_event=No
                 commit=True,
                 on_event=on_event,
             )
-            logger.info("%s discipline confirmed=%s eligible=%s summary=%s", origin, len(events), len(ids), summary)
+            logger.info("%s discipline confirmed=%s selected=%s summary=%s", origin, len(events), len(ids), summary)
         except WorkDeferred:
             raise
         except Exception:
             # Result transactions have already committed; continue subsequent result pages.
-            logger.exception("%s discipline batch failed eligible=%s", origin, len(ids))
+            logger.exception("%s discipline batch failed selected=%s", origin, len(ids))
 
     return collect

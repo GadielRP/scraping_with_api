@@ -703,6 +703,31 @@ ORDER BY snapshot_count DESC, mcq.quote_id;
 
 Helps locate quotes that are no longer attached to valid choices or are missing stable lineage.
 
+## 5. Discipline Incidencies
+
+### Total yellow, red and total cards for a football season
+```sql
+SELECT
+    e.id AS event_id,
+    e.starts_at,
+    e.home_team,
+    e.away_team,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'yellow_card') AS amarillas,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'red_card') AS rojas,
+    COUNT(DISTINCT di.id) FILTER (
+        WHERE di.type IN ('yellow_card', 'red_card')
+    ) AS total_tarjetas
+FROM events e
+LEFT JOIN event_source_mappings esm
+    ON esm.event_id = e.id
+   AND esm.source = 'sofascore'
+LEFT JOIN disciplinary_incidents di
+    ON di.event_source_mapping_id = esm.mapping_id
+WHERE e.season_id = 97268
+GROUP BY e.id, e.starts_at, e.home_team, e.away_team
+ORDER BY e.starts_at;
+```
+
 ## Quick notes
 
 - Replace hard-coded ids (`event_id`, `competition_id`) with the actual values you are investigating.
