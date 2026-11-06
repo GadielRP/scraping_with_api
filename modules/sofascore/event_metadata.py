@@ -196,7 +196,11 @@ def classify_event_round(event: Dict) -> str:
     season_name = normalize_season_name(
         season.get("name"), unique_tournament.get("name"),
     )
-    competition = build_competition_text(payload)
     competition_ref = build_competition_ref(payload)
     round_name = _derive_round(season_name, payload.get("roundInfo") or {}, competition_ref)
-    return resolve_event_round(season.get("id"), competition, round_name, None)
+    return resolve_event_round(
+        source=competition_ref["source"],
+        source_tournament_id=competition_ref["source_tournament_id"],
+        incoming=round_name,
+        existing=None,
+    )

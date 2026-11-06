@@ -69,6 +69,9 @@ class ObjectiveRule:
                 raise ValueError("stage qualification requires destination_stage")
             if self.destination_competition_id is not None:
                 raise ValueError("stage qualification cannot target another competition")
+            if (self.qualification_path is not None
+                    and self.qualification_path != QualificationPath.DIRECT):
+                raise ValueError("stage qualification must use the direct path to its internal destination")
         elif self.destination_competition_id is not None or self.destination_stage is not None:
             raise ValueError("division retention has no qualification destination")
         retention_paths = {QualificationPath.DIRECT_RELEGATION, QualificationPath.RELEGATION_PLAYOFF}

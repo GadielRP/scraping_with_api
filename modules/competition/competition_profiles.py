@@ -391,7 +391,7 @@ COMPETITION_PROFILES: Mapping[int, CompetitionRules] = MappingProxyType({
                 start=4,
                 end=7,
                 path=QualificationPath.QUALIFYING_PLAYOFF,
-                note="Playoff winner qualifies for UEFA Conference League. Not sure though if this is the right way to do it.",
+                note="Positions 4-7 enter the domestic playoff for a UEFA Conference League qualifying place.",
                 destination_competition_id=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
                 destination_competition_name='UEFA Conference League, Qualification',
             ),

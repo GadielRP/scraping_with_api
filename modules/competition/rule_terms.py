@@ -12,11 +12,11 @@ destination_competition_id: competition_id de otra competición o de su fila de
 destination_competition_name: nombre legible almacenado en la regla y recibido
     explícitamente por el constructor de clasificación externa. Puede describir
     un destino pendiente sin ID. No sustituye al ID ni se interpreta como lógica.
-destination_stage: papel general de la fase interna de destino: PLAYOFFS o
-    PLAY_IN. Obligatorio únicamente en STAGE_QUALIFICATION. La ronda concreta
-    (octavos, cuartos, etc.) se describe en note; no se calcula desde ella.
-qualification_path: vía de acceso al destino o riesgo de descenso. None indica
-    una vía aún desconocida y solo se permite con status=PENDING.
+destination_stage: fase interna de destino (PLAYOFFS o PLAY_IN). Obligatoria
+    en STAGE_QUALIFICATION y ajena a destinos externos o de permanencia, que
+    usan sus propios campos.
+qualification_path: vía de acceso al destino o riesgo de descenso. Debe ser
+    conocida en reglas CONFIGURED; None se reserva a vías desconocidas PENDING.
 ranking_scope: población cuya tabla decide la selección. GLOBAL abarca toda la
     competición; LEAGUE es una subliga, como AL/NL dentro de MLB.
 aggregation_scope: periodo de resultados que cuenta: torneo actual, acumulado
@@ -92,7 +92,7 @@ class ObjectiveType(StrEnum):
 
 
 class CompetitionStage(StrEnum):
-    """Papel de la fase de destino, independiente de su ronda o nombre comercial."""
+    """Fase interna de destino, independiente de la vía usada para acceder."""
 
     # Fase de disputa del título tras la clasificación regular. No distingue
     # rondas de entrada ni exenciones: esos detalles permanecen en note.
@@ -102,15 +102,15 @@ class CompetitionStage(StrEnum):
 
 
 class QualificationPath(StrEnum):
-    """Vía relativa al destino declarado, no el nombre de una fase."""
+    """Vía relativa al destino declarado; el destino conserva su propio campo."""
 
     # Acceso sin eliminatoria previa al destino; si es una competición externa,
     # se refiere a su fase principal. DIRECT a PLAY_IN entra al propio Play-In.
     DIRECT = "DIRECT"
-    # Acceso a las rondas preliminares de la competición externa de destino.
+    # Entrada a una ronda preliminar de la competición externa de destino.
     QUALIFYING_ROUND = "QUALIFYING_ROUND"
-    # Eliminatoria doméstica que decide acceso a otra competición; no equivale
-    # a la última previa internacional aunque esta se llame «play-off round».
+    # Los puestos dan entrada a una eliminatoria doméstica que clasifica a la
+    # competición externa declarada. No es una ronda preliminar de esa competición.
     QUALIFYING_PLAYOFF = "QUALIFYING_PLAYOFF"
     DIRECT_RELEGATION = "DIRECT_RELEGATION"  # Descenso sin eliminatoria de salvación.
     RELEGATION_PLAYOFF = "RELEGATION_PLAYOFF"  # Eliminatoria por la permanencia.

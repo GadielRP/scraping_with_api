@@ -102,7 +102,33 @@ def get_event_details(client, event_id: int) -> Optional[Dict]:
     response = fetch_authoritative_event_response(client, event_id)
     if not response or "event" not in response:
         return None
-    return response["event"]
+    event = response["event"]
+    _complete_nba_cup_final_round(client, event)
+    return event
+
+
+def _complete_nba_cup_final_round(client, event: Dict) -> None:
+    """Recover the final phase when older Cup events use the regular NBA tournament.
+
+    The event endpoint omits the phase for the inaugural final. The provider's
+    Cup tree identifies it by event ID; quarterfinals and semifinals still count
+    toward the regular-season record and must retain their classification.
+    """
+    tournament = event.get("tournament") or {}
+    season_id = (event.get("season") or {}).get("id")
+    if tournament.get("id") != 177 or not event.get("cupMatchesInRound") or not season_id:
+        return
+    unique_id = (tournament.get("uniqueTournament") or {}).get("id")
+    trees = client.request_json(f"/unique-tournament/{unique_id}/season/{season_id}/cuptrees")
+    if not trees:
+        raise RuntimeError(f"Missing NBA Cup phase data for event {event['id']}")
+    for tree in trees.get("cupTrees", []):
+        for cup_round in tree.get("rounds", []):
+            if (cup_round.get("description") or "").casefold() != "final":
+                continue
+            if any(event["id"] in block.get("events", []) for block in cup_round.get("blocks", [])):
+                event["roundInfo"] = {**(event.get("roundInfo") or {}), "slug": "final"}
+                return
 
 
 def get_event_comments(client, event_id: int) -> Optional[Dict]:

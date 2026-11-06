@@ -234,7 +234,10 @@ def admit_sofascore_event(event, scope=None, *, policy=None, now=None) -> Sofasc
         from modules.events.round_policy import resolve_event_round
 
         round_name = resolve_event_round(
-            payload.get("season_id"), payload.get("competition"), payload["round"], None,
+            source="sofascore",
+            source_tournament_id=source_competition_ids(event).source_tournament_id,
+            incoming=payload["round"],
+            existing=None,
         )
     else:
         # Lazy import avoids the SofaScore client facade's dependency on these filters.

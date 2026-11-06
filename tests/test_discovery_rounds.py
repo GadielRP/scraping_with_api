@@ -11,6 +11,7 @@ from modules.jobs.discovery import fetching, filters, persistence
 from modules.sofascore import discovery_feeds, event_metadata, event_normalizer
 from modules.sofascore.event_metadata import classify_event_round
 from modules.sofascore.event_normalizer import normalize_event_payload
+from modules.events.round_policy import resolve_event_round
 
 
 @pytest.fixture(autouse=True)
@@ -93,18 +94,41 @@ def test_explicit_unknown_normalized_round_is_not_assumed_regular_season():
     assert filters.admit_sofascore_event(raw).rejection_reason == "round_not_allowed"
 
 
-def test_nba_cup_persistence_override_is_applied_before_admission():
-    raw = event("regular-season", "NBA Cup")
-    raw["season"] = dict(id=84238, name="NBA Cup 2025/2026")
-    assert classify_event_round(raw) == "knockouts/playoffs"
-    assert normalize_event_payload(raw)["event"]["round"] == "knockouts/playoffs"
-    assert filters.admit_sofascore_event(raw).rejection_reason == "round_not_allowed"
+@pytest.mark.parametrize("tournament_id,season_id,expected", [
+    (177, 80229, "regular_season"),
+    (177, 84238, "regular_season"),
+    (177, 100772, "regular_season"),
+    (177, 106877, "regular_season"),
+    (124629, 69143, "knockouts/playoffs"),
+    (124629, 84238, "knockouts/playoffs"),
+    (124629, 999999, "knockouts/playoffs"),
+])
+def test_nba_cup_round_uses_tournament_identity(tournament_id, season_id, expected):
+    # Neutral names and no roundInfo ensure the final is identified by its ID.
+    raw = event()
+    raw["tournament"]["id"] = tournament_id
+    raw["season"] = dict(id=season_id, name="Season")
+    assert classify_event_round(raw) == expected
+    normalized = normalize_event_payload(raw)
+    assert normalized["event"]["round"] == expected
+    rejection = "round_not_allowed" if expected == "knockouts/playoffs" else None
+    for payload in (raw, normalized):
+        assert filters.admit_sofascore_event(payload).rejection_reason == rejection
+    # Revalidation must correct an incoming regular round for the final too.
+    normalized["event"]["round"] = "regular_season"
+    assert filters.admit_sofascore_event(normalized).round_name == expected
 
 
 def test_round_policy_does_not_apply_to_oddspapi():
+    assert resolve_event_round("oddspapi", 124629, "regular_season", None) == "regular_season"
     fixture = dict(fixtureId="fixture-1", sportName="Soccer", round="quarterfinal")
     policy = replace(settings.ODDSPAPI.filters, future_only=False)
     assert filters.oddspapi_fixture_filter_reason(fixture, policy=policy) is None
+
+
+def test_round_policy_preserves_existing_round_without_downgrading_playoffs():
+    assert resolve_event_round("sofascore", 177, None, "regular_season") == "regular_season"
+    assert resolve_event_round("sofascore", 177, "regular_season", "knockouts/playoffs") == "knockouts/playoffs"
 
 
 def test_feeds_and_nearest_events_reject_round_before_normalization(monkeypatch, caplog):

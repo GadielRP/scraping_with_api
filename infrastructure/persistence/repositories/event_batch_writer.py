@@ -189,7 +189,12 @@ def _write_chunk(session, data_by_id, source, match_method, confidence, settings
             obj.discovery_source = 'dropping_odds'
         if p.get('season_id'):
             obj.season_id = int(p['season_id'])
-        obj.round = resolve_event_round(p.get('season_id'), p.get('competition'), p.get('round'), obj.round)
+        obj.round = resolve_event_round(
+            source=source,
+            source_tournament_id=c.get('source_tournament_id'),
+            incoming=p.get('round'),
+            existing=obj.round,
+        )
         obj.updated_at = utc_now()
         result.events[sid] = obj
         mapping_rows.append((sid, obj, p, home, away, league))

@@ -74,3 +74,28 @@ def test_upsert_event_honors_explicit_source_and_keeps_sources_isolated(isolated
     assert oddspapi_mappings[0].source == "oddspapi"
     assert oddspapi_mappings[0].match_method == "external_provider_sofascore_id"
     assert float(oddspapi_mappings[0].confidence) == pytest.approx(1.0)
+
+
+def test_reprocessing_nba_cup_final_corrects_existing_regular_round(isolated_sqlite_db):
+    event_data = {
+        "event": {
+            "id": 11886246,
+            "startTimestamp": 1702171800,
+            "round": "regular_season",
+        },
+        "competition_ref": {
+            "source_tournament_id": 177,
+            "source_unique_tournament_id": 132,
+            "display_name": "NBA",
+        },
+    }
+    original = EventRepository.upsert_event(event_data)
+    assert original.round == "regular_season"
+
+    event_data["competition_ref"]["source_tournament_id"] = 124629
+    event_data["competition_ref"]["display_name"] = "NBA Cup"
+    corrected = EventRepository.upsert_event(event_data)
+
+    assert corrected.id == original.id
+    assert corrected.round == "knockouts/playoffs"
+    assert corrected.competition_id != original.competition_id
