@@ -34,6 +34,7 @@ ARGENTINA_CLAUSURA_PLAYOFFS: Final[CompetitionIdentity] = CompetitionIdentity(15
 MLS: Final[CompetitionIdentity] = CompetitionIdentity(242, 18, "sofascore")
 MLS_PLAYOFFS: Final[CompetitionIdentity] = CompetitionIdentity(242, 7048, "sofascore")
 NBA: Final[CompetitionIdentity] = CompetitionIdentity(132, 177, "sofascore")
+NBA_CUP_FINAL: Final[CompetitionIdentity] = CompetitionIdentity(132, 124629, "sofascore")
 NBA_PLAYOFFS: Final[CompetitionIdentity] = CompetitionIdentity(132, 10561, "sofascore")
 NBA_PLAY_IN: Final[CompetitionIdentity] = CompetitionIdentity(132, 81454, "sofascore")
 EUROLEAGUE: Final[CompetitionIdentity] = CompetitionIdentity(138, 42527, "sofascore")
@@ -66,21 +67,34 @@ UEFA_CONFERENCE_LEAGUE: Final[CompetitionIdentity] = CompetitionIdentity(17015, 
 UEFA_CONFERENCE_LEAGUE_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(17015, 93604, "sofascore")
 AFC_CHAMPIONS_LEAGUE_ELITE: Final[CompetitionIdentity] = CompetitionIdentity(463, 1085, "sofascore")
 AFC_CHAMPIONS_LEAGUE_ELITE_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(463, 10172, "sofascore")
-AFC_CHAMPIONS_LEAGUE_TWO_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(668, 19500, "sofascore")
-AFC_CHAMPIONS_LEAGUE_TWO: Final[CompetitionIdentity] = CompetitionIdentity(668, None, "sofascore")
 CONCACAF_CHAMPIONS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(498, 9895, "sofascore")
 CHAMPIONS_HOCKEY_LEAGUE: Final[CompetitionIdentity] = CompetitionIdentity(494, 116755, "sofascore")
 CHAMPIONS_HOCKEY_LEAGUE_KNOCKOUT_STAGE: Final[CompetitionIdentity] = CompetitionIdentity(494, 44575, "sofascore")
 CONMEBOL_LIBERTADORES_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(384, 14805, "sofascore")
+# Competitions without a single general tournament row use a family identity
+# (source_unique_tournament_id with source_tournament_id=None) and an explicit destination_phase in the qualification rule.
 CONMEBOL_LIBERTADORES: Final[CompetitionIdentity] = CompetitionIdentity(384, None, "sofascore")
 CONMEBOL_SUDAMERICANA: Final[CompetitionIdentity] = CompetitionIdentity(480, None, "sofascore")
 FIBA_INTERCONTINENTAL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(1512, None, "sofascore")
-# Competitions without a single general tournament row use a family identity
-# (source_unique_tournament_id with source_tournament_id=None) and an explicit
-# destination_phase in the qualification rule.
-EFL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(21, 17, "sofascore")
-COPA_DEL_REY: Final[CompetitionIdentity] = CompetitionIdentity(329, 150, "sofascore")  # Fútbol; no las copas homónimas de otros deportes.
+AFC_CHAMPIONS_LEAGUE_TWO_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(668, 19500, "sofascore")
+AFC_CHAMPIONS_LEAGUE_TWO: Final[CompetitionIdentity] = CompetitionIdentity(668, None, "sofascore")
 
+# COMPETITIONS/TOURNAMENTS THAT ARE NOT MAIN PHASES, BUT CAN GRANT ACCESS TO OTHER COMPETITIONS. THEY ARE NOT TRACKED FOR NOW, BUT THEIR IDENTITIES ARE USED IN RULES.
+EFL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(21, 17, "sofascore")
+FA_CUP: Final[CompetitionIdentity] = CompetitionIdentity(19, 16, "sofascore")
+COPPA_ITALIA: Final[CompetitionIdentity] = CompetitionIdentity(328, 35, "sofascore")
+COPA_DEL_REY: Final[CompetitionIdentity] = CompetitionIdentity(329, 150, "sofascore")  # Fútbol; no las copas homónimas de otros deportes.
+DFB_POKAL: Final[CompetitionIdentity] = CompetitionIdentity(217, 43, "sofascore")
+COPA_DO_BRASIL: Final[CompetitionIdentity] = CompetitionIdentity(373, 283, "sofascore")  # Fútbol; no las copas homónimas de otros deportes.
+COPA_ARGENTINA: Final[CompetitionIdentity] = CompetitionIdentity(1024, 273, "sofascore")  # Fútbol; no las copas homónimas de otros deportes.
+COUPE_DE_FRANCE: Final[CompetitionIdentity] = CompetitionIdentity(335, 77, "sofascore")  # Fútbol masculino
+TAÇA_DE_PORTUGAL: Final[CompetitionIdentity] = CompetitionIdentity(336, 207, "sofascore")  # Fútbol masculino
+KNVB_BEKER: Final[CompetitionIdentity] = CompetitionIdentity(330, 121, "sofascore")
+US_OPEN_CUP: Final[CompetitionIdentity] = CompetitionIdentity(495, 6814, "sofascore")  # Fútbol; no la homónima de tenis.
+SAUDI_KINGS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(2058, 42021, "sofascore")  # FUTBOL MASCULINO
+LEAGUES_CUP_GROUP_STAGE: Final[CompetitionIdentity] = CompetitionIdentity(13783, 146257, "sofascore")  # Fútbol; no la homónima de tenis.
+LEAGUES_CUP: Final[CompetitionIdentity] = CompetitionIdentity(13783, 10964, "sofascore")  # Fútbol; no la homónima de tenis.
+# WINNER OF MLS REGULAR SEASON GETS A SPOT IN CONCACAF CHAMPIONS CUP, BUT THERE IS NO SEPARATE TOURNAMENT RECORD FOR IT. SO TECHNICALLY MLS_PLAYOFFS: Final[CompetitionIdentity] = CompetitionIdentity(242, 7048, "sofascore")
 
 COMPETITION_NAMES: Final[Mapping[CompetitionIdentity, str]] = MappingProxyType({
     LALIGA: "LaLiga",
@@ -145,4 +159,12 @@ COMPETITION_NAMES: Final[Mapping[CompetitionIdentity, str]] = MappingProxyType({
     FIBA_INTERCONTINENTAL_CUP: "FIBA Intercontinental Cup",
     EFL_CUP: "EFL Cup",
     COPA_DEL_REY: "Copa del Rey",
+    FA_CUP: "FA Cup",
+    COPPA_ITALIA: "Coppa Italia",
+    DFB_POKAL: "DFB-Pokal",
+    COPA_DO_BRASIL: "Copa do Brasil",
+    COPA_ARGENTINA: "Copa Argentina",
+    COUPE_DE_FRANCE: "Coupe de France",
+    TAÇA_DE_PORTUGAL: "Taça de Portugal",
+    KNVB_BEKER: "KNVB Beker",
 })
