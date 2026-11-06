@@ -58,7 +58,7 @@ No se presupone el número de ronda de acceso. Las filas adicionales de play-off
 
 AFC Champions League Two, CONMEBOL Libertadores, CONMEBOL Sudamericana y FIBA Intercontinental Cup solo tienen filas de grupos, previa o eliminatorias en el catálogo consultado. Incluso las filas 360/363 con slug general tienen un nombre visible de eliminatorias. Siguiendo la decisión acordada, no se usan como sustituto de una identidad general de acceso directo.
 
-En esos casos la regla conserva su rango, usa `destination_competition_identity=None` y estado `PENDING`; el comentario y la nota indican el destino que falta resolver. Esto afecta a ocho referencias. Tres reglas cambian de `CONFIGURED` a `PENDING`: AFC Two en Saudi Pro League y los accesos directos a Libertadores y Sudamericana en Brasileirão. Las otras cinco ya estaban pendientes.
+Cuando el proveedor solo ofrece registros por fase, se usa una identidad de familia con `source_unique_tournament_id` y `source_tournament_id=None`; `destination_phase` identifica el destino deportivo. Así AFC Champions League Two, Libertadores y Sudamericana pueden tener identidad a nivel de torneo sin apuntar a un grupo o a una eliminatoria concreta. Los destinos múltiples de Argentina y la fase de FIBA Intercontinental Cup siguen `PENDING` porque la ruta o fase no está resuelta.
 
 No se crean IDs ficticios ni se insertan registros en la base de datos.
 

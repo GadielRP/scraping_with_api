@@ -67,14 +67,17 @@ UEFA_CONFERENCE_LEAGUE_QUALIFICATION: Final[CompetitionIdentity] = CompetitionId
 AFC_CHAMPIONS_LEAGUE_ELITE: Final[CompetitionIdentity] = CompetitionIdentity(463, 1085, "sofascore")
 AFC_CHAMPIONS_LEAGUE_ELITE_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(463, 10172, "sofascore")
 AFC_CHAMPIONS_LEAGUE_TWO_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(668, 19500, "sofascore")
+AFC_CHAMPIONS_LEAGUE_TWO: Final[CompetitionIdentity] = CompetitionIdentity(668, None, "sofascore")
 CONCACAF_CHAMPIONS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(498, 9895, "sofascore")
 CHAMPIONS_HOCKEY_LEAGUE: Final[CompetitionIdentity] = CompetitionIdentity(494, 116755, "sofascore")
 CHAMPIONS_HOCKEY_LEAGUE_KNOCKOUT_STAGE: Final[CompetitionIdentity] = CompetitionIdentity(494, 44575, "sofascore")
 CONMEBOL_LIBERTADORES_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(384, 14805, "sofascore")
-# No se usa una fila de grupos o eliminatorias como identidad de acceso directo.
-# Pendientes de registro general: AFC Champions League Two, CONMEBOL
-# Libertadores, CONMEBOL Sudamericana y FIBA Intercontinental Cup.
-# Sus destinos directos permanecen sin ID y con estado PENDING en los perfiles.
+CONMEBOL_LIBERTADORES: Final[CompetitionIdentity] = CompetitionIdentity(384, None, "sofascore")
+CONMEBOL_SUDAMERICANA: Final[CompetitionIdentity] = CompetitionIdentity(480, None, "sofascore")
+FIBA_INTERCONTINENTAL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(1512, None, "sofascore")
+# Competitions without a single general tournament row use a family identity
+# (source_unique_tournament_id with source_tournament_id=None) and an explicit
+# destination_phase in the qualification rule.
 EFL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(21, 17, "sofascore")
 COPA_DEL_REY: Final[CompetitionIdentity] = CompetitionIdentity(329, 150, "sofascore")  # Fútbol; no las copas homónimas de otros deportes.
 
@@ -132,10 +135,14 @@ COMPETITION_NAMES: Final[Mapping[CompetitionIdentity, str]] = MappingProxyType({
     AFC_CHAMPIONS_LEAGUE_ELITE: "AFC Champions League Elite",
     AFC_CHAMPIONS_LEAGUE_ELITE_QUALIFICATION: "AFC Champions League Elite, Qualification",
     AFC_CHAMPIONS_LEAGUE_TWO_QUALIFICATION: "AFC Champions League Two, Qualification",
+    AFC_CHAMPIONS_LEAGUE_TWO: "AFC Champions League Two",
     CONCACAF_CHAMPIONS_CUP: "CONCACAF Champions Cup",
     CHAMPIONS_HOCKEY_LEAGUE: "Champions Hockey League",
     CHAMPIONS_HOCKEY_LEAGUE_KNOCKOUT_STAGE: "Champions Hockey League, Knockout stage",
     CONMEBOL_LIBERTADORES_QUALIFICATION: "CONMEBOL Libertadores, Qualification",
+    CONMEBOL_LIBERTADORES: "CONMEBOL Libertadores",
+    CONMEBOL_SUDAMERICANA: "CONMEBOL Sudamericana",
+    FIBA_INTERCONTINENTAL_CUP: "FIBA Intercontinental Cup",
     EFL_CUP: "EFL Cup",
     COPA_DEL_REY: "Copa del Rey",
 })

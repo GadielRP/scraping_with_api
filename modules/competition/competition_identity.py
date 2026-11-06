@@ -7,8 +7,8 @@ from dataclasses import dataclass
 class CompetitionIdentity:
     """A provider's unique tournament and specific tournament record.
 
-    A tournament ID is required to distinguish main and qualification records.
-    Collection routing may omit it when it intentionally covers a whole family.
+    A tournament ID identifies a specific provider record. ``None`` scopes the
+    identity to the provider's tournament family when no single record exists.
     """
 
     source_unique_tournament_id: int

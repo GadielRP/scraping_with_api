@@ -84,11 +84,11 @@ def test_retention_boundaries_are_league_specific(code, teams, games, safe):
     assert {rank for rule in retention for rank in range(rule.rank_start, rule.rank_end + 1)} == set(range(safe + 1, teams + 1))
 
 
-def test_brazil_qualification_destinations_are_pending_until_general_records_exist():
+def test_brazil_qualification_destinations_use_family_or_specific_identity():
     rules = PROFILES["brasileirao"]
     external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
-    assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 5), (6, 12)]
-    assert [rule.status for rule in external] == [RuleStatus.PENDING, RuleStatus.CONFIGURED, RuleStatus.PENDING]
+    assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 5), (6, 11)]
+    assert [rule.status for rule in external] == [RuleStatus.CONFIGURED] * 3
 
 
 @pytest.mark.parametrize("field,value", [
@@ -169,10 +169,8 @@ def test_catalogue_uses_registered_names_and_marks_missing_general_records_pendi
             if rule.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
                 assert rule.destination_phase is not None or rule.status is RuleStatus.PENDING
                 assert rule.destination_competition_name
-                if rule.destination_competition_identity is None:
-                    assert rule.status is RuleStatus.PENDING
-                    assert "provider identity for the direct-entry record not present" in rule.note
-                else:
+                assert rule.destination_competition_identity is not None or rule.status is RuleStatus.PENDING
+                if rule.destination_competition_identity is not None:
                     assert rule.destination_competition_name == competition_ids.COMPETITION_NAMES[rule.destination_competition_identity]
             elif rule.objective_type == ObjectiveType.PHASE_QUALIFICATION:
                 assert rule.destination_phase in DestinationPhase
@@ -190,7 +188,9 @@ def test_qualification_routes_reference_qualification_records():
     assert france.objectives[2].destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
     brazil = get_competition_profile(competition_ids.BRASILEIRAO)
     assert brazil.objectives[1].destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION
-    assert brazil.objectives[0].destination_competition_identity is None  # Not knockout record 360.
+    assert brazil.objectives[0].destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES
+    assert brazil.objectives[0].destination_competition_identity.source_tournament_id is None
+    assert brazil.objectives[2].destination_competition_identity == competition_ids.CONMEBOL_SUDAMERICANA
     assert competition_ids.COPA_DEL_REY.source_tournament_id == 150  # Football cup identity.
 
 

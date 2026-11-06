@@ -68,8 +68,6 @@ class ObjectiveRule:
             if self.destination_competition_identity is None:
                 if self.status != RuleStatus.PENDING:
                     raise ValueError("configured competition qualification requires destination_competition_identity")
-            elif self.destination_competition_identity.source_tournament_id is None:
-                raise ValueError("competition qualification requires a specific destination tournament")
             if self.destination_phase is None and self.status != RuleStatus.PENDING:
                 raise ValueError("configured competition qualification requires destination_phase")
             if self.relegation_path is not None:

@@ -468,11 +468,8 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 end=6,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
-                # General record missing; do not substitute a group/knockout record.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.AFC_CHAMPIONS_LEAGUE_TWO,
                 destination_competition_name='AFC Champions League Two',
-                status=RuleStatus.PENDING,
-                note='AFC CHAMPIONS LEAGUE TWO: provider identity for the direct-entry record not present in catalogue; destination pending. ',
             ),
             create_division_retention_rule(
                 start=16, end=18,
@@ -494,11 +491,8 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 end=4,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
-                # General record missing; do not substitute a group/knockout record.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
                 destination_competition_name='CONMEBOL Libertadores',
-                status=RuleStatus.PENDING,
-                note='CONMEBOL LIBERTADORES: provider identity for the direct-entry record not present in catalogue; destination pending. ',
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -510,14 +504,11 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 start=6,
-                end=12,
+                end=11,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
-                # General record missing; do not substitute a group/knockout record.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
                 destination_competition_name='CONMEBOL Sudamericana',
-                status=RuleStatus.PENDING,
-                note='CONMEBOL SUDAMERICANA: provider identity for the direct-entry record not present in catalogue; destination pending. ',
             ),
             create_division_retention_rule(
                 start=17, end=20,
@@ -625,10 +616,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note='CONMEBOL LIBERTADORES: provider identity for the direct-entry record not present in catalogue; destination pending. Annual table, tournament champions and exclusions determine eligible qualifiers.',
-                # General record missing; do not substitute a group/knockout record.
+                note='Annual table, champions, and exclusions create multiple qualification paths; entry phases remain unresolved.',
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
                 destination_competition_name='CONMEBOL Libertadores',
                 path=None,
                 status=RuleStatus.PENDING,
@@ -636,10 +626,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note='CONMEBOL SUDAMERICANA: provider identity for the direct-entry record not present in catalogue; destination pending. Annual table, tournament champions and exclusions determine eligible qualifiers.',
-                # General record missing; do not substitute a group/knockout record.
+                note='Annual table, champions, and exclusions create multiple qualification paths; entry phases remain unresolved.',
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
                 destination_competition_name='CONMEBOL Sudamericana',
                 path=None,
                 status=RuleStatus.PENDING,
@@ -686,10 +675,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note='CONMEBOL LIBERTADORES: provider identity for the direct-entry record not present in catalogue; destination pending. Annual table, tournament champions and exclusions determine eligible qualifiers.',
-                # General record missing; do not substitute a group/knockout record.
+                note='Annual table, champions, and exclusions create multiple qualification paths; entry phases remain unresolved.',
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
                 destination_competition_name='CONMEBOL Libertadores',
                 path=None,
                 status=RuleStatus.PENDING,
@@ -697,10 +685,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note='CONMEBOL SUDAMERICANA: provider identity for the direct-entry record not present in catalogue; destination pending. Annual table, tournament champions and exclusions determine eligible qualifiers.',
-                # General record missing; do not substitute a group/knockout record.
+                note='Annual table, champions, and exclusions create multiple qualification paths; entry phases remain unresolved.',
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
                 destination_competition_name='CONMEBOL Sudamericana',
                 path=None,
                 status=RuleStatus.PENDING,
@@ -1074,10 +1061,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.CHAMPION,
                 places=1,
-                note='FIBA INTERCONTINENTAL CUP: provider identity for the direct-entry record not present in catalogue; destination pending. Champion path only; not a regular season table finish.',
-                # General record missing; do not substitute a group/knockout record.
+                note='Champion path only; destination phase unresolved; not a regular season table finish.',
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=None,
+                destination_competition_identity=competition_ids.FIBA_INTERCONTINENTAL_CUP,
                 destination_competition_name='FIBA Intercontinental Cup',
             ),
         ),
