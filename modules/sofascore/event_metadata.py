@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+import re
 from typing import Dict
 
 from modules.events.round_policy import resolve_event_round
@@ -110,6 +111,25 @@ def _is_preseason_round(text: str) -> bool:
     )
 
 
+def _specific_knockout_round(round_info: Dict) -> str | None:
+    """Read explicit phase labels, without guessing from provider round numbers."""
+    aliases = {
+        'final': 'final', 'finals': 'final',
+        'semifinal': 'semifinal', 'semifinals': 'semifinal',
+        'semi-final': 'semifinal', 'semi-finals': 'semifinal',
+        'quarterfinal': 'quarterfinal', 'quarterfinals': 'quarterfinal',
+        'quarter-final': 'quarterfinal', 'quarter-finals': 'quarterfinal',
+        'round-of-8': 'quarterfinal',
+    }
+    for field in ('slug', 'name'):
+        value = round_info.get(field)
+        if isinstance(value, str):
+            key = re.sub(r'[\s_-]+', '-', value.strip().lower())
+            if key in aliases:
+                return aliases[key]
+    return None
+
+
 def _derive_round(
     season_name: str | None,
     round_info: Dict,
@@ -138,7 +158,11 @@ def _derive_round(
     ):
         return "pre_season"
 
-    slug = (round_info or {}).get("slug")
+    specific_round = _specific_knockout_round(round_info or {})
+    if specific_round:
+        return specific_round
+
+    slug = (round_info or {}).get("slug") or (round_info or {}).get("name")
     if slug:
         slug_lower = slug.lower()
         if _is_knockout_round(slug_lower):

@@ -49,7 +49,10 @@ def test_default_round_policy_is_enabled_and_regular_season_only():
     (None, "League", "regular_season", True),
     ("regular-season", "League", "regular-season", True),
     ("regular_season", "League", "regular_season", True),
-    ("quarterfinal", "League", "knockouts/playoffs", False),
+    ("quarterfinal", "League", "quarterfinal", False),
+    ("semifinal", "League", "semifinal", False),
+    ("final", "Copa del Rey", "final", False),
+    ("conference-finals", "League", "knockouts/playoffs", False),
     ("wild-card-round", "League", "knockouts/playoffs", False),
     ("placement-match", "League", "knockouts/playoffs", False),
     ("match-for-5th-place", "League", "knockouts/playoffs", False),
@@ -99,9 +102,9 @@ def test_explicit_unknown_normalized_round_is_not_assumed_regular_season():
     (177, 84238, "regular_season"),
     (177, 100772, "regular_season"),
     (177, 106877, "regular_season"),
-    (124629, 69143, "knockouts/playoffs"),
-    (124629, 84238, "knockouts/playoffs"),
-    (124629, 999999, "knockouts/playoffs"),
+    (124629, 69143, "final"),
+    (124629, 84238, "final"),
+    (124629, 999999, "final"),
 ])
 def test_nba_cup_round_uses_tournament_identity(tournament_id, season_id, expected):
     # Neutral names and no roundInfo ensure the final is identified by its ID.
@@ -111,7 +114,7 @@ def test_nba_cup_round_uses_tournament_identity(tournament_id, season_id, expect
     assert classify_event_round(raw) == expected
     normalized = normalize_event_payload(raw)
     assert normalized["event"]["round"] == expected
-    rejection = "round_not_allowed" if expected == "knockouts/playoffs" else None
+    rejection = "round_not_allowed" if expected == "final" else None
     for payload in (raw, normalized):
         assert filters.admit_sofascore_event(payload).rejection_reason == rejection
     # Revalidation must correct an incoming regular round for the final too.
@@ -129,6 +132,28 @@ def test_round_policy_does_not_apply_to_oddspapi():
 def test_round_policy_preserves_existing_round_without_downgrading_playoffs():
     assert resolve_event_round("sofascore", 177, None, "regular_season") == "regular_season"
     assert resolve_event_round("sofascore", 177, "regular_season", "knockouts/playoffs") == "knockouts/playoffs"
+
+
+@pytest.mark.parametrize("round_info,expected", [
+    ({"round": 29, "name": "Final", "slug": "final", "cupRoundType": 1}, "final"),
+    ({"name": "Semi Finals"}, "semifinal"),
+    ({"slug": "quarter-finals"}, "quarterfinal"),
+    ({"slug": "round-of-8"}, "quarterfinal"),
+    ({"round": 29}, "regular_season"),
+])
+def test_explicit_round_labels_and_numeric_only_fallback(round_info, expected):
+    raw = event(competition="Copa del Rey")
+    raw["roundInfo"] = round_info
+    assert normalize_event_payload(raw)["event"]["round"] == expected
+
+
+def test_final_only_filter_does_not_admit_other_knockout_rounds(monkeypatch):
+    monkeypatch.setattr(settings, "SOFASCORE", replace(
+        settings.SOFASCORE, allowed_rounds=frozenset({"final"}),
+    ))
+    assert filters.admit_sofascore_event(event("final")).rejection_reason is None
+    for slug in ("semifinal", "quarterfinal", "round-of-16"):
+        assert filters.admit_sofascore_event(event(slug)).rejection_reason == "round_not_allowed"
 
 
 def test_feeds_and_nearest_events_reject_round_before_normalization(monkeypatch, caplog):

@@ -12,8 +12,9 @@ import logging
 from typing import Dict, Optional, Tuple
 
 from infrastructure.persistence.database import db_manager
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
+from modules.events.round_policy import KNOCKOUT_ROUNDS, round_family
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +23,12 @@ def map_season_stage_to_db_round(season_stage: str) -> str:
     """
     Map season stage from API format to database round values.
 
-    Database only has: 'regular_season' or 'knockouts/playoffs'
+    Specific knockout rounds share the historical playoff sample.
     """
     season_stage_lower = season_stage.lower()
 
-    if "playoff" in season_stage_lower or "knockout" in season_stage_lower:
+    if (round_family(season_stage_lower) == "knockouts/playoffs"
+            or "playoff" in season_stage_lower or "knockout" in season_stage_lower):
         return "knockouts/playoffs"
     return "regular_season"
 
@@ -64,7 +66,7 @@ class Basketball4QPredictor:
                     SELECT quarter_4_home AS points_q4
                     FROM basketball_results
                     WHERE (home_team ILIKE :team_name OR away_team ILIKE :team_name)
-                      AND round = :db_round
+                      AND round IN :db_rounds
                       AND quarter_4_home IS NOT NULL
                       AND home_team ILIKE :team_name
 
@@ -73,13 +75,14 @@ class Basketball4QPredictor:
                     SELECT quarter_4_away AS points_q4
                     FROM basketball_results
                     WHERE (home_team ILIKE :team_name OR away_team ILIKE :team_name)
-                      AND round = :db_round
+                      AND round IN :db_rounds
                       AND quarter_4_away IS NOT NULL
                       AND away_team ILIKE :team_name
                 ) t
-            """)
+            """).bindparams(bindparam("db_rounds", expanding=True))
 
-            result = session.execute(query, {"team_name": team_pattern, "db_round": db_round}).fetchone()
+            db_rounds = KNOCKOUT_ROUNDS if db_round == "knockouts/playoffs" else (db_round,)
+            result = session.execute(query, {"team_name": team_pattern, "db_rounds": db_rounds}).fetchone()
 
             if result and result.sample_size and result.sample_size > 0:
                 avg_q4 = float(result.avg_q4) if result.avg_q4 is not None else None
@@ -126,7 +129,7 @@ class Basketball4QPredictor:
                          COALESCE(quarter_2_away, 0) +
                          COALESCE(quarter_3_away, 0)) AS q1_q3_total
                     FROM basketball_results
-                    WHERE round = :db_round
+                    WHERE round IN :db_rounds
                       AND quarter_1_home IS NOT NULL
                       AND quarter_2_home IS NOT NULL
                       AND quarter_3_home IS NOT NULL
@@ -136,9 +139,10 @@ class Basketball4QPredictor:
                 ) subquery
                 WHERE q1_q3_total IS NOT NULL
                   AND q1_q3_total > 0
-            """)
+            """).bindparams(bindparam("db_rounds", expanding=True))
 
-            result = session.execute(query, {"db_round": db_round}).fetchone()
+            db_rounds = KNOCKOUT_ROUNDS if db_round == "knockouts/playoffs" else (db_round,)
+            result = session.execute(query, {"db_rounds": db_rounds}).fetchone()
 
             if result and result.avg_q1_q3_combined:
                 avg = float(result.avg_q1_q3_combined)

@@ -246,7 +246,10 @@ def admit_sofascore_event(event, scope=None, *, policy=None, now=None) -> Sofasc
         round_name = classify_event_round(event)
     if settings.SOFASCORE.round_filter_enabled:
         round_key = (round_name or "").strip().lower().replace("_", "-")
-        if round_key not in settings.SOFASCORE.allowed_rounds:
+        from modules.events.round_policy import round_family
+
+        if (round_key not in settings.SOFASCORE.allowed_rounds
+                and round_family(round_key) not in settings.SOFASCORE.allowed_rounds):
             return SofascoreEventAdmission(event, round_name, "round_not_allowed")
     return SofascoreEventAdmission(event, round_name)
 

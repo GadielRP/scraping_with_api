@@ -97,5 +97,18 @@ def test_reprocessing_nba_cup_final_corrects_existing_regular_round(isolated_sql
     corrected = EventRepository.upsert_event(event_data)
 
     assert corrected.id == original.id
-    assert corrected.round == "knockouts/playoffs"
+    assert corrected.round == "final"
     assert corrected.competition_id != original.competition_id
+
+
+@pytest.mark.parametrize("specific_round", ["final", "semifinal", "quarterfinal"])
+def test_round_enrichment_survives_sparse_reprocessing(isolated_sqlite_db, specific_round):
+    payload = {"id": 9001, "startTimestamp": 1710000000, "round": "knockouts/playoffs"}
+    original = EventRepository.upsert_event(payload)
+    payload["round"] = specific_round
+    enriched = EventRepository.upsert_event(payload)
+    assert enriched.id == original.id
+    assert enriched.round == specific_round
+    for fallback in (None, "regular_season", "knockouts/playoffs"):
+        payload["round"] = fallback
+        assert EventRepository.upsert_event(payload).round == specific_round

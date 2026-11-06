@@ -88,7 +88,7 @@ class Event(Base):
     gender = Column(String(10), nullable=False, default="unknown")  # 'Men' or 'Women' or 'Mixed'
     discovery_source = Column(String(50), nullable=False, default='dropping_odds')  # 'dropping_odds', 'high_value_streaks', 'h2h', 'winning_odds', 'team_streaks'
     season_id = Column(Integer, ForeignKey('seasons.id', ondelete='SET NULL'))  # Season ID from SofaScore API (foreign key to seasons table)
-    round = Column(Text)  # Round information (e.g., 'regular_season', 'knockouts/playoffs', 'final')
+    round = Column(Text)  # E.g. regular_season, knockouts/playoffs, final, semifinal, quarterfinal.
     alert_sent = Column(Boolean, default=False, nullable=False)  # True if 4th quarter alert sent, False otherwise
     home_participant_id = Column(Integer, ForeignKey('participants.participant_id', ondelete='SET NULL'))
     away_participant_id = Column(Integer, ForeignKey('participants.participant_id', ondelete='SET NULL'))
