@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 
@@ -54,6 +55,34 @@ class SofaScoreDebugResponseWriter:
             event_label=event_label,
             event_folder=event_folder,
         )
+
+    @classmethod
+    def save_general_response(
+        cls,
+        *,
+        response_type: str,
+        payload: object,
+        filename: str | None = None,
+        subfolder: str | Path | None = None,
+    ) -> Path | None:
+        """Save a non-event response directly under debug/sofascore/{response_type}_responses/."""
+        response_token = cls._filename_token(response_type, fallback="response").lower()
+        directory = cls.OUTPUT_ROOT / "sofascore" / f"{response_token}_responses"
+        if subfolder:
+            directory = directory / subfolder
+        directory.mkdir(parents=True, exist_ok=True)
+
+        if not filename:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"{timestamp}.json"
+
+        safe_filename = Path(filename).name
+        target_path = directory / safe_filename
+        with target_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, default=str)
+            handle.write("\n")
+        return target_path
 
     @classmethod
     def save(

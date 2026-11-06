@@ -22,6 +22,8 @@ def add_debug_file_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def save_response_for_debug(script_name: str, payload: object) -> Path:
+    if script_name == "__main__":
+        script_name = Path(sys.argv[0]).stem or "script"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     path = (
         Path("debug")

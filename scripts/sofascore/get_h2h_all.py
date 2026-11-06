@@ -1,15 +1,21 @@
-from modules.sofascore import api_client
 import argparse
+import json
 import logging
-from app.logging_setup import setup_logging
 import sys
+
+from app.logging_setup import setup_logging
+from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer import (
+    SofaScoreDebugResponseWriter,
+)
+from modules.sofascore import api_client
 from scripts.sofascore.debug import (
     add_debug_file_argument,
     log_debug_file,
     save_response_for_debug,
 )
 
-if __name__ == "__main__":
+
+def main() -> None:
     parser = argparse.ArgumentParser(description="Get top H2H events")
     add_debug_file_argument(parser)
     args = parser.parse_args()
@@ -19,15 +25,22 @@ if __name__ == "__main__":
 
     try:
         response = api_client.get_h2h_events()
-        debug_path = (
-            save_response_for_debug(__name__.rsplit(".", 1)[-1], response)
-            if args.save_debug
-            else None
-        )
+        debug_path = None
+        if args.save_debug and isinstance(response, dict):
+            debug_path = SofaScoreDebugResponseWriter.save_general_response(
+                response_type="h2h_all",
+                payload=response,
+            )
+        elif args.save_debug:
+            debug_path = save_response_for_debug("get_h2h_all", response)
+
         logger.info("Top H2H events response:\n")
-        import json
         print(json.dumps(response, indent=4))
         log_debug_file(debug_path)
     except Exception as e:
         logger.error(f"Error getting H2H events: {e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
