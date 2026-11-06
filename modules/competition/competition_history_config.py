@@ -11,12 +11,8 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 
-@dataclass(frozen=True, slots=True)
-class CompetitionIdentity:
-    """Stable SofaScore competition identity."""
-
-    source_unique_tournament_id: int
-    source_tournament_id: Optional[int] = None
+from .competition_identity import CompetitionIdentity
+from . import competition_ids
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,200 +34,140 @@ class CompetitionHistoryConfig:
 NBA_CONFIG = CompetitionHistoryConfig(
     code="nba",
     display_name="NBA",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=132,
-        source_tournament_id=177,
-    ),
+    primary_identity=competition_ids.NBA,
     collected=True,
 )
 
 LALIGA_CONFIG = CompetitionHistoryConfig(
     code="laliga",
     display_name="LaLiga",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=8,
-        source_tournament_id=36,
-    ),
+    primary_identity=competition_ids.LALIGA,
     collected=True,
 )
 
 PREMIER_LEAGUE_CONFIG = CompetitionHistoryConfig(
     code="premier_league",
     display_name="Premier League",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=17,
-        source_tournament_id=1,
-    ),
+    primary_identity=competition_ids.PREMIER_LEAGUE,
     collected=True,
 )
 
 NFL_CONFIG = CompetitionHistoryConfig(
     code="nfl",
     display_name="NFL",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=9464,
-        source_tournament_id=108947,
-    ),
+    primary_identity=competition_ids.NFL,
     collected=True,
 )
 
 MLB_CONFIG = CompetitionHistoryConfig(
     code="mlb",
     display_name="MLB",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=11205,
-        source_tournament_id=108806,
-    ),
+    primary_identity=competition_ids.MLB,
     collected=True,
 )
 
 NHL_CONFIG = CompetitionHistoryConfig(
     code="nhl",
     display_name="NHL",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=234,
-        source_tournament_id=142,
-    ),
+    primary_identity=competition_ids.NHL,
     collected=True,
 )
 
 SERIE_A_CONFIG = CompetitionHistoryConfig(
     code="serie_a",
     display_name="Serie A",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=23,
-        source_tournament_id=33,
-    ),
+    primary_identity=competition_ids.SERIE_A,
     collected=True,
 )
 
 BUNDESLIGA_CONFIG = CompetitionHistoryConfig(
     code="bundesliga",
     display_name="Bundesliga",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=35,
-        source_tournament_id=42,
-    ),
+    primary_identity=competition_ids.BUNDESLIGA,
     collected=True,
 )
 
 LIGUE_1_CONFIG = CompetitionHistoryConfig(
     code="ligue_1",
     display_name="Ligue 1",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=34,
-        source_tournament_id=4,
-    ),
+    primary_identity=competition_ids.LIGUE_1,
     collected=True,
 )
 
 SAUDI_PRO_LEAGUE_CONFIG = CompetitionHistoryConfig(
     code="saudi_pro_league",
     display_name="Saudi Pro League",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=955,
-        source_tournament_id=3708,
-    ),
+    primary_identity=competition_ids.SAUDI_PRO_LEAGUE,
     collected=True,
 )
 
 SHL_CONFIG = CompetitionHistoryConfig(
     code="shl",
     display_name="SHL",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=261,
-        source_tournament_id=115,
-    ),
+    primary_identity=competition_ids.SHL,
     collected=True,
 )
 
 WNBA_CONFIG = CompetitionHistoryConfig(
     code="wnba",
     display_name="WNBA",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=486,
-        source_tournament_id=591,
-    ),
+    primary_identity=competition_ids.WNBA,
     collected=True,
 )
 
 PFL_CONFIG = CompetitionHistoryConfig(
     code="pfl",
     display_name="PFL",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=1654,
-        source_tournament_id=19822,
-    ),
+    primary_identity=competition_ids.PFL,
     collected=True,
 )
 
 CBA_CONFIG = CompetitionHistoryConfig(
     code="cba",
     display_name="CBA",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=1566,
-        source_tournament_id=10233,
-    ),
+    primary_identity=competition_ids.CBA,
     collected=True,
 )
 
 LIGA_MX_APERTURA_CONFIG = CompetitionHistoryConfig(
     code="liga_mx_apertura",
     display_name="Liga MX Apertura",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=11621,
-        source_tournament_id=28,
-    ),
+    primary_identity=competition_ids.LIGA_MX_APERTURA,
     collected=True,
 )
 
 LIGA_MX_CLAUSURA_CONFIG = CompetitionHistoryConfig(
     code="liga_mx_clausura",
     display_name="Liga MX Clausura",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=11620,
-        source_tournament_id=16753,
-    ),
+    primary_identity=competition_ids.LIGA_MX_CLAUSURA,
     collected=True,
 )
 
 BRASILEIRAO_CONFIG = CompetitionHistoryConfig(
     code="brasileirao",
     display_name="Brasileirão",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=325,
-        source_tournament_id=83,
-    ),
+    primary_identity=competition_ids.BRASILEIRAO,
     collected=True,
 )
 
 LIGA_PROFESIONAL_DE_ARGENTINA_APERTURA_CONFIG = CompetitionHistoryConfig(
     code="liga_profesional_de_argentina_apertura",
     display_name="Liga Profesional de Argentina Apertura",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=155,
-        source_tournament_id=143625,
-    ),
+    primary_identity=competition_ids.ARGENTINA_APERTURA,
     collected=True,
 )
 
 LIGA_PROFESIONAL_DE_ARGENTINA_CLAUSURA_CONFIG = CompetitionHistoryConfig(
     code="liga_profesional_de_argentina_clausura",
     display_name="Liga Profesional de Argentina Clausura",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=155,
-        source_tournament_id=156467,
-    ),
+    primary_identity=competition_ids.ARGENTINA_CLAUSURA,
     collected=True,
 )
 
 EREDIVISIE_CONFIG = CompetitionHistoryConfig(
     code="eredivisie",
     display_name="Eredivisie",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=37,
-        source_tournament_id=39,
-    ),
+    primary_identity=competition_ids.EREDIVISIE,
     collected=True,
 )
 
@@ -240,20 +176,14 @@ EREDIVISIE_CONFIG = CompetitionHistoryConfig(
 EUROLEAGUE_CONFIG = CompetitionHistoryConfig(
     code="euroleague",
     display_name="Euroleague",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=138,
-        source_tournament_id=42527,
-    ),
+    primary_identity=competition_ids.EUROLEAGUE,
     collected=True,
 )
 
 LIIGA_CONFIG = CompetitionHistoryConfig(
     code="liiga",
     display_name="Liiga",
-    primary_identity=CompetitionIdentity(
-        source_unique_tournament_id=134,
-        source_tournament_id=108,
-    ),
+    primary_identity=competition_ids.LIIGA,
     collected=True,
 )
 
@@ -261,7 +191,7 @@ LIIGA_CONFIG = CompetitionHistoryConfig(
 LIGA_PORTUGAL_CONFIG = CompetitionHistoryConfig(
     code="liga_portugal",
     display_name="Liga Portugal",
-    primary_identity=CompetitionIdentity(238, 52),
+    primary_identity=competition_ids.LIGA_PORTUGAL,
     collected=True,
 )
 

@@ -17,7 +17,7 @@ from shared.temporal import from_unix_timestamp, in_timezone
 from modules.competition.competition_history_config import (
     is_collected_competition_scope,
 )
-from modules.competition.competition_profiles import get_competition_profile
+from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from .historical_form_service import historical_form_service
 
 logger = logging.getLogger(__name__)

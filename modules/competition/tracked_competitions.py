@@ -1,6 +1,6 @@
 """Business policy for competitions processed by pre-start workflows.
 
-The allowlist uses canonical ``competitions.competition_id`` values. It is
+The allowlist declares provider identities and resolves local IDs on demand. It is
 intentionally independent from provider-specific routing such as OddsPortal.
 """
 
@@ -11,13 +11,14 @@ from types import MappingProxyType
 from typing import Final, Mapping
 
 from . import competition_ids
+from .competition_identity import CompetitionIdentity
 
 
 @dataclass(frozen=True, slots=True)
 class TrackedCompetition:
     """Human-readable metadata for one tracked canonical competition."""
 
-    competition_id: int
+    identity: CompetitionIdentity
     name: str
     sport: str
 
@@ -60,16 +61,16 @@ _TRACKED_COMPETITIONS: Final[tuple[TrackedCompetition, ...]] = (
     # TrackedCompetition(360, "Conmebol Libertadores", "Football"),
 )
 
-TRACKED_COMPETITIONS_BY_ID: Final[Mapping[int, TrackedCompetition]] = (
+TRACKED_COMPETITIONS_BY_IDENTITY: Final[Mapping[CompetitionIdentity, TrackedCompetition]] = (
     MappingProxyType(
         {
-            competition.competition_id: competition
+            competition.identity: competition
             for competition in _TRACKED_COMPETITIONS
         }
     )
 )
-TRACKED_COMPETITION_IDS: Final[frozenset[int]] = frozenset(
-    TRACKED_COMPETITIONS_BY_ID
+TRACKED_COMPETITION_IDENTITIES: Final[frozenset[CompetitionIdentity]] = frozenset(
+    TRACKED_COMPETITIONS_BY_IDENTITY
 )
 
 
@@ -79,17 +80,23 @@ def is_tracked_competition(competition_id: object) -> bool:
         normalized_id = int(competition_id)
     except (TypeError, ValueError):
         return False
-    return normalized_id in TRACKED_COMPETITION_IDS
+    return normalized_id in tracked_competition_ids()
 
 
 def tracked_competition_ids() -> tuple[int, ...]:
     """Return stable, deterministic IDs suitable for database filters."""
-    return tuple(sorted(TRACKED_COMPETITION_IDS))
+    from infrastructure.persistence.database import db_manager
+    from infrastructure.persistence.repositories.competition_repository import CompetitionRepository
+
+    with db_manager.SessionLocal() as session:
+        return CompetitionRepository.get_local_ids_for_identities(
+            session, TRACKED_COMPETITION_IDENTITIES,
+        )
 
 
 __all__ = [
-    "TRACKED_COMPETITIONS_BY_ID",
-    "TRACKED_COMPETITION_IDS",
+    "TRACKED_COMPETITIONS_BY_IDENTITY",
+    "TRACKED_COMPETITION_IDENTITIES",
     "TrackedCompetition",
     "is_tracked_competition",
     "tracked_competition_ids",

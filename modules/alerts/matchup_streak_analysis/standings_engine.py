@@ -13,7 +13,7 @@ from infrastructure.persistence.database import db_manager
 from modules.competition.rule_terms import GroupingMethod
 from shared.temporal import from_unix_timestamp
 
-from modules.competition.competition_profiles import get_competition_profile
+from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.competition.competitive_rules import CompetitionRules
 from .historical_form_reporting import format_standings_table_for_telegram
 from .constants import get_team_group

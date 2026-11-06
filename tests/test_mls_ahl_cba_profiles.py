@@ -6,14 +6,14 @@ import pytest
 from modules.alerts.matchup_streak_analysis.standings_engine import (
     _build_team_standing_payload, _create_team_stats, _finalize_team_stats,
 )
-from modules.competition.competition_profiles import get_competition_profile
+from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import resolve_p1_competition_context
 from tests.pillars.pillar_1_team_structure.test_module_5_late_season import _event, _calculate_m5
 
 
 def _resolved_event(cid):
     event = _event()
-    event.competition = replace(event.competition, competition_id=cid)
+    event.competition = with_identity(event.competition, cid)
     event.competition = resolve_p1_competition_context(event.to_identity(), event.competition)
     return event
 
@@ -28,7 +28,7 @@ def test_current_profiles_have_sizes_duration_scoring_and_explicit_objectives():
         assert all(rule.objective_type != "DIVISION_RETENTION" for rule in get_competition_profile(cid).objectives)
     retention = next(rule for rule in get_competition_profile(174).objectives if rule.objective_type == "DIVISION_RETENTION")
     assert (retention.rank_start, retention.rank_end, retention.reference_rank) == (19, 20, 18)
-    assert retention.qualification_path == "RELEGATION_PLAYOFF"
+    assert retention.relegation_path == "RELEGATION_PLAYOFF"
     assert not get_competition_profile(174).standings.verified
 
 
@@ -78,8 +78,8 @@ def test_mls_direct_and_wild_card_match_use_the_correct_conference():
             table[name] = dict(rank=rank, points=100-rank*2, games_played=30, conference=conference)
     result = _calculate_m5(SimpleNamespace(current_standings=table), _resolved_event(76))
     assert result.raw["m5_status"] == "ACTIVE"
-    assert result.raw["home"]["objective_rule"]["destination_stage"] == "PLAYOFFS"
-    assert result.raw["away"]["objective_rule"]["destination_stage"] == "PLAY_IN"
+    assert result.raw["home"]["objective_rule"]["destination_phase"] == "PLAYOFFS"
+    assert result.raw["away"]["objective_rule"]["destination_phase"] == "PLAY_IN"
 
 
 def test_cba_declared_retention_does_not_bypass_percentage_calculation_limit():

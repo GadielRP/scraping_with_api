@@ -21,7 +21,7 @@ from modules.pillars.common import (
 )
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
 from modules.competition.rule_terms import (
-    AggregationScope, ObjectiveType, QualificationPath, RankingScope,
+    AggregationScope, ObjectiveType, RelegationPath, RankingScope,
     RuleStatus, SelectionMethod, StandingsMetric,
 )
 from modules.pillars.context import CompetitionContext, EventIdentity
@@ -33,7 +33,7 @@ NO_APPLICABLE_OBJECTIVE = "NO_APPLICABLE_OBJECTIVE"
 
 BASE_SEVERITY = {
     ObjectiveType.COMPETITION_QUALIFICATION: 0.70,
-    ObjectiveType.STAGE_QUALIFICATION: 0.85,
+    ObjectiveType.PHASE_QUALIFICATION: 0.85,
     ObjectiveType.DIVISION_RETENTION: 1.00,
     NO_APPLICABLE_OBJECTIVE: 0.00,
 }
@@ -330,7 +330,7 @@ def _determine_regime_state(rule: Optional[ObjectiveRule]) -> str:
     if rule is None:
         return NO_APPLICABLE_OBJECTIVE
     if rule.objective_type == ObjectiveType.DIVISION_RETENTION:
-        return ("RELEGATION_PLAYOFF_POSITION" if rule.qualification_path == QualificationPath.RELEGATION_PLAYOFF
+        return ("RELEGATION_PLAYOFF_POSITION" if rule.relegation_path == RelegationPath.RELEGATION_PLAYOFF
                 else "DIRECT_RELEGATION_POSITION")
     return "QUALIFYING_POSITION"
 
@@ -359,7 +359,7 @@ def _calculate_gap(objective_type, team_points, points_cutoff, max_points_remain
         return None
     if objective_type == ObjectiveType.DIVISION_RETENTION:
         return points_cutoff - team_points
-    if objective_type in {ObjectiveType.COMPETITION_QUALIFICATION, ObjectiveType.STAGE_QUALIFICATION}:
+    if objective_type in {ObjectiveType.COMPETITION_QUALIFICATION, ObjectiveType.PHASE_QUALIFICATION}:
         return team_points - points_cutoff
     return None
 

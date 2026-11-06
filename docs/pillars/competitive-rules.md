@@ -20,7 +20,7 @@ La captura existente de `p1` incluye identidad, contexto y análisis antes del c
 
 Cada regla hereda la temporada de referencia de `CompetitionRules`; incorpora destino, temporada de destino cuando es otra competición, vía, ámbito de tabla, alcance temporal, selección, zona y referencia cuando están resueltas. Los campos vacíos expresan información pendiente; no activan valores por defecto deportivos.
 
-Los valores canónicos son `COMPETITION_QUALIFICATION`, `STAGE_QUALIFICATION` y `DIVISION_RETENTION`. `NO_APPLICABLE_OBJECTIVE` es el resultado para un equipo fuera de las zonas de la política, siempre que ninguna regla pendiente necesaria impida decidirlo. Se mantienen `objective_type`, `points_cutoff`, `gap`, `n_league`, `base_severity`, `regime_multiplier` y `final_cost`.
+Los valores canónicos son `COMPETITION_QUALIFICATION`, `PHASE_QUALIFICATION` y `DIVISION_RETENTION`. `NO_APPLICABLE_OBJECTIVE` es el resultado para un equipo fuera de las zonas de la política, siempre que ninguna regla pendiente necesaria impida decidirlo. Se mantienen `objective_type`, `points_cutoff`, `gap`, `n_league`, `base_severity`, `regime_multiplier` y `final_cost`.
 
 ## Catálogo y revisión deportiva
 
@@ -81,18 +81,32 @@ La agrupación argentina está declarada como grupos. Si los datos no permiten a
 
 ## Identidades y términos canónicos
 
-[`competition_ids.py`](../../modules/competition/competition_ids.py) reúne referencias legibles a `competitions.competition_id` y sus nombres. Distingue registros generales y de previa: una clasificación a la previa usa el ID de esa fila, no un ID del proveedor. Los perfiles y el seguimiento usan estas constantes; la pertenencia a seguimiento sigue siendo independiente.
+[`competition_ids.py`](../../modules/competition/competition_ids.py) declara identidades de proveedor y nombres. Cada referencia distingue la fila concreta, incluida una previa, mediante `source`, `source_unique_tournament_id` y `source_tournament_id`. `destination_phase` expresa la fase deportiva con vocabulario común.
 
-[`rule_terms.py`](../../modules/competition/rule_terms.py) documenta los campos y el vocabulario general: objetivos, vías, estados, selección, ámbitos, agrupación y métrica. `CompetitionStage` contiene únicamente `PLAYOFFS` y `PLAY_IN`. Cuartos, octavos, primera ronda y nombres comerciales se describen en `note` y no se interpretan para calcular resultados.
+[`rule_terms.py`](../../modules/competition/rule_terms.py) documenta los campos y el vocabulario general: objetivos, vías, fases destino, estados, selección, ámbitos, agrupación y métrica. `DestinationPhase` contiene `LEAGUE_PHASE`, `GROUP_STAGE`, `QUALIFICATION_ROUND`, `PLAY_IN` y `PLAYOFFS`. Cuartos, octavos, primera ronda y nombres comerciales se describen en `note` y no se interpretan para calcular resultados.
 
-`target` se eliminó. `COMPETITION_QUALIFICATION` usa `destination_competition_id`, sin fase interna; `STAGE_QUALIFICATION` usa `destination_stage`, sin competición externa; `DIVISION_RETENTION` no usa ninguno. Las dataclasses rechazan combinaciones contradictorias, vías incompatibles y reglas configuradas por rango sin puestos.
+`COMPETITION_QUALIFICATION` usa `destination_competition_identity` y `destination_phase`. `PHASE_QUALIFICATION` usa `destination_phase` y puede añadir una identidad cuando SofaScore tiene un torneo separado para esa fase, como NBA Playoffs o NBA Play-In. `DIVISION_RETENTION` usa `relegation_path`, no una fase de clasificación. Las dataclasses rechazan destinos de fase ausentes en reglas configuradas, combinaciones contradictorias, vías incompatibles y reglas configuradas por rango sin puestos.
 
 `destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
 
-Una previa de Champions se configura con `competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION` y `QualificationPath.QUALIFYING_ROUND`. El ID identifica la fila concreta; la vía conserva el significado deportivo general. Acceder al propio Play-In usa fase `PLAY_IN` y vía `DIRECT`.
+Una plaza directa a la ronda clasificatoria de Champions se configura con la identidad y nombre de Champions Qualification, fase `QUALIFICATION_ROUND` y vía `DIRECT`. `destination_phase` identifica la fase concreta; `qualification_path` identifica cómo se llega a ella. Acceder al propio Play-In usa fase `PLAY_IN` y vía `DIRECT`.
 
-Una vía desconocida se representa con `None` únicamente en una regla `PENDING`. También puede faltar el ID de destino en una clasificación externa pendiente cuando no exista una fila general apropiada. No se sustituye por el ID de un grupo o de eliminatorias: el comentario y la nota registran qué identidad falta. Las otras reglas configuradas necesitan un ID positivo de destino.
+Una vía desconocida se representa con `None` únicamente en una regla `PENDING`. En esas reglas también puede faltar la fase cuando todavía no se conoce el destino deportivo concreto. Puede faltar el ID de destino en una clasificación externa pendiente cuando no exista una fila general apropiada; se conserva la identidad específica y la fase, sin sustituir un destino directo por una fila de grupo o eliminatorias.
 
 Las referencias generales de AFC Champions League Two, Libertadores, Sudamericana y FIBA Intercontinental Cup quedaron pendientes porque el catálogo consultado solo contiene filas de grupos, previas o eliminatorias. Se conserva la previa de Libertadores mediante su ID específico. Este ajuste no modifica los rangos ni las cuotas; tres reglas previamente configuradas pasan a pendientes por la identidad ausente.
 
 El catálogo construye `CompetitionRules` directamente. Los constructores de objetivos completan tipo y puesto de referencia. El constructor externo se llama `create_competition_qualification_rule`; no hay un wrapper para generar tuplas de reglas pendientes. Copa del Rey de fútbol (448) y EFL Cup (391) quedan identificadas para definir sus asignaciones después de investigar las condiciones deportivas. No se implementa una política de reasignación supuesta.
+
+
+Las referencias deportivas usan `CompetitionIdentity(source_unique_tournament_id,
+source_tournament_id, source="sofascore")`. La pareja distingue, por ejemplo,
+Conference League `(17015, 138316)` de Conference League Qualification
+`(17015, 93604)`. El nombre de destino conserva el sufijo Qualification.
+Los 25 perfiles se buscan por identidad exacta de proveedor; los destinos
+pendientes conservan identidad `None`, fase conocida, comentario y estado PENDING.
+El contexto de P1 usa sus campos del proveedor directamente. Los consumidores
+que reciben claves foráneas locales las resuelven mediante el repositorio; la
+lista de seguimiento también traduce sus identidades a IDs de la base actual.
+Los IDs autoincrementales siguen siendo claves internas y no aparecen como
+identificadores en la configuración deportiva. Una nueva fila del proveedor
+requiere actualizar su referencia específica en el catálogo.

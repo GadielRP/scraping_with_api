@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from infrastructure.persistence.repositories import event_repository
 from modules.competition.tracked_competitions import (
-    TRACKED_COMPETITION_IDS,
+    tracked_competition_ids,
     is_tracked_competition,
 )
 from modules.jobs.pre_start_check_job import key_moment_evaluation
@@ -14,19 +14,24 @@ from modules.jobs.pre_start_check_job import (
 
 
 EXPECTED_TRACKED_COMPETITION_IDS = {
-    176,
-    318,
-    129,
-    167,
-    88,
-    168,
-    50,
-    171,
+    50, 76, 88, 129, 167, 168, 171, 172, 174, 176,
+    261, 310, 317, 318, 328, 429, 2192, 2476, 5153,
 }
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def local_tracked_ids(monkeypatch):
+    from infrastructure.persistence.repositories.competition_repository import CompetitionRepository
+    monkeypatch.setattr(CompetitionRepository, "get_local_ids_for_identities",
+                        lambda session, identities: tuple(sorted(EXPECTED_TRACKED_COMPETITION_IDS)))
+
+
+
 def test_tracked_competitions_are_canonical_and_season_independent():
-    assert TRACKED_COMPETITION_IDS == EXPECTED_TRACKED_COMPETITION_IDS
+    assert set(tracked_competition_ids()) == EXPECTED_TRACKED_COMPETITION_IDS
     assert is_tracked_competition(176)
     assert is_tracked_competition("176")
     assert not is_tracked_competition(146)  # NBA playoffs

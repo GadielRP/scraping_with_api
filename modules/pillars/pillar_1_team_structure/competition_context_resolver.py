@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from modules.competition.competition_profiles import get_competition_profile
+from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.rule_terms import GroupingMethod
 from modules.pillars.context import CompetitionContext, EventIdentity
 
@@ -11,11 +12,19 @@ def resolve_p1_competition_context(
     event_identity: EventIdentity,
     competition_context: CompetitionContext,
 ) -> CompetitionContext:
-    """Resolve current facts by canonical ID, with no I/O or season-name parsing.
+    """Resolve current facts by provider identity, with no I/O or season-name parsing.
 
     Unknown IDs have no sporting configuration; cached DB values are not substitutes.
     """
-    rules = get_competition_profile(event_identity.competition_id)
+    identity = None
+    if (competition_context.source and competition_context.source_unique_tournament_id is not None
+            and competition_context.source_tournament_id is not None):
+        identity = CompetitionIdentity(
+            source=competition_context.source,
+            source_unique_tournament_id=competition_context.source_unique_tournament_id,
+            source_tournament_id=competition_context.source_tournament_id,
+        )
+    rules = get_competition_profile(identity)
     if rules is None:
         return replace(competition_context, competitive_rules=None, number_of_teams=None,
                        total_regular_season_games=None, standings_grouping=None,

@@ -1,7 +1,9 @@
 import logging
 from typing import Collection, Dict, Optional
 
+from sqlalchemy import tuple_
 from sqlalchemy.exc import IntegrityError
+from modules.competition.competition_identity import CompetitionIdentity
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import Competition
@@ -12,6 +14,32 @@ logger = logging.getLogger(__name__)
 
 class CompetitionRepository:
     """Repository for normalized event competitions."""
+
+    @staticmethod
+    def get_identity_for_local_id(session: Session, competition_id: int) -> CompetitionIdentity | None:
+        row = session.query(Competition.source, Competition.source_unique_tournament_id,
+                            Competition.source_tournament_id).filter(
+            Competition.competition_id == competition_id,
+        ).first()
+        if row is None or row.source_unique_tournament_id is None:
+            return None
+        return CompetitionIdentity(source=row.source,
+                                   source_unique_tournament_id=row.source_unique_tournament_id,
+                                   source_tournament_id=row.source_tournament_id)
+
+    @staticmethod
+    def get_local_ids_for_identities(
+        session: Session, identities: Collection[CompetitionIdentity],
+    ) -> tuple[int, ...]:
+        """Resolve provider references in the current database, without fixed PKs."""
+        keys = [(i.source, i.source_unique_tournament_id, i.source_tournament_id) for i in identities]
+        if not keys:
+            return ()
+        rows = session.query(Competition.competition_id).filter(
+            tuple_(Competition.source, Competition.source_unique_tournament_id,
+                   Competition.source_tournament_id).in_(keys),
+        ).order_by(Competition.competition_id).all()
+        return tuple(row[0] for row in rows)
 
     @staticmethod
     def get_source_competition_id_pairs(
@@ -182,3 +210,15 @@ class CompetitionRepository:
             ):
                 updated_count += 1
         return updated_count
+
+
+def get_competition_profile_for_local_id(competition_id: int | None):
+    """Resolve a database foreign key before consulting portable sporting rules."""
+    if competition_id is None:
+        return None
+    from infrastructure.persistence.database import db_manager
+    from modules.competition.competition_profiles import get_competition_profile
+
+    with db_manager.SessionLocal() as session:
+        identity = CompetitionRepository.get_identity_for_local_id(session, competition_id)
+    return get_competition_profile(identity)

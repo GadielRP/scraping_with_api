@@ -365,7 +365,7 @@ Solo después de superar la comprobación de madurez se consultan las reglas de 
 | Objetivo deportivo | `objective_type` | `base_severity` |
 |---|---|---:|
 | Acceder a otra competición | `COMPETITION_QUALIFICATION` | 0.70 |
-| Acceder a otra fase del torneo | `STAGE_QUALIFICATION` | 0.85 |
+| Acceder a otra fase del torneo | `PHASE_QUALIFICATION` | 0.85 |
 | Conservar la categoría | `DIVISION_RETENTION` | 1.00 |
 | Fuera de las zonas de la política, sin una frontera pendiente necesaria | `NO_APPLICABLE_OBJECTIVE` | 0 |
 

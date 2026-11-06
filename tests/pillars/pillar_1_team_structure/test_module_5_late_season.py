@@ -11,7 +11,7 @@ import pytest
 
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, FOOTBALL_SCORING
 from modules.competition import competition_ids
-from modules.competition.rule_terms import ObjectiveType, QualificationPath
+from modules.competition.rule_terms import ObjectiveType, QualificationPath, RelegationPath, DestinationPhase
 from modules.competition.standings_policies import LALIGA
 from modules.pillars.common import ModuleResult
 from modules.pillars.mining.adapters.pillar_1 import P1SideMiningAdapter
@@ -39,10 +39,11 @@ def _event(total_games=38):
         scoring=FOOTBALL_SCORING, standings=LALIGA,
         objectives=(
             ObjectiveRule(ObjectiveType.COMPETITION_QUALIFICATION, QualificationPath.DIRECT,
-                          destination_competition_id=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+                          destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
                           destination_competition_name="UEFA Champions League",
+                          destination_phase=DestinationPhase.LEAGUE_PHASE,
                           rank_start=1, rank_end=7, reference_rank=7),
-            ObjectiveRule(ObjectiveType.DIVISION_RETENTION, QualificationPath.DIRECT_RELEGATION,
+            ObjectiveRule(ObjectiveType.DIVISION_RETENTION, relegation_path=RelegationPath.DIRECT_RELEGATION,
                           rank_start=18, rank_end=20, reference_rank=17),
         ),
     )

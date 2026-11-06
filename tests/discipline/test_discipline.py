@@ -17,7 +17,7 @@ from infrastructure.persistence.models import (
 )
 from infrastructure.persistence.orm_base import Base
 from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
-from modules.competition.competition_ids import NBA, WNBA
+NBA, WNBA = 176, 145  # Arbitrary local database keys for these fixtures.
 from modules.discipline.contracts import (
     Acquisition, DisciplineEndpoint, DisciplineEventContext, DisciplineTotalDraft, IncidentDraft, IncidentType, Origin, Outcome, Selection, Side,
 )

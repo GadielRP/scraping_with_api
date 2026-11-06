@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .competition_identity import CompetitionIdentity
 from .rule_terms import (
     AggregationScope,
-    CompetitionStage,
+    DestinationPhase,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
+    RelegationPath,
     RankingScope,
     RuleStatus,
     SelectionMethod,
@@ -28,10 +30,11 @@ class ObjectiveRule:
     """
 
     objective_type: ObjectiveType
-    qualification_path: QualificationPath | None
-    destination_competition_id: int | None = None
+    qualification_path: QualificationPath | None = None
+    relegation_path: RelegationPath | None = None
+    destination_competition_identity: CompetitionIdentity | None = None
     destination_competition_name: str | None = None
-    destination_stage: CompetitionStage | None = None
+    destination_phase: DestinationPhase | None = None
     ranking_scope: RankingScope = RankingScope.GLOBAL
     aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT
     status: RuleStatus = RuleStatus.CONFIGURED
@@ -46,41 +49,51 @@ class ObjectiveRule:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "objective_type", ObjectiveType(self.objective_type))
-        if self.destination_stage is not None:
-            object.__setattr__(self, "destination_stage", CompetitionStage(self.destination_stage))
+        if isinstance(self.destination_competition_identity, dict):
+            object.__setattr__(self, "destination_competition_identity", CompetitionIdentity(**self.destination_competition_identity))
+        if self.destination_competition_identity is not None and not isinstance(self.destination_competition_identity, CompetitionIdentity):
+            raise ValueError("destination_competition_identity requires a provider identity")
+        if self.destination_phase is not None:
+            object.__setattr__(self, "destination_phase", DestinationPhase(self.destination_phase))
         object.__setattr__(self, "ranking_scope", RankingScope(self.ranking_scope))
         object.__setattr__(self, "aggregation_scope", AggregationScope(self.aggregation_scope))
         object.__setattr__(self, "status", RuleStatus(self.status))
         object.__setattr__(self, "selection_method", SelectionMethod(self.selection_method))
         if self.qualification_path is not None:
             object.__setattr__(self, "qualification_path", QualificationPath(self.qualification_path))
-        elif self.status != RuleStatus.PENDING:
+        elif (self.objective_type != ObjectiveType.DIVISION_RETENTION
+              and self.status != RuleStatus.PENDING):
             raise ValueError("only pending objectives may have an unknown qualification path")
         if self.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
-            if self.destination_competition_id is None:
+            if self.destination_competition_identity is None:
                 if self.status != RuleStatus.PENDING:
-                    raise ValueError("configured competition qualification requires destination_competition_id")
-            elif not isinstance(self.destination_competition_id, int) or self.destination_competition_id <= 0:
-                raise ValueError("competition qualification requires a positive destination_competition_id")
-            if self.destination_stage is not None:
-                raise ValueError("competition qualification cannot have an internal destination_stage")
-        elif self.objective_type == ObjectiveType.STAGE_QUALIFICATION:
-            if self.destination_stage is None:
-                raise ValueError("stage qualification requires destination_stage")
-            if self.destination_competition_id is not None:
-                raise ValueError("stage qualification cannot target another competition")
+                    raise ValueError("configured competition qualification requires destination_competition_identity")
+            elif self.destination_competition_identity.source_tournament_id is None:
+                raise ValueError("competition qualification requires a specific destination tournament")
+            if self.destination_phase is None and self.status != RuleStatus.PENDING:
+                raise ValueError("configured competition qualification requires destination_phase")
+            if self.relegation_path is not None:
+                raise ValueError("competition qualification cannot have a relegation path")
+        elif self.objective_type == ObjectiveType.PHASE_QUALIFICATION:
+            if self.destination_phase is None:
+                raise ValueError("phase qualification requires destination_phase")
             if (self.qualification_path is not None
                     and self.qualification_path != QualificationPath.DIRECT):
-                raise ValueError("stage qualification must use the direct path to its internal destination")
-        elif self.destination_competition_id is not None or self.destination_stage is not None:
-            raise ValueError("division retention has no qualification destination")
-        retention_paths = {QualificationPath.DIRECT_RELEGATION, QualificationPath.RELEGATION_PLAYOFF}
-        if self.qualification_path is not None:
-            if self.objective_type == ObjectiveType.DIVISION_RETENTION:
-                if self.qualification_path not in retention_paths:
-                    raise ValueError("division retention requires a relegation path")
-            elif self.qualification_path in retention_paths:
-                raise ValueError("qualification cannot use a relegation path")
+                raise ValueError("phase qualification must use the direct path to its destination")
+            if self.relegation_path is not None:
+                raise ValueError("phase qualification cannot have a relegation path")
+        else:
+            if self.destination_competition_identity is not None or self.destination_phase is not None:
+                raise ValueError("division retention has no qualification destination")
+            if self.qualification_path is not None:
+                raise ValueError("division retention cannot have a qualification path")
+        if self.objective_type == ObjectiveType.DIVISION_RETENTION:
+            if self.relegation_path is not None:
+                object.__setattr__(self, "relegation_path", RelegationPath(self.relegation_path))
+            if self.relegation_path is None and self.status != RuleStatus.PENDING:
+                raise ValueError("configured division retention requires relegation_path")
+        elif self.relegation_path is not None:
+            raise ValueError("qualification cannot have a relegation path")
         if (self.rank_start is None) != (self.rank_end is None):
             raise ValueError("rank_start and rank_end must be specified together")
         if self.rank_start is not None and not (1 <= self.rank_start <= self.rank_end):

@@ -21,11 +21,11 @@ Las identidades concretas son datos; no forman parte del enum de comportamientos
 
 | Objetivo | Campo de destino |
 |---|---|
-| `COMPETITION_QUALIFICATION` | `destination_competition_id`: otra competición o su fila de previa. |
-| `STAGE_QUALIFICATION` | `destination_stage`: fase de la competición actual. |
+| `COMPETITION_QUALIFICATION` | `destination_competition_identity`: otra competición o su fila de previa. |
+| `PHASE_QUALIFICATION` | `destination_phase`: fase actual; `destination_competition_identity` opcional para un torneo distinto de esa fase. |
 | `DIVISION_RETENTION` | Ninguno; conservar la categoría actual ya está expresado por el tipo. |
 
-`CompetitionStage` contiene dos valores: `PLAYOFFS` para la fase de disputa del título posterior a la clasificación regular, y `PLAY_IN` para la fase previa que decide el acceso a playoffs. La ronda de entrada se describe en `note`. Esa descripción no permite calcular exenciones ni ventajas por saltarse rondas.
+`DestinationPhase` contiene `LEAGUE_PHASE`, `GROUP_STAGE`, `QUALIFICATION_ROUND`, `PLAYOFFS` para la fase de disputa del título posterior a la clasificación regular, y `PLAY_IN` para la fase previa que decide el acceso a playoffs. La ronda de entrada se describe en `note`. Esa descripción no permite calcular exenciones ni ventajas por saltarse rondas.
 
 `destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
 
@@ -33,24 +33,24 @@ Las identidades concretas son datos; no forman parte del enum de comportamientos
 
 Para distinguir filas se revisaron nombre canónico y visible, slug, unique_slug, categoría, proveedor e IDs del proveedor; se contrastaron deporte y género de los eventos cuando estaban disponibles. Se inspeccionaron también los demás campos de la fila. Los nombres por sí solos no distinguen grupos, fases ni deportes homónimos.
 
-| Referencia | competition_id | Ámbito de la fila |
+| Referencia | IDs SofaScore (unique / tournament) | Ámbito de la fila |
 |---|---:|---|
-| UEFA Champions League | 348 | General |
-| UEFA Champions League, Qualification | 6151 | Previa |
-| UEFA Europa League | 400 | General |
-| UEFA Europa League, Qualification | 6182 | Previa |
-| UEFA Conference League | 441 | General |
-| UEFA Conference League, Qualification | 6138 | Previa |
-| AFC Champions League Elite | 3309 | General |
-| AFC Champions League Elite, Qualification | 9371 | Previa |
-| AFC Champions League Two, Qualification | 9447 | Previa; no sustituye una referencia general |
-| CONMEBOL Libertadores, Qualification | 2748 | Previa |
-| CONCACAF Champions Cup | 2746 | General |
-| Champions Hockey League | 223 | General |
-| Copa del Rey | 448 | Fútbol; no futsal, baloncesto ni balonmano |
-| EFL Cup | 391 | Fútbol |
+| UEFA Champions League | 7 / 138314 | General |
+| UEFA Champions League, Qualification | 7 / 1339 | Previa |
+| UEFA Europa League | 679 / 138315 | General |
+| UEFA Europa League, Qualification | 679 / 10910 | Previa |
+| UEFA Conference League | 17015 / 138316 | General |
+| UEFA Conference League, Qualification | 17015 / 93604 | Previa |
+| AFC Champions League Elite | 463 / 1085 | General |
+| AFC Champions League Elite, Qualification | 463 / 10172 | Previa |
+| AFC Champions League Two, Qualification | 668 / 19500 | Previa; no sustituye una referencia general |
+| CONMEBOL Libertadores, Qualification | 384 / 14805 | Previa |
+| CONCACAF Champions Cup | 498 / 9895 | General |
+| Champions Hockey League | 494 / 116755 | General |
+| Copa del Rey | 329 / 150 | Fútbol; no futsal, baloncesto ni balonmano |
+| EFL Cup | 21 / 17 | Fútbol |
 
-Los IDs de previa son identidades del catálogo y pueden tener nombres específicos; las operaciones siguen utilizando el vocabulario general `COMPETITION_QUALIFICATION`, `QUALIFYING_ROUND`, etc.
+La fase de destino se expresa en `destination_phase` (por ejemplo, `QUALIFICATION_ROUND`) y la vía en `qualification_path` (por ejemplo, `DIRECT` o `VIA_DOMESTIC_PLAYOFF`). La identidad señala la fila específica del proveedor, incluida una previa; destination_phase expresa su significado deportivo canónico.
 
 No se presupone el número de ronda de acceso. Las filas adicionales de play-off UEFA no se emplean para inventar una ronda aún no investigada.
 
@@ -58,7 +58,7 @@ No se presupone el número de ronda de acceso. Las filas adicionales de play-off
 
 AFC Champions League Two, CONMEBOL Libertadores, CONMEBOL Sudamericana y FIBA Intercontinental Cup solo tienen filas de grupos, previa o eliminatorias en el catálogo consultado. Incluso las filas 360/363 con slug general tienen un nombre visible de eliminatorias. Siguiendo la decisión acordada, no se usan como sustituto de una identidad general de acceso directo.
 
-En esos casos la regla conserva su rango, usa `destination_competition_id=None` y estado `PENDING`; el comentario y la nota indican el destino que falta resolver. Esto afecta a ocho referencias. Tres reglas cambian de `CONFIGURED` a `PENDING`: AFC Two en Saudi Pro League y los accesos directos a Libertadores y Sudamericana en Brasileirão. Las otras cinco ya estaban pendientes.
+En esos casos la regla conserva su rango, usa `destination_competition_identity=None` y estado `PENDING`; el comentario y la nota indican el destino que falta resolver. Esto afecta a ocho referencias. Tres reglas cambian de `CONFIGURED` a `PENDING`: AFC Two en Saudi Pro League y los accesos directos a Libertadores y Sudamericana en Brasileirão. Las otras cinco ya estaban pendientes.
 
 No se crean IDs ficticios ni se insertan registros en la base de datos.
 
@@ -68,15 +68,16 @@ No se crean IDs ficticios ni se insertan registros en la base de datos.
 create_competition_qualification_rule(
     start=1,
     end=4,
-    destination_competition_id=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+    destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+    destination_phase=DestinationPhase.LEAGUE_PHASE,
     destination_competition_name="UEFA Champions League",
     path=QualificationPath.DIRECT,
 )
 
-create_stage_qualification_rule(
+create_phase_qualification_rule(
     start=1,
     end=8,
-    destination_stage=CompetitionStage.PLAYOFFS,
+    destination_phase=DestinationPhase.PLAYOFFS,
     note="Entry round: quarterfinals.",
 )
 ```
@@ -92,3 +93,17 @@ Se compararon los 25 perfiles y 85 reglas contra una instantánea anterior a la 
 Las pruebas cubren nombres explícitos, destinos internos/externos, IDs de previa, identidades pendientes, combinaciones inválidas, serialización y consumidores actuales.
 
 La investigación de fronteras y políticas de reasignación queda pendiente. Registrar Copa del Rey y EFL Cup permite referenciarlas después; no añade todavía reglas de plazas ni automatiza sus condiciones.
+
+
+Las referencias deportivas usan `CompetitionIdentity(source_unique_tournament_id,
+source_tournament_id, source="sofascore")`. La pareja distingue, por ejemplo,
+Conference League `(17015, 138316)` de Conference League Qualification
+`(17015, 93604)`. El nombre de destino conserva el sufijo Qualification.
+Los 25 perfiles se buscan por identidad exacta de proveedor; los destinos
+pendientes conservan identidad `None`, fase conocida, comentario y estado PENDING.
+El contexto de P1 usa sus campos del proveedor directamente. Los consumidores
+que reciben claves foráneas locales las resuelven mediante el repositorio; la
+lista de seguimiento también traduce sus identidades a IDs de la base actual.
+Los IDs autoincrementales siguen siendo claves internas y no aparecen como
+identificadores en la configuración deportiva. Una nueva fila del proveedor
+requiere actualizar su referencia específica en el catálogo.

@@ -8,8 +8,9 @@ import pytest
 from modules.alerts.matchup_streak_analysis.constants import get_team_group
 from modules.alerts.matchup_streak_analysis.standings_engine import _apply_game_result, _create_team_stats, _finalize_team_stats
 from modules.alerts.matchup_streak_analysis.standings_rules import rank_standings
-from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
-from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDS
+from modules.competition.competition_profiles import COMPETITION_PROFILES
+from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
+from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDENTITIES
 
 
 def _stats(**values):
@@ -45,8 +46,8 @@ def _rank_games(cid, names, games):
 
 
 def test_every_tracked_competition_has_a_serializable_sporting_profile():
-    assert TRACKED_COMPETITION_IDS <= COMPETITION_PROFILES.keys()
-    for cid in TRACKED_COMPETITION_IDS:
+    assert TRACKED_COMPETITION_IDENTITIES <= COMPETITION_PROFILES.keys()
+    for cid in TRACKED_COMPETITION_IDENTITIES:
         profile = get_competition_profile(cid)
         json.dumps(asdict(profile))
     assert get_competition_profile(76).grouping_method == "mls_conference"

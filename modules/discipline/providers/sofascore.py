@@ -7,7 +7,7 @@ from dataclasses import replace
 from ijson import JSONError
 
 from infrastructure.network.json_document import document_entries, JsonDocumentLimitExceeded
-from modules.competition.competition_profiles import get_competition_profile
+from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.sofascore.exceptions import SofaScoreNotFoundException
 from ..contracts import Acquisition, DisciplineEndpoint, DisciplineFact, DisciplineTotalDraft, FactKind, Outcome, Side
 from ..policies import DisciplineLimitExceeded, evaluate_facts

@@ -9,7 +9,7 @@ from modules.competition.competition_history_config import (
     get_competition_history_config,
 )
 
-from modules.competition.competition_profiles import get_competition_profile
+from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
 from modules.competition.rule_terms import GroupingMethod
 
 NBA_UNIQUE_TOURNAMENT_ID = 132
@@ -74,6 +74,7 @@ def _compute(monkeypatch, season_id, rows, sport, source_unique_tournament_id=No
     )
     competition_id = {"Football": 168, "Basketball": 174, "American football": 5153, "Ice hockey": 5196}[sport]
     competition_id = {SHL_UNIQUE_TOURNAMENT_ID: 180, NBA_UNIQUE_TOURNAMENT_ID: 176}.get(source_unique_tournament_id, competition_id)
+    monkeypatch.setattr(se, "get_competition_profile", get_competition_profile)
     simulator = se.HistoricalStandingsCalculator()
     return simulator._calculate_standings_bundle_internal(
         season_id=season_id,

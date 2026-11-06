@@ -4,19 +4,22 @@ Campos de ObjectiveRule
 ----------------------
 objective_type: finalidad deportiva: acceder a otra competición, avanzar de
     fase en la actual o conservar la categoría. No es el resultado de un equipo.
-destination_competition_id: competition_id de otra competición o de su fila de
-    previa. Obligatorio en COMPETITION_QUALIFICATION configurada; None cuando
-    falta el registro apropiado y la regla está PENDING. No se sustituye por una
-    fila de otro grupo o fase. Las referencias legibles están en
-    competition_ids.py; no son IDs del proveedor.
+destination_competition_identity: identidad de proveedor, con source,
+    source_unique_tournament_id y source_tournament_id. Distingue las filas de
+    fase principal y previa. Obligatoria en clasificación externa CONFIGURED;
+    None con comentario y estado PENDING si falta la identidad adecuada.
+    competition_ids.py reúne estas referencias; no contiene claves locales.
 destination_competition_name: nombre legible almacenado en la regla y recibido
     explícitamente por el constructor de clasificación externa. Puede describir
     un destino pendiente sin ID. No sustituye al ID ni se interpreta como lógica.
-destination_stage: fase interna de destino (PLAYOFFS o PLAY_IN). Obligatoria
-    en STAGE_QUALIFICATION y ajena a destinos externos o de permanencia, que
-    usan sus propios campos.
-qualification_path: vía de acceso al destino o riesgo de descenso. Debe ser
-    conocida en reglas CONFIGURED; None se reserva a vías desconocidas PENDING.
+destination_phase: fase a la que se accede en el destino: interno o externo.
+    Obligatoria para objetivos de fase y para objetivos externos configurados.
+    Solo puede ser None en una asignación PENDING cuya fase no se conoce.
+qualification_path: vía para llegar a una competición externa o fase interna.
+    Debe ser conocida en reglas CONFIGURED; None se reserva a vías desconocidas
+    PENDING. No describe la fase destino.
+relegation_path: mecanismo de riesgo de descenso, separado de la vía de
+    clasificación: directo o playoff de permanencia.
 ranking_scope: población cuya tabla decide la selección. GLOBAL abarca toda la
     competición; LEAGUE es una subliga, como AL/NL dentro de MLB.
 aggregation_scope: periodo de resultados que cuenta: torneo actual, acumulado
@@ -87,33 +90,34 @@ class ObjectiveType(StrEnum):
     """Finalidad de la regla, independiente de su destino y selección."""
 
     COMPETITION_QUALIFICATION = "COMPETITION_QUALIFICATION"
-    STAGE_QUALIFICATION = "STAGE_QUALIFICATION"
+    PHASE_QUALIFICATION = "PHASE_QUALIFICATION"
     DIVISION_RETENTION = "DIVISION_RETENTION"
 
 
-class CompetitionStage(StrEnum):
-    """Fase interna de destino, independiente de la vía usada para acceder."""
+class DestinationPhase(StrEnum):
+    """Fase de destino, externa o interna, separada de la vía de acceso."""
 
-    # Fase de disputa del título tras la clasificación regular. No distingue
-    # rondas de entrada ni exenciones: esos detalles permanecen en note.
-    PLAYOFFS = "PLAYOFFS" # Fase de disputa del título posterior a la clasificación regular, sin especificar la ronda de entrada
-    # Fase previa que decide quién obtiene acceso a playoffs.
-    PLAY_IN = "PLAY_IN" # Fase previa que decide qué equipos obtienen acceso a playoffs
+    LEAGUE_PHASE = "LEAGUE_PHASE"
+    GROUP_STAGE = "GROUP_STAGE"
+    QUALIFICATION_ROUND = "QUALIFICATION_ROUND"
+    PLAY_IN = "PLAY_IN"
+    PLAYOFFS = "PLAYOFFS"
 
 
 class QualificationPath(StrEnum):
     """Vía relativa al destino declarado; el destino conserva su propio campo."""
 
-    # Acceso sin eliminatoria previa al destino; si es una competición externa,
-    # se refiere a su fase principal. DIRECT a PLAY_IN entra al propio Play-In.
+    # The stated ranking grants entry to destination_phase without an
+    # intermediary domestic playoff. It does not imply a main competition phase.
     DIRECT = "DIRECT"
-    # Entrada a una ronda preliminar de la competición externa de destino.
-    QUALIFYING_ROUND = "QUALIFYING_ROUND"
-    # Los puestos dan entrada a una eliminatoria doméstica que clasifica a la
-    # competición externa declarada. No es una ronda preliminar de esa competición.
-    QUALIFYING_PLAYOFF = "QUALIFYING_PLAYOFF"
-    DIRECT_RELEGATION = "DIRECT_RELEGATION"  # Descenso sin eliminatoria de salvación.
-    RELEGATION_PLAYOFF = "RELEGATION_PLAYOFF"  # Eliminatoria por la permanencia.
+    VIA_DOMESTIC_PLAYOFF = "VIA_DOMESTIC_PLAYOFF"
+
+
+class RelegationPath(StrEnum):
+    """Vía de salida de la división por la frontera de permanencia."""
+
+    DIRECT_RELEGATION = "DIRECT_RELEGATION"
+    RELEGATION_PLAYOFF = "RELEGATION_PLAYOFF"
 
 
 class RuleStatus(StrEnum):
