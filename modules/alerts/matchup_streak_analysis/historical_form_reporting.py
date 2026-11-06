@@ -41,7 +41,12 @@ def _format_standing_line(team_name: str, stats: Dict) -> str:
         return f"#{pos} {team_name}: .{int(pct * 1000):03d} ({record}) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
     if ot_losses > 0:
         return f"#{pos} {team_name}: {pts}pts ({wins}W-{losses}L-{ot_losses}OTL) GP:{games} GF:{gf} GA:{ga} DIFF:{gd_str}"
-    return f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) GF:{gf} GA:{ga} DIFF:{gd_str}"
+    line = f"#{pos} {team_name}: {pts}pts ({wins}W-{draws}D-{losses}L, GP:{games}) GF:{gf} GA:{ga} DIFF:{gd_str}"
+    if "yellow_cards" in stats or "red_cards" in stats:
+        yellow = stats.get("yellow_cards")
+        red = stats.get("red_cards")
+        line += f" YC:{yellow if yellow is not None else '?'} RC:{red if red is not None else '?'}"
+    return line
 
 
 def _group_sort_key(group_name: str) -> tuple:
@@ -58,6 +63,8 @@ def format_standings_table_for_telegram(
 ) -> str:
     """Format standings data into a Telegram-friendly table."""
     message = f"STANDINGS: <b>{title}</b>\n\n"
+    if any("yellow_cards" in stats or "red_cards" in stats for stats in standings.values()):
+        message += "YC: amarillas · RC: rojas\n\n"
     has_groups = any((stats.get("group") or stats.get("conference")) for stats in standings.values())
 
     if not has_groups:

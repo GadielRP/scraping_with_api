@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from sqlalchemy import text
 
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
 from modules.competition.rule_terms import GroupingMethod
 from shared.temporal import from_unix_timestamp
 
@@ -20,6 +21,7 @@ from .constants import get_team_group
 from .standings_rules import normalize_result_subtype, rank_standings
 
 logger = logging.getLogger(__name__)
+FOOTBALL_CARD_STATS = (("yellow_cards", "yellow_card"), ("red_cards", "red_card"))
 
 
 def _create_team_stats(group: Optional[str]) -> Dict[str, object]:
@@ -148,6 +150,12 @@ def _register_match_record(
         winner=record["winner"],
         result_subtype=record.get("result_subtype"),
     )
+    for side, team in (("home", home_team), ("away", away_team)):
+        stats = team_stats[team]
+        for stat, _ in FOOTBALL_CARD_STATS:
+            key = f"{side}_{stat}"
+            if key in record:
+                stats[stat] = stats.get(stat, 0) + (record[key] or 0)
 
 
 def _finalize_standings_snapshot(
@@ -314,6 +322,9 @@ def _serialize_match_records(match_records: List[Dict[str, Any]]) -> List[Dict[s
             "winner": record["winner"],
             "result_subtype": record.get("result_subtype"),
             "game_total": record["game_total"],
+            **{f"{side}_{stat}": record[f"{side}_{stat}"]
+               for side in ("home", "away") for stat, _ in FOOTBALL_CARD_STATS
+               if f"{side}_{stat}" in record},
         })
     return serialized_records
 
@@ -342,7 +353,8 @@ class HistoricalStandingsCalculator:
                 home_score,
                 away_score,
                 winner,
-                result_subtype
+                result_subtype,
+                sport
             FROM season_events_with_results
             WHERE round = 'regular_season'
               AND starts_at < :cutoff_dt
@@ -369,6 +381,7 @@ class HistoricalStandingsCalculator:
         query = text(query_sql)
 
         match_records: List[Dict[str, Any]] = []
+        football_records: List[Dict[str, Any]] = []
         with db_manager.get_session() as session:
             result = session.execute(query, query_params)
             all_rows = result.fetchall()
@@ -380,7 +393,7 @@ class HistoricalStandingsCalculator:
                 result_subtype = normalize_result_subtype(getattr(row, "result_subtype", None), winner)
                 starts_at = row.starts_at
 
-                match_records.append({
+                record = {
                     "event_id": int(row.event_id),
                     "starts_at": starts_at,
                     "startTimestamp": int(starts_at.timestamp()),
@@ -391,7 +404,17 @@ class HistoricalStandingsCalculator:
                     "winner": winner,
                     "result_subtype": result_subtype,
                     "game_total": home_score + away_score,
-                })
+                }
+                if getattr(row, "sport", None) == "Football":
+                    football_records.append(record)
+                match_records.append(record)
+
+        football_ids = [record["event_id"] for record in football_records]
+        totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals("sofascore", football_ids)
+        for record in football_records:
+            for side in ("home", "away"):
+                for stat, kind in FOOTBALL_CARD_STATS:
+                    record[f"{side}_{stat}"] = totals.get((record["event_id"], side, kind))
 
         return match_records
 
