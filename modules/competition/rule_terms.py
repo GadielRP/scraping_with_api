@@ -15,6 +15,9 @@ destination_competition_name: nombre legible almacenado en la regla y recibido
 destination_phase: fase a la que se accede en el destino: interno o externo.
     Obligatoria para objetivos de fase y para objetivos externos configurados.
     Solo puede ser None en una asignación PENDING cuya fase no se conoce.
+destination_round: ronda concreta de entrada dentro de destination_phase, si se
+    conoce y distingue el límite deportivo; por ejemplo FIRST_ROUND o
+    QUARTER_FINALS. No reemplaza destination_phase ni qualification_path.
 qualification_path: vía para llegar a una competición externa o fase interna.
     Debe ser conocida en reglas CONFIGURED; None se reserva a vías desconocidas
     PENDING. No describe la fase destino.
@@ -102,6 +105,15 @@ class DestinationPhase(StrEnum):
     QUALIFICATION_ROUND = "QUALIFICATION_ROUND"
     PLAY_IN = "PLAY_IN"
     PLAYOFFS = "PLAYOFFS"
+
+
+class DestinationRound(StrEnum):
+    """Ronda concreta de entrada dentro de la fase de destino."""
+
+    FIRST_ROUND = "FIRST_ROUND"
+    PRELIMINARY_ROUND = "PRELIMINARY_ROUND"
+    ROUND_OF_16 = "ROUND_OF_16"
+    QUARTER_FINALS = "QUARTER_FINALS"
 
 
 class QualificationPath(StrEnum):

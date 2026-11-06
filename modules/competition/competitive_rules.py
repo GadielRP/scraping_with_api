@@ -8,6 +8,7 @@ from .competition_identity import CompetitionIdentity
 from .rule_terms import (
     AggregationScope,
     DestinationPhase,
+    DestinationRound,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
@@ -35,6 +36,7 @@ class ObjectiveRule:
     destination_competition_identity: CompetitionIdentity | None = None
     destination_competition_name: str | None = None
     destination_phase: DestinationPhase | None = None
+    destination_round: DestinationRound | None = None
     ranking_scope: RankingScope = RankingScope.GLOBAL
     aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT
     status: RuleStatus = RuleStatus.CONFIGURED
@@ -55,6 +57,10 @@ class ObjectiveRule:
             raise ValueError("destination_competition_identity requires a provider identity")
         if self.destination_phase is not None:
             object.__setattr__(self, "destination_phase", DestinationPhase(self.destination_phase))
+        if self.destination_round is not None:
+            object.__setattr__(self, "destination_round", DestinationRound(self.destination_round))
+            if self.destination_phase is None:
+                raise ValueError("destination_round requires destination_phase")
         object.__setattr__(self, "ranking_scope", RankingScope(self.ranking_scope))
         object.__setattr__(self, "aggregation_scope", AggregationScope(self.aggregation_scope))
         object.__setattr__(self, "status", RuleStatus(self.status))
@@ -81,7 +87,8 @@ class ObjectiveRule:
             if self.relegation_path is not None:
                 raise ValueError("phase qualification cannot have a relegation path")
         else:
-            if self.destination_competition_identity is not None or self.destination_phase is not None:
+            if (self.destination_competition_identity is not None or self.destination_phase is not None
+                    or self.destination_round is not None):
                 raise ValueError("division retention has no qualification destination")
             if self.qualification_path is not None:
                 raise ValueError("division retention cannot have a qualification path")

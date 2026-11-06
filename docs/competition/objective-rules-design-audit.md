@@ -25,7 +25,7 @@ Las identidades concretas son datos; no forman parte del enum de comportamientos
 | `PHASE_QUALIFICATION` | `destination_phase`: fase actual; `destination_competition_identity` opcional para un torneo distinto de esa fase. |
 | `DIVISION_RETENTION` | Ninguno; conservar la categoría actual ya está expresado por el tipo. |
 
-`DestinationPhase` contiene `LEAGUE_PHASE`, `GROUP_STAGE`, `QUALIFICATION_ROUND`, `PLAYOFFS` para la fase de disputa del título posterior a la clasificación regular, y `PLAY_IN` para la fase previa que decide el acceso a playoffs. La ronda de entrada se describe en `note`. Esa descripción no permite calcular exenciones ni ventajas por saltarse rondas.
+`DestinationPhase` contiene `LEAGUE_PHASE`, `GROUP_STAGE`, `QUALIFICATION_ROUND`, `PLAYOFFS` para la fase de disputa del título posterior a la clasificación regular, y `PLAY_IN` para la fase previa que decide el acceso a playoffs. `DestinationRound` identifica la ronda concreta de entrada dentro de esa fase cuando se conoce (por ejemplo, `FIRST_ROUND` o `QUARTER_FINALS`). Esa descripción no permite calcular exenciones ni ventajas por saltarse rondas.
 
 `destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
 
