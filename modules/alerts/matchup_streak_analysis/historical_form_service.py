@@ -183,6 +183,7 @@ class HistoricalFormService:
         source_tournament_id: Optional[int],
         current_event_timestamp: Optional[float],
         competition_id: int,
+        season_year: Optional[int] = None,
     ) -> None:
         """Send the current standings table to the personal debug chat."""
         personal_chat_id = os.getenv("PERSONAL_CHAT_ID", "")
@@ -199,6 +200,7 @@ class HistoricalFormService:
             source_unique_tournament_id=source_unique_tournament_id,
             source_tournament_id=source_tournament_id,
             competition_id=competition_id,
+            season_year=season_year,
         )
         current_date = in_timezone(
             from_unix_timestamp(current_event_timestamp),
@@ -299,6 +301,7 @@ class HistoricalFormService:
                     source_tournament_id=source_tournament_id,
                     current_event_timestamp=current_event_timestamp,
                     competition_id=competition_id,
+                    season_year=season_year,
                 )
 
             return results, win_streak

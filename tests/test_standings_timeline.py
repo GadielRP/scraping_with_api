@@ -197,6 +197,43 @@ def test_get_team_form_from_db_uses_constant_league_fetches(monkeypatch):
         assert result["standings_as_of_timestamp"] == cutoff
 
 
+def test_current_standings_debug_preserves_season_year_scope(monkeypatch):
+    form_service = importlib.import_module(
+        "modules.alerts.matchup_streak_analysis.historical_form_service"
+    )
+    fake_db = _FakeDb(_make_league_rows())
+    monkeypatch.setattr(se.db_manager, "get_session", fake_db.get_session)
+    monkeypatch.setenv("PERSONAL_CHAT_ID", "test-chat")
+    messages = []
+    monkeypatch.setattr(
+        form_service, "send_debug_telegram",
+        lambda message, chat_id: messages.append((message, chat_id)),
+    )
+    service = HistoricalFormService(
+        standings_calculator_instance=se.HistoricalStandingsCalculator()
+    )
+
+    service.get_team_form_from_db(
+        team_name="Hawks",
+        season_id=SEASON_ID,
+        season_year=2026,
+        sport="Basketball",
+        competition_id=174,
+        current_event_timestamp=(SEASON_START + timedelta(days=9)).timestamp(),
+        send_debug_standings=True,
+    )
+
+    assert len(messages) == 1
+    assert messages[0][1] == "test-chat"
+    # Team form, historical timeline and Telegram must all use the same year,
+    # so another season_id in that campaign is not excluded from debug.
+    assert len(fake_db.execute_calls) == 3
+    for query, params in fake_db.execute_calls:
+        assert params["season_year"] == 2026
+        assert "season_year = :season_year" in query
+        assert "season_id" not in params
+
+
 def test_unresolved_historical_rank_stays_missing_and_aborts_m7(caplog):
     row = _make_row(21139, 9, "Villarreal", "Valencia", 2, 0, "1")
     cutoff = row.starts_at.timestamp()

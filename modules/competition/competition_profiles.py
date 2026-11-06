@@ -424,8 +424,8 @@ COMPETITION_PROFILES: Mapping[int, CompetitionRules] = MappingProxyType({
                 destination_competition_name='AFC Champions League Elite',
             ),
             create_competition_qualification_rule(
-                start=4,
-                end=4,
+                start=6,
+                end=6,
                 path=QualificationPath.DIRECT,
                 # General record missing; do not substitute a group/knockout record.
                 destination_competition_id=None,

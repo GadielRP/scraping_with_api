@@ -83,13 +83,17 @@ ORDER BY e.starts_at DESC;
 
 This helps verify that tracked competitions are mapped correctly to the source provider.
 
-### Events missing source mappings
+### Sources per event id or source event id
 
 ```sql
 SELECT
+	esm.source,
+	esm.source_event_id,
+	esm.has_odds,
     e.id AS event_id,
     e.starts_at,
     e.competition,
+	e.round,
     e.home_team,
     e.away_team,
     e.sport,
@@ -98,7 +102,7 @@ SELECT
 FROM events e
 LEFT JOIN event_source_mappings esm
     ON e.id = esm.event_id
-WHERE esm.event_id IS NULL
+WHERE esm.source_event_id in ('17364655') or e.id = 460298
 ORDER BY e.starts_at DESC
 LIMIT 200;
 ```
@@ -704,6 +708,64 @@ ORDER BY snapshot_count DESC, mcq.quote_id;
 Helps locate quotes that are no longer attached to valid choices or are missing stable lineage.
 
 ## 5. Discipline Incidencies
+
+### Competitions ranked by total disciplinary incidents
+
+```sql
+SELECT
+    c.competition_id,
+    c.display_name AS competition,
+    e.sport,
+    COUNT(DISTINCT di.id) AS total_incidencias,
+    COUNT(DISTINCT e.id) AS partidos_con_incidencias,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'yellow_card') AS amarillas,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'red_card') AS rojas,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'ejection') AS expulsiones,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'foul_out') AS faltas_eliminatorias
+FROM competitions c
+JOIN events e
+    ON e.competition_id = c.competition_id
+JOIN event_source_mappings esm
+    ON esm.event_id = e.id
+   AND esm.source = 'sofascore'
+JOIN disciplinary_incidents di
+    ON di.event_source_mapping_id = esm.mapping_id
+GROUP BY c.competition_id, c.display_name, e.sport
+ORDER BY total_incidencias DESC, competition ASC;
+```
+
+Ranks competitions by the number of individual incident records. Only
+competitions with at least one stored incident are returned; each incident and
+event is counted once.
+
+### Seasons ranked by total disciplinary incidents
+
+```sql
+SELECT
+    s.id AS season_id,
+    s.name AS season,
+    s.sport,
+    COUNT(DISTINCT di.id) AS total_incidencias,
+    COUNT(DISTINCT e.id) AS partidos_con_incidencias,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'yellow_card') AS amarillas,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'red_card') AS rojas,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'ejection') AS expulsiones,
+    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'foul_out') AS faltas_eliminatorias
+FROM seasons s
+JOIN events e
+    ON e.season_id = s.id
+JOIN event_source_mappings esm
+    ON esm.event_id = e.id
+   AND esm.source = 'sofascore'
+JOIN disciplinary_incidents di
+    ON di.event_source_mapping_id = esm.mapping_id
+GROUP BY s.id, s.name, s.sport
+ORDER BY total_incidencias DESC, season ASC;
+```
+
+Ranks seasons by the number of individual incident records. Only seasons with
+at least one stored incident are returned; each incident and event is counted
+once.
 
 ### Total yellow, red and total cards for a football season
 ```sql

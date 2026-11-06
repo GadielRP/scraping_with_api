@@ -311,7 +311,7 @@ SOFASCORE = SofascoreDiscoverySettings(
     # Optional tennis policy enabled explicitly; the constructor defaults to disabled.
     tennis_ranking_filter_enabled=True,
     tennis_ranking_cutoff=120,
-    dropping_interval_hours=3,
+    dropping_interval_hours=2,
     secondary_interval_hours=6,
     daily_check_interval_minutes=30,
     daily_advance_time="17:07",
