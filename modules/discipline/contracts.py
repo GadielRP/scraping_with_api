@@ -11,8 +11,13 @@ from shared.temporal import as_utc
 class IncidentType(str, Enum):
     YELLOW_CARD = "yellow_card"
     RED_CARD = "red_card"
+    RED_CARD_SECOND_YELLOW = "red_card_second_yellow"
     EJECTION = "ejection"
     FOUL_OUT = "foul_out"
+
+
+# A second caution counts in both inclusive card totals.
+SECOND_YELLOW_TOTAL_TYPES = (IncidentType.YELLOW_CARD, IncidentType.RED_CARD)
 
 
 class Origin(str, Enum):
@@ -44,6 +49,7 @@ class Outcome(str, Enum):
 class FactKind(str, Enum):
     YELLOW_CARD = "yellow_card"
     RED_CARD = "red_card"
+    RED_CARD_SECOND_YELLOW = "red_card_second_yellow"
     EJECTION = "ejection"
     PERSONAL_FOUL = "personal_foul"
     TECHNICAL_FOUL = "technical_foul"

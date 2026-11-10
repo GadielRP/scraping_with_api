@@ -16,7 +16,8 @@ class DisciplineLimitExceeded(ValueError):
 def evaluate_facts(sport: str, facts: Iterable[DisciplineFact], rules: DisciplineRules | None,
                    limits: DisciplineSettings) -> Acquisition:
     reported = ({FactKind.YELLOW_CARD: IncidentType.YELLOW_CARD,
-                 FactKind.RED_CARD: IncidentType.RED_CARD} if sport == "Football"
+                 FactKind.RED_CARD: IncidentType.RED_CARD,
+                 FactKind.RED_CARD_SECOND_YELLOW: IncidentType.RED_CARD_SECOND_YELLOW} if sport == "Football"
                 else {FactKind.EJECTION: IncidentType.EJECTION})
     managed = set(reported.values())
     incidents, identities, players = [], {}, {}

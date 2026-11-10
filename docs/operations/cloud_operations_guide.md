@@ -804,7 +804,7 @@ New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sof
 New-Item -ItemType Directory -Force -Path "C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects"
 
 # Pull debugging directories from oddspapi odds responses (/odds and /historical-odds)
-scp -r root@143.244.179.129:/opt/sofascore/debug/oddspapi_odds_responses/. C:\Users\gadie\Documents\projects\sofascore\debug\oddspapi_odds_responses
+scp -r root@143.244.179.129:/opt/sofascore/debug/oddspapi/odds_responses/. C:\Users\gadie\Documents\projects\sofascore\debug\oddspapi\odds_responses
 
 # Pull debugging directories from pillar event context (/pillar_pipeline_objects)
 scp -r root@143.244.179.129:/opt/sofascore/debug/pillar_pipeline_objects/. C:\Users\gadie\Documents\projects\sofascore\debug\pillar_pipeline_objects

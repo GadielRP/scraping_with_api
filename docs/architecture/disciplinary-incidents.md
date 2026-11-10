@@ -28,8 +28,11 @@ reemplazar un snapshot; no representan identidad ni historia de cada tarjeta.
 
 ## Interpretación de comentarios
 
-Fútbol acepta solo `yellowCard` y `redCard`, conservando multiplicidad. No infiere
-rojas desde amarillas. Básquetbol guarda `ejection` explícitos. Solo el perfil
+Fútbol registra `yellowCard`, `redCard` y `yellowRedCard` como `yellow_card`,
+`red_card` (roja directa en el detalle) y `red_card_second_yellow`. Cada segunda
+amarilla explícita genera una sola incidencia de expulsión. No se infieren
+expulsiones a partir de dos comentarios de amarilla. Básquetbol guarda
+`ejection` explícitos. Solo el perfil
 de competición canónica NBA (`176`) configura `DisciplineRules(6)`; otras ligas
 no heredan ese umbral.
 
@@ -121,7 +124,11 @@ partido externo y participantes. No hay destinatarios ficticios en esta tabla.
 
 La adquisición combina detalle y agregados antes de escribir. Comments utilizable
 con incidencias genera totales para sus tipos administrados y ambos lados,
-incluidos ceros. Comments sin incidencias no autoriza un reemplazo destructivo.
+incluidos ceros. Una segunda amarilla aporta uno a los totales inclusivos
+`yellow_card` y `red_card`. `red_card_second_yellow` desglosa ese conteo de
+expulsiones con `endpoint=comments`; se consulta por separado del total de rojas.
+Statistics solo aporta los conteos inclusivos. Comments sin incidencias no
+autoriza un reemplazo destructivo.
 En fútbol, 404, colección vacía, ausencia de incidencias, documento inválido,
 feed incompleto o fallo ordinario de adquisición disparan el fallback.
 Cancelación, deadline y agotamiento de recursos no inician otra solicitud.
@@ -184,10 +191,26 @@ solo evento muestra incidencias normalizadas; el resumen incluye `dry_run`,
 `scanned`, `updated`, `unchanged`, `unavailable`, `invalid`, `deferred`,
 `mapping_conflict`, `failed`, `last_processed_event_id` y `limit_reached`.
 
+Los scripts de consulta también permiten persistir un partido elegible y con
+resultado completo. Admiten ID de SofaScore por defecto o ID interno con
+`--source canonical`. Conservan la salida JSON y la opción `--no-save-debug`.
+
+```bash
+python -m scripts.sofascore.get_event_comments 12345 --source canonical --persist
+python -m scripts.sofascore.get_event_statistics 12345 --source canonical --persist
+```
+
+Comments usa el flujo compartido de detalle y totales, incluida la precedencia
+de statistics. El script de statistics actualiza solo los agregados disponibles
+en su respuesta. Ambos requieren un mapping de SofaScore único.
+
 La revisión `20261104_01` crea incidencias y su índice. La `20261104_02` añade
 únicamente la tabla de totales, sin backfill. El downgrade de esta última elimina
 los agregados y conserva las incidencias; no ejecutar downgrades en datos reales
-para probarlos.
+para probarlos. La revisión `20261110_01` amplía las restricciones de tipo en
+ambas tablas para admitir `red_card_second_yellow`. El desglose histórico se
+obtiene reprocesando comentarios. El downgrade de esta revisión requiere que
+ambas tablas estén libres de filas con el nuevo tipo.
 
 Al habilitar `after_midnight_results_enabled` y `full_feed_verified`, midnight
 inyecta un callback en `run_results_collection`. Después de cada lote confirmado,

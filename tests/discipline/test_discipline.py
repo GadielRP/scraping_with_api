@@ -527,15 +527,124 @@ def test_statistics_toggle_precedence_and_no_basketball_request():
     statistics = fixture("football_statistics.json")
     statistics["statistics"][0]["groups"][0]["statisticsItems"][0]["homeValue"] = 4
     client = DualClient(fixture("football.json"), statistics)
-    comments = SofaScoreDisciplineProvider(client).acquire(context())
+    fallback_only = DisciplineSettings(statistics_for_all_events=False)
+    comments = SofaScoreDisciplineProvider(client, fallback_only).acquire(context())
     assert client.statistics_calls == 0
     assert next(t.count for t in comments.totals if t.type == IncidentType.YELLOW_CARD and t.side == Side.HOME) == 2
     result = SofaScoreDisciplineProvider(client, DisciplineSettings(statistics_for_all_events=True)).acquire(context())
     assert client.statistics_calls == 1 and len(result.incidents) == 6
     assert next(t.count for t in result.totals if t.type == IncidentType.YELLOW_CARD and t.side == Side.HOME) == 4
     nba = DualClient(fixture("nba.json"), statistics)
-    assert SofaScoreDisciplineProvider(nba, DisciplineSettings(statistics_for_all_events=True)).acquire(context("Basketball", NBA)).incidents
+    assert SofaScoreDisciplineProvider(nba, fallback_only).acquire(context("Basketball")).incidents
     assert nba.statistics_calls == 0
+
+
+def test_second_yellow_is_one_incident_and_counts_in_both_card_totals(database, monkeypatch):
+    monkeypatch.setattr("modules.discipline.providers.sofascore.get_competition_profile", lambda _: None)
+    repo = DisciplinaryIncidentRepository(database)
+    with database.get_session() as session:
+        session.get(Event, 1).sport = "Football"
+    ctx = next(repo.iter_candidates(Selection(event_id=1), 100))[0]
+    second_yellow = IncidentType.RED_CARD_SECOND_YELLOW
+    player = {"id": 1515554, "name": "Adrian Liso"}
+    dismissal = {"id": 2, "type": "yellowRedCard", "isHome": False, "player": player}
+    comments = {"comments": [
+        {"type": "matchEnded"},
+        dismissal,
+        dismissal,
+        {"id": 1, "type": "yellowCard", "isHome": False, "player": player},
+        {"id": 3, "type": "redCard", "isHome": True, "player": {"id": 1403559}},
+        {"type": "matchStarted"},
+    ]}
+    statistics = fixture("football_statistics.json")
+    client = DualClient(comments, statistics)
+    detail = SofaScoreDisciplineProvider(client, DisciplineSettings(statistics_for_all_events=False)).acquire(ctx)
+    assert [incident for incident in detail.incidents if incident.source_player_id == "1515554"] == [
+        IncidentDraft(second_yellow, Origin.REPORTED, "1515554", "Adrian Liso", Side.AWAY),
+        IncidentDraft(IncidentType.YELLOW_CARD, Origin.REPORTED, "1515554", "Adrian Liso", Side.AWAY),
+    ]
+    assert {total.type: total.count for total in detail.totals if total.side == Side.AWAY} == {
+        IncidentType.YELLOW_CARD: 2, IncidentType.RED_CARD: 1, second_yellow: 1,
+    }
+
+    # A missing acquired scope falls back to detail, and an explicit zero overrides it.
+    assert repo.replace_acquisition(ctx, replace(detail, totals=())) == Outcome.UPDATED
+    legacy = repo.get_team_season_totals("sofascore", 2, NBA, 1)
+    assert (legacy.yellow_cards, legacy.red_cards) == (2, 1)
+    zero = DisciplineTotalDraft(IncidentType.RED_CARD, Side.AWAY, 0, DisciplineEndpoint.STATISTICS)
+    assert repo.replace_acquisition(ctx, Acquisition(Outcome.READY, totals=(zero,))) == Outcome.UPDATED
+    mixed = repo.get_team_season_totals("sofascore", 2, NBA, 1)
+    assert (mixed.yellow_cards, mixed.red_cards) == (2, 0)
+
+    merged = SofaScoreDisciplineProvider(client, DisciplineSettings(statistics_for_all_events=True)).acquire(ctx)
+    assert merged.incidents == detail.incidents
+    assert repo.replace_acquisition(ctx, merged) == Outcome.UPDATED
+    assert repo.replace_acquisition(ctx, merged) == Outcome.UNCHANGED
+    assert {total.type: (total.count, total.endpoint) for total in repo.get_event_totals("sofascore", 1)
+            if total.side == Side.AWAY} == {
+        IncidentType.YELLOW_CARD: (3, DisciplineEndpoint.STATISTICS),
+        IncidentType.RED_CARD: (1, DisciplineEndpoint.STATISTICS),
+        second_yellow: (1, DisciplineEndpoint.COMMENTS),
+    }
+    acquired = repo.get_team_season_totals("sofascore", 2, NBA, 1)
+    assert (acquired.yellow_cards, acquired.red_cards) == (3, 1)
+
+
+def test_endpoint_scripts_persist_through_shared_discipline_runner(database, monkeypatch, capsys):
+    import sys
+    from infrastructure.persistence import advisory_lock
+    from infrastructure.persistence.repositories import event_source_mapping_repository
+    from modules.jobs.discipline_collection_job import composition
+    from scripts.sofascore import discipline, get_event_comments, get_event_statistics
+
+    monkeypatch.setattr(composition, "db_manager", database)
+    monkeypatch.setattr(advisory_lock, "db_manager", database)
+    monkeypatch.setattr(event_source_mapping_repository, "db_manager", database)
+    monkeypatch.setattr(discipline, "DisciplineSettings", lambda: DisciplineSettings(
+        tracked_competitions_only=False, statistics_for_all_events=True))
+    monkeypatch.setattr("modules.discipline.providers.sofascore.get_competition_profile", lambda _: None)
+    with database.get_session() as session:
+        session.get(Event, 1).sport = "Football"
+
+    comments = fixture("football.json")
+    yellow = next(item for item in comments["comments"] if item["type"] == "yellowCard")
+    comments["comments"].insert(1, dict(yellow, type="yellowRedCard", id=2))
+    statistics = fixture("football_statistics.json")
+    statistics["statistics"][0]["groups"][0]["statisticsItems"][1]["homeValue"] = 1
+    client = DualClient(comments, statistics)
+    open_comments = client.open_event_comments
+    comment_requests = []
+
+    def count_comments(source_event_id):
+        comment_requests.append(source_event_id)
+        return open_comments(source_event_id)
+
+    monkeypatch.setattr(client, "open_event_comments", count_comments)
+    monkeypatch.setattr(get_event_comments, "api_client", client)
+    monkeypatch.setattr(sys, "argv", ["get_event_comments", "457265", "--persist", "--no-save-debug"])
+    get_event_comments.main()
+    output = capsys.readouterr()
+    assert json.loads(output.out) == comments and "updated" in output.err
+    assert comment_requests == ["457265"] and client.statistics_calls == 1
+    with database.get_session() as session:
+        detail_ids = session.scalars(select(DisciplinaryIncident.id)).all()
+    assert len(detail_ids) == 7
+
+    client.statistics["statistics"][0]["groups"][0]["statisticsItems"][0]["homeValue"] = 4
+    monkeypatch.setattr(get_event_statistics, "api_client", client)
+    monkeypatch.setattr(sys, "argv", ["get_event_statistics", "1", "--source", "canonical",
+                                      "--persist", "--no-save-debug"])
+    get_event_statistics.main()
+    output = capsys.readouterr()
+    assert json.loads(output.out) == client.statistics and "updated" in output.err
+    assert comment_requests == ["457265"] and client.statistics_calls == 2
+    repo = DisciplinaryIncidentRepository(database)
+    assert repo.get_event_card_totals("sofascore", (1,))[1, "home", "yellow_card"] == 4
+    assert DisciplineTotalDraft(
+        IncidentType.RED_CARD_SECOND_YELLOW, Side.HOME, 1, DisciplineEndpoint.COMMENTS,
+    ) in repo.get_event_totals("sofascore", 1)
+    with database.get_session() as session:
+        assert session.scalars(select(DisciplinaryIncident.id)).all() == detail_ids
 
 
 @pytest.mark.parametrize("error", [WorkDeferred("deadline"), JsonDocumentLimitExceeded("budget"), MemoryError()])

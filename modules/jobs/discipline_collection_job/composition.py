@@ -10,8 +10,9 @@ from modules.sofascore import api_client
 from .run_discipline_collection import run_discipline_collection
 
 
-def build_discipline_runner(settings):
+def build_discipline_runner(settings, *, provider=None):
     repository = DisciplinaryIncidentRepository(db_manager)
-    service = DisciplineService(SofaScoreDisciplineProvider(api_client, settings), repository,
-                                partial(exclusive_slot, 736106))
+    if provider is None:
+        provider = SofaScoreDisciplineProvider(api_client, settings)
+    service = DisciplineService(provider, repository, partial(exclusive_slot, 736106))
     return partial(run_discipline_collection, service, repository, settings)

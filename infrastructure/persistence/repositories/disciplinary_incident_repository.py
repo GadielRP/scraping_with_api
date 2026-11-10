@@ -1,12 +1,13 @@
 """Scalar keyset reads, atomic multiset reconciliation and SQL team totals."""
 from collections import Counter
 
-from sqlalchemy import and_, delete, func, insert, or_, select, tuple_, union_all
+from sqlalchemy import and_, delete, func, insert, literal, or_, select, tuple_, union_all
 
 from infrastructure.persistence.event_identity_lock import lock_event_identities
 from infrastructure.persistence.models import DisciplinaryIncident as Incident, DisciplinaryIncidentTotal as Total, Event, EventSourceMapping as Mapping, Result
 from modules.discipline.contracts import (
-    DisciplineEventContext, DisciplineTotalDraft, IncidentType, Origin, Outcome, Side, TeamSeasonTotals,
+    DisciplineEventContext, DisciplineTotalDraft, IncidentType, Origin, Outcome, SECOND_YELLOW_TOTAL_TYPES, Side,
+    TeamSeasonTotals,
 )
 from shared.execution_context import check_execution_budget
 from shared.temporal import utc_now
@@ -141,13 +142,21 @@ class DisciplinaryIncidentRepository:
 
     @staticmethod
     def _effective_totals(mapping_ids):
-        # Explicit zero overrides prior detail. Legacy scopes without aggregates
-        # are counted once; SQL never adds detail on top of an acquired total.
-        legacy = select(Incident.event_source_mapping_id, Incident.type, Incident.side,
-                        func.count().label("count")).where(Incident.event_source_mapping_id.in_(mapping_ids), ~select(Total.type).where(
-                            Total.event_source_mapping_id == Incident.event_source_mapping_id,
-                            Total.type == Incident.type, Total.side == Incident.side).exists()
-                        ).group_by(Incident.event_source_mapping_id, Incident.type, Incident.side)
+        detail = (
+            select(Incident.event_source_mapping_id, Incident.type, Incident.side, func.count().label("count"))
+            .where(Incident.event_source_mapping_id.in_(mapping_ids))
+            .group_by(Incident.event_source_mapping_id, Incident.type, Incident.side)
+            .cte()
+        )
+        projected = union_all(select(detail), *(
+            select(detail.c.event_source_mapping_id, literal(kind.value).label("type"), detail.c.side, detail.c.count)
+            .where(detail.c.type == IncidentType.RED_CARD_SECOND_YELLOW.value)
+            for kind in SECOND_YELLOW_TOTAL_TYPES
+        )).subquery()
+        # Compare the projected scope so an acquired total (including zero) overrides all detail for it.
+        legacy = select(projected).where(~select(Total.type).where(
+            Total.event_source_mapping_id == projected.c.event_source_mapping_id,
+            Total.type == projected.c.type, Total.side == projected.c.side).exists())
         acquired = select(Total.event_source_mapping_id, Total.type, Total.side, Total.count).where(
             Total.event_source_mapping_id.in_(mapping_ids))
         return union_all(acquired, legacy).subquery()
@@ -190,7 +199,8 @@ class DisciplinaryIncidentRepository:
                     Mapping.source_participant_away_id == participant_id)).cte("discipline_team_mappings")
             effective = self._effective_totals(select(mappings.c.mapping_id))
             counts = session.execute(select(*[
-                func.coalesce(func.sum(effective.c.count).filter(effective.c.type == kind.value), 0) for kind in IncidentType
+                func.coalesce(func.sum(effective.c.count).filter(effective.c.type == kind.value), 0)
+                for kind in (IncidentType.YELLOW_CARD, IncidentType.RED_CARD, IncidentType.EJECTION, IncidentType.FOUL_OUT)
             ]).select_from(effective).join(Mapping, effective.c.event_source_mapping_id == Mapping.mapping_id)
                 .where(
                     or_(and_(effective.c.side == Side.HOME.value, Mapping.source_participant_home_id == participant_id),

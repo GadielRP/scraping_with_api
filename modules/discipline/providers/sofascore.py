@@ -9,7 +9,10 @@ from ijson import JSONError
 from infrastructure.network.json_document import document_entries, JsonDocumentLimitExceeded
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.sofascore.exceptions import SofaScoreNotFoundException
-from ..contracts import Acquisition, DisciplineEndpoint, DisciplineFact, DisciplineTotalDraft, FactKind, Outcome, Side
+from ..contracts import (
+    Acquisition, DisciplineEndpoint, DisciplineFact, DisciplineTotalDraft, FactKind, IncidentType,
+    Outcome, SECOND_YELLOW_TOTAL_TYPES, Side,
+)
 from ..policies import DisciplineLimitExceeded, evaluate_facts
 from infrastructure.settings.discipline import DisciplineSettings
 from shared.execution_context import check_execution_budget, WorkDeferred
@@ -58,6 +61,10 @@ class SofaScoreDisciplineProvider:
         result = comments if usable else replace(comments, incidents=(), managed_types=frozenset())
         if usable:
             counts = Counter((incident.type, incident.side) for incident in comments.incidents)
+            if IncidentType.RED_CARD_SECOND_YELLOW in comments.managed_types:
+                for side in Side:
+                    for kind in SECOND_YELLOW_TOTAL_TYPES:
+                        counts[kind, side] += counts[IncidentType.RED_CARD_SECOND_YELLOW, side]
             result = replace(result, totals=tuple(
                 DisciplineTotalDraft(kind, side, counts[kind, side], DisciplineEndpoint.COMMENTS)
                 for kind in sorted(comments.managed_types) for side in Side))
@@ -93,7 +100,8 @@ class SofaScoreDisciplineProvider:
                     coverage["start"] |= kind == "matchStarted"
                     coverage["end"] |= kind == "matchEnded"
                     fact_kind = {"yellowCard": FactKind.YELLOW_CARD,
-                                 "redCard": FactKind.RED_CARD}.get(kind)
+                                 "redCard": FactKind.RED_CARD,
+                                 "yellowRedCard": FactKind.RED_CARD_SECOND_YELLOW}.get(kind)
                 else:
                     period = _period(item.get("periodName"))
                     if kind == "periodStart":

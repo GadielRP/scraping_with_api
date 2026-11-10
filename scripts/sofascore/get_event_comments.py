@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 
+from modules.discipline.contracts import DisciplineEndpoint
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.sofascore.exceptions import SofaScoreNotFoundException
@@ -13,6 +14,7 @@ from scripts.sofascore.debug import (
     log_debug_file,
     save_response_for_debug,
 )
+from scripts.sofascore.discipline import persist_discipline
 
 
 def main() -> None:
@@ -28,6 +30,7 @@ def main() -> None:
         default="sofascore",
         help="Interpret event_id as a SofaScore or canonical ID",
     )
+    parser.add_argument("--persist", action="store_true", help="Persist discipline detail and totals for a finished event")
     add_debug_file_argument(parser)
     args = parser.parse_args()
 
@@ -36,7 +39,8 @@ def main() -> None:
         input_id_type=args.source,
     )
     try:
-        response = api_client.get_event_comments(identity.sofascore_event_id)
+        response = (persist_discipline(identity, DisciplineEndpoint.COMMENTS, api_client)
+                    if args.persist else api_client.get_event_comments(identity.sofascore_event_id))
     except SofaScoreNotFoundException as exc:
         print(
             f"SofaScore did not find the comments resource: "

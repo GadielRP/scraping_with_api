@@ -185,7 +185,8 @@ class DisciplinaryIncident(Base):
 
     mapping = relationship("EventSourceMapping", back_populates="disciplinary_incidents")
     __table_args__ = (
-        CheckConstraint("type IN ('yellow_card', 'red_card', 'ejection', 'foul_out')", name="ck_discipline_type"),
+        CheckConstraint("type IN ('yellow_card', 'red_card', 'red_card_second_yellow', 'ejection', 'foul_out')",
+                        name="ck_discipline_type"),
         CheckConstraint("origin IN ('reported', 'derived')", name="ck_discipline_origin"),
         CheckConstraint("side IN ('home', 'away')", name="ck_discipline_side"),
         CheckConstraint("source_player_id IS NULL OR length(trim(source_player_id)) > 0", name="ck_discipline_player_id"),
@@ -208,7 +209,8 @@ class DisciplinaryIncidentTotal(Base):
     updated_at = Column(UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now)
     mapping = relationship("EventSourceMapping", back_populates="disciplinary_incidents_totals")
     __table_args__ = (
-        CheckConstraint("type IN ('yellow_card', 'red_card', 'ejection', 'foul_out')", name="ck_discipline_totals_type"),
+        CheckConstraint("type IN ('yellow_card', 'red_card', 'red_card_second_yellow', 'ejection', 'foul_out')",
+                        name="ck_discipline_totals_type"),
         CheckConstraint("side IN ('home', 'away')", name="ck_discipline_totals_side"),
         CheckConstraint("count >= 0", name="ck_discipline_totals_count"),
         CheckConstraint("endpoint IN ('comments', 'statistics')", name="ck_discipline_totals_endpoint"),

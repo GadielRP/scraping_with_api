@@ -1,6 +1,7 @@
 import argparse
 import json
 
+from modules.discipline.contracts import DisciplineEndpoint
 from modules.sofascore import api_client
 from modules.sofascore.event_identity import resolve_sofascore_event_identity
 from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer import (
@@ -11,6 +12,7 @@ from scripts.sofascore.debug import (
     log_debug_file,
     save_response_for_debug,
 )
+from scripts.sofascore.discipline import persist_discipline
 
 
 def main() -> None:
@@ -26,6 +28,7 @@ def main() -> None:
         default="sofascore",
         help="Interpret event_id as a SofaScore or canonical ID",
     )
+    parser.add_argument("--persist", action="store_true", help="Persist discipline totals for a finished event")
     add_debug_file_argument(parser)
     args = parser.parse_args()
 
@@ -33,7 +36,8 @@ def main() -> None:
         args.event_id,
         input_id_type=args.source,
     )
-    response = api_client.get_event_statistics(identity.sofascore_event_id)
+    response = (persist_discipline(identity, DisciplineEndpoint.STATISTICS, api_client)
+                if args.persist else api_client.get_event_statistics(identity.sofascore_event_id))
     debug_path = None
     if args.save_debug and isinstance(response, dict):
         event = api_client.get_event_details(identity.sofascore_event_id) or {}
