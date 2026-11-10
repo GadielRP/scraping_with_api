@@ -62,7 +62,7 @@ def test_sporting_profiles_and_operational_allowlist_remain_independent():
         rules = config
         assert isinstance(rules.grouping_method, GroupingMethod)
         assert isinstance(rules.standings.primary_metric, StandingsMetric)
-        assert rules.reference_season in {"2026", "2026/27"}
+        assert rules.reference_season in {"2026", "2027", "2026/27"}
     assert get_competition_history_config(238, 52).code == "liga_portugal"
     assert get_competition_history_config(155, 143625).code.endswith("argentina_apertura")
     assert get_competition_history_config(155, 156467).code.endswith("argentina_clausura")
@@ -74,7 +74,7 @@ def test_sporting_profiles_and_operational_allowlist_remain_independent():
     ("ligue_1", 18, 34, 15), ("liga_portugal", 18, 34, 15),
     ("eredivisie", 18, 34, 15), ("saudi_pro_league", 18, 34, 15),
     ("brasileirao", 20, 38, 16), ("shl", 14, 52, 12),
-    ("liiga", 17, 64, 12),
+    ("liiga", 17, 64, 14),
 ])
 def test_retention_boundaries_are_league_specific(code, teams, games, safe):
     rules = PROFILES[code]
@@ -89,6 +89,23 @@ def test_brazil_qualification_destinations_use_family_or_specific_identity():
     external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
     assert [(rule.rank_start, rule.rank_end) for rule in external[:3]] == [(1, 4), (5, 5), (6, 11)]
     assert [rule.status for rule in external] == [RuleStatus.CONFIGURED] * 3
+
+
+def test_saudi_two_is_a_pending_cup_allocation_not_an_unconditional_sixth_place():
+    rule = get_competition_profile(50).objectives[2]
+    assert rule.status is RuleStatus.PENDING
+    assert rule.selection_method is SelectionMethod.MULTIPLE_QUALIFICATION_PATHS
+    assert rule.rank_start is rule.rank_end is rule.reference_rank is None
+    assert rule.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO
+    assert rule.destination_phase is DestinationPhase.GROUP_STAGE
+    assert rule.qualification_path is QualificationPath.DIRECT
+
+
+def test_wnba_2026_uses_one_global_playoff_cutoff():
+    rules = get_competition_profile(145)
+    assert (rules.reference_season, rules.number_of_teams, rules.total_regular_season_games) == ("2026", 15, 44)
+    rule, = rules.objectives
+    assert (rule.rank_start, rule.rank_end, rule.ranking_scope) == (1, 8, RankingScope.GLOBAL)
 
 
 @pytest.mark.parametrize("field,value", [

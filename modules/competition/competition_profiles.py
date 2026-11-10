@@ -3,7 +3,7 @@
 This catalogue owns current format, scoring and objectives. Reference seasons
 document the current configuration; events are not filtered by season labels.
 Tracking and historical collection routing remain independent.
-Vocabulary is canonical; sporting boundaries remain unchanged pending review.
+Sporting boundaries distinguish confirmed rules from pending allocations.
 """
 
 from types import MappingProxyType
@@ -489,7 +489,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         standings=standings_policies.SAUDI_PRO_LEAGUE,
     ),
 
-    # brasileirao (1-4 Libertadores grupos, 5-6 Libertadores previa, 7-12 Sudamericana; 17-20 Descenso directo)
+    # brasileirao (base: 1-4 Libertadores grupos, 5 previa, 6-11 Sudamericana; 17-20 descenso)
     competition_ids.BRASILEIRAO: CompetitionRules(
         reference_season="2026",
         number_of_teams=20,
@@ -557,12 +557,12 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.LIGA_MX_APERTURA,
-        note="Standings criteria reference Clausura 2026; Apertura 2026 confirmation remains pending.",
+        note="FMF 2026/27 regulation: Apertura 2026, top eight to quarterfinals; international allocations remain pending.",
     ),
 
     # liga_mx_clausura (1-8 a cuartos de final de Liguilla; sin descenso; Concacaf pendiente por acumulado anual)
     competition_ids.LIGA_MX_CLAUSURA: CompetitionRules(
-        reference_season="2026",
+        reference_season="2027",
         number_of_teams=18,
         total_regular_season_games=17,
         scoring=FOOTBALL_SCORING,
@@ -588,7 +588,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.LIGA_MX_CLAUSURA,
-        note="Clausura 2026 configuration; sporting review pending.",
+        note="FMF 2026/27 regulation: Clausura 2027, top eight to quarterfinals; international allocations remain pending.",
     ),
 
     # liga_profesional_de_argentina_apertura (Dos grupos de 15; 1-8 de cada grupo a octavos; descenso anual y promedios)
@@ -873,7 +873,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         scoring=HOCKEY_SCORING,
     ),
 
-    # liiga (1-12 Playoffs; 13-16 Playoff permanencia, 17 Descenso directo)
+    # liiga (1-12 Playoffs; 15-17 descenso directo, seguro 14; sin playout)
     competition_ids.LIIGA: CompetitionRules(
         reference_season="2026/27",
         number_of_teams=17,
@@ -1018,17 +1018,17 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         note="No relegation or table-based international qualification. Division-specific quotas; no NHL wildcard substitution. Internal round byes are outside this objective.",
     ),
 
-    # wnba (15 equipos, 40 partidos; sin objetivos configurados)
+    # wnba (2026: 15 equipos, 44 partidos; ocho mejores globales a playoffs)
     competition_ids.WNBA: CompetitionRules(
-        reference_season="",
+        reference_season="2026",
         number_of_teams=15,
-        total_regular_season_games=40,
+        total_regular_season_games=44,
         objectives=(
             create_phase_qualification_rule(
                 start=1,
                 end=8,
                 path=QualificationPath.DIRECT,
-                scope=RankingScope.CONFERENCE,
+                scope=RankingScope.GLOBAL,
                 group_size=15,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
@@ -1088,14 +1088,15 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         scoring=WINS_SCORING,
     ),
 
-    # pfl philippines football league (histórico sin reglas configuradas)
+    # pfl philippines football league (2026/27: formato y objetivos incompletos)
     competition_ids.PFL: CompetitionRules(
-        reference_season="",
-        number_of_teams=None,
+        reference_season="2026/27",
+        number_of_teams=10,
         total_regular_season_games=None,
         objectives=None,
         standings=standings_policies.PFL,
         scoring=FOOTBALL_SCORING,
+        note="PFF publishes ten participants for 2026/27; regular-season duration, phase boundaries and international allocations remain unconfirmed.",
     ),
 })
 

@@ -123,6 +123,17 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
         if name == StandingsMetric.WIN_PERCENTAGE:
             games = stats["games_played"]
             return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / games if games else Fraction(0)
+        if name == "balanced_away_goals":
+            # FMF art. 25: totals are comparable only at equal away counts.
+            # With unequal counts, the official matchday cutoff is required;
+            # chronological truncation is wrong when matches were postponed.
+            totals = summary(names)
+            if any(totals[t]["matches"] != rows[t]["games_played"] for t in names):
+                return None
+            away_counts = Counter(m["away_team"] for m in records)
+            if len({away_counts[t] for t in names}) != 1:
+                return None
+            return totals[team]["away_goals"]
         if name in {"nhl_h2h", "ahl_h2h"}:
             direct = summary(names, True, nhl=name == "nhl_h2h")[team]
             if not direct["matches"]:
@@ -131,6 +142,8 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
         if name.startswith("h2h_"):
             direct = summary(names, True)[team]
             measure = name[4:]
+            if measure == "regulation_wins":
+                return direct["wins"] - direct["ot_so_wins"]
             if measure == "win_percentage":
                 return Fraction(direct["wins"], direct["matches"]) if direct["matches"] else Fraction(0)
             if measure in {"goal_diff", "goals_for", "away_goals"} and not direct["complete_scores"]:
@@ -157,6 +170,17 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
             return separate(names, remaining, path)
         if (step.only_two and len(names) != 2) or (step.only_multiple and len(names) <= 2):
             return separate(names, remaining, path)
+        if policy.name == "PREMIER_LEAGUE" and step.metrics == ("h2h_points", "h2h_away_goals"):
+            # C.7 permits a shared placing; C.17 is only for a sporting boundary.
+            def league_key(row):
+                return row["points"], row["goal_diff"], row["goals_for"]
+
+            first = 1 + sum(league_key(row) > league_key(rows[names[0]]) for row in rows.values())
+            last = first + len(names) - 1
+            boundaries = {1} | {rule.reference_rank for rule in profile.objectives or ()
+                                if rule.reference_rank is not None}
+            if not any(first <= boundary < last for boundary in boundaries):
+                return [(names, path, None)]
         if step.unavailable:
             return [(names, path, step.unavailable)]
         if step.meetings:
@@ -176,9 +200,9 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
                               else "MISSING_" + measure.removeprefix("negative_").upper())
                     return [(names, path, reason)]
                 values_by_team[team] += (value,)
-            # On a partial H2H split, reapply its first metric to the remaining
-            # clubs before considering the next one (not a lexicographic key).
-            if step.reapply and len(set(values_by_team.values())) > 1:
+            # SPL art. 9.1.4 finishes the whole H2H block before reapplying it.
+            # Preserve early reapplication for the other configured policies.
+            if step.reapply and policy.name != "SAUDI_PRO_LEAGUE" and len(set(values_by_team.values())) > 1:
                 break
         buckets = defaultdict(list)
         for team, values in values_by_team.items():

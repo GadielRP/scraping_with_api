@@ -38,7 +38,8 @@ SERIE_A = StandingsRules("SERIE_A", StandingsMetric.POINTS, (H2H, GD, GF, DECIDE
 PREMIER_LEAGUE = StandingsRules("PREMIER_LEAGUE", StandingsMetric.POINTS, (
     GD, GF, Criterion(("h2h_points", "h2h_away_goals"), meetings=2), DECIDER,
 ),
-    in_season_criteria=(GD, GF))
+    in_season_criteria=(GD, GF),
+    note="C.7/C.17: final H2H is required only across title, relegation or qualification boundaries; cup/EPS reallocations require the effective qualification boundaries.")
 
 BUNDESLIGA = StandingsRules("BUNDESLIGA", StandingsMetric.POINTS, (
     GD, GF, Criterion(("h2h_goal_diff", "h2h_away_goals"), meetings=2, share_if_incomplete=True),
@@ -76,13 +77,12 @@ BRASILEIRAO = StandingsRules("BRASILEIRAO", StandingsMetric.POINTS, (
 ))
 
 LIGA_MX_CLAUSURA = StandingsRules("LIGA_MX_CLAUSURA", StandingsMetric.POINTS, (
-    GD, GF, _metric("away_goals"), Criterion(("h2h_points", "h2h_goal_diff")),
-    _missing("MISSING_MULTISEASON_QUOTIENT"), PENDING_FAIR_PLAY, DECIDER,
+    GD, GF, _metric("balanced_away_goals"), PENDING_FAIR_PLAY,
+    _missing("MISSING_MULTISEASON_QUOTIENT"), DECIDER,
 ),
-    note="Clausura 2026 criteria; sporting review pending.")
+    note="FMF 2026/27 art. 25: GD, GF, away goals at equal away-matchday counts, Fair Play, quotient, official draw. Unequal away counts require the official matchday cutoff, which the loaded records do not supply.")
 LIGA_MX_APERTURA = replace(
-    LIGA_MX_CLAUSURA, name="LIGA_MX_APERTURA", verified=False,
-    note="Provisional criteria from Clausura 2026; Apertura 2026 regulation requires confirmation.",
+    LIGA_MX_CLAUSURA, name="LIGA_MX_APERTURA",
 )
 
 ARGENTINA_ZONES = StandingsRules("ARGENTINA_ZONES", StandingsMetric.POINTS, (
@@ -148,6 +148,8 @@ CBA = StandingsRules("CBA", StandingsMetric.WIN_PERCENTAGE, (
 # Not tracked: retain basic ordering without claiming a verified current policy.
 LIIGA = StandingsRules("LIIGA", StandingsMetric.POINTS, (
     _metric("regulation_wins"), GD, GF,
-), record_percentage=True, verified=False)
+    Criterion(("h2h_points", "h2h_regulation_wins", "h2h_goal_diff", "h2h_goals_for")),
+), record_percentage=True, verified=False,
+    note="Liiga competition rules section 27: after the overall criteria, compare H2H points, regulation wins, goal difference and goals scored. Full edition verification remains pending.")
 WNBA = StandingsRules("WNBA", StandingsMetric.WIN_PERCENTAGE, (), record_percentage=True, verified=False)
 PFL = StandingsRules("PFL", StandingsMetric.POINTS, (GD, GF, WINS), verified=False)
