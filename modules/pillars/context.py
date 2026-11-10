@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from modules.competition.competitive_rules import CompetitionRules
+from modules.competition.qualification_resolution import QualificationResolution
 
 from shared.temporal import as_utc
 
@@ -52,6 +53,7 @@ class CompetitionContext:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     competitive_rules: CompetitionRules | None = None
+    qualification_resolution: QualificationResolution | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -27,11 +27,13 @@ def resolve_p1_competition_context(
     rules = get_competition_profile(identity)
     if rules is None:
         return replace(competition_context, competitive_rules=None, number_of_teams=None,
+                       qualification_resolution=None,
                        total_regular_season_games=None, standings_grouping=None,
                        number_of_teams_source="missing", competition_config_source="missing")
     return replace(
         competition_context,
         competitive_rules=rules,
+        qualification_resolution=None,
         number_of_teams=rules.number_of_teams,
         number_of_teams_source="competition_rules",
         total_regular_season_games=rules.total_regular_season_games,

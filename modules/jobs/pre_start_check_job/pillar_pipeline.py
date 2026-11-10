@@ -92,6 +92,7 @@ from modules.pillars.pillar_5.run_pillar_5 import (
 
 from modules.pillars.pillar_5.ports import MemorySamplePersistenceError
 from shared.temporal import utc_now
+from modules.pillars.pillar_1_team_structure.qualification_preparation import prepare_qualification_resolution
 from modules.pillars.instrumentation import (
     capture_calculations,
     calculation_scope,
@@ -313,6 +314,9 @@ class EventPillarProcessor:
                 context, debug_mode=self.debug_mode
             )
             context.streak_analysis = streak
+            context.competition = prepare_qualification_resolution(
+                context.to_identity(), context.competition, streak
+            )
             return None
         except Exception as exc:
             logger.exception(

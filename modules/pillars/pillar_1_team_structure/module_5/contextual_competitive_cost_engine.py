@@ -25,6 +25,7 @@ from modules.competition.rule_terms import (
     RuleStatus, SelectionMethod, StandingsMetric,
 )
 from modules.pillars.context import CompetitionContext, EventIdentity
+from modules.competition.qualification_resolution import QualificationResolution
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +394,7 @@ def _build_team_metrics(
     games_remaining: Optional[int],
     max_points_remaining: Optional[float],
     debug_mode: bool = False,
+    qualification_resolution: QualificationResolution | None = None,
 ) -> Dict[str, Any]:
     points = _extract_points(standing)
     rank = _extract_rank(standing)
@@ -406,11 +408,20 @@ def _build_team_metrics(
     regime_multiplier = REGIME_MULTIPLIER.get(regime_state, 0.0)
     points_cutoff = (_determine_points_cutoff(rule, rank, points, scoped_standings)
                      if not rule_reason else None)
+    cutoff_reference = None
+    cup_protected = False
+    if qualification_resolution:
+        cutoff_reference = qualification_resolution.cutoff(rule, rank, scoped_standings)
+        if cutoff_reference is not None:
+            points_cutoff = _extract_points(cutoff_reference)
+        cup_protected = qualification_resolution.protects(standing, rule)
     gap = _calculate_gap(objective_type, points, points_cutoff, max_points_remaining)
     urgency_factor, gap_for_urgency, urgency_raw = (
         _calculate_urgency_factor(gap, max_points_remaining) if not rule_reason else (0.0, 0.0, 0.0)
     )
     final_cost = _calculate_final_cost(base_severity, regime_multiplier, urgency_factor)
+    if cup_protected:
+        final_cost = 0.0
     objective_rule = asdict(rule) if rule else None
     if debug_mode:
         _debug_section(f"Métricas del equipo: {team_label} ({team_name})")
@@ -427,6 +438,7 @@ def _build_team_metrics(
         "games_remaining": games_remaining, "max_points_remaining": max_points_remaining,
         "objective_type": objective_type, "regime_state": regime_state,
         "objective_rule": objective_rule, "rule_reason": rule_reason,
+        "cup_berth_protected": cup_protected, "cutoff_reference": cutoff_reference,
         "points_cutoff": points_cutoff, "gap": gap, "gap_for_urgency": gap_for_urgency,
         "urgency_factor": urgency_factor, "urgency_formula_raw": urgency_raw,
         "base_severity": base_severity, "regime_multiplier": regime_multiplier, "final_cost": final_cost,
@@ -499,6 +511,8 @@ def _serialize_team_raw(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "objective_rule": metrics["objective_rule"],
         "rule_reason": metrics["rule_reason"],
         "points_cutoff": metrics["points_cutoff"],
+        "cutoff_reference": metrics.get("cutoff_reference"),
+        "cup_berth_protected": metrics.get("cup_berth_protected", False),
         "gap": metrics["gap"],
         "urgency_factor": metrics["urgency_factor"],
         "base_severity": metrics["base_severity"],
@@ -557,6 +571,9 @@ def calculate_contextual_competitive_cost_engine(
     away_standing = _resolve_team_standing(current_standings, away_team, away_direct_standing)
 
     rules = competition_context.competitive_rules
+    qualification_resolution = getattr(competition_context, "qualification_resolution", None)
+    if qualification_resolution is not None:
+        rules = qualification_resolution.effective_rules
     points_per_win = rules.scoring.maximum_per_game if rules else None
     n_league = _count_valid_standings(current_standings)
     total_season_games = _coerce_int(
@@ -593,6 +610,7 @@ def calculate_contextual_competitive_cost_engine(
         elif rules.standings.primary_metric not in {StandingsMetric.POINTS, StandingsMetric.WINS}:
             season_status, season_reason = "INSUFFICIENT_DATA", "UNSUPPORTED_RANKING_METRIC"
     context_raw = {
+        "qualification_resolution": asdict(qualification_resolution) if qualification_resolution else None,
         "event_id": event_id,
         "participants": participants,
         "home_team": home_team,
@@ -704,6 +722,7 @@ def calculate_contextual_competitive_cost_engine(
         standing=home_standing,
         current_standings=current_standings,
         rules=rules,
+        qualification_resolution=qualification_resolution,
         n_league=n_league,
         games_remaining=games_remaining["home"],
         max_points_remaining=max_points_remaining["home"],
@@ -715,6 +734,7 @@ def calculate_contextual_competitive_cost_engine(
         standing=away_standing,
         current_standings=current_standings,
         rules=rules,
+        qualification_resolution=qualification_resolution,
         n_league=n_league,
         games_remaining=games_remaining["away"],
         max_points_remaining=max_points_remaining["away"],

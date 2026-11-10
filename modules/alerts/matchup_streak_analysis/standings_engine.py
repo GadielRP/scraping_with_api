@@ -154,6 +154,13 @@ def _register_match_record(
     )
     for side, team in (("home", home_team), ("away", away_team)):
         stats = team_stats[team]
+        identity = record.get(f"{side}_participant_identity")
+        if identity is not None:
+            # A reused display name cannot silently merge provider participants.
+            if "participant_identity" not in stats:
+                stats["participant_identity"] = identity
+            elif stats["participant_identity"] != identity:
+                stats["participant_identity"] = None
         for stat, _ in FOOTBALL_CARD_STATS:
             key = f"{side}_{stat}"
             if key in record:
@@ -324,6 +331,8 @@ def _serialize_match_records(match_records: List[Dict[str, Any]]) -> List[Dict[s
             "winner": record["winner"],
             "result_subtype": record.get("result_subtype"),
             "game_total": record["game_total"],
+            **{f"{side}_participant_identity": record[f"{side}_participant_identity"]
+               for side in ("home", "away") if f"{side}_participant_identity" in record},
             **{f"{side}_{stat}": record[f"{side}_{stat}"]
                for side in ("home", "away") for stat, _ in FOOTBALL_CARD_STATS
                if f"{side}_{stat}" in record},
@@ -348,37 +357,37 @@ class HistoricalStandingsCalculator:
         cutoff_dt = from_unix_timestamp(cutoff_timestamp)
         query_sql = """
             SELECT
-                event_id,
-                starts_at,
-                home_team,
-                away_team,
-                home_score,
-                away_score,
-                winner,
-                result_subtype,
-                sport
-            FROM season_events_with_results
-            WHERE round = 'regular_season'
-              AND starts_at < :cutoff_dt
+                v.event_id, v.starts_at, v.home_team, v.away_team,
+                v.home_score, v.away_score, v.winner, v.result_subtype, v.sport,
+                hp.source AS home_participant_source,
+                hp.source_participant_id AS home_source_participant_id,
+                ap.source AS away_participant_source,
+                ap.source_participant_id AS away_source_participant_id
+            FROM season_events_with_results v
+            JOIN events e ON e.id = v.event_id
+            LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
+            LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+            WHERE v.round = 'regular_season'
+              AND v.starts_at < :cutoff_dt
         """
         query_params: Dict[str, Any] = {
             "cutoff_dt": cutoff_dt,
         }
         if competition_id is not None:
-            query_sql += " AND competition_id = :competition_id"
+            query_sql += " AND v.competition_id = :competition_id"
             query_params["competition_id"] = int(competition_id)
         elif source_unique_tournament_id is not None:
-            query_sql += " AND source_unique_tournament_id = :source_unique_tournament_id"
+            query_sql += " AND v.source_unique_tournament_id = :source_unique_tournament_id"
             query_params["source_unique_tournament_id"] = source_unique_tournament_id
 
         if season_year is not None:
-            query_sql += " AND season_year = :season_year"
+            query_sql += " AND v.season_year = :season_year"
             query_params["season_year"] = int(season_year)
         else:
-            query_sql += " AND season_id = :season_id"
+            query_sql += " AND v.season_id = :season_id"
             query_params["season_id"] = int(season_id)
 
-        query_sql += "\n            ORDER BY starts_at\n            "
+        query_sql += "\n            ORDER BY v.starts_at\n            "
 
         query = text(query_sql)
 
@@ -409,6 +418,13 @@ class HistoricalStandingsCalculator:
                 }
                 if getattr(row, "sport", None) == "Football":
                     football_records.append(record)
+                for side in ("home", "away"):
+                    source = getattr(row, f"{side}_participant_source", None)
+                    source_id = getattr(row, f"{side}_source_participant_id", None)
+                    if source and source_id is not None:
+                        record[f"{side}_participant_identity"] = {
+                            "source": source, "source_participant_id": int(source_id),
+                        }
                 match_records.append(record)
 
         football_ids = [record["event_id"] for record in football_records]

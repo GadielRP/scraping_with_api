@@ -28,6 +28,9 @@ from modules.competition.rule_terms import (
     SelectionMethod,
 )
 
+# Domestic dependencies are provider identities, never local DB/season IDs.
+QUALIFICATION_DEPENDENCIES = MappingProxyType({competition_ids.LALIGA: competition_ids.COPA_DEL_REY})
+
 
 def create_phase_qualification_rule(
     start: int | None = None,
@@ -469,12 +472,14 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_competition_name='AFC Champions League Elite, Qualification',
             ),
             create_competition_qualification_rule(
-                start=6,
-                end=6,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.AFC_CHAMPIONS_LEAGUE_TWO,
                 destination_competition_name='AFC Champions League Two',
+                status=RuleStatus.PENDING,
+                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                places=1,
+                note="King's Cup winner; sixth place only if the cup winner finishes in the league top five. Cup outcome and AFC reallocations must be resolved.",
             ),
             create_division_retention_rule(
                 start=16, end=18,
