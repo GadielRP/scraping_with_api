@@ -112,6 +112,12 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
         stats = rows[team]
         if name == "negative_games_played":
             return -stats["games_played"]
+        if name in {"negative_red_cards", "negative_yellow_cards"}:
+            count = stats.get(name.removeprefix("negative_"))
+            return -count if count is not None else None
+        if name == "negative_fair_play_points":
+            points = policy.fair_play_points(stats)
+            return -points if points is not None else None
         if name == "alphabetical_order":
             return tuple(-ord(c) for c in team.casefold())
         if name == StandingsMetric.WIN_PERCENTAGE:
@@ -166,7 +172,8 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
             for team in names:
                 value = metric(measure, team, names)
                 if value is None:
-                    reason = "MISSING_REGULATION_SCORES" if policy.regulation_scores_only else "MISSING_" + measure.upper()
+                    reason = ("MISSING_REGULATION_SCORES" if policy.regulation_scores_only
+                              else "MISSING_" + measure.removeprefix("negative_").upper())
                     return [(names, path, reason)]
                 values_by_team[team] += (value,)
             # On a partial H2H split, reapply its first metric to the remaining

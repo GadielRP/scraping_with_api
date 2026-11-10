@@ -172,9 +172,22 @@ class StandingsRules:
     regulation_scores_only: bool = False
     verified: bool = True
     note: str = ""
+    fair_play_weights: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "primary_metric", StandingsMetric(self.primary_metric))
+
+    def fair_play_points(self, stats) -> int | None:
+        """Disciplinary penalty configured by the profile; fewer points is better."""
+        if not self.fair_play_weights:
+            return None
+        points = 0
+        for stat, weight in self.fair_play_weights:
+            count = stats.get(stat)
+            if count is None:
+                return None
+            points += count * weight
+        return points
 
 
 @dataclass(frozen=True, slots=True)

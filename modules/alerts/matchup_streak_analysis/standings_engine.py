@@ -55,6 +55,8 @@ def _finalize_team_stats(stats: Dict[str, object], profile: CompetitionRules) ->
     stats["pct"] = (
         stats["points"] / (games * profile.scoring.maximum_per_game) if games else 0.0
     ) if profile.standings.record_percentage else None
+    if profile.standings.fair_play_weights:
+        stats["fair_play_points"] = profile.standings.fair_play_points(stats)
 
 
 def _build_team_standing_payload(

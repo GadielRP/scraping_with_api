@@ -64,6 +64,8 @@ criteria: pasos de desempate en orden. in_season_criteria permite otro orden
     durante la temporada; None reutiliza criteria.
 record_percentage: expone también el porcentaje en el registro de clasificación.
 regulation_scores_only: excluye el marcador de prórroga en criterios de tanteo.
+fair_play_weights: pares (stat, peso) de la política para calcular puntos de penalización
+    disciplinaria. Menos puntos es mejor; vacío significa baremo no configurado.
 verified: indicador existente de revisión de la política, independiente de status.
 note: detalles de la política, sin instrucciones ejecutables.
 metrics: claves de datos que un criterio compara; pueden formar una minitabla.

@@ -22,14 +22,15 @@ def _missing(reason):
 GD = _metric("goal_diff")
 GF = _metric("goals_for")
 WINS = _metric(StandingsMetric.WINS)
-FAIR_PLAY = _missing("MISSING_DISCIPLINARY_RECORD")
+FAIR_PLAY = _metric("negative_fair_play_points")
+PENDING_FAIR_PLAY = _missing("MISSING_DISCIPLINARY_RECORD")
 DECIDER = Criterion((), unavailable="OFFICIAL_DECIDER_REQUIRED", final_only=True)
 H2H = Criterion(("h2h_points", "h2h_goal_diff"), meetings=2)
 
 LALIGA = StandingsRules("LALIGA", StandingsMetric.POINTS, (
     Criterion(("h2h_goal_diff",), meetings=2, only_two=True),
     Criterion(("h2h_points", "h2h_goal_diff"), meetings=2, only_multiple=True, reapply=True),
-    GD, GF, FAIR_PLAY, DECIDER,
+    GD, GF, PENDING_FAIR_PLAY, DECIDER,
 ))
 
 SERIE_A = StandingsRules("SERIE_A", StandingsMetric.POINTS, (H2H, GD, GF, DECIDER), note="Final title and 17th/18th-place ties can require a decider; UEFA-finalist exception applies.")
@@ -46,7 +47,8 @@ BUNDESLIGA = StandingsRules("BUNDESLIGA", StandingsMetric.POINTS, (
 
 LIGUE_1 = StandingsRules("LIGUE_1", StandingsMetric.POINTS, (
     GD, H2H, GF, WINS, _metric("away_wins"), FAIR_PLAY, DECIDER,
-))
+), fair_play_weights=(("yellow_cards", 1), ("red_cards", 3)),
+    note="LFP art. 518 TER: fewer disciplinary points wins.")
 
 LIGA_PORTUGAL = StandingsRules("LIGA_PORTUGAL", StandingsMetric.POINTS, (
     Criterion(("h2h_points",)), Criterion(("h2h_goal_diff",), meetings=2),
@@ -64,18 +66,18 @@ EREDIVISIE = StandingsRules("EREDIVISIE", StandingsMetric.POINTS, (
 
 SAUDI_PRO_LEAGUE = StandingsRules("SAUDI_PRO_LEAGUE", StandingsMetric.POINTS, (
     Criterion(("h2h_points", "h2h_goal_diff", "h2h_goals_for"), reapply=True),
-    GD, GF, FAIR_PLAY, DECIDER,
+    GD, GF, PENDING_FAIR_PLAY, DECIDER,
 ),
     in_season_criteria=(GD, GF, _missing("MISSING_PREVIOUS_SEASON_RANK")))
 
 BRASILEIRAO = StandingsRules("BRASILEIRAO", StandingsMetric.POINTS, (
     WINS, GD, GF, Criterion(("h2h_points", "h2h_goal_diff"), meetings=2, only_two=True),
-    _missing("MISSING_RED_CARDS"), _missing("MISSING_YELLOW_CARDS"), DECIDER,
+    _metric("negative_red_cards"), _metric("negative_yellow_cards"), DECIDER,
 ))
 
 LIGA_MX_CLAUSURA = StandingsRules("LIGA_MX_CLAUSURA", StandingsMetric.POINTS, (
     GD, GF, _metric("away_goals"), Criterion(("h2h_points", "h2h_goal_diff")),
-    _missing("MISSING_MULTISEASON_QUOTIENT"), FAIR_PLAY, DECIDER,
+    _missing("MISSING_MULTISEASON_QUOTIENT"), PENDING_FAIR_PLAY, DECIDER,
 ),
     note="Clausura 2026 criteria; sporting review pending.")
 LIGA_MX_APERTURA = replace(
@@ -85,13 +87,13 @@ LIGA_MX_APERTURA = replace(
 
 ARGENTINA_ZONES = StandingsRules("ARGENTINA_ZONES", StandingsMetric.POINTS, (
     GD, GF, Criterion(("h2h_points", "h2h_goal_diff", "h2h_goals_for"), reapply=True),
-    FAIR_PLAY, DECIDER,
+    PENDING_FAIR_PLAY, DECIDER,
 ),
     note="Articles 10/16 apply to zones only; annual/relegation tables are different.")
 
 MLS = StandingsRules("MLS", StandingsMetric.POINTS, (
     WINS, GD, GF, Criterion(("h2h_points", "h2h_goal_diff"), reapply=True),
-    FAIR_PLAY, _metric("away_goal_diff"), _metric("away_goals"),
+    PENDING_FAIR_PLAY, _metric("away_goal_diff"), _metric("away_goals"),
     _metric("home_goal_diff"), _metric("home_goals"), DECIDER,
 ),
     note="Conference standings; H2H applies only inside a conference. Cancellations/PPG require an explicit ruling.")
