@@ -774,11 +774,25 @@ SELECT
     e.starts_at,
     e.home_team,
     e.away_team,
-    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'yellow_card') AS amarillas,
-    COUNT(DISTINCT di.id) FILTER (WHERE di.type = 'red_card') AS rojas,
     COUNT(DISTINCT di.id) FILTER (
-        WHERE di.type IN ('yellow_card', 'red_card')
-    ) AS total_tarjetas
+        WHERE di.type = 'yellow_card'
+    ) AS amarillas,
+    COUNT(DISTINCT di.id) FILTER (
+        WHERE di.type = 'red_card'
+    ) AS rojas_directas,
+    COUNT(DISTINCT di.id) FILTER (
+        WHERE di.type = 'red_card_second_yellow'
+    ) AS expulsiones_por_doble_amarilla,
+    COUNT(DISTINCT di.id) FILTER (
+        WHERE di.type IN (
+            'yellow_card',
+            'red_card',
+            'red_card_second_yellow'
+        )
+    ) AS total_tarjetas,
+    COUNT(DISTINCT di.id) FILTER (
+        WHERE di.type IN ('red_card', 'red_card_second_yellow')
+    ) AS expulsiones_totales
 FROM events e
 LEFT JOIN event_source_mappings esm
     ON esm.event_id = e.id
@@ -787,7 +801,7 @@ LEFT JOIN disciplinary_incidents di
     ON di.event_source_mapping_id = esm.mapping_id
 WHERE e.season_id = 97268
 GROUP BY e.id, e.starts_at, e.home_team, e.away_team
-ORDER BY e.starts_at;
+ORDER BY e.starts_at DESC;
 ```
 
 ## Quick notes

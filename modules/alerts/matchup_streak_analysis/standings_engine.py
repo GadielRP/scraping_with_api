@@ -16,12 +16,15 @@ from shared.temporal import from_unix_timestamp
 
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.competition.competitive_rules import CompetitionRules
+from modules.discipline.contracts import IncidentType
+from modules.discipline.policies import football_fair_play_card_counts
 from .historical_form_reporting import format_standings_table_for_telegram
 from .constants import get_team_group
 from .standings_rules import normalize_result_subtype, rank_standings
 
 logger = logging.getLogger(__name__)
 FOOTBALL_CARD_STATS = (("yellow_cards", "yellow_card"), ("red_cards", "red_card"))
+SECOND_YELLOW_CARD_STAT = ("second_yellow_dismissals", IncidentType.RED_CARD_SECOND_YELLOW.value)
 
 
 def _create_team_stats(group: Optional[str]) -> Dict[str, object]:
@@ -165,6 +168,16 @@ def _register_match_record(
             key = f"{side}_{stat}"
             if key in record:
                 stats[stat] = stats.get(stat, 0) + (record[key] or 0)
+        second_yellow_key = f"{side}_{SECOND_YELLOW_CARD_STAT[0]}"
+        if second_yellow_key in record:
+            stats.setdefault("fair_play_games_counted", 0)
+            counts = football_fair_play_card_counts(
+                record.get(f"{side}_yellow_cards"), record.get(f"{side}_red_cards"), record[second_yellow_key]
+            )
+            if counts is not None:
+                stats["fair_play_games_counted"] += 1
+                for stat, count in counts.items():
+                    stats[stat] = stats.get(stat, 0) + count
 
 
 def _finalize_standings_snapshot(
@@ -334,7 +347,7 @@ def _serialize_match_records(match_records: List[Dict[str, Any]]) -> List[Dict[s
             **{f"{side}_participant_identity": record[f"{side}_participant_identity"]
                for side in ("home", "away") if f"{side}_participant_identity" in record},
             **{f"{side}_{stat}": record[f"{side}_{stat}"]
-               for side in ("home", "away") for stat, _ in FOOTBALL_CARD_STATS
+               for side in ("home", "away") for stat, _ in (*FOOTBALL_CARD_STATS, SECOND_YELLOW_CARD_STAT)
                if f"{side}_{stat}" in record},
         })
     return serialized_records
@@ -353,6 +366,8 @@ class HistoricalStandingsCalculator:
         source_unique_tournament_id: Optional[int],
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
+        *,
+        profile: CompetitionRules,
     ) -> List[Dict[str, Any]]:
         cutoff_dt = from_unix_timestamp(cutoff_timestamp)
         query_sql = """
@@ -428,10 +443,14 @@ class HistoricalStandingsCalculator:
                 match_records.append(record)
 
         football_ids = [record["event_id"] for record in football_records]
-        totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals("sofascore", football_ids)
+        include_second_yellow = any(stat == SECOND_YELLOW_CARD_STAT[0] for stat, _ in profile.standings.fair_play_weights)
+        totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals(
+            "sofascore", football_ids, include_second_yellow=include_second_yellow,
+        )
+        card_stats = (*FOOTBALL_CARD_STATS, SECOND_YELLOW_CARD_STAT) if include_second_yellow else FOOTBALL_CARD_STATS
         for record in football_records:
             for side in ("home", "away"):
-                for stat, kind in FOOTBALL_CARD_STATS:
+                for stat, kind in card_stats:
                     record[f"{side}_{stat}"] = totals.get((record["event_id"], side, kind))
 
         return match_records
@@ -569,6 +588,7 @@ class HistoricalStandingsCalculator:
             source_unique_tournament_id=source_unique_tournament_id,
             competition_id=competition_id,
             season_year=season_year,
+            profile=profile,
         )
         record_timestamps = [record["starts_at"].timestamp() for record in match_records]
 
@@ -616,6 +636,7 @@ class HistoricalStandingsCalculator:
             source_unique_tournament_id=source_unique_tournament_id,
             competition_id=competition_id,
             season_year=season_year,
+            profile=profile,
         )
         team_stats: Dict[str, Dict[str, object]] = {}
         warned_unknown_group_teams: Set[str] = set()

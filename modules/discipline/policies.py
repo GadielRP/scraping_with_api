@@ -13,6 +13,22 @@ class DisciplineLimitExceeded(ValueError):
     """No partial snapshot may be published after a configured limit is reached."""
 
 
+def football_fair_play_card_counts(yellow_cards: int | None, red_cards: int | None,
+                                   second_yellow_dismissals: int | None) -> dict[str, int] | None:
+    """Convert inclusive totals to the three separate scoring categories."""
+    if yellow_cards is None or red_cards is None or second_yellow_dismissals is None:
+        return None
+    standalone_yellow_cards = yellow_cards - 2 * second_yellow_dismissals
+    direct_red_cards = red_cards - second_yellow_dismissals
+    if standalone_yellow_cards < 0 or direct_red_cards < 0:
+        return None
+    return {
+        "standalone_yellow_cards": standalone_yellow_cards,
+        "second_yellow_dismissals": second_yellow_dismissals,
+        "direct_red_cards": direct_red_cards,
+    }
+
+
 def evaluate_facts(sport: str, facts: Iterable[DisciplineFact], rules: DisciplineRules | None,
                    limits: DisciplineSettings) -> Acquisition:
     reported = ({FactKind.YELLOW_CARD: IncidentType.YELLOW_CARD,

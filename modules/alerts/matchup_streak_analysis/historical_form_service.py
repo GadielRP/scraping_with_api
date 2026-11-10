@@ -13,6 +13,8 @@ historical_form_reporting.
 
 import logging
 import os
+from collections import OrderedDict
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
@@ -20,13 +22,16 @@ from sqlalchemy import text
 from infrastructure.settings import Config
 from shared.temporal import from_unix_timestamp, in_timezone
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
+from modules.competition.rule_terms import GroupingMethod
 from .historical_form_reporting import (
+    format_fair_play_table_for_telegram,
     format_standings_table_for_telegram,
     send_debug_telegram,
 )
 from .standings_engine import standings_calculator
 
 logger = logging.getLogger(__name__)
+_MAX_RECENT_GLOBAL_DEBUG_TABLES = 256
 
 
 def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = None) -> Dict:
@@ -56,6 +61,19 @@ class HistoricalFormService:
 
     def __init__(self, standings_calculator_instance=None):
         self.standings_calculator = standings_calculator_instance or standings_calculator
+        self._global_debug_table_lock = Lock()
+        self._sent_global_debug_tables: OrderedDict[Tuple, None] = OrderedDict()
+
+    def _claim_global_debug_table(self, key: Tuple) -> bool:
+        """Claim one global debug table, deduplicating concurrent team lookups."""
+        with self._global_debug_table_lock:
+            if key in self._sent_global_debug_tables:
+                self._sent_global_debug_tables.move_to_end(key)
+                return False
+            self._sent_global_debug_tables[key] = None
+            if len(self._sent_global_debug_tables) > _MAX_RECENT_GLOBAL_DEBUG_TABLES:
+                self._sent_global_debug_tables.popitem(last=False)
+            return True
 
     def _calculate_current_win_streak(self, results: List[Dict]) -> int:
         if not results:
@@ -177,13 +195,10 @@ class HistoricalFormService:
 
     def _send_current_standings_debug(
         self,
-        season_id: int,
-        sport: str,
-        source_unique_tournament_id: Optional[int],
-        source_tournament_id: Optional[int],
         current_event_timestamp: Optional[float],
-        competition_id: int,
-        season_year: Optional[int] = None,
+        current_standings: Dict[str, Dict],
+        deduplicate_global: bool,
+        debug_scope: Tuple,
     ) -> None:
         """Send the current standings table to the personal debug chat."""
         personal_chat_id = os.getenv("PERSONAL_CHAT_ID", "")
@@ -192,16 +207,6 @@ class HistoricalFormService:
             return
         if not current_event_timestamp:
             return
-
-        current_standings = self.standings_calculator.calculate_standings_at(
-            season_id,
-            current_event_timestamp,
-            sport,
-            source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
-            competition_id=competition_id,
-            season_year=season_year,
-        )
         current_date = in_timezone(
             from_unix_timestamp(current_event_timestamp),
             Config.TIMEZONE,
@@ -211,7 +216,17 @@ class HistoricalFormService:
             current_standings,
             title,
         )
-        send_debug_telegram(message, personal_chat_id)
+        standings_key = (*debug_scope, "standings")
+        if not deduplicate_global or self._claim_global_debug_table(standings_key):
+            send_debug_telegram(message, personal_chat_id)
+        fair_play_message = format_fair_play_table_for_telegram(
+            current_standings, f"CURRENT (at {current_date})",
+        )
+        fair_play_key = (*debug_scope, "fair_play")
+        if fair_play_message and (
+            not deduplicate_global or self._claim_global_debug_table(fair_play_key)
+        ):
+            send_debug_telegram(fair_play_message, personal_chat_id)
 
     def get_team_form_from_db(
         self,
@@ -273,7 +288,10 @@ class HistoricalFormService:
             # cutoff, instead of one league-wide recompute per game.
             standings_by_cutoff = self.standings_calculator.calculate_standings_timeline(
                 season_id,
-                [row.starts_at.timestamp() for row in applicable_rows],
+                [
+                    *(row.starts_at.timestamp() for row in applicable_rows),
+                    *([current_event_timestamp] if send_debug_standings and current_event_timestamp else []),
+                ],
                 source_unique_tournament_id=source_unique_tournament_id,
                 competition_id=competition_id,
                 season_year=season_year,
@@ -295,13 +313,17 @@ class HistoricalFormService:
 
             if send_debug_standings:
                 self._send_current_standings_debug(
-                    season_id=season_id,
-                    sport=sport,
-                    source_unique_tournament_id=source_unique_tournament_id,
-                    source_tournament_id=source_tournament_id,
                     current_event_timestamp=current_event_timestamp,
-                    competition_id=competition_id,
-                    season_year=season_year,
+                    current_standings=standings_by_cutoff.get(current_event_timestamp, {}),
+                    deduplicate_global=grouping_method == GroupingMethod.LEAGUE_WIDE,
+                    debug_scope=(
+                        competition_id,
+                        season_id,
+                        season_year,
+                        source_unique_tournament_id,
+                        source_tournament_id,
+                        current_event_timestamp,
+                    ),
                 )
 
             return results, win_streak

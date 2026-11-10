@@ -30,8 +30,9 @@ H2H = Criterion(("h2h_points", "h2h_goal_diff"), meetings=2)
 LALIGA = StandingsRules("LALIGA", StandingsMetric.POINTS, (
     Criterion(("h2h_goal_diff",), meetings=2, only_two=True),
     Criterion(("h2h_points", "h2h_goal_diff"), meetings=2, only_multiple=True, reapply=True),
-    GD, GF, PENDING_FAIR_PLAY, DECIDER,
-))
+    GD, GF, FAIR_PLAY, DECIDER,
+), fair_play_weights=(("standalone_yellow_cards", 1), ("second_yellow_dismissals", 2), ("direct_red_cards", 3)),
+    note="Internal card-based fair play; compares available match scores.")
 
 SERIE_A = StandingsRules("SERIE_A", StandingsMetric.POINTS, (H2H, GD, GF, DECIDER), note="Final title and 17th/18th-place ties can require a decider; UEFA-finalist exception applies.")
 
@@ -67,9 +68,13 @@ EREDIVISIE = StandingsRules("EREDIVISIE", StandingsMetric.POINTS, (
 
 SAUDI_PRO_LEAGUE = StandingsRules("SAUDI_PRO_LEAGUE", StandingsMetric.POINTS, (
     Criterion(("h2h_points", "h2h_goal_diff", "h2h_goals_for"), reapply=True),
-    GD, GF, PENDING_FAIR_PLAY, DECIDER,
+    GD, GF, FAIR_PLAY, DECIDER,
 ),
-    in_season_criteria=(GD, GF, _missing("MISSING_PREVIOUS_SEASON_RANK")))
+    in_season_criteria=(GD, GF, _missing("MISSING_PREVIOUS_SEASON_RANK")),
+    fair_play_weights=(("standalone_yellow_cards", 1),
+                       ("second_yellow_dismissals", 3),
+                       ("direct_red_cards", 3)),
+    note="Final card-only fair play: yellow 1, second-yellow dismissal 3, direct red 3; SPL 2025/26 Appendix 2. Interim table omits fair play.")
 
 BRASILEIRAO = StandingsRules("BRASILEIRAO", StandingsMetric.POINTS, (
     WINS, GD, GF, Criterion(("h2h_points", "h2h_goal_diff"), meetings=2, only_two=True),
@@ -77,9 +82,12 @@ BRASILEIRAO = StandingsRules("BRASILEIRAO", StandingsMetric.POINTS, (
 ))
 
 LIGA_MX_CLAUSURA = StandingsRules("LIGA_MX_CLAUSURA", StandingsMetric.POINTS, (
-    GD, GF, _metric("balanced_away_goals"), PENDING_FAIR_PLAY,
+    GD, GF, _metric("balanced_away_goals"), FAIR_PLAY,
     _missing("MISSING_MULTISEASON_QUOTIENT"), DECIDER,
 ),
+    fair_play_weights=(("standalone_yellow_cards", 1),
+                       ("second_yellow_dismissals", 3),
+                       ("direct_red_cards", 3)),
     note="FMF 2026/27 art. 25: GD, GF, away goals at equal away-matchday counts, Fair Play, quotient, official draw. Unequal away counts require the official matchday cutoff, which the loaded records do not supply.")
 LIGA_MX_APERTURA = replace(
     LIGA_MX_CLAUSURA, name="LIGA_MX_APERTURA",
@@ -93,10 +101,13 @@ ARGENTINA_ZONES = StandingsRules("ARGENTINA_ZONES", StandingsMetric.POINTS, (
 
 MLS = StandingsRules("MLS", StandingsMetric.POINTS, (
     WINS, GD, GF, Criterion(("h2h_points", "h2h_goal_diff"), reapply=True),
-    PENDING_FAIR_PLAY, _metric("away_goal_diff"), _metric("away_goals"),
+    FAIR_PLAY, _metric("away_goal_diff"), _metric("away_goals"),
     _metric("home_goal_diff"), _metric("home_goals"), DECIDER,
 ),
-    note="Conference standings; H2H applies only inside a conference. Cancellations/PPG require an explicit ruling.")
+    fair_play_weights=(("standalone_yellow_cards", 3),
+                       ("second_yellow_dismissals", 7),
+                       ("direct_red_cards", 7)),
+    note="Internal card-only fair play: yellow 3, second-yellow dismissal 7, direct red 7. Excludes fouls, technical-staff warnings, supplemental discipline, and player-level incident caps/pairing. Conference standings; H2H applies only inside a conference. Cancellations/PPG require an explicit ruling.")
 
 SHL = StandingsRules("SHL", StandingsMetric.POINTS, (
     GD, GF, Criterion(("h2h_points", "h2h_goal_diff", "h2h_goals_for")), DECIDER,

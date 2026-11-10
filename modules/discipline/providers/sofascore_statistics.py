@@ -19,6 +19,7 @@ class SofaScoreDisciplineStatisticsProvider:
         if context.source != "sofascore":
             return Acquisition(Outcome.UNAVAILABLE, reason="unsupported_statistics_source")
         values = {}
+        all_period_found = False
         keys = {"yellowCards": IncidentType.YELLOW_CARD, "redCards": IncidentType.RED_CARD}
         try:
             with self.client.open_event_statistics(context.source_event_id) as document:
@@ -27,6 +28,7 @@ class SofaScoreDisciplineStatisticsProvider:
                         raise ValueError("Statistics period must be an object")
                     if period.get("period") != "ALL":
                         continue
+                    all_period_found = True
                     for group in period.get("groups", []):
                         for item in group.get("statisticsItems", []):
                             kind = keys.get(item.get("key"))
@@ -38,6 +40,9 @@ class SofaScoreDisciplineStatisticsProvider:
                             if kind in values and values[kind] != pair:
                                 raise ValueError("Conflicting full-match discipline statistics")
                             values[kind] = pair
+            if context.sport == "Football" and all_period_found:
+                for kind in keys.values():
+                    values.setdefault(kind, (0, 0))
             totals = tuple(DisciplineTotalDraft(kind, side, count, DisciplineEndpoint.STATISTICS)
                            for kind, pair in values.items() for side, count in zip(Side, pair))
             return Acquisition(Outcome.READY, totals=totals) if totals else Acquisition(

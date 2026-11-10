@@ -213,7 +213,7 @@ def test_euroleague_can_resolve_h2h_wins_without_overtime_scoring_details():
 def test_missing_discipline_does_not_authorize_a_wins_or_alphabetical_fallback():
     _, positions = _rank(167, games=[_game("A", "B", 0, 0), _game("B", "A", 0, 0)])
     assert positions["A"]["position"] is positions["B"]["position"] is None
-    assert positions["A"]["ranking_reason"] == "MISSING_DISCIPLINARY_RECORD"
+    assert positions["A"]["ranking_reason"] == "MISSING_FAIR_PLAY_POINTS"
 
 
 @pytest.mark.parametrize("cid", [176, 129, 5153, 174])

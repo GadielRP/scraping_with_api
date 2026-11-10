@@ -91,6 +91,50 @@ def format_standings_table_for_telegram(
     return message
 
 
+def format_fair_play_table_for_telegram(
+    standings: Dict[str, Dict],
+    title: str,
+) -> str | None:
+    """Format the currently available football fair-play ranking."""
+    if not any(
+        stats.get("fair_play_points") is not None
+        and "fair_play_games_counted" in stats
+        for stats in standings.values()
+    ):
+        return None
+
+    message = f"FAIR PLAY: <b>{title}</b>\n\n"
+    message += (
+        "Orden: menos puntos · YC: amarillas · RC: rojas · "
+        "2A: expulsiones por doble amarilla · RD: rojas directas · GP: jugados\n\n"
+    )
+    ordered = sorted(
+        standings.items(),
+        key=lambda item: (
+            item[1].get("fair_play_points") is None,
+            item[1].get("fair_play_points") if item[1].get("fair_play_points") is not None else 0,
+            item[0].casefold(),
+        ),
+    )
+    for position, (team_name, stats) in enumerate(ordered, start=1):
+        score = stats.get("fair_play_points")
+        coverage = stats.get("fair_play_games_counted", 0)
+        games = stats.get("games_played", 0)
+        yellow = stats.get("yellow_cards")
+        red = stats.get("red_cards")
+        dismissals = stats.get("second_yellow_dismissals")
+        direct_reds = stats.get("direct_red_cards")
+        message += (
+            f"#{position} {team_name}: FP:{score if score is not None else '?'} "
+            f"YC:{yellow if yellow is not None else '?'} "
+            f"RC:{red if red is not None else '?'} "
+            f"2A:{dismissals if dismissals is not None else '?'} "
+            f"RD:{direct_reds if direct_reds is not None else '?'} "
+            f"GP:{coverage}/{games}\n"
+        )
+    return message
+
+
 def send_debug_telegram(message: str, chat_id: str) -> None:
     """Send a debug message to Telegram if the bot is configured."""
     import requests

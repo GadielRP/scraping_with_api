@@ -6,7 +6,8 @@ from sqlalchemy import and_, delete, func, insert, literal, or_, select, tuple_,
 from infrastructure.persistence.event_identity_lock import lock_event_identities
 from infrastructure.persistence.models import DisciplinaryIncident as Incident, DisciplinaryIncidentTotal as Total, Event, EventSourceMapping as Mapping, Result
 from modules.discipline.contracts import (
-    DisciplineEventContext, DisciplineTotalDraft, IncidentType, Origin, Outcome, SECOND_YELLOW_TOTAL_TYPES, Side,
+    DisciplineEndpoint, DisciplineEventContext, DisciplineTotalDraft, IncidentType, Origin, Outcome,
+    SECOND_YELLOW_TOTAL_TYPES, Side,
     TeamSeasonTotals,
 )
 from shared.execution_context import check_execution_budget
@@ -170,7 +171,7 @@ class DisciplinaryIncidentRepository:
                         Total.event_source_mapping_id, Total.type, Total.side)).all()
         return tuple(DisciplineTotalDraft(*row) for row in rows)
 
-    def get_event_card_totals(self, source, event_ids):
+    def get_event_card_totals(self, source, event_ids, *, include_second_yellow=False):
         """Read acquired card totals in one batch; absent scopes remain unknown.
 
         Only an unambiguous provider mapping can supply a canonical event's
@@ -181,11 +182,27 @@ class DisciplinaryIncidentRepository:
         mappings = select(Mapping.event_id, func.min(Mapping.mapping_id).label("mapping_id")).where(
             Mapping.source == source, Mapping.event_id.in_(event_ids),
         ).group_by(Mapping.event_id).having(func.count() == 1).subquery()
+        yellow, red = (kind.value for kind in SECOND_YELLOW_TOTAL_TYPES)
+        second_yellow = IncidentType.RED_CARD_SECOND_YELLOW.value
+        card_types = (yellow, red, second_yellow) if include_second_yellow else (yellow, red)
+        query = (select(mappings.c.event_id, Total.side, Total.type, Total.count)
+                 .join(Total, Total.event_source_mapping_id == mappings.c.mapping_id)
+                 .where(Total.type.in_(card_types)))
+        if include_second_yellow:
+            query = query.add_columns(Total.endpoint).where(
+                or_(Total.type != second_yellow, Total.endpoint == DisciplineEndpoint.COMMENTS.value)
+            )
         with self.database.get_session() as session:
-            rows = session.execute(select(mappings.c.event_id, Total.side, Total.type, Total.count)
-                .join(Total, Total.event_source_mapping_id == mappings.c.mapping_id)
-                .where(Total.type.in_((IncidentType.YELLOW_CARD.value, IncidentType.RED_CARD.value)))).all()
-        return {(event_id, side, kind): count for event_id, side, kind, count in rows}
+            rows = session.execute(query).all()
+        totals = {(event_id, side, kind): count for event_id, side, kind, count, *_ in rows}
+        if include_second_yellow:
+            for event_id, side, kind, count, endpoint in rows:
+                # Legacy comments may predate yellowRedCard support. Only an
+                # explicit zero from match statistics can fill a missing split.
+                if (kind == red and count == 0 and endpoint == DisciplineEndpoint.STATISTICS.value
+                        and (event_id, side, yellow) in totals):
+                    totals.setdefault((event_id, side, second_yellow), 0)
+        return totals
 
     def get_team_season_totals(self, source, participant_id, competition_id, season_id):
         if any(value is None for value in (source, participant_id, competition_id, season_id)):
