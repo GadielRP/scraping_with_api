@@ -353,6 +353,23 @@ def _determine_points_cutoff(
     return _extract_points(standing)
 
 
+def _eligible_cutoff_standing(rule, team_rank, standings, resolution):
+    reference = rule.reference_rank
+    if reference is None:
+        return None
+    eligible = [
+        row for _, row in _standings_items(standings)
+        if _extract_rank(row) is not None and resolution.can_contest(row)
+    ]
+    if team_rank == reference:
+        return min(
+            (row for row in eligible if _extract_rank(row) > reference),
+            key=_extract_rank,
+            default=None,
+        )
+    return _find_standing_by_rank(eligible, reference)
+
+
 def _calculate_gap(objective_type, team_points, points_cutoff, max_points_remaining):
     if objective_type == NO_APPLICABLE_OBJECTIVE:
         return max_points_remaining
@@ -406,15 +423,15 @@ def _build_team_metrics(
     regime_state = _determine_regime_state(rule) if not rule_reason else None
     base_severity = BASE_SEVERITY.get(objective_type, 0.0)
     regime_multiplier = REGIME_MULTIPLIER.get(regime_state, 0.0)
-    points_cutoff = (_determine_points_cutoff(rule, rank, points, scoped_standings)
-                     if not rule_reason else None)
     cutoff_reference = None
-    cup_protected = False
-    if qualification_resolution:
-        cutoff_reference = qualification_resolution.cutoff(rule, rank, scoped_standings)
-        if cutoff_reference is not None:
-            points_cutoff = _extract_points(cutoff_reference)
-        cup_protected = qualification_resolution.protects(standing, rule)
+    if rule_reason:
+        points_cutoff = None
+    elif qualification_resolution and qualification_resolution.affects_cutoff(rule):
+        cutoff_reference = _eligible_cutoff_standing(rule, rank, scoped_standings, qualification_resolution)
+        points_cutoff = _extract_points(cutoff_reference)
+    else:
+        points_cutoff = _determine_points_cutoff(rule, rank, points, scoped_standings)
+    cup_protected = qualification_resolution is not None and qualification_resolution.protects(standing, rule)
     gap = _calculate_gap(objective_type, points, points_cutoff, max_points_remaining)
     urgency_factor, gap_for_urgency, urgency_raw = (
         _calculate_urgency_factor(gap, max_points_remaining) if not rule_reason else (0.0, 0.0, 0.0)

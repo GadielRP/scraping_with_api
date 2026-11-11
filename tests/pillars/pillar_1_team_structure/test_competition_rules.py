@@ -197,6 +197,17 @@ def test_catalogue_uses_registered_names_and_marks_missing_general_records_pendi
                 assert rule.destination_competition_identity is None and rule.destination_phase is None
 
 
+def test_cup_qualification_profiles_use_registered_competition_names():
+    policies = [
+        policy
+        for profile in COMPETITION_PROFILES.values()
+        for policy in profile.cup_qualifications
+    ]
+    assert policies
+    for policy in policies:
+        assert policy.competition_name == competition_ids.COMPETITION_NAMES[policy.competition_identity]
+
+
 def test_qualification_routes_reference_qualification_records():
     laliga = get_competition_profile(competition_ids.LALIGA)
     assert laliga.objectives[2].destination_competition_identity == competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION

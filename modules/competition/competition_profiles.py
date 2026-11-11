@@ -12,7 +12,7 @@ from typing import Mapping
 from modules.competition import competition_ids, standings_policies
 from .competition_identity import CompetitionIdentity
 from modules.competition.competitive_rules import (
-    CompetitionRules, DisciplineRules, ObjectiveRule, FOOTBALL_SCORING, WINS_SCORING,
+    CompetitionRules, CupQualificationRule, DisciplineRules, ObjectiveRule, FOOTBALL_SCORING, WINS_SCORING,
     NFL_SCORING, NHL_SCORING, HOCKEY_SCORING,
 )
 from modules.competition.rule_terms import (
@@ -27,10 +27,6 @@ from modules.competition.rule_terms import (
     RuleStatus,
     SelectionMethod,
 )
-
-# Domestic dependencies are provider identities, never local DB/season IDs.
-QUALIFICATION_DEPENDENCIES = MappingProxyType({competition_ids.LALIGA: competition_ids.COPA_DEL_REY})
-
 
 def create_phase_qualification_rule(
     start: int | None = None,
@@ -171,6 +167,23 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.LALIGA,
+        cup_qualifications=(
+            CupQualificationRule(
+                competition_identity=competition_ids.COPA_DEL_REY,
+                competition_name=competition_ids.COMPETITION_NAMES[competition_ids.COPA_DEL_REY],
+                final_round="final",
+                destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
+                destination_competition_name='UEFA Europa League',
+                reallocate_to_league=True,
+                destination_season_offset=1,
+                sources=(
+                    "https://rfef.es/sites/default/files/2026-06/1._CNL_Primera_y_Segunda_Division.pdf#page=5",
+                    "https://rfef.es/sites/default/files/2026-07/5._Torneos_Federacion.pdf#page=12",
+                    "https://rankinguefa.pl/wp-content/uploads/2026/09/20260909_Circular_2026_54_en_enclosure_2_2027-28-access-list.pdf",
+                    "https://documents.uefa.com/r/Regulations-of-the-UEFA-Europa-League-2026/27/Article-3-Entries-for-the-competition-Online",
+                ),
+            ),
+        ),
     ),
 
     # premier_league (1-4 Champions League, 5 Europa League; Conference otorgada a campeón de EFL Cup; 18-20 Descenso directo)
@@ -243,6 +256,20 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.SERIE_A,
+        cup_qualifications=(
+            CupQualificationRule(
+                competition_identity=competition_ids.COPPA_ITALIA,
+                competition_name=competition_ids.COMPETITION_NAMES[competition_ids.COPPA_ITALIA],
+                final_round="final",
+                destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
+                destination_competition_name='UEFA Europa League',
+                reallocate_to_league=True,
+                destination_season_offset=1,
+                sources=(
+                    "https://documents.uefa.com/r/Regulations-of-the-UEFA-Europa-League-2026/27/Article-3-Entries-for-the-competition-Online",
+                ),
+            ),
+        ),
         note="Exceptional tied-position deciders are not a fixed playoff zone.",
     ),
 
@@ -288,6 +315,21 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.BUNDESLIGA,
+        cup_qualifications=(
+            CupQualificationRule(
+                competition_identity=competition_ids.DFB_POKAL,
+                competition_name=competition_ids.COMPETITION_NAMES[competition_ids.DFB_POKAL],
+                final_round="final",
+                destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
+                destination_competition_name='UEFA Europa League',
+                reallocate_to_league=True,
+                destination_season_offset=1,
+                sources=(
+                    "https://www.bundesliga.com/en/bundesliga/news/germany-nine-teams-qualify-for-europe-2026-27-bayern-munich-freiburg-36936",
+                    "https://documents.uefa.com/r/Regulations-of-the-UEFA-Europa-League-2026/27/Article-3-Entries-for-the-competition-Online",
+                ),
+            ),
+        ),
     ),
 
     # ligue_1 (1-3 Champions directa, 4-5 Europa League, 6 Conference League; 16 Playoff, 17-18 Descenso directo)
@@ -340,6 +382,21 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.LIGUE_1,
+        cup_qualifications=(
+            CupQualificationRule(
+                competition_identity=competition_ids.COUPE_DE_FRANCE,
+                competition_name=competition_ids.COMPETITION_NAMES[competition_ids.COUPE_DE_FRANCE],
+                final_round="final",
+                destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
+                destination_competition_name='UEFA Europa League',
+                reallocate_to_league=True,
+                destination_season_offset=1,
+                sources=(
+                    "https://media.fff.fr/uploads/documents/comex-20260217-annexe-5.-nombre-de-clubs-qualifies-par-ligue-au-terme-du-6e-tour-de-la-cdf-credit-agricole-26-27.pdf",
+                    "https://documents.uefa.com/r/Regulations-of-the-UEFA-Europa-League-2026/27/Article-3-Entries-for-the-competition-Online",
+                ),
+            ),
+        ),
     ),
 
     # liga portugal (1-2 Champions League, 3 Europa League, 4-5 Conference League; 16 Playoff, 17-18 Descenso directo)

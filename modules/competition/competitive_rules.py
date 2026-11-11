@@ -200,11 +200,31 @@ class DisciplineRules:
 
 
 @dataclass(frozen=True, slots=True)
+class CupQualificationRule:
+    """An extra berth alongside a league objective for the same destination.
+
+    The objectives are applied in order of their starting rank. If the winner
+    already has a higher-ranked berth, the profile can reallocate the cup berth
+    to the league. The optional season offset only labels the destination.
+    """
+
+    competition_identity: CompetitionIdentity
+    competition_name: str
+    final_round: str
+    destination_competition_identity: CompetitionIdentity
+    reallocate_to_league: bool
+    destination_competition_name: str | None = None
+    destination_season_offset: int | None = None
+    sources: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class CompetitionRules:
     """The single sporting configuration for a canonical competition.
 
     Missing size/duration/objectives mean those facts have not been configured.
-    Reference season is descriptive, never a lookup key.
+    Reference season is descriptive, never a lookup key. Cup qualification is
+    configured alongside the league objectives that it can change.
     """
 
     # Reference season under which these sporting rules, boundaries, and sizes were documented.
@@ -219,9 +239,12 @@ class CompetitionRules:
     grouping_method: GroupingMethod = GroupingMethod.LEAGUE_WIDE
     note: str = ""
     discipline: DisciplineRules | None = None
+    # Ordered for deterministic handling when configured cup winners overlap.
+    cup_qualifications: tuple[CupQualificationRule, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "grouping_method", GroupingMethod(self.grouping_method))
+        object.__setattr__(self, "cup_qualifications", tuple(self.cup_qualifications))
         if self.number_of_teams is not None and self.number_of_teams <= 1:
             raise ValueError("competition size must exceed one")
         if self.total_regular_season_games is not None and self.total_regular_season_games <= 0:

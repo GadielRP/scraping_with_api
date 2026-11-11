@@ -1,4 +1,4 @@
-"""LaLiga 2026/27 -> Europe 2027/28, with identity and knowledge-time evidence."""
+"""Cup allocation with configurable berths, identities and time of evidence."""
 
 from copy import deepcopy
 from dataclasses import asdict, replace
@@ -14,10 +14,10 @@ from infrastructure.persistence.models import (
 )
 from infrastructure.persistence.repositories.cup_final_repository import read_cup_final
 from modules.competition import competition_ids as ids
+from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.competition_profiles import COMPETITION_PROFILES
-from modules.competition.qualification_resolution import (
-    CupFinalEvidence, ParticipantIdentity, decisive_winner, resolve_laliga_qualification,
-)
+from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity, decisive_winner
+from modules.competition.qualification_resolution import resolve_qualification
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure.module_5.contextual_competitive_cost_engine import (
     calculate_contextual_competitive_cost_engine,
@@ -54,12 +54,14 @@ def cup(winner_rank=7):
 def test_current_table_allocations_and_immutable_catalogue(winner, el, conference):
     standings = table()
     before, catalogue = deepcopy(standings), dict(COMPETITION_PROFILES)
-    resolution = resolve_laliga_qualification(BASE, standings, cup(winner), 2026, NOW)
-    assert resolution.status == "PROVISIONAL"
+    resolution = resolve_qualification(BASE, standings, cup(winner), 2026, NOW)
+    assert resolution.status == "AS_OF_TABLE"
     assert resolution.destination_season == "2027/28"
     assert [rank for rank, destination in resolution.league_assignments if destination == ids.UEFA_EUROPA_LEAGUE] == el
     assert (conference, ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION) in resolution.league_assignments
-    assert resolution.champion_destination == (ids.UEFA_CHAMPIONS_LEAGUE if winner <= 4 else ids.UEFA_EUROPA_LEAGUE)
+    assert resolution.cup_allocations[0].champion_destination == (
+        ids.UEFA_CHAMPIONS_LEAGUE if winner <= 4 else ids.UEFA_EUROPA_LEAGUE
+    )
     assert identity(winner) not in resolution.eligible_participants
     assert standings == before and dict(COMPETITION_PROFILES) == catalogue
     assert COMPETITION_PROFILES[ids.LALIGA] is BASE
@@ -70,7 +72,40 @@ def test_final_only_when_every_team_completed_its_season():
     standings = table()
     for row in standings.values():
         row["games_played"] = 38
-    assert resolve_laliga_qualification(BASE, standings, cup(), 2026, NOW).status == "FINAL"
+    assert resolve_qualification(BASE, standings, cup(), 2026, NOW).status == "FINAL"
+
+
+@pytest.mark.parametrize("winner, reallocate, expected_ranks, lower_ranks", [
+    (4, True, [6, 7, 8], [9, 10]),
+    (4, False, [6, 7], [8, 9]),
+    (7, True, [6, 8], [9, 10]),
+])
+def test_resolver_uses_the_profile_for_destinations_and_slot_counts(winner, reallocate, expected_ranks, lower_ranks):
+    higher, destination, lower, cup_id = (CompetitionIdentity(i, source="test") for i in range(1, 5))
+    template = BASE.objectives[0]
+    objectives = tuple(
+        replace(template, destination_competition_identity=identity, destination_competition_name=None,
+                rank_start=start, rank_end=end, reference_rank=end)
+        for identity, start, end in ((higher, 1, 5), (destination, 6, 7), (lower, 8, 9))
+    )
+    profile = replace(
+        BASE,
+        reference_season="2030/31",
+        objectives=objectives,
+        cup_qualifications=(replace(BASE.cup_qualifications[0], competition_identity=cup_id,
+                                    destination_competition_identity=destination,
+                                    reallocate_to_league=reallocate),),
+    )
+    evidence = replace(cup(winner), competition=cup_id, season_year=2025)
+    standings = {name: row for name, row in table().items() if row["rank"] <= 12}
+    result = resolve_qualification(profile, standings, evidence, 2025, NOW)
+
+    assert result.status == "AS_OF_TABLE"
+    assert result.cup_allocations[0].champion_destination == (higher if winner == 4 else destination)
+    effective = result.effective_rules.objectives
+    assert [rank for rule in effective if rule.destination_competition_identity == destination
+            for rank in range(rule.rank_start, rule.rank_end + 1)] == expected_ranks
+    assert [rank for rank, identity in result.league_assignments if identity == lower] == lower_ranks
 
 
 @pytest.mark.parametrize("score,side,decision", [
@@ -103,7 +138,7 @@ def test_unfinished_or_contradictory_score_never_names_a_champion(score):
     ({"status": "final_ambiguous", "winner": None}, "final_ambiguous"),
 ])
 def test_pending_dependency_keeps_base(change, reason):
-    resolution = resolve_laliga_qualification(BASE, table(), replace(cup(), **change), 2026, NOW)
+    resolution = resolve_qualification(BASE, table(), replace(cup(), **change), 2026, NOW)
     assert resolution.status == "PENDING" and resolution.reason == reason
     assert resolution.effective_rules is BASE
 
@@ -111,14 +146,14 @@ def test_pending_dependency_keeps_base(change, reason):
 def test_missing_identity_does_not_match_by_display_name():
     standings = table()
     standings["Club 7"].pop("participant_identity")
-    resolution = resolve_laliga_qualification(BASE, standings, cup(), 2026, NOW)
+    resolution = resolve_qualification(BASE, standings, cup(), 2026, NOW)
     assert resolution.reason == "incomplete_participant_table"
     assert resolution.effective_rules is BASE
 
 
 def m5(winner, home_rank, away_rank=10):
     standings = table()
-    resolution = resolve_laliga_qualification(BASE, standings, cup(winner), 2026, NOW)
+    resolution = resolve_qualification(BASE, standings, cup(winner), 2026, NOW)
     event = _configured_event("laliga")
     event = replace(event, season_year=2026, starts_at=NOW + timedelta(hours=1),
                     home=replace(event.home, name=f"Club {home_rank}"),
@@ -135,7 +170,7 @@ def test_m5_cut_skips_already_qualified_cup_winner(winner, rank, reference):
     assert result.raw["m5_status"] == "ACTIVE"
     assert result.raw["home"]["cutoff_reference"] == standings[f"Club {reference}"]
     assert result.raw["home"]["points_cutoff"] == standings[f"Club {reference}"]["points"]
-    assert result.raw["qualification_resolution"]["cup"]["event_id"] == 100
+    assert result.raw["qualification_resolution"]["cups"][0]["event_id"] == 100
 
 
 @pytest.mark.parametrize("winner", [5, 6, 7, 12])
@@ -160,7 +195,7 @@ def test_capture_is_stable_and_contains_evidence_without_requerying():
                                                         event.to_identity(), event.competition)
     assert to_json_value(result) == to_json_value(again)
     assert captured == to_json_value({"competition_context": event.competition, "streak_analysis": standings})
-    evidence = captured["competition_context"]["qualification_resolution"]["cup"]
+    evidence = captured["competition_context"]["qualification_resolution"]["cups"][0]
     assert evidence["observation_id"] == "known-final"
     assert evidence["result"]["home_score"] == 1
     assert evidence["observed_at"] < NOW.isoformat()
@@ -194,20 +229,32 @@ def session():
 
 
 def test_83369_penalties_and_wrong_edition_are_read_only(session):
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.winner == identity(2) and evidence.decision == "penalties"
     assert evidence.observed_at == NOW and evidence.evidence_source == "legacy_result_read"
     assert evidence.event_id == 83369 and evidence.season_id == 82988
-    resolution = resolve_laliga_qualification(BASE, table(), evidence, 2026, NOW)
+    resolution = resolve_qualification(BASE, table(), evidence, 2026, NOW)
     assert resolution.reason == "wrong_cup_edition" and resolution.effective_rules is BASE
-    assert read_cup_final(session, ids.COPA_DEL_REY, 2026, NOW, read_at=NOW).status == "final_absent"
+    assert read_cup_final(session, ids.COPA_DEL_REY, 2026, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW).status == "final_absent"
     assert session.get(Result, 83369).winner == "X"
     assert session.scalars(select(EventOutcomeObservation)).all() == []
 
 
 def test_legacy_result_cannot_be_known_before_its_read(session):
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW - timedelta(days=1), read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW - timedelta(days=1), final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.status == "legacy_result_not_known_at_cutoff" and evidence.winner is None
+
+
+def test_repository_accepts_the_configured_round_and_a_tournament_family(session):
+    event = session.get(Event, 83369)
+    event.round = "title_match"
+    session.flush()
+    family = replace(ids.COPA_DEL_REY, source_tournament_id=None)
+
+    evidence = read_cup_final(session, family, 2025, NOW, final_round="title_match", read_at=NOW)
+
+    assert evidence.event_id == event.id
+    assert evidence.winner == identity(2)
 
 
 def observation(session, name, when, payload):
@@ -223,14 +270,14 @@ def test_use_known_observation_even_if_result_and_later_observations_differ(sess
     observation(session, "future", NOW + timedelta(seconds=1), {"home_score": 3, "away_score": 0, "winner": "1"})
     session.get(Result, 83369).winner = "1"
     session.flush()
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.observation_id == "old" and evidence.winner == identity(2)
     assert evidence.result == original
 
 
 def test_future_observation_never_falls_back_to_current_result(session):
     observation(session, "future", NOW + timedelta(seconds=1), {"home_score": 3, "away_score": 0, "winner": "1"})
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.status == "no_observation_before_cutoff" and evidence.winner is None
 
 
@@ -238,7 +285,7 @@ def test_provider_observation_uses_terminal_score_and_penalties(session):
     observation(session, "raw", FINAL, {"status": {"type": "finished", "code": 120}, "winnerCode": 2,
                 "homeScore": {"current": 5, "display": 2, "penalties": 3},
                 "awayScore": {"current": 6, "display": 2, "penalties": 4}})
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.status == "DECIDED" and evidence.winner == identity(2)
 
 
@@ -256,7 +303,7 @@ def test_unusable_finals_remain_pending(session, kind, expected):
     else:
         session.get(Result, 83369).winner = "1"
     session.flush()
-    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, read_at=NOW)
+    evidence = read_cup_final(session, ids.COPA_DEL_REY, 2025, NOW, final_round=BASE.cup_qualifications[0].final_round, read_at=NOW)
     assert evidence.status == expected and evidence.winner is None
 
 
@@ -280,7 +327,7 @@ def test_other_competitions_do_not_read_cup_evidence(monkeypatch):
     def unexpected(*args, **kwargs):
         pytest.fail("Unrelated competitions cannot acquire this dependency")
     monkeypatch.setattr(preparation, "read_cup_final", unexpected)
-    event = _configured_event("serie_a")
+    event = _configured_event("premier_league")
     before = event.competition.competitive_rules
     resolved = preparation.prepare_qualification_resolution(event.to_identity(), event.competition, None)
     assert resolved.qualification_resolution is None and resolved.competitive_rules is before
@@ -330,9 +377,12 @@ def test_pipeline_captures_resolution_after_standings_and_before_calculation(ses
         output = processor.process_event(event)
         stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
         captured = stored["inputs"]["p1"]["competition_context"]["qualification_resolution"]
-        assert captured["status"] == "PROVISIONAL" and captured["cup"]["season_id"] == 104108
-        assert captured["cup"]["evidence_source"] == "legacy_result_read"
-        assert captured["cup"]["observed_at"] <= stored["evaluation_as_of"]
+        captured_cup = captured["cups"][0]
+        captured_allocation = captured["cup_allocations"][0]
+        assert captured["status"] == "AS_OF_TABLE" and captured_cup["season_id"] == 104108
+        assert captured_allocation["configured_competition_name"] == "Copa del Rey"
+        assert captured_cup["evidence_source"] == "legacy_result_read"
+        assert captured_cup["observed_at"] <= stored["evaluation_as_of"]
         assert captured["effective_rules"]["objectives"][1]["rank_end"] == 6
         assert stored["inputs"]["p1_preparation_error"] is None
         # The stored material inputs remain stable if the operational result changes.
