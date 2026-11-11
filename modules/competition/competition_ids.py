@@ -92,7 +92,7 @@ DFB_POKAL: Final[CompetitionIdentity] = CompetitionIdentity(217, 43, "sofascore"
 COPA_DO_BRASIL: Final[CompetitionIdentity] = CompetitionIdentity(373, 283, "sofascore")  # competition_id=293; Fútbol; no las copas homónimas de otros deportes.
 COPA_ARGENTINA: Final[CompetitionIdentity] = CompetitionIdentity(1024, 273, "sofascore")  # competition_id=2401; Fútbol; no las copas homónimas de otros deportes.
 COUPE_DE_FRANCE: Final[CompetitionIdentity] = CompetitionIdentity(335, 77, "sofascore")  # competition_id=236; Fútbol masculino
-TAÇA_DE_PORTUGAL: Final[CompetitionIdentity] = CompetitionIdentity(336, 207, "sofascore")  # competition_id=374; Fútbol masculino
+TACA_DE_PORTUGAL: Final[CompetitionIdentity] = CompetitionIdentity(336, 207, "sofascore")  # competition_id=374; Fútbol masculino
 KNVB_BEKER: Final[CompetitionIdentity] = CompetitionIdentity(330, 121, "sofascore")  # competition_id=390
 US_OPEN_CUP: Final[CompetitionIdentity] = CompetitionIdentity(495, 6814, "sofascore")  # competition_id=3661; Fútbol; no la homónima de tenis.
 SAUDI_KINGS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(2058, 42021, "sofascore")  # competition_id=681; FUTBOL MASCULINO
@@ -169,6 +169,7 @@ COMPETITION_NAMES: Final[Mapping[CompetitionIdentity, str]] = MappingProxyType({
     COPA_DO_BRASIL: "Copa do Brasil",
     COPA_ARGENTINA: "Copa Argentina",
     COUPE_DE_FRANCE: "Coupe de France",
-    TAÇA_DE_PORTUGAL: "Taça de Portugal",
+    TACA_DE_PORTUGAL: "Taça de Portugal",
     KNVB_BEKER: "KNVB Beker",
+    SAUDI_KINGS_CUP: "King's Cup",
 })

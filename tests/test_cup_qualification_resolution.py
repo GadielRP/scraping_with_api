@@ -18,6 +18,8 @@ from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.competition_profiles import COMPETITION_PROFILES
 from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity, decisive_winner
 from modules.competition.qualification_resolution import resolve_qualification
+from modules.competition.qualification_reallocation import CupReallocationPolicy
+from modules.competition.rule_terms import DestinationPhase, QualificationPath
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure.module_5.contextual_competitive_cost_engine import (
     calculate_contextual_competitive_cost_engine,
@@ -75,6 +77,125 @@ def test_final_only_when_every_team_completed_its_season():
     assert resolve_qualification(BASE, standings, cup(), 2026, NOW).status == "FINAL"
 
 
+def test_cup_allocation_preserves_its_explicit_qualification_phase_and_path():
+    policy = BASE.cup_qualifications[0]
+    cup_destination = replace(
+        policy.qualification_destination,
+        destination_phase=DestinationPhase.QUALIFICATION_ROUND,
+        qualification_path=QualificationPath.DIRECT,
+    )
+    profile = replace(BASE, cup_qualifications=(replace(
+        policy, qualification_destination=cup_destination,
+    ),))
+
+    result = resolve_qualification(profile, table(), cup(), 2026, NOW)
+
+    assert result.cup_allocations[0].qualification_destination == cup_destination
+    assert result.cup_allocations[0].qualification_destination.destination_phase is DestinationPhase.QUALIFICATION_ROUND
+    assert result.cup_allocations[0].qualification_destination.qualification_path is QualificationPath.DIRECT
+
+
+@pytest.mark.parametrize("winner_rank,recipient_rank,expected_europa_qualifying_rank", [
+    (2, 3, 4),
+    (3, 3, 4),
+    (6, 6, 3),
+])
+def test_eredivisie_cup_policy_keeps_the_cup_destination_and_reassigns_table_places(
+    winner_rank, recipient_rank, expected_europa_qualifying_rank,
+):
+    profile = COMPETITION_PROFILES[ids.EREDIVISIE]
+    evidence = replace(cup(winner_rank), competition=ids.KNVB_BEKER)
+
+    result = resolve_qualification(profile, table(), evidence, 2026, NOW)
+
+    allocation = result.cup_allocations[0]
+    assert result.status == "AS_OF_TABLE"
+    assert allocation.qualification_destination.destination_competition_identity == ids.UEFA_EUROPA_LEAGUE
+    assert allocation.qualification_destination.destination_phase is DestinationPhase.LEAGUE_PHASE
+    assert allocation.qualification_destination.qualification_path is QualificationPath.DIRECT
+    assert allocation.berth_recipient == identity(recipient_rank)
+    assert allocation.berth_recipient_rank == recipient_rank
+    assert (expected_europa_qualifying_rank, ids.UEFA_EUROPA_LEAGUE_QUALIFICATION) in result.league_assignments
+    conference_ranks = [rank for rank, destination in result.league_assignments
+                        if destination == ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION]
+    if winner_rank in (2, 3):
+        assert conference_ranks == [5, 6, 7, 8]
+    elif winner_rank == 6:
+        assert conference_ranks == [4, 5, 7, 8]
+
+
+def test_cup_destination_without_a_matching_league_objective_is_still_resolved():
+    base_profile = COMPETITION_PROFILES[ids.PREMIER_LEAGUE]
+    efl_rule = next(rule for rule in base_profile.cup_qualifications
+                    if rule.competition_identity == ids.EFL_CUP)
+    profile = replace(base_profile, cup_qualifications=(efl_rule,))
+    evidence = replace(cup(1), competition=ids.EFL_CUP)
+
+    result = resolve_qualification(profile, table(), evidence, 2026, NOW)
+
+    allocation = result.cup_allocations[0]
+    assert result.status == "AS_OF_TABLE"
+    assert allocation.qualification_destination.destination_competition_identity == ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
+    assert allocation.qualification_destination.destination_phase is DestinationPhase.QUALIFICATION_ROUND
+    assert allocation.berth_recipient == identity(6)
+    assert allocation.berth_recipient_rank == 6
+
+
+@pytest.mark.parametrize("winner,recipient,europa_qualifying,conference", [
+    (2, 4, 5, 6),
+    (4, 4, 5, 6),
+    (5, 5, 4, 6),
+    (7, 7, 4, 5),
+])
+def test_portugal_cup_updates_the_qualifying_round_berths(winner, recipient, europa_qualifying, conference):
+    profile = COMPETITION_PROFILES[ids.LIGA_PORTUGAL]
+    evidence = replace(cup(winner), competition=ids.TACA_DE_PORTUGAL)
+
+    result = resolve_qualification(profile, table(), evidence, 2026, NOW)
+
+    allocation, = result.cup_allocations
+    assert allocation.berth_recipient_rank == recipient
+    assert (europa_qualifying, ids.UEFA_EUROPA_LEAGUE_QUALIFICATION) in result.league_assignments
+    assert (conference, ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION) in result.league_assignments
+
+
+@pytest.mark.parametrize("winner,recipient", [(4, 6), (8, 8)])
+def test_saudi_king_cup_cedes_its_berth_only_when_the_winner_has_an_elite_berth(winner, recipient):
+    profile = COMPETITION_PROFILES[ids.SAUDI_PRO_LEAGUE]
+    evidence = replace(cup(winner), competition=ids.SAUDI_KINGS_CUP)
+
+    result = resolve_qualification(profile, table(), evidence, 2026, NOW)
+
+    allocation, = result.cup_allocations
+    assert allocation.berth_recipient_rank == recipient
+    assert (recipient, ids.AFC_CHAMPIONS_LEAGUE_TWO) in result.league_assignments
+
+
+def test_premier_league_applies_each_available_final_and_recomputes_the_shared_berths():
+    profile = COMPETITION_PROFILES[ids.PREMIER_LEAGUE]
+    standings = table()
+    for row in standings.values():
+        row["games_played"] = 38
+    fa = replace(cup(1), competition=ids.FA_CUP)
+    efl = replace(cup(2), competition=ids.EFL_CUP,
+                  starts_at=FINAL - timedelta(days=30), observed_at=FINAL - timedelta(days=29))
+
+    efl_only = resolve_qualification(profile, standings, (fa, efl), 2026, NOW,
+                                     target_event_starts_at=FINAL)
+    fa_only = resolve_qualification(profile, standings, (fa,), 2026, NOW)
+    both = resolve_qualification(profile, standings, (efl, fa), 2026, NOW)
+
+    assert efl_only.status == fa_only.status == "AS_OF_TABLE"
+    assert efl_only.pending_cup_reasons == ((ids.FA_CUP, "cup_final_after_target_event"),)
+    assert fa_only.pending_cup_reasons == ((ids.EFL_CUP, "final_absent"),)
+    assert (6, ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION) in efl_only.league_assignments
+    assert (6, ids.UEFA_EUROPA_LEAGUE) in fa_only.league_assignments
+    assert both.status == "FINAL"
+    assert both.pending_cup_reasons == ()
+    assert (6, ids.UEFA_EUROPA_LEAGUE) in both.league_assignments
+    assert (7, ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION) in both.league_assignments
+
+
 @pytest.mark.parametrize("winner, reallocate, expected_ranks, lower_ranks", [
     (4, True, [6, 7, 8], [9, 10]),
     (4, False, [6, 7], [8, 9]),
@@ -84,17 +205,34 @@ def test_resolver_uses_the_profile_for_destinations_and_slot_counts(winner, real
     higher, destination, lower, cup_id = (CompetitionIdentity(i, source="test") for i in range(1, 5))
     template = BASE.objectives[0]
     objectives = tuple(
-        replace(template, destination_competition_identity=identity, destination_competition_name=None,
-                rank_start=start, rank_end=end, reference_rank=end)
+        replace(
+            template,
+            qualification_destination=replace(
+                template.qualification_destination,
+                destination_competition_identity=identity,
+                destination_competition_name=f"Test destination {identity.source_tournament_id}",
+            ),
+            rank_selection=replace(
+                template.rank_selection, rank_start=start, rank_end=end, reference_rank=end,
+            ),
+        )
         for identity, start, end in ((higher, 1, 5), (destination, 6, 7), (lower, 8, 9))
     )
     profile = replace(
         BASE,
         reference_season="2030/31",
         objectives=objectives,
-        cup_qualifications=(replace(BASE.cup_qualifications[0], competition_identity=cup_id,
-                                    destination_competition_identity=destination,
-                                    reallocate_to_league=reallocate),),
+        cup_qualifications=(replace(
+            BASE.cup_qualifications[0],
+            competition_identity=cup_id,
+            qualification_destination=replace(
+                BASE.cup_qualifications[0].qualification_destination,
+                destination_competition_identity=destination,
+            ),
+            reallocation_policy=CupReallocationPolicy(
+                reallocate_if_champion_already_qualified=reallocate,
+            ),
+        ),),
     )
     evidence = replace(cup(winner), competition=cup_id, season_year=2025)
     standings = {name: row for name, row in table().items() if row["rank"] <= 12}
@@ -103,8 +241,8 @@ def test_resolver_uses_the_profile_for_destinations_and_slot_counts(winner, real
     assert result.status == "AS_OF_TABLE"
     assert result.cup_allocations[0].champion_destination == (higher if winner == 4 else destination)
     effective = result.effective_rules.objectives
-    assert [rank for rule in effective if rule.destination_competition_identity == destination
-            for rank in range(rule.rank_start, rule.rank_end + 1)] == expected_ranks
+    assert [rank for rule in effective if rule.qualification_destination.destination_competition_identity == destination
+            for rank in range(rule.rank_selection.rank_start, rule.rank_selection.rank_end + 1)] == expected_ranks
     assert [rank for rank, identity in result.league_assignments if identity == lower] == lower_ranks
 
 
@@ -322,12 +460,13 @@ def test_participant_identity_survives_standings_calculation():
     assert _serialize_match_records([record])[0]["home_participant_identity"] == asdict(identity(1))
 
 
-def test_other_competitions_do_not_read_cup_evidence(monkeypatch):
+@pytest.mark.parametrize("competition", ["shl", "brasileirao"])
+def test_profiles_without_an_executable_cup_rule_do_not_read_cup_evidence(monkeypatch, competition):
     from modules.pillars.pillar_1_team_structure import qualification_preparation as preparation
     def unexpected(*args, **kwargs):
-        pytest.fail("Unrelated competitions cannot acquire this dependency")
+        pytest.fail("Only configured cup rules can read final evidence")
     monkeypatch.setattr(preparation, "read_cup_final", unexpected)
-    event = _configured_event("premier_league")
+    event = _configured_event(competition)
     before = event.competition.competitive_rules
     resolved = preparation.prepare_qualification_resolution(event.to_identity(), event.competition, None)
     assert resolved.qualification_resolution is None and resolved.competitive_rules is before
@@ -383,7 +522,9 @@ def test_pipeline_captures_resolution_after_standings_and_before_calculation(ses
         assert captured_allocation["configured_competition_name"] == "Copa del Rey"
         assert captured_cup["evidence_source"] == "legacy_result_read"
         assert captured_cup["observed_at"] <= stored["evaluation_as_of"]
-        assert captured["effective_rules"]["objectives"][1]["rank_end"] == 6
+        assert captured["effective_rules"]["objectives"][1]["rank_selection"]["rank_end"] == 6
+        assert captured_allocation["qualification_destination"]["destination_phase"] == "LEAGUE_PHASE"
+        assert captured_allocation["qualification_destination"]["qualification_path"] == "DIRECT"
         assert stored["inputs"]["p1_preparation_error"] is None
         # The stored material inputs remain stable if the operational result changes.
         before = deepcopy(stored)

@@ -9,6 +9,7 @@ from shared.temporal import as_utc
 
 from .competition_identity import CompetitionIdentity
 from .competitive_rules import CompetitionRules, ObjectiveRule
+from .qualification_destination import QualificationDestination
 from .final_outcome import CupFinalEvidence, ParticipantIdentity
 from .rule_terms import AggregationScope, ObjectiveType, RankingScope, RuleStatus, SelectionMethod
 
@@ -29,9 +30,11 @@ class CupQualificationAllocation:
     evidence: CupFinalEvidence
     champion_rank: int | None
     champion_destination: CompetitionIdentity
+    qualification_destination: QualificationDestination
     berth_awarded: bool
+    berth_recipient: ParticipantIdentity | None = None
+    berth_recipient_rank: int | None = None
     configured_competition_name: str | None = None
-    configured_destination_competition_name: str | None = None
     policy_sources: tuple[str, ...] = ()
 
 
@@ -50,6 +53,7 @@ class QualificationResolution:
     cup_berth_awarded: bool = False
     affected_objectives: tuple[ObjectiveRule, ...] = ()
     cup_allocations: tuple[CupQualificationAllocation, ...] = ()
+    pending_cup_reasons: tuple[tuple[CompetitionIdentity, str], ...] = ()
 
     @property
     def applied(self) -> bool:
@@ -81,10 +85,10 @@ def _ranked_league_objectives(profile: CompetitionRules) -> list[ObjectiveRule]:
         (rule for rule in profile.objectives or ()
          if rule.objective_type == ObjectiveType.COMPETITION_QUALIFICATION
          and rule.status == RuleStatus.CONFIGURED
-         and rule.selection_method == SelectionMethod.RANK_RANGE
-         and rule.ranking_scope == RankingScope.GLOBAL
-         and rule.aggregation_scope == AggregationScope.TOURNAMENT),
-        key=lambda rule: rule.rank_start,
+         and rule.rank_selection.selection_method == SelectionMethod.RANK_RANGE
+         and rule.rank_selection.ranking_scope == RankingScope.GLOBAL
+         and rule.rank_selection.aggregation_scope == AggregationScope.TOURNAMENT),
+        key=lambda rule: rule.rank_selection.rank_start,
     )
 
 
@@ -118,7 +122,9 @@ def _effective_ranges(rule: ObjectiveRule, ranks: list[int]) -> tuple[ObjectiveR
         previous = rank
     ranges.append((start, previous))
     return tuple(
-        replace(rule, rank_start=start, rank_end=end, reference_rank=ranks[-1])
+        replace(rule, rank_selection=replace(
+            rule.rank_selection, rank_start=start, rank_end=end, reference_rank=ranks[-1]
+        ))
         for start, end in ranges
     )
 
@@ -127,6 +133,20 @@ def _normalize_evidence(cups: CupFinalEvidence | Sequence[CupFinalEvidence]) -> 
     if isinstance(cups, CupFinalEvidence):
         return (cups,)
     return tuple(cups)
+
+
+def _cup_pending_reason(cup, season_year, as_of, target_event_starts_at):
+    if cup.season_year != season_year:
+        return "wrong_cup_edition"
+    if cup.status != "DECIDED":
+        return cup.status
+    if cup.winner is None or cup.starts_at is None or cup.observed_at is None:
+        return "incomplete_cup_evidence"
+    if target_event_starts_at is not None and as_utc(cup.starts_at) >= as_utc(target_event_starts_at):
+        return "cup_final_after_target_event"
+    if as_utc(cup.starts_at) >= as_of or as_utc(cup.observed_at) > as_of:
+        return "cup_evidence_after_cutoff"
+    return None
 
 
 def resolve_qualification(
@@ -139,7 +159,7 @@ def resolve_qualification(
     target_event_starts_at: datetime | None = None,
 ) -> QualificationResolution | None:
     """Resolve every configured cup berth alongside the league's ranked berths."""
-    policies = profile.cup_qualifications
+    policies = profile.configured_cup_qualifications
     if not policies:
         return None
 
@@ -160,30 +180,29 @@ def resolve_qualification(
         cups=evidence,
         policy_sources=tuple(source for policy in policies for source in policy.sources),
     )
-    if len(evidence) != len(policies):
-        return pending
+    active_policies = []
+    active_evidence = []
+    pending_reasons = []
+    for policy in policies:
+        matches = [cup for cup in evidence if cup.competition == policy.competition_identity]
+        if len(matches) != 1:
+            reason = "cup_evidence_count_mismatch" if matches else "final_absent"
+        else:
+            cup = matches[0]
+            reason = _cup_pending_reason(cup, season_year, as_of, target_event_starts_at)
+        if reason is not None:
+            pending_reasons.append((policy.competition_identity, reason))
+        else:
+            active_policies.append(policy)
+            active_evidence.append(cup)
 
-    # Evidence follows profile order. Destination objective rank decides across
-    # destinations; profile order decides between cups targeting the same one.
-    for policy, cup in zip(policies, evidence):
-        if cup.competition != policy.competition_identity or cup.season_year != season_year:
-            return replace(pending, reason="wrong_cup_edition")
-        if cup.status != "DECIDED":
-            return replace(pending, reason=cup.status)
-        if cup.winner is None or cup.starts_at is None or cup.observed_at is None:
-            return replace(pending, reason="incomplete_cup_evidence")
-        if (target_event_starts_at is not None
-                and as_utc(cup.starts_at) >= as_utc(target_event_starts_at)):
-            return replace(pending, reason="cup_final_after_target_event")
-        if as_utc(cup.starts_at) >= as_of or as_utc(cup.observed_at) > as_of:
-            return replace(pending, reason="cup_evidence_after_cutoff")
+    pending = replace(pending, pending_cup_reasons=tuple(pending_reasons))
+    if not active_policies:
+        return replace(pending, reason=pending_reasons[0][1])
+    policies = active_policies
+    evidence = active_evidence
 
     league_objectives = _ranked_league_objectives(profile)
-    for policy in policies:
-        matches = [rule for rule in league_objectives
-                   if rule.destination_competition_identity == policy.destination_competition_identity]
-        if len(matches) != 1:
-            return replace(pending, reason="unresolved_cup_destination")
 
     rows = list(table.values() if isinstance(table, Mapping) else table or ())
     if any(not isinstance(row, dict) for row in rows):
@@ -211,36 +230,134 @@ def resolve_qualification(
     replacements = {}
     affected_objectives = []
     cup_berth_awarded = [False] * len(policies)
-    cup_destinations = {policy.destination_competition_identity for policy in policies}
+    cup_recipients: list[ParticipantIdentity | None] = [None] * len(policies)
+    cup_recipient_ranks: list[int | None] = [None] * len(policies)
+    case_policy_indices = set()
+
+    # Explicit rank-conditioned policy cases are applied before league
+    # objectives. This lets an award to (for example) rank 3 displace rank 3's
+    # existing table berth naturally, even when the two berths have different
+    # destination competition identities.
+    for index, (policy, cup) in enumerate(zip(policies, evidence)):
+        reallocation = policy.reallocation_policy
+        if not reallocation.cases:
+            continue
+        champion_rank = champion_ranks[index]
+        case = next((candidate for candidate in reallocation.cases
+                     if champion_rank is not None
+                     and candidate.champion_rank_start <= champion_rank <= candidate.champion_rank_end), None)
+        if case is None:
+            continue
+        case_policy_indices.add(index)
+        recipient_rank = case.recipient_rank if case is not None else None
+        recipient = cup.winner
+        if recipient_rank is not None:
+            recipient = identity_by_rank.get(recipient_rank)
+            if recipient is None:
+                return replace(pending, reason="incomplete_participant_table")
+        if recipient in assignments:
+            if not reallocation.reallocate_if_champion_already_qualified:
+                if cup.winner in assignments:
+                    continue
+                recipient = cup.winner
+                recipient_rank = champion_rank
+            else:
+                start_rank = recipient_rank or 1
+                available = _select_ranks(start_rank, 1, identity_by_rank, assignments)
+                if available is None:
+                    return replace(pending, reason="incomplete_participant_table")
+                recipient_rank = available[0]
+                recipient = identity_by_rank[recipient_rank]
+        assignments[recipient] = policy.qualification_destination.destination_competition_identity
+        cup_recipients[index] = recipient
+        cup_recipient_ranks[index] = recipient_rank if recipient_rank is not None else champion_rank
+        cup_berth_awarded[index] = recipient == cup.winner
+        if cup_recipient_ranks[index] is not None:
+            league_assignments.append((cup_recipient_ranks[index], policy.qualification_destination.destination_competition_identity))
+
+    cup_destinations = {policy.qualification_destination.destination_competition_identity for policy in policies}
     reached_cup_destination = False
 
     for rule in league_objectives:
-        destination = rule.destination_competition_identity
-        places = rule.rank_end - rule.rank_start + 1
+        destination = rule.qualification_destination.destination_competition_identity
+        selection = rule.rank_selection
+        places = selection.rank_end - selection.rank_start + 1
+        reallocated_policy_indices = []
         if destination in cup_destinations:
             reached_cup_destination = True
             for index, (policy, cup) in enumerate(zip(policies, evidence)):
-                if policy.destination_competition_identity != destination:
+                if (index in case_policy_indices
+                        or policy.qualification_destination.destination_competition_identity != destination):
                     continue
                 champion = cup.winner
                 if champion in assignments:
-                    places += int(policy.reallocate_to_league)
+                    if policy.reallocation_policy.reallocate_if_champion_already_qualified:
+                        places += 1
+                        reallocated_policy_indices.append(index)
                 else:
                     assignments[champion] = destination
                     cup_berth_awarded[index] = True
+                    cup_recipients[index] = champion
+                    cup_recipient_ranks[index] = champion_ranks[index]
                     if champion_ranks[index] is not None:
                         league_assignments.append((champion_ranks[index], destination))
 
-        ranks = _select_ranks(rule.rank_start, places, identity_by_rank, assignments)
+        ranks = _select_ranks(selection.rank_start, places, identity_by_rank, assignments)
         if ranks is None:
             return replace(pending, reason="incomplete_participant_table")
         for rank in ranks:
             assignments[identity_by_rank[rank]] = destination
             league_assignments.append((rank, destination))
+        for index, rank in zip(reallocated_policy_indices, ranks[-len(reallocated_policy_indices):]):
+            cup_recipients[index] = identity_by_rank[rank]
+            cup_recipient_ranks[index] = rank
         effective = _effective_ranges(rule, ranks)
         replacements[rule] = effective
         if reached_cup_destination:
             affected_objectives.extend(effective)
+
+    # A cup may grant a competition/phase that has no corresponding league
+    # objective (for example a cup-only direct berth). Award that configured
+    # destination directly. If its winner already has a league berth, the cup
+    # policy sends the cup berth to the best remaining ranked participant.
+    for index, (policy, cup) in enumerate(zip(policies, evidence)):
+        if index in case_policy_indices or cup_recipients[index] is not None:
+            continue
+        destination = policy.qualification_destination.destination_competition_identity
+        matching_objectives = [rule for rule in league_objectives
+                               if rule.qualification_destination.destination_competition_identity == destination]
+        if matching_objectives:
+            continue
+        recipient = cup.winner
+        recipient_rank = champion_ranks[index]
+        if recipient in assignments:
+            if not policy.reallocation_policy.reallocate_if_champion_already_qualified:
+                continue
+            available = _select_ranks(1, 1, identity_by_rank, assignments)
+            if available is None:
+                return replace(pending, reason="incomplete_participant_table")
+            recipient_rank = available[0]
+            recipient = identity_by_rank[recipient_rank]
+        assignments[recipient] = destination
+        cup_recipients[index] = recipient
+        cup_recipient_ranks[index] = recipient_rank
+        cup_berth_awarded[index] = recipient == cup.winner
+        if recipient_rank is not None:
+            league_assignments.append((recipient_rank, destination))
+
+    if case_policy_indices:
+        first_case_rank = min(
+            cup_recipient_ranks[index]
+            for index in case_policy_indices
+            if cup_recipient_ranks[index] is not None
+        ) if any(cup_recipient_ranks[index] is not None for index in case_policy_indices) else None
+        if first_case_rank is not None:
+            affected_objectives.extend(
+                effective
+                for rule, effective_rules in replacements.items()
+                if rule.rank_selection.rank_end >= first_case_rank
+                for effective in effective_rules
+            )
 
     objectives = tuple(
         effective
@@ -263,17 +380,25 @@ def resolve_qualification(
             evidence=cup,
             champion_rank=champion_ranks[index],
             champion_destination=assignments[cup.winner],
+            qualification_destination=policies[index].qualification_destination,
             berth_awarded=cup_berth_awarded[index],
+            berth_recipient=cup_recipients[index],
+            berth_recipient_rank=cup_recipient_ranks[index],
             configured_competition_name=policies[index].competition_name,
-            configured_destination_competition_name=policies[index].destination_competition_name,
             policy_sources=policies[index].sources,
         )
         for index, cup in enumerate(evidence)
     )
+    cup_berth_reallocated = any(
+        recipient is not None and recipient != evidence[index].winner
+        for index, recipient in enumerate(cup_recipients)
+    )
     return replace(
         pending,
-        status="FINAL" if season_complete else "AS_OF_TABLE",
-        reason="cup_winner_uses_berth" if any(cup_berth_awarded) else "cup_winner_already_qualified",
+        status="FINAL" if season_complete and not pending_reasons else "AS_OF_TABLE",
+        reason=("cup_winner_uses_berth" if any(cup_berth_awarded)
+                else "cup_berth_reallocated" if cup_berth_reallocated
+                else "cup_winner_already_qualified"),
         effective_rules=replace(profile, objectives=objectives),
         eligible_participants=eligible,
         league_assignments=tuple(sorted(league_assignments, key=lambda entry: entry[0])),

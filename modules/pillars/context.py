@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from modules.competition.competitive_rules import CompetitionRules
 from modules.competition.qualification_resolution import QualificationResolution
+from modules.competition.season_aggregate import SeasonAggregateStandings
 
 from shared.temporal import as_utc
 
@@ -54,6 +55,7 @@ class CompetitionContext:
     updated_at: Optional[datetime] = None
     competitive_rules: CompetitionRules | None = None
     qualification_resolution: QualificationResolution | None = None
+    season_aggregate_standings: SeasonAggregateStandings | None = None
 
 
 @dataclass(frozen=True, slots=True)

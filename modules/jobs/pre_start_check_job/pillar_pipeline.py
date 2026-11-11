@@ -27,6 +27,10 @@ from infrastructure.persistence.repositories.pillar_5_price_memory_repository im
 from infrastructure.persistence.repositories.pillar_mining_repository import (
     PillarMiningRepository,
 )
+from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
+    send_argentina_zones_standings_debug,
+)
+from modules.competition.rule_terms import GroupingMethod
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import EventContext
 from modules.pillars.odds_trajectory_context import build_odds_trajectory_context
@@ -661,6 +665,19 @@ class EventPillarProcessor:
                 )
         # No persistence exception is converted into a pillar signal or swallowed.
         if self.debug_mode:
+            competition = event_context.competition
+            if (
+                competition.competitive_rules is not None
+                and competition.competitive_rules.grouping_method
+                == GroupingMethod.ARGENTINA_ZONES
+                and competition.season_aggregate_standings is not None
+            ):
+                send_argentina_zones_standings_debug(
+                    current_standings=getattr(event_context.streak_analysis, "current_standings", None),
+                    annual_standings=competition.season_aggregate_standings,
+                    kickoff=identity.starts_at,
+                    season_year=identity.season_year,
+                )
             _save_pillar_debug_snapshots(
                 event_identity=identity,
                 competition_context=event_context.competition,

@@ -177,8 +177,8 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
 
             first = 1 + sum(league_key(row) > league_key(rows[names[0]]) for row in rows.values())
             last = first + len(names) - 1
-            boundaries = {1} | {rule.reference_rank for rule in profile.objectives or ()
-                                if rule.reference_rank is not None}
+            boundaries = {1} | {rule.rank_selection.reference_rank for rule in profile.objectives or ()
+                                if rule.rank_selection.reference_rank is not None}
             if not any(first <= boundary < last for boundary in boundaries):
                 return [(names, path, None)]
         if step.unavailable:

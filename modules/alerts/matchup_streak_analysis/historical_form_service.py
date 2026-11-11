@@ -201,6 +201,10 @@ class HistoricalFormService:
         debug_scope: Tuple,
     ) -> None:
         """Send the current standings table to the personal debug chat."""
+        # Argentina's zone and annual tables are sent together after annual
+        # standings preparation, where that calculation can be reused.
+        if self._is_argentina_zones_profile(debug_scope):
+            return
         personal_chat_id = os.getenv("PERSONAL_CHAT_ID", "")
         if not personal_chat_id:
             logger.warning("PERSONAL_CHAT_ID not configured - skipping debug standings")
@@ -227,6 +231,25 @@ class HistoricalFormService:
             not deduplicate_global or self._claim_global_debug_table(fair_play_key)
         ):
             send_debug_telegram(fair_play_message, personal_chat_id)
+
+    @staticmethod
+    def _is_argentina_zones_profile(debug_scope: Tuple) -> bool:
+        """Identify Argentina editions from the provider IDs in the debug scope."""
+        from modules.competition import competition_ids
+
+        if len(debug_scope) < 6:
+            return False
+        source_unique_tournament_id = debug_scope[3]
+        source_tournament_id = debug_scope[4]
+        return (
+            source_unique_tournament_id
+            == competition_ids.ARGENTINA_APERTURA.source_unique_tournament_id
+            and source_tournament_id
+            in {
+                competition_ids.ARGENTINA_APERTURA.source_tournament_id,
+                competition_ids.ARGENTINA_CLAUSURA.source_tournament_id,
+            }
+        )
 
     def get_team_form_from_db(
         self,

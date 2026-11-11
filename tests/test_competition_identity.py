@@ -19,15 +19,16 @@ from modules.competition.tracked_competitions import tracked_competition_ids, is
 
 def test_qualification_record_and_phase_remain_distinct_and_round_trip():
     rule = get_competition_profile(ids.LALIGA).objectives[2]
-    assert rule.destination_competition_identity == ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
-    assert rule.destination_competition_identity != ids.UEFA_CONFERENCE_LEAGUE
-    assert rule.destination_competition_name == "UEFA Conference League, Qualification"
-    assert rule.destination_phase is DestinationPhase.QUALIFICATION_ROUND
+    destination = rule.qualification_destination
+    assert destination.destination_competition_identity == ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
+    assert destination.destination_competition_identity != ids.UEFA_CONFERENCE_LEAGUE
+    assert destination.destination_competition_name == "UEFA Conference League, Qualification"
+    assert destination.destination_phase is DestinationPhase.QUALIFICATION_ROUND
     assert ObjectiveRule(**json.loads(json.dumps(asdict(rule)))) == rule
     with pytest.raises(ValueError):
-        replace(rule, destination_phase=None)
+        replace(rule, qualification_destination=replace(destination, destination_phase=None))
     with pytest.raises(ValueError):
-        replace(rule, destination_competition_identity=6138)
+        replace(rule, qualification_destination=replace(destination, destination_competition_identity=6138))
 
 
 @pytest.mark.parametrize("local_id", [900001, 42])

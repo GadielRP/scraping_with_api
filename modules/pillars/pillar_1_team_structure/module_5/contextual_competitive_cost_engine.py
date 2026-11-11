@@ -264,14 +264,14 @@ def _scope_standings(
     standing: Optional[Dict[str, Any]],
     rule: ObjectiveRule,
 ) -> Tuple[Any, Optional[str]]:
-    if rule.ranking_scope == RankingScope.GLOBAL:
+    if rule.rank_selection.ranking_scope == RankingScope.GLOBAL:
         return current_standings, None
     keys = {
         RankingScope.GROUP: ("group",),
         RankingScope.CONFERENCE: ("conference", "group"),
         RankingScope.DIVISION: ("division",),
         RankingScope.LEAGUE: ("league", "group"),
-    }[rule.ranking_scope]
+    }[rule.rank_selection.ranking_scope]
     def group_value(record: Any) -> Optional[str]:
         if not isinstance(record, dict):
             return None
@@ -279,13 +279,13 @@ def _scope_standings(
     group = group_value(standing)
     if group is None or group == "unknown":
         return None, "MISSING_RANKING_GROUP"
-    if rule.ranking_group is not None and group != _normalize_name(rule.ranking_group):
+    if rule.rank_selection.ranking_group is not None and group != _normalize_name(rule.rank_selection.ranking_group):
         return None, "OTHER_RANKING_GROUP"
     scoped = {key: record for key, record in _standings_items(current_standings)
               if group_value(record) == group}
-    if rule.group_size is not None and (
-        _count_valid_standings(scoped) != rule.group_size
-        or any((_extract_rank(record) or 0) > rule.group_size for record in scoped.values())
+    if rule.rank_selection.group_size is not None and (
+        _count_valid_standings(scoped) != rule.rank_selection.group_size
+        or any((_extract_rank(record) or 0) > rule.rank_selection.group_size for record in scoped.values())
     ):
         return None, "INCOMPLETE_RANKING_GROUP"
     return scoped, None
@@ -302,9 +302,9 @@ def _resolve_objective_rule(
         return None, current_standings, None
     scope_error = None
     for rule in rules.objectives:
-        if rule.status != RuleStatus.CONFIGURED or rule.selection_method != SelectionMethod.RANK_RANGE:
+        if rule.status != RuleStatus.CONFIGURED or rule.rank_selection.selection_method != SelectionMethod.RANK_RANGE:
             continue
-        if rule.aggregation_scope != AggregationScope.TOURNAMENT:
+        if rule.rank_selection.aggregation_scope != AggregationScope.TOURNAMENT:
             scope_error = "UNSUPPORTED_AGGREGATION_SCOPE"
             continue
         scoped, reason = _scope_standings(current_standings, standing, rule)
@@ -313,7 +313,7 @@ def _resolve_objective_rule(
         if reason:
             scope_error = reason
             continue
-        if rule.rank_start is not None and rule.rank_start <= rank <= rule.rank_end:
+        if rule.rank_selection.rank_start is not None and rule.rank_selection.rank_start <= rank <= rule.rank_selection.rank_end:
             return rule, scoped, None
     if scope_error:
         return None, None, scope_error
@@ -322,7 +322,7 @@ def _resolve_objective_rule(
             # Non-tournament tables and reallocations cannot be inferred from
             # the current table, even if its rank falls outside a base range.
             return rule, None, "UNRESOLVED_OBJECTIVE_BOUNDARY"
-        if rule.selection_method != SelectionMethod.RANK_RANGE:
+        if rule.rank_selection.selection_method != SelectionMethod.RANK_RANGE:
             return rule, None, "UNSUPPORTED_OBJECTIVE_SELECTION"
     return None, current_standings, scope_error
 
@@ -344,7 +344,7 @@ def _determine_points_cutoff(
 ) -> Optional[float]:
     if rule is None:
         return team_points
-    target_rank = rule.reference_rank
+    target_rank = rule.rank_selection.reference_rank
     if target_rank is None:
         return None
     if rule.objective_type != ObjectiveType.DIVISION_RETENTION and team_rank == target_rank:
@@ -354,7 +354,7 @@ def _determine_points_cutoff(
 
 
 def _eligible_cutoff_standing(rule, team_rank, standings, resolution):
-    reference = rule.reference_rank
+    reference = rule.rank_selection.reference_rank
     if reference is None:
         return None
     eligible = [

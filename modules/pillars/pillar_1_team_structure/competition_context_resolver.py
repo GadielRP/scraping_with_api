@@ -1,7 +1,7 @@
 """Bind current sporting rules to P1's existing competition context."""
 
 import logging
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 from modules.competition.competition_profiles import get_competition_profile
 from modules.competition.competition_identity import CompetitionIdentity
@@ -15,9 +15,27 @@ def _objective_summary(rules):
     return [
         {
             "type": rule.objective_type.value,
-            "ranks": (rule.rank_start, rule.rank_end),
-            "destination": rule.destination_competition_name
-            or rule.destination_competition_identity,
+            "ranks": (rule.rank_selection.rank_start, rule.rank_selection.rank_end),
+            "destination_competition_identity": (
+                rule.qualification_destination.destination_competition_identity
+                if rule.qualification_destination else None
+            ),
+            "destination_competition_name": (
+                rule.qualification_destination.destination_competition_name
+                if rule.qualification_destination else None
+            ),
+            "destination_phase": (
+                rule.qualification_destination.destination_phase
+                if rule.qualification_destination else None
+            ),
+            "destination_round": (
+                rule.qualification_destination.destination_round
+                if rule.qualification_destination else None
+            ),
+            "qualification_path": (
+                rule.qualification_destination.qualification_path
+                if rule.qualification_destination else None
+            ),
             "status": rule.status.value,
         }
         for rule in rules.objectives or ()
@@ -81,9 +99,17 @@ def resolve_p1_competition_context(
                 "competition": policy.competition_name,
                 "competition_identity": policy.competition_identity,
                 "final_round": policy.final_round,
-                "destination": policy.destination_competition_name
-                or policy.destination_competition_identity,
-                "reallocate_to_league": policy.reallocate_to_league,
+                "status": policy.status.value,
+                "destination_competition_identity": policy.qualification_destination.destination_competition_identity,
+                "destination_competition_name": policy.qualification_destination.destination_competition_name,
+                "destination_phase": policy.qualification_destination.destination_phase,
+                "destination_round": policy.qualification_destination.destination_round,
+                "qualification_path": policy.qualification_destination.qualification_path,
+                "runner_up_qualification_destination": (
+                    asdict(policy.runner_up_qualification_destination)
+                    if policy.runner_up_qualification_destination is not None else None
+                ),
+                "reallocation_policy": asdict(policy.reallocation_policy),
             }
             for policy in rules.cup_qualifications
         ],

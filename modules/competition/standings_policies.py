@@ -99,6 +99,13 @@ ARGENTINA_ZONES = StandingsRules("ARGENTINA_ZONES", StandingsMetric.POINTS, (
 ),
     note="Articles 10/16 apply to zones only; annual/relegation tables are different.")
 
+ARGENTINA_ANNUAL = StandingsRules(
+    "ARGENTINA_ANNUAL",
+    StandingsMetric.POINTS,
+    (GD, GF, _missing("MISSING_OFFICIAL_ANNUAL_FAIR_PLAY")),
+    note="AFA arts. 24–25. The official fair-play table includes coaching staff and can require a draw.",
+)
+
 MLS = StandingsRules("MLS", StandingsMetric.POINTS, (
     WINS, GD, GF, Criterion(("h2h_points", "h2h_goal_diff"), reapply=True),
     FAIR_PLAY, _metric("away_goal_diff"), _metric("away_goals"),

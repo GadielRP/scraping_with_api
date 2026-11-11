@@ -1,7 +1,7 @@
 """Vocabulario canónico de los perfiles deportivos.
 
-Campos de ObjectiveRule
-----------------------
+Campos de QualificationDestination, RankSelection y ObjectiveRule
+-------------------------------------------------------------
 objective_type: finalidad deportiva: acceder a otra competición, avanzar de
     fase en la actual o conservar la categoría. No es el resultado de un equipo.
 destination_competition_identity: identidad de proveedor, con source,
@@ -23,24 +23,35 @@ qualification_path: vía para llegar a una competición externa o fase interna.
     PENDING. No describe la fase destino.
 relegation_path: mecanismo de riesgo de descenso, separado de la vía de
     clasificación: directo o playoff de permanencia.
-ranking_scope: población cuya tabla decide la selección. GLOBAL abarca toda la
+RankSelection.ranking_scope: población cuya tabla decide la selección. GLOBAL abarca toda la
     competición; LEAGUE es una subliga, como AL/NL dentro de MLB.
-aggregation_scope: periodo de resultados que cuenta: torneo actual, acumulado
+RankSelection.aggregation_scope: periodo de resultados que cuenta: torneo actual, acumulado
     del ciclo de temporada (puede cruzar años naturales) o varias temporadas.
 status: CONFIGURED indica una frontera deportiva declarada como resuelta;
     PENDING indica que falta resolver/verificar la regla. No garantiza soporte
     del motor ni significa que un equipo ya haya asegurado la clasificación.
-rank_start, rank_end: primer y último puesto de la zona, ambos inclusivos y
+RankSelection.rank_start, RankSelection.rank_end: primer y último puesto de la zona, ambos inclusivos y
     relativos a ranking_scope. Se especifican juntos; None si no hay rango.
-reference_rank: puesto de referencia para medir la distancia competitiva.
+RankSelection.reference_rank: puesto de referencia para medir la distancia competitiva.
     En acceso suele ser rank_end; en permanencia es el último puesto seguro.
-selection_method: cómo se eligen los equipos; no define el orden de desempate.
-places: cantidad de plazas cuando la selección no se expresa como un rango.
-group_size: número de equipos de la tabla local, no de toda la competición.
-ranking_group: grupo concreto dentro del ámbito, por ejemplo Atlantic.
+RankSelection.selection_method: cómo se eligen los equipos; no define el orden de desempate.
+RankSelection.places: cantidad de plazas cuando la selección no se expresa como un rango.
+RankSelection.group_size: número de equipos de la tabla local, no de toda la competición.
+RankSelection.ranking_group: grupo concreto dentro del ámbito, por ejemplo Atlantic.
     Es una identidad local, no un término deportivo global.
 note: detalles humanos, nombre comercial, formato de serie o motivo pendiente.
     El motor no interpreta esta nota para seleccionar equipos.
+
+Campos de CupQualificationRule y CupReallocationPolicy
+-----------------------------------------------------
+qualification_destination: plaza de fase y vía que entrega la copa; no se
+    deduce de los destinos de las reglas de liga.
+reallocation_policy.cases: escenarios del puesto liguero del campeón que
+    reasignan el cupo de copa a otro puesto concreto de la tabla. Los puestos
+    destinatarios desplazan automáticamente las selecciones de liga posteriores.
+reallocate_if_champion_already_qualified: cuando no hay un caso por puesto,
+    permite pasar una plaza cuyo campeón ya recibió otra plaza de liga al
+    siguiente participante de tabla que aún no tenga una asignación.
 
 Campos de CompetitionRules
 --------------------------
@@ -114,6 +125,9 @@ class DestinationRound(StrEnum):
 
     FIRST_ROUND = "FIRST_ROUND"
     PRELIMINARY_ROUND = "PRELIMINARY_ROUND"
+    SECOND_QUALIFYING_ROUND = "SECOND_QUALIFYING_ROUND"
+    THIRD_QUALIFYING_ROUND = "THIRD_QUALIFYING_ROUND"
+    QUALIFYING_PLAYOFF = "QUALIFYING_PLAYOFF"
     ROUND_OF_16 = "ROUND_OF_16"
     QUARTER_FINALS = "QUARTER_FINALS"
 

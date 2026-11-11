@@ -9,7 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, FOOTBALL_SCORING
+from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, RankSelection, FOOTBALL_SCORING
+from modules.competition.qualification_destination import QualificationDestination
 from modules.competition import competition_ids
 from modules.competition.rule_terms import ObjectiveType, QualificationPath, RelegationPath, DestinationPhase
 from modules.competition.standings_policies import LALIGA
@@ -38,13 +39,18 @@ def _event(total_games=38):
         total_regular_season_games=total_games or 38,
         scoring=FOOTBALL_SCORING, standings=LALIGA,
         objectives=(
-            ObjectiveRule(ObjectiveType.COMPETITION_QUALIFICATION, QualificationPath.DIRECT,
-                          destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                          destination_competition_name="UEFA Champions League",
-                          destination_phase=DestinationPhase.LEAGUE_PHASE,
-                          rank_start=1, rank_end=7, reference_rank=7),
+            ObjectiveRule(
+                ObjectiveType.COMPETITION_QUALIFICATION,
+                rank_selection=RankSelection(rank_start=1, rank_end=7, reference_rank=7),
+                qualification_destination=QualificationDestination(
+                    destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+                    destination_competition_name="UEFA Champions League",
+                    destination_phase=DestinationPhase.LEAGUE_PHASE,
+                    qualification_path=QualificationPath.DIRECT,
+                ),
+            ),
             ObjectiveRule(ObjectiveType.DIVISION_RETENTION, relegation_path=RelegationPath.DIRECT_RELEGATION,
-                          rank_start=18, rank_end=20, reference_rank=17),
+                          rank_selection=RankSelection(rank_start=18, rank_end=20, reference_rank=17)),
         ),
     )
     event.competition = replace(

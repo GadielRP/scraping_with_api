@@ -2,9 +2,12 @@
 
 import logging
 import os
+from datetime import datetime
 from typing import Dict, List
 
 from infrastructure.settings import Config
+from modules.competition.season_aggregate import SeasonAggregateStandings
+from shared.temporal import in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +136,66 @@ def format_fair_play_table_for_telegram(
             f"GP:{coverage}/{games}\n"
         )
     return message
+
+
+def format_annual_standings_table_for_telegram(
+    standings: SeasonAggregateStandings,
+    title: str,
+) -> str:
+    """Format a shared season aggregate table using the standard standings rows."""
+    message = f"STANDINGS: <b>{title}</b>\n\n"
+    ordered_standings = sorted(
+        standings.standings,
+        key=lambda item: (item.rank is None, item.rank or 0, item.name.casefold()),
+    )
+    for row in ordered_standings:
+        stats = {
+            "rank": row.rank,
+            "points": row.points,
+            "wins": row.wins,
+            "draws": row.draws,
+            "losses": row.losses,
+            "gp": row.games_played,
+            "goals_for": row.goals_for,
+            "goals_against": row.goals_against,
+            "diff": row.goal_diff,
+        }
+        message += _format_standing_line(row.name, stats) + "\n"
+    return message
+
+
+def send_argentina_zones_standings_debug(
+    *,
+    current_standings: Dict[str, Dict] | None,
+    annual_standings: SeasonAggregateStandings,
+    kickoff: datetime,
+    season_year: int,
+) -> None:
+    """Send Argentina's edition, annual, and available fair-play tables together."""
+    chat_id = os.getenv("PERSONAL_CHAT_ID", "")
+    if not chat_id:
+        logger.warning("PERSONAL_CHAT_ID not configured - skipping Argentina standings debug")
+        return
+
+    date_label = in_timezone(kickoff, Config.TIMEZONE).strftime("%Y-%m-%d %H:%M")
+    if current_standings:
+        current_message = format_standings_table_for_telegram(
+            current_standings, f"ARGENTINA CLAUSURA (at {date_label})",
+        )
+        send_debug_telegram(current_message, chat_id)
+
+    if annual_standings and annual_standings.standings:
+        annual_message = format_annual_standings_table_for_telegram(
+            annual_standings, f"ARGENTINA ANNUAL {season_year} (at {date_label})",
+        )
+        send_debug_telegram(annual_message, chat_id)
+
+    if current_standings:
+        fair_play_message = format_fair_play_table_for_telegram(
+            current_standings, f"ARGENTINA FAIR PLAY (at {date_label})",
+        )
+        if fair_play_message:
+            send_debug_telegram(fair_play_message, chat_id)
 
 
 def send_debug_telegram(message: str, chat_id: str) -> None:

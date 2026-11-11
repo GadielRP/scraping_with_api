@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .competition_identity import CompetitionIdentity
+from .qualification_destination import QualificationDestination
+from .qualification_reallocation import CupReallocationPolicy
 from .rule_terms import (
     AggregationScope,
-    DestinationPhase,
-    DestinationRound,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
@@ -21,76 +21,83 @@ from .rule_terms import (
 
 
 @dataclass(frozen=True, slots=True)
-class ObjectiveRule:
-    """A configured effective zone or a pending allocation, within its current competition profile.
+class RankSelection:
+    """How a standings table selects teams for an objective."""
 
-    CONFIGURED confirms the sporting boundary, not M5's ability to calculate it.
-    An omitted objective is absent; NO_APPLICABLE_OBJECTIVE is a team outcome.
-    The reference season is inherited from CompetitionRules.
-    The reference season documents the current facts; it does not select events.
-    """
-
-    objective_type: ObjectiveType
-    qualification_path: QualificationPath | None = None
-    relegation_path: RelegationPath | None = None
-    destination_competition_identity: CompetitionIdentity | None = None
-    destination_competition_name: str | None = None
-    destination_phase: DestinationPhase | None = None
-    destination_round: DestinationRound | None = None
-    ranking_scope: RankingScope = RankingScope.GLOBAL
-    aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT
-    status: RuleStatus = RuleStatus.CONFIGURED
     rank_start: int | None = None
     rank_end: int | None = None
     reference_rank: int | None = None
     selection_method: SelectionMethod = SelectionMethod.RANK_RANGE
+    ranking_scope: RankingScope = RankingScope.GLOBAL
+    aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT
     places: int | None = None
     group_size: int | None = None
-    note: str = ""
     ranking_group: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "objective_type", ObjectiveType(self.objective_type))
-        if isinstance(self.destination_competition_identity, dict):
-            object.__setattr__(self, "destination_competition_identity", CompetitionIdentity(**self.destination_competition_identity))
-        if self.destination_competition_identity is not None and not isinstance(self.destination_competition_identity, CompetitionIdentity):
-            raise ValueError("destination_competition_identity requires a provider identity")
-        if self.destination_phase is not None:
-            object.__setattr__(self, "destination_phase", DestinationPhase(self.destination_phase))
-        if self.destination_round is not None:
-            object.__setattr__(self, "destination_round", DestinationRound(self.destination_round))
-            if self.destination_phase is None:
-                raise ValueError("destination_round requires destination_phase")
+        object.__setattr__(self, "selection_method", SelectionMethod(self.selection_method))
         object.__setattr__(self, "ranking_scope", RankingScope(self.ranking_scope))
         object.__setattr__(self, "aggregation_scope", AggregationScope(self.aggregation_scope))
+        if (self.rank_start is None) != (self.rank_end is None):
+            raise ValueError("rank_start and rank_end must be specified together")
+        if self.rank_start is not None and not (1 <= self.rank_start <= self.rank_end):
+            raise ValueError("invalid objective rank range")
+        if self.reference_rank is not None and self.reference_rank < 1:
+            raise ValueError("reference_rank must be positive")
+        if self.places is not None and self.places < 1:
+            raise ValueError("places must be positive")
+        if self.group_size is not None and self.group_size < 1:
+            raise ValueError("group_size must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectiveRule:
+    """A league objective with independent table selection and destination."""
+
+    objective_type: ObjectiveType
+    rank_selection: RankSelection = RankSelection()
+    qualification_destination: QualificationDestination | None = None
+    relegation_path: RelegationPath | None = None
+    status: RuleStatus = RuleStatus.CONFIGURED
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "objective_type", ObjectiveType(self.objective_type))
         object.__setattr__(self, "status", RuleStatus(self.status))
-        object.__setattr__(self, "selection_method", SelectionMethod(self.selection_method))
-        if self.qualification_path is not None:
-            object.__setattr__(self, "qualification_path", QualificationPath(self.qualification_path))
-        elif (self.objective_type != ObjectiveType.DIVISION_RETENTION
-              and self.status != RuleStatus.PENDING):
+        if isinstance(self.rank_selection, dict):
+            object.__setattr__(self, "rank_selection", RankSelection(**self.rank_selection))
+        if not isinstance(self.rank_selection, RankSelection):
+            raise ValueError("rank_selection requires RankSelection")
+        if isinstance(self.qualification_destination, dict):
+            object.__setattr__(self, "qualification_destination", QualificationDestination(**self.qualification_destination))
+        destination = self.qualification_destination
+        if destination is not None and not isinstance(destination, QualificationDestination):
+            raise ValueError("qualification_destination requires QualificationDestination")
+        path = destination.qualification_path if destination is not None else None
+        if path is None and self.objective_type != ObjectiveType.DIVISION_RETENTION and self.status != RuleStatus.PENDING:
             raise ValueError("only pending objectives may have an unknown qualification path")
         if self.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
-            if self.destination_competition_identity is None:
-                if self.status != RuleStatus.PENDING:
-                    raise ValueError("configured competition qualification requires destination_competition_identity")
-            if self.destination_phase is None and self.status != RuleStatus.PENDING:
+            if destination is None:
+                raise ValueError("competition qualification requires qualification_destination")
+            if destination.destination_competition_identity is None and self.status != RuleStatus.PENDING:
+                raise ValueError("configured competition qualification requires destination_competition_identity")
+            if destination.destination_competition_name is None and self.status != RuleStatus.PENDING:
+                raise ValueError("configured competition qualification requires destination_competition_name")
+            if destination.destination_phase is None and self.status != RuleStatus.PENDING:
                 raise ValueError("configured competition qualification requires destination_phase")
             if self.relegation_path is not None:
                 raise ValueError("competition qualification cannot have a relegation path")
         elif self.objective_type == ObjectiveType.PHASE_QUALIFICATION:
-            if self.destination_phase is None:
+            if destination is None or destination.destination_phase is None:
                 raise ValueError("phase qualification requires destination_phase")
-            if (self.qualification_path is not None
-                    and self.qualification_path != QualificationPath.DIRECT):
+            if path is not None and path != QualificationPath.DIRECT:
                 raise ValueError("phase qualification must use the direct path to its destination")
             if self.relegation_path is not None:
                 raise ValueError("phase qualification cannot have a relegation path")
         else:
-            if (self.destination_competition_identity is not None or self.destination_phase is not None
-                    or self.destination_round is not None):
+            if destination is not None:
                 raise ValueError("division retention has no qualification destination")
-            if self.qualification_path is not None:
+            if path is not None:
                 raise ValueError("division retention cannot have a qualification path")
         if self.objective_type == ObjectiveType.DIVISION_RETENTION:
             if self.relegation_path is not None:
@@ -99,14 +106,9 @@ class ObjectiveRule:
                 raise ValueError("configured division retention requires relegation_path")
         elif self.relegation_path is not None:
             raise ValueError("qualification cannot have a relegation path")
-        if (self.rank_start is None) != (self.rank_end is None):
-            raise ValueError("rank_start and rank_end must be specified together")
-        if self.rank_start is not None and not (1 <= self.rank_start <= self.rank_end):
-            raise ValueError("invalid objective rank range")
-        if self.reference_rank is not None and self.reference_rank < 1:
-            raise ValueError("reference_rank must be positive")
-        if (self.status == RuleStatus.CONFIGURED and self.selection_method == SelectionMethod.RANK_RANGE
-                and self.rank_start is None):
+        if (self.status == RuleStatus.CONFIGURED
+                and self.rank_selection.selection_method == SelectionMethod.RANK_RANGE
+                and self.rank_selection.rank_start is None):
             raise ValueError("configured rank-range selection requires ranks")
 
 
@@ -201,21 +203,49 @@ class DisciplineRules:
 
 @dataclass(frozen=True, slots=True)
 class CupQualificationRule:
-    """An extra berth alongside a league objective for the same destination.
-
-    The objectives are applied in order of their starting rank. If the winner
-    already has a higher-ranked berth, the profile can reallocate the cup berth
-    to the league. The optional season offset only labels the destination.
-    """
+    """A cup-result rule with its own selection source and shared destination."""
 
     competition_identity: CompetitionIdentity
     competition_name: str
     final_round: str
-    destination_competition_identity: CompetitionIdentity
-    reallocate_to_league: bool
-    destination_competition_name: str | None = None
+    qualification_destination: QualificationDestination
+    reallocation_policy: CupReallocationPolicy = CupReallocationPolicy()
     destination_season_offset: int | None = None
     sources: tuple[str, ...] = ()
+    status: RuleStatus = RuleStatus.CONFIGURED
+    runner_up_qualification_destination: QualificationDestination | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", RuleStatus(self.status))
+        if isinstance(self.qualification_destination, dict):
+            object.__setattr__(self, "qualification_destination", QualificationDestination(**self.qualification_destination))
+        if not isinstance(self.qualification_destination, QualificationDestination):
+            raise ValueError("cup qualification requires qualification_destination")
+        if isinstance(self.reallocation_policy, dict):
+            object.__setattr__(self, "reallocation_policy", CupReallocationPolicy(**self.reallocation_policy))
+        if not isinstance(self.reallocation_policy, CupReallocationPolicy):
+            raise ValueError("reallocation_policy requires CupReallocationPolicy")
+        if (self.qualification_destination.destination_competition_identity is None
+                or self.qualification_destination.destination_competition_name is None
+                or self.qualification_destination.destination_phase is None
+                or self.qualification_destination.qualification_path is None):
+            raise ValueError("cup qualification requires a complete external destination")
+        runner_up_destination = self.runner_up_qualification_destination
+        if isinstance(runner_up_destination, dict):
+            runner_up_destination = QualificationDestination(**runner_up_destination)
+            object.__setattr__(self, "runner_up_qualification_destination", runner_up_destination)
+        if runner_up_destination is not None:
+            if (not isinstance(runner_up_destination, QualificationDestination)
+                    or runner_up_destination.destination_competition_identity is None
+                    or runner_up_destination.destination_competition_name is None
+                    or runner_up_destination.destination_phase is None
+                    or runner_up_destination.qualification_path is None):
+                raise ValueError("runner-up qualification requires a complete external destination")
+            if self.status != RuleStatus.PENDING:
+                raise ValueError("the cup resolver only supports champion berths")
+        if (not isinstance(self.competition_name, str) or not self.competition_name.strip()
+                or not isinstance(self.final_round, str) or not self.final_round.strip()):
+            raise ValueError("cup competition_name and final_round are required")
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +271,10 @@ class CompetitionRules:
     discipline: DisciplineRules | None = None
     # Ordered for deterministic handling when configured cup winners overlap.
     cup_qualifications: tuple[CupQualificationRule, ...] = ()
+
+    @property
+    def configured_cup_qualifications(self) -> tuple[CupQualificationRule, ...]:
+        return tuple(rule for rule in self.cup_qualifications if rule.status == RuleStatus.CONFIGURED)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "grouping_method", GroupingMethod(self.grouping_method))

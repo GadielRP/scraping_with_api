@@ -27,7 +27,7 @@ def test_current_profiles_have_sizes_duration_scoring_and_explicit_objectives():
     for cid in (76, 554):
         assert all(rule.objective_type != "DIVISION_RETENTION" for rule in get_competition_profile(cid).objectives)
     retention = next(rule for rule in get_competition_profile(174).objectives if rule.objective_type == "DIVISION_RETENTION")
-    assert (retention.rank_start, retention.rank_end, retention.reference_rank) == (19, 20, 18)
+    assert (retention.rank_selection.rank_start, retention.rank_selection.rank_end, retention.rank_selection.reference_rank) == (19, 20, 18)
     assert retention.relegation_path == "RELEGATION_PLAYOFF"
     assert not get_competition_profile(174).standings.verified
 
@@ -36,8 +36,8 @@ def test_current_profiles_have_sizes_duration_scoring_and_explicit_objectives():
     ("Atlantic", 7, 5), ("North", 8, 6), ("Central", 7, 5), ("Pacific", 10, 7),
 ])
 def test_ahl_current_division_quotas(division, size, places):
-    rule = next(rule for rule in get_competition_profile(554).objectives if rule.ranking_group == division)
-    assert (rule.group_size, rule.rank_start, rule.rank_end, rule.reference_rank) == (size, 1, places, places)
+    rule = next(rule for rule in get_competition_profile(554).objectives if rule.rank_selection.ranking_group == division)
+    assert (rule.rank_selection.group_size, rule.rank_selection.rank_start, rule.rank_selection.rank_end, rule.rank_selection.reference_rank) == (size, 1, places, places)
 
 
 def test_ahl_payload_exposes_division_and_scoring_preserves_overtime_loss_point():
@@ -59,7 +59,7 @@ def test_ahl_sixth_qualifies_in_north_but_not_atlantic():
             table[name] = dict(rank=rank, points=100 - rank * 3, games_played=65, division=division)
     result = _calculate_m5(SimpleNamespace(current_standings=table), _resolved_event(554))
     assert result.raw["m5_status"] == "ACTIVE"
-    assert result.raw["home"]["objective_rule"]["ranking_group"] == "North"
+    assert result.raw["home"]["objective_rule"]["rank_selection"]["ranking_group"] == "North"
     assert result.raw["home"]["points_cutoff"] == 79
     assert result.raw["away"]["objective_type"] == "NO_APPLICABLE_OBJECTIVE"
     assert result.bias == "HOME"
@@ -78,8 +78,8 @@ def test_mls_direct_and_wild_card_match_use_the_correct_conference():
             table[name] = dict(rank=rank, points=100-rank*2, games_played=30, conference=conference)
     result = _calculate_m5(SimpleNamespace(current_standings=table), _resolved_event(76))
     assert result.raw["m5_status"] == "ACTIVE"
-    assert result.raw["home"]["objective_rule"]["destination_phase"] == "PLAYOFFS"
-    assert result.raw["away"]["objective_rule"]["destination_phase"] == "PLAY_IN"
+    assert result.raw["home"]["objective_rule"]["qualification_destination"]["destination_phase"] == "PLAYOFFS"
+    assert result.raw["away"]["objective_rule"]["qualification_destination"]["destination_phase"] == "PLAY_IN"
 
 
 def test_cba_declared_retention_does_not_bypass_percentage_calculation_limit():
