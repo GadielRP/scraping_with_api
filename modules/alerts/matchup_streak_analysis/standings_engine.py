@@ -5,19 +5,24 @@ historical form retrieval.
 """
 
 import logging
+from collections import defaultdict
+from itertools import repeat
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from infrastructure.persistence.database import db_manager
+from infrastructure.persistence.models import Season
 from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
+from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
+from modules.competition.competition_profiles import get_competition_profile as get_profile_by_identity
 from modules.competition.rule_terms import GroupingMethod
 from shared.temporal import from_unix_timestamp
 
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.competition.competitive_rules import CompetitionRules
 from modules.discipline.contracts import IncidentType
-from modules.discipline.policies import football_fair_play_card_counts
+from modules.discipline.policies import accumulate_football_fair_play
 from .historical_form_reporting import format_standings_table_for_telegram
 from .constants import get_team_group
 from .standings_rules import normalize_result_subtype, rank_standings
@@ -170,24 +175,53 @@ def _register_match_record(
                 stats[stat] = stats.get(stat, 0) + (record[key] or 0)
         second_yellow_key = f"{side}_{SECOND_YELLOW_CARD_STAT[0]}"
         if second_yellow_key in record:
-            stats.setdefault("fair_play_games_counted", 0)
-            counts = football_fair_play_card_counts(
-                record.get(f"{side}_yellow_cards"), record.get(f"{side}_red_cards"), record[second_yellow_key]
+            accumulate_football_fair_play(
+                stats, record.get(f"{side}_yellow_cards"), record.get(f"{side}_red_cards"), record[second_yellow_key],
             )
-            if counts is not None:
-                stats["fair_play_games_counted"] += 1
-                for stat, count in counts.items():
-                    stats[stat] = stats.get(stat, 0) + count
+
+
+def _fair_play_carryover_snapshots(profile, season_id, season_year, cutoffs):
+    competition = profile.fair_play_carryover
+    if competition is None:
+        yield from repeat(None, len(cutoffs))
+        return
+
+    prior_profile = get_profile_by_identity(competition)
+    expected_games = prior_profile.total_regular_season_games
+    with db_manager.get_session() as session:
+        if season_year is None:
+            season_year = session.scalar(select(Season.year).where(Season.id == season_id))
+        records = read_season_card_records(
+            session, (competition,), season_year=season_year, kickoff_cutoff=from_unix_timestamp(cutoffs[-1]),
+        ) if season_year is not None else []
+
+    totals = defaultdict(dict)
+    index = 0
+    for cutoff in cutoffs:
+        cutoff_dt = from_unix_timestamp(cutoff)
+        while index < len(records) and records[index][0] < cutoff_dt:
+            _, participant, yellow, red, second_yellow = records[index]
+            accumulate_football_fair_play(totals[participant], yellow, red, second_yellow)
+            index += 1
+        yield totals, expected_games
 
 
 def _finalize_standings_snapshot(
     team_stats: Dict[str, Dict[str, object]],
     profile: CompetitionRules,
     match_records: Optional[List[Dict[str, object]]],
+    carryover=None,
 ) -> Dict[str, Dict]:
     """Build a standings payload from running stats without mutating them."""
     finalized_stats = {team: dict(stats) for team, stats in team_stats.items()}
     for stats in finalized_stats.values():
+        if carryover is not None:
+            prior_totals, expected_games = carryover
+            identity = stats.get("participant_identity") or {}
+            prior = prior_totals.get((identity.get("source"), identity.get("source_participant_id")), {})
+            stats["fair_play_games_expected"] = stats["games_played"] + expected_games
+            for key, count in prior.items():
+                stats[key] = stats.get(key, 0) + count
         _finalize_team_stats(stats, profile)
     return _build_standings_payload(finalized_stats, profile, match_records)
 
@@ -597,7 +631,8 @@ class HistoricalStandingsCalculator:
         warned_unknown_group_teams: Set[str] = set()
         applied_count = 0
 
-        for cutoff in unique_cutoffs:
+        carryovers = _fair_play_carryover_snapshots(profile, season_id, season_year, unique_cutoffs)
+        for cutoff, carryover in zip(unique_cutoffs, carryovers):
             while applied_count < len(match_records) and record_timestamps[applied_count] < cutoff:
                 _register_match_record(
                     match_records[applied_count],
@@ -612,6 +647,7 @@ class HistoricalStandingsCalculator:
                 team_stats,
                 profile,
                 match_records[:applied_count],
+                carryover,
             )
 
         return snapshots
@@ -649,10 +685,8 @@ class HistoricalStandingsCalculator:
                 warned_unknown_group_teams,
             )
 
-        for stats in team_stats.values():
-            _finalize_team_stats(stats, profile)
-
-        standings = _build_standings_payload(team_stats, profile, match_records)
+        carryover = next(_fair_play_carryover_snapshots(profile, season_id, season_year, (cutoff_timestamp,)))
+        standings = _finalize_standings_snapshot(team_stats, profile, match_records, carryover)
         league_totals_context = _build_league_totals_context(
             season_id=season_id,
             cutoff_timestamp=cutoff_timestamp,

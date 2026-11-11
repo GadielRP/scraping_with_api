@@ -1,5 +1,6 @@
 """Scalar keyset reads, atomic multiset reconciliation and SQL team totals."""
 from collections import Counter
+from contextlib import nullcontext
 
 from sqlalchemy import and_, delete, func, insert, literal, or_, select, tuple_, union_all
 
@@ -171,7 +172,7 @@ class DisciplinaryIncidentRepository:
                         Total.event_source_mapping_id, Total.type, Total.side)).all()
         return tuple(DisciplineTotalDraft(*row) for row in rows)
 
-    def get_event_card_totals(self, source, event_ids, *, include_second_yellow=False):
+    def get_event_card_totals(self, source, event_ids, *, include_second_yellow=False, session=None):
         """Read acquired card totals in one batch; absent scopes remain unknown.
 
         Only an unambiguous provider mapping can supply a canonical event's
@@ -192,8 +193,8 @@ class DisciplinaryIncidentRepository:
             query = query.add_columns(Total.endpoint).where(
                 or_(Total.type != second_yellow, Total.endpoint == DisciplineEndpoint.COMMENTS.value)
             )
-        with self.database.get_session() as session:
-            rows = session.execute(query).all()
+        with (self.database.get_session() if session is None else nullcontext(session)) as read_session:
+            rows = read_session.execute(query).all()
         totals = {(event_id, side, kind): count for event_id, side, kind, count, *_ in rows}
         if include_second_yellow:
             for event_id, side, kind, count, endpoint in rows:

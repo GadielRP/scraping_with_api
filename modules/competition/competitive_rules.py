@@ -175,6 +175,7 @@ class StandingsRules:
     verified: bool = True
     note: str = ""
     fair_play_weights: tuple[tuple[str, int], ...] = ()
+    require_complete_fair_play: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "primary_metric", StandingsMetric(self.primary_metric))
@@ -182,6 +183,10 @@ class StandingsRules:
     def fair_play_points(self, stats) -> int | None:
         """Disciplinary penalty configured by the profile; fewer points is better."""
         if not self.fair_play_weights:
+            return None
+        if self.require_complete_fair_play and stats.get("fair_play_games_counted", 0) != stats.get(
+            "fair_play_games_expected", stats.get("games_played"),
+        ):
             return None
         points = 0
         for stat, weight in self.fair_play_weights:
@@ -271,6 +276,7 @@ class CompetitionRules:
     discipline: DisciplineRules | None = None
     # Ordered for deterministic handling when configured cup winners overlap.
     cup_qualifications: tuple[CupQualificationRule, ...] = ()
+    fair_play_carryover: CompetitionIdentity | None = None
 
     @property
     def configured_cup_qualifications(self) -> tuple[CupQualificationRule, ...]:

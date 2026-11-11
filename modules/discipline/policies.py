@@ -29,6 +29,15 @@ def football_fair_play_card_counts(yellow_cards: int | None, red_cards: int | No
     }
 
 
+def accumulate_football_fair_play(stats, yellow_cards, red_cards, second_yellow_dismissals):
+    stats.setdefault("fair_play_games_counted", 0)
+    counts = football_fair_play_card_counts(yellow_cards, red_cards, second_yellow_dismissals)
+    if counts is not None:
+        stats["fair_play_games_counted"] += 1
+        for stat, count in counts.items():
+            stats[stat] = stats.get(stat, 0) + count
+
+
 def evaluate_facts(sport: str, facts: Iterable[DisciplineFact], rules: DisciplineRules | None,
                    limits: DisciplineSettings) -> Acquisition:
     reported = ({FactKind.YELLOW_CARD: IncidentType.YELLOW_CARD,

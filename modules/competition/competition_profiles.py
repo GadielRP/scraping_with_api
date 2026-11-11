@@ -952,6 +952,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         standings=standings_policies.ARGENTINA_ZONES,
         grouping_method=GroupingMethod.ARGENTINA_ZONES,
         note="Two groups of 15; annual table has 32 games per team. Never use a group for relegation.",
+        fair_play_carryover=competition_ids.ARGENTINA_APERTURA,
     ),
 
     # nba (Conferencia: 1-6 Playoffs, 7-10 Play-In; sin descenso)

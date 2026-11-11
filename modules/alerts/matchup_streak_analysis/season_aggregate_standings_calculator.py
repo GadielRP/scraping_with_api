@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import (
-    read_season_aggregate_team_totals,
+    read_season_aggregate_team_totals, read_season_card_records,
 )
 from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.final_outcome import ParticipantIdentity
@@ -14,6 +14,7 @@ from modules.competition.season_aggregate import (
     SeasonAggregateProfile, SeasonAggregateStandings, SeasonStanding,
 )
 from shared.temporal import as_utc
+from modules.discipline.policies import accumulate_football_fair_play
 from .standings_rules import rank_standings
 
 
@@ -62,6 +63,14 @@ def calculate_season_aggregate_standings(
             goal_diff=totals["goals_for"] - totals["goals_against"],
             points=profile.scoring.points(totals),
         )
+    if profile.standings.fair_play_weights:
+        for _, (source, participant_id), yellow, red, second_yellow in read_season_card_records(
+            session, (source.competition for source in profile.sources),
+            season_year=season_year, kickoff_cutoff=cutoff,
+        ):
+            accumulate_football_fair_play(stats[f"{source}:{participant_id}"], yellow, red, second_yellow)
+        for team_stats in stats.values():
+            team_stats["fair_play_points"] = profile.standings.fair_play_points(team_stats)
     ordered, positions = rank_standings(stats.items(), profile, None, season_complete=complete)
     return SeasonAggregateStandings(
         season_year=season_year,

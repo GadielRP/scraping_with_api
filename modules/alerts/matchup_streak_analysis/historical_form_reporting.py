@@ -97,6 +97,8 @@ def format_standings_table_for_telegram(
 def format_fair_play_table_for_telegram(
     standings: Dict[str, Dict],
     title: str,
+    *,
+    break_ties_on_red_cards: bool = False,
 ) -> str | None:
     """Format the currently available football fair-play ranking."""
     if not any(
@@ -111,22 +113,30 @@ def format_fair_play_table_for_telegram(
         "Orden: menos puntos · YC: amarillas · RC: rojas · "
         "2A: expulsiones por doble amarilla · RD: rojas directas · GP: jugados\n\n"
     )
+    def red_cards(stats):
+        return (stats.get("second_yellow_dismissals") or 0) + (stats.get("direct_red_cards") or 0)
+
     ordered = sorted(
         standings.items(),
         key=lambda item: (
             item[1].get("fair_play_points") is None,
             item[1].get("fair_play_points") if item[1].get("fair_play_points") is not None else 0,
+            red_cards(item[1]) if break_ties_on_red_cards else 0,
             item[0].casefold(),
         ),
     )
     for position, (team_name, stats) in enumerate(ordered, start=1):
         score = stats.get("fair_play_points")
         coverage = stats.get("fair_play_games_counted", 0)
-        games = stats.get("games_played", 0)
+        games = stats.get("fair_play_games_expected", stats.get("games_played", 0))
         yellow = stats.get("yellow_cards")
         red = stats.get("red_cards")
         dismissals = stats.get("second_yellow_dismissals")
         direct_reds = stats.get("direct_red_cards")
+        if break_ties_on_red_cards:
+            standalone = stats.get("standalone_yellow_cards")
+            yellow = standalone + 2 * dismissals if standalone is not None else None
+            red = red_cards(stats) if direct_reds is not None else None
         message += (
             f"#{position} {team_name}: FP:{score if score is not None else '?'} "
             f"YC:{yellow if yellow is not None else '?'} "
@@ -192,7 +202,7 @@ def send_argentina_zones_standings_debug(
 
     if current_standings:
         fair_play_message = format_fair_play_table_for_telegram(
-            current_standings, f"ARGENTINA FAIR PLAY (at {date_label})",
+            current_standings, f"ARGENTINA FAIR PLAY (at {date_label})", break_ties_on_red_cards=True,
         )
         if fair_play_message:
             send_debug_telegram(fair_play_message, chat_id)

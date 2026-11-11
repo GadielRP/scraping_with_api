@@ -23,7 +23,6 @@ GD = _metric("goal_diff")
 GF = _metric("goals_for")
 WINS = _metric(StandingsMetric.WINS)
 FAIR_PLAY = _metric("negative_fair_play_points")
-PENDING_FAIR_PLAY = _missing("MISSING_DISCIPLINARY_RECORD")
 DECIDER = Criterion((), unavailable="OFFICIAL_DECIDER_REQUIRED", final_only=True)
 H2H = Criterion(("h2h_points", "h2h_goal_diff"), meetings=2)
 
@@ -93,17 +92,24 @@ LIGA_MX_APERTURA = replace(
     LIGA_MX_CLAUSURA, name="LIGA_MX_APERTURA",
 )
 
+_ARGENTINA_FAIR_PLAY = (FAIR_PLAY, _metric("negative_fair_play_red_cards"))
+_ARGENTINA_FAIR_PLAY_WEIGHTS = (
+    ("standalone_yellow_cards", 1), ("second_yellow_dismissals", 4), ("direct_red_cards", 5),
+)
 ARGENTINA_ZONES = StandingsRules("ARGENTINA_ZONES", StandingsMetric.POINTS, (
     GD, GF, Criterion(("h2h_points", "h2h_goal_diff", "h2h_goals_for"), reapply=True),
-    PENDING_FAIR_PLAY, DECIDER,
+    *_ARGENTINA_FAIR_PLAY, DECIDER,
 ),
-    note="Articles 10/16 apply to zones only; annual/relegation tables are different.")
+    fair_play_weights=_ARGENTINA_FAIR_PLAY_WEIGHTS, require_complete_fair_play=True,
+    note="AFA arts. 10, 16 and 25. Fair play uses the available card totals for the zone phases.")
 
 ARGENTINA_ANNUAL = StandingsRules(
     "ARGENTINA_ANNUAL",
     StandingsMetric.POINTS,
-    (GD, GF, _missing("MISSING_OFFICIAL_ANNUAL_FAIR_PLAY")),
-    note="AFA arts. 24–25. The official fair-play table includes coaching staff and can require a draw.",
+    (GD, GF, *_ARGENTINA_FAIR_PLAY, DECIDER),
+    fair_play_weights=_ARGENTINA_FAIR_PLAY_WEIGHTS,
+    require_complete_fair_play=True,
+    note="AFA arts. 24–25. Internal fair play uses available card totals for both zone phases.",
 )
 
 MLS = StandingsRules("MLS", StandingsMetric.POINTS, (

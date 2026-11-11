@@ -3,28 +3,24 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import case, func, select, tuple_, union_all
+from sqlalchemy import case, func, literal, select, tuple_, union_all
 from sqlalchemy.orm import Session
 
+from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Competition, Event, Participant, Result, Season
 from modules.competition.season_aggregate import SeasonAggregateSource
+from .disciplinary_incident_repository import DisciplinaryIncidentRepository
 
 
-def read_season_aggregate_team_totals(
-    session: Session,
-    sources: Sequence[SeasonAggregateSource],
-    *,
-    season_year: int,
-    kickoff_cutoff: datetime,
-):
-    """Yield one row of regular-season totals per participant and source tournament."""
+def _season_matches(competitions, season_year, kickoff_cutoff):
     identities = [
-        (source.competition.source, source.competition.source_unique_tournament_id,
-         source.competition.source_tournament_id)
-        for source in sources
+        (competition.source, competition.source_unique_tournament_id, competition.source_tournament_id)
+        for competition in competitions
     ]
-    matches = (
+    return (
         select(
+            Event.id.label("event_id"),
+            Event.starts_at,
             Event.competition_id,
             Event.home_participant_id,
             Event.away_participant_id,
@@ -47,6 +43,43 @@ def read_season_aggregate_team_totals(
         )
         .cte("season_matches")
     )
+
+
+def read_season_card_records(session: Session, competitions, *, season_year, kickoff_cutoff):
+    """Return dated team-side card counts for the same fixtures as the annual table."""
+    matches = _season_matches(competitions, season_year, kickoff_cutoff)
+    sides = union_all(
+        select(matches.c.event_id, matches.c.starts_at, matches.c.home_participant_id.label("participant_id"),
+               literal("home").label("side")),
+        select(matches.c.event_id, matches.c.starts_at, matches.c.away_participant_id,
+               literal("away")),
+    ).subquery()
+    rows = session.execute(
+        select(sides.c.event_id, sides.c.starts_at, sides.c.side, Participant.source, Participant.source_participant_id)
+        .join(Participant, Participant.participant_id == sides.c.participant_id)
+        .order_by(sides.c.starts_at)
+    ).all()
+    totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals(
+        "sofascore", {row.event_id for row in rows}, include_second_yellow=True, session=session,
+    )
+    return [
+        (row.starts_at, (row.source, row.source_participant_id),
+         totals.get((row.event_id, row.side, "yellow_card")),
+         totals.get((row.event_id, row.side, "red_card")),
+         totals.get((row.event_id, row.side, "red_card_second_yellow")))
+        for row in rows
+    ]
+
+
+def read_season_aggregate_team_totals(
+    session: Session,
+    sources: Sequence[SeasonAggregateSource],
+    *,
+    season_year: int,
+    kickoff_cutoff: datetime,
+):
+    """Yield one row of regular-season totals per participant and source tournament."""
+    matches = _season_matches((source.competition for source in sources), season_year, kickoff_cutoff)
     teams = union_all(
         select(
             matches.c.competition_id,

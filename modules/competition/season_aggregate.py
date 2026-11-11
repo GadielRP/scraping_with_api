@@ -36,6 +36,11 @@ class SeasonStanding:
     goals_against: int
     goal_diff: int
     ranking_reason: str | None
+    fair_play_points: int | None = None
+    fair_play_games_counted: int = 0
+    standalone_yellow_cards: int | None = None
+    second_yellow_dismissals: int | None = None
+    direct_red_cards: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

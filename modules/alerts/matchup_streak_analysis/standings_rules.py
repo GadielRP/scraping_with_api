@@ -118,6 +118,8 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
         if name == "negative_fair_play_points":
             points = policy.fair_play_points(stats)
             return -points if points is not None else None
+        if name == "negative_fair_play_red_cards":
+            return -(stats["second_yellow_dismissals"] + stats["direct_red_cards"])
         if name == "alphabetical_order":
             return tuple(-ord(c) for c in team.casefold())
         if name == StandingsMetric.WIN_PERCENTAGE:
