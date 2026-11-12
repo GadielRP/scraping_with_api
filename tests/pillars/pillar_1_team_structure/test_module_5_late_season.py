@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule, RankSelection, FOOTBALL_SCORING
-from modules.competition.qualification_destination import QualificationDestination
+from modules.competition.competitive_rules import QualificationDestination
 from modules.competition import competition_ids
 from modules.competition.rule_terms import ObjectiveType, QualificationPath, RelegationPath, DestinationPhase
 from modules.competition.standings_policies import LALIGA

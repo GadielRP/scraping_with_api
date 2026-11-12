@@ -588,7 +588,11 @@ def calculate_contextual_competitive_cost_engine(
     away_standing = _resolve_team_standing(current_standings, away_team, away_direct_standing)
 
     rules = competition_context.competitive_rules
-    qualification_resolution = getattr(competition_context, "qualification_resolution", None)
+    qualification_state = getattr(competition_context, "qualification_state", None)
+    qualification_resolution = (
+        qualification_state.get("table_qualification_resolution")
+        if qualification_state else None
+    )
     if qualification_resolution is not None:
         rules = qualification_resolution.effective_rules
     points_per_win = rules.scoring.maximum_per_game if rules else None

@@ -8,18 +8,25 @@ from datetime import datetime
 from shared.temporal import as_utc
 
 from .competition_identity import CompetitionIdentity
-from .competitive_rules import CompetitionRules, ObjectiveRule
-from .qualification_destination import QualificationDestination
+from .competitive_rules import CompetitionRules, ObjectiveRule, QualificationDestination
 from .final_outcome import CupFinalEvidence, ParticipantIdentity
 from .rule_terms import AggregationScope, ObjectiveType, RankingScope, RuleStatus, SelectionMethod
 
 
-def _standing_identity(row: dict | None) -> ParticipantIdentity | None:
+def _standing_identity(
+    row: dict | None, participant_name: str | None = None
+) -> ParticipantIdentity | None:
     value = row.get("participant_identity") if row is not None else None
     if isinstance(value, ParticipantIdentity):
-        return value
+        return value if value.source_participant_name else replace(
+            value, source_participant_name=participant_name
+        )
     if isinstance(value, dict) and value.get("source") and value.get("source_participant_id") is not None:
-        return ParticipantIdentity(value["source"], int(value["source_participant_id"]))
+        return ParticipantIdentity(
+            value["source"],
+            int(value["source_participant_id"]),
+            value.get("source_participant_name") or participant_name,
+        )
     return None
 
 
@@ -204,10 +211,17 @@ def resolve_qualification(
 
     league_objectives = _ranked_league_objectives(profile)
 
-    rows = list(table.values() if isinstance(table, Mapping) else table or ())
-    if any(not isinstance(row, dict) for row in rows):
+    named_rows = (
+        list(table.items()) if isinstance(table, Mapping)
+        else [(None, row) for row in table or ()]
+    )
+    if any(not isinstance(row, dict) for _, row in named_rows):
         return replace(pending, reason="incomplete_participant_table")
-    ranked_participants = [(row.get("rank"), _standing_identity(row)) for row in rows]
+    rows = [row for _, row in named_rows]
+    ranked_participants = [
+        (row.get("rank"), _standing_identity(row, participant_name))
+        for participant_name, row in named_rows
+    ]
     rank_counts = Counter(rank for rank, _ in ranked_participants)
     identity_counts = Counter(identity for _, identity in ranked_participants)
     identity_by_rank = {
@@ -249,7 +263,7 @@ def resolve_qualification(
         if case is None:
             continue
         case_policy_indices.add(index)
-        recipient_rank = case.recipient_rank if case is not None else None
+        recipient_rank = case.recipient_rank
         recipient = cup.winner
         if recipient_rank is not None:
             recipient = identity_by_rank.get(recipient_rank)
@@ -308,7 +322,7 @@ def resolve_qualification(
         for rank in ranks:
             assignments[identity_by_rank[rank]] = destination
             league_assignments.append((rank, destination))
-        for index, rank in zip(reallocated_policy_indices, ranks[-len(reallocated_policy_indices):]):
+        for index, rank in zip(reallocated_policy_indices, ranks[places - len(reallocated_policy_indices):]):
             cup_recipients[index] = identity_by_rank[rank]
             cup_recipient_ranks[index] = rank
         effective = _effective_ranges(rule, ranks)

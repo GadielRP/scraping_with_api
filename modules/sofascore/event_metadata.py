@@ -120,6 +120,9 @@ def _specific_knockout_round(round_info: Dict) -> str | None:
         'quarterfinal': 'quarterfinal', 'quarterfinals': 'quarterfinal',
         'quarter-final': 'quarterfinal', 'quarter-finals': 'quarterfinal',
         'round-of-8': 'quarterfinal',
+        'round-of-16': 'round_of_16',
+        'round-of-32': 'round_of_32',
+        'round-of-64': 'round_of_64',
     }
     for field in ('slug', 'name'):
         value = round_info.get(field)

@@ -1,38 +1,94 @@
-"""Load shared season standings and cup evidence before P1 captures its inputs."""
+"""Load evidence and resolve competition outcomes before P1 captures its inputs."""
 
 import logging
 from dataclasses import replace
+from datetime import datetime
+
+from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.repositories.cup_final_repository import read_cup_final
+from infrastructure.persistence.repositories.cup_final_repository import (
+    read_cup_eliminations,
+    read_cup_final,
+    read_cup_finals,
+)
+from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_members
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
+    calculate_multiseason_averages,
     calculate_season_aggregate_standings,
 )
-from modules.competition.competition_identity import CompetitionIdentity
-from modules.competition.competition_profiles import get_season_aggregate_profile
+from modules.competition.annual_competition_outcomes import (
+    AnnualCompetitionOutcomes,
+    resolve_annual_competition_outcomes,
+    resolve_annual_relegation,
+)
+from modules.competition.competitive_rules import AnnualQualificationRules, RankSelection
+from modules.competition.final_outcome import ParticipantIdentity
 from modules.competition.qualification_resolution import resolve_qualification
+from modules.competition.rule_terms import AggregationScope, ObjectiveType, RuleStatus
+from modules.competition.season_aggregate import SeasonAggregateStandings
+from modules.pillars.context import QualificationState
 from shared.temporal import as_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
 
-def _season_aggregate_profile(competition):
-    if (not competition.source or competition.source_unique_tournament_id is None
-            or competition.source_tournament_id is None):
-        return None
-    identity = CompetitionIdentity(
-        competition.source_unique_tournament_id, competition.source_tournament_id, competition.source,
+def _resolve_annual_outcomes_from_evidence(
+    session: Session,
+    outcome_profile: AnnualQualificationRules,
+    annual_standings: SeasonAggregateStandings,
+    relegation_rules: tuple[RankSelection, ...],
+    *,
+    read_at: datetime,
+) -> AnnualCompetitionOutcomes:
+    season_year = annual_standings.season_year
+    cutoff = annual_standings.kickoff_cutoff
+    aggregate_profile = outcome_profile.standings_profile
+    final_rules = outcome_profile.final_berths
+    competitions = tuple(dict.fromkeys(rule.competition for rule in final_rules))
+    finals = read_cup_finals(session, competitions, season_year, cutoff, read_at=read_at)
+    average_seasons = outcome_profile.relegation_average_seasons
+    averages = None
+    if average_seasons is not None:
+        averages = calculate_multiseason_averages(
+            session, aggregate_profile, annual_standings, seasons=average_seasons,
+        )
+    relegation = resolve_annual_relegation(relegation_rules, annual_standings, averages)
+    next_season_members = None
+    if annual_standings.regular_season_complete:
+        rows = read_season_members(
+            session, aggregate_profile.sources, season_year=season_year + outcome_profile.destination_season_offset,
+            known_at=cutoff,
+        )
+        roster = frozenset(ParticipantIdentity(*row) for row in rows)
+        if len(roster) == aggregate_profile.number_of_teams:
+            next_season_members = roster
+
+    outcomes = resolve_annual_competition_outcomes(
+        outcome_profile, annual_standings, finals, relegation, next_season_members=next_season_members,
     )
-    return get_season_aggregate_profile(identity)
+    brackets_needed = {berth.slot for berth in outcomes.berths if berth.reason == "incomplete_cup_bracket"}
+    eliminations = {
+        rule.slot: read_cup_eliminations(
+            session, rule.competition, season_year, rule.replacement_rounds, cutoff, read_at=read_at,
+        )
+        for rule in final_rules if rule.slot in brackets_needed
+    }
+    if any(eliminations.values()):
+        return resolve_annual_competition_outcomes(
+            outcome_profile, annual_standings, finals, relegation,
+            next_season_members=next_season_members, cup_eliminations=eliminations,
+        )
+    return outcomes
 
 
 def prepare_qualification_resolution(event, competition, streak, *, as_of=None):
     profile = competition.competitive_rules
     policies = profile.configured_cup_qualifications if profile is not None else ()
+    annual_profile = profile.annual_qualification if profile is not None else None
     season_year = event.season_year
-    season_profile = _season_aggregate_profile(competition)
-    if not policies and (season_profile is None or season_year is None):
-        return replace(competition, qualification_resolution=None, season_aggregate_standings=None)
+    if not policies and (annual_profile is None or season_year is None):
+        return replace(competition, qualification_state=None)
     # Freeze the evaluation instant. A retrospective evaluation may use evidence
     # already available now, even when it was persisted after the event kickoff.
     now = utc_now()
@@ -47,14 +103,25 @@ def prepare_qualification_resolution(event, competition, streak, *, as_of=None):
             cutoff.isoformat(),
             len(policies),
         )
-    season_standings = None
+    qualification_state: QualificationState = {}
     with db_manager.get_session() as session:
-        if season_profile is not None and season_year is not None:
-            season_standings = calculate_season_aggregate_standings(
+        if annual_profile is not None and season_year is not None:
+            annual_standings = calculate_season_aggregate_standings(
                 session,
-                season_profile,
+                annual_profile.standings_profile,
                 season_year=season_year,
                 kickoff_cutoff=min(cutoff, as_utc(event.starts_at)),
+            )
+            relegation_rules = tuple(
+                rule.rank_selection
+                for rule in profile.objectives or ()
+                if rule.objective_type == ObjectiveType.DIVISION_RETENTION
+                and rule.status == RuleStatus.CONFIGURED
+                and rule.rank_selection.aggregation_scope in (AggregationScope.SEASON_AGGREGATE, AggregationScope.MULTISEASON_RECORD)
+            )
+            qualification_state["annual_standings"] = annual_standings
+            qualification_state["annual_resolution"] = _resolve_annual_outcomes_from_evidence(
+                session, annual_profile, annual_standings, relegation_rules, read_at=now,
             )
         evidence = tuple(
             read_cup_final(
@@ -63,9 +130,8 @@ def prepare_qualification_resolution(event, competition, streak, *, as_of=None):
             )
             for policy in policies
         )
-    competition = replace(competition, season_aggregate_standings=season_standings)
     if not policies:
-        return replace(competition, qualification_resolution=None)
+        return replace(competition, qualification_state=qualification_state or None)
 
     for policy, item in zip(policies, evidence):
         logger.info(
@@ -130,4 +196,5 @@ def prepare_qualification_resolution(event, competition, streak, *, as_of=None):
             for rule in resolution.affected_objectives
         ],
     )
-    return replace(competition, qualification_resolution=resolution)
+    qualification_state["table_qualification_resolution"] = resolution
+    return replace(competition, qualification_state=qualification_state)

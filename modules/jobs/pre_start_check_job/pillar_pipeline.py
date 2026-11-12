@@ -666,15 +666,16 @@ class EventPillarProcessor:
         # No persistence exception is converted into a pillar signal or swallowed.
         if self.debug_mode:
             competition = event_context.competition
+            annual_standings = (competition.qualification_state or {}).get("annual_standings")
             if (
                 competition.competitive_rules is not None
                 and competition.competitive_rules.grouping_method
                 == GroupingMethod.ARGENTINA_ZONES
-                and competition.season_aggregate_standings is not None
+                and annual_standings is not None
             ):
                 send_argentina_zones_standings_debug(
                     current_standings=getattr(event_context.streak_analysis, "current_standings", None),
-                    annual_standings=competition.season_aggregate_standings,
+                    annual_standings=annual_standings,
                     kickoff=identity.starts_at,
                     season_year=identity.season_year,
                 )

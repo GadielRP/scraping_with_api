@@ -18,7 +18,7 @@ from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.competition_profiles import COMPETITION_PROFILES
 from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity, decisive_winner
 from modules.competition.qualification_resolution import resolve_qualification
-from modules.competition.qualification_reallocation import CupReallocationPolicy
+from modules.competition.competitive_rules import CupReallocationPolicy
 from modules.competition.rule_terms import DestinationPhase, QualificationPath
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure.module_5.contextual_competitive_cost_engine import (
@@ -296,7 +296,7 @@ def m5(winner, home_rank, away_rank=10):
     event = replace(event, season_year=2026, starts_at=NOW + timedelta(hours=1),
                     home=replace(event.home, name=f"Club {home_rank}"),
                     away=replace(event.away, name=f"Club {away_rank}"))
-    event.competition = replace(event.competition, qualification_resolution=resolution)
+    event.competition = replace(event.competition, qualification_state={"table_qualification_resolution": resolution})
     result = calculate_contextual_competitive_cost_engine(SimpleNamespace(current_standings=standings),
                                                          event.to_identity(), event.competition)
     return result, event, standings
@@ -333,7 +333,9 @@ def test_capture_is_stable_and_contains_evidence_without_requerying():
                                                         event.to_identity(), event.competition)
     assert to_json_value(result) == to_json_value(again)
     assert captured == to_json_value({"competition_context": event.competition, "streak_analysis": standings})
-    evidence = captured["competition_context"]["qualification_resolution"]["cups"][0]
+    qualification_state = captured["competition_context"]["qualification_state"]
+    assert set(qualification_state) == {"table_qualification_resolution"}
+    evidence = qualification_state["table_qualification_resolution"]["cups"][0]
     assert evidence["observation_id"] == "known-final"
     assert evidence["result"]["home_score"] == 1
     assert evidence["observed_at"] < NOW.isoformat()
@@ -469,7 +471,7 @@ def test_profiles_without_an_executable_cup_rule_do_not_read_cup_evidence(monkey
     event = _configured_event(competition)
     before = event.competition.competitive_rules
     resolved = preparation.prepare_qualification_resolution(event.to_identity(), event.competition, None)
-    assert resolved.qualification_resolution is None and resolved.competitive_rules is before
+    assert resolved.qualification_state is None and resolved.competitive_rules is before
 
 
 def test_pipeline_captures_resolution_after_standings_and_before_calculation(session, monkeypatch):
@@ -506,7 +508,7 @@ def test_pipeline_captures_resolution_after_standings_and_before_calculation(ses
     processor = pipeline.EventPillarProcessor(enabled_pillars={f"pillar_{n}": n == 1 for n in range(1, 6)})
     original_calculate = processor._calculate_p1
     def calculate(*args):
-        prepared = args[1].qualification_resolution
+        prepared = args[1].qualification_state["table_qualification_resolution"]
         assert prepared.applied and prepared.cup.event_id == 100
         # No subsequent cup reads are allowed once preparation is complete.
         monkeypatch.setattr(preparation, "read_cup_final", lambda *_a, **_k: pytest.fail("calculation queried cup"))
@@ -515,7 +517,7 @@ def test_pipeline_captures_resolution_after_standings_and_before_calculation(ses
     try:
         output = processor.process_event(event)
         stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
-        captured = stored["inputs"]["p1"]["competition_context"]["qualification_resolution"]
+        captured = stored["inputs"]["p1"]["competition_context"]["qualification_state"]["table_qualification_resolution"]
         captured_cup = captured["cups"][0]
         captured_allocation = captured["cup_allocations"][0]
         assert captured["status"] == "AS_OF_TABLE" and captured_cup["season_id"] == 104108

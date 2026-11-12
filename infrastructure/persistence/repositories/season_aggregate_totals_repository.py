@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Competition, Event, Participant, Result, Season
-from modules.competition.season_aggregate import SeasonAggregateSource
+from modules.competition.competitive_rules import SeasonAggregateSource
 from .disciplinary_incident_repository import DisciplinaryIncidentRepository
 
 
@@ -126,3 +126,35 @@ def read_season_aggregate_team_totals(
         .join(Participant, Participant.participant_id == totals.c.participant_id)
     )
     return session.execute(query)
+
+
+def read_season_members(session: Session, sources, *, season_year: int, known_at: datetime):
+    """Return participants from fixtures already recorded for the requested season."""
+    identities = [
+        (source.competition.source, source.competition.source_unique_tournament_id,
+         source.competition.source_tournament_id)
+        for source in sources
+    ]
+    fixtures = (
+        select(Event.home_participant_id, Event.away_participant_id)
+        .select_from(Event)
+        .join(Competition, Competition.competition_id == Event.competition_id)
+        .join(Season, Season.id == Event.season_id)
+        .where(
+            tuple_(Competition.source, Competition.source_unique_tournament_id,
+                   Competition.source_tournament_id).in_(identities),
+            Season.year == season_year,
+            Event.round == "regular_season",
+            Event.created_at <= known_at,
+        )
+        .cte("known_season_fixtures")
+    )
+    ids = union_all(
+        select(fixtures.c.home_participant_id.label("participant_id")),
+        select(fixtures.c.away_participant_id),
+    ).subquery()
+    return session.execute(
+        select(Participant.source, Participant.source_participant_id)
+        .join(ids, ids.c.participant_id == Participant.participant_id)
+        .distinct()
+    )

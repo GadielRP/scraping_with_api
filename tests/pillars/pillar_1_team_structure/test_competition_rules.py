@@ -7,8 +7,7 @@ import pytest
 from modules.competition.competition_profiles import COMPETITION_PROFILES
 from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
 from modules.competition import competition_ids
-from modules.competition.competitive_rules import ObjectiveRule, RankSelection
-from modules.competition.qualification_destination import QualificationDestination
+from modules.competition.competitive_rules import ObjectiveRule, QualificationDestination, RankSelection
 from modules.competition.rule_terms import (
     AggregationScope, DestinationPhase, GroupingMethod, ObjectiveType,
     QualificationPath, RelegationPath, RankingScope, RuleStatus, SelectionMethod, StandingsMetric,
@@ -257,22 +256,6 @@ def test_premier_league_cup_rules_keep_their_distinct_explicit_destinations():
     assert efl_cup.qualification_path is QualificationPath.DIRECT
 
 
-def test_brazilian_cup_documents_both_berths_pending_a_joint_resolution():
-    profile = get_competition_profile(competition_ids.BRASILEIRAO)
-    policy, = profile.cup_qualifications
-    destination = policy.qualification_destination
-
-    assert policy.status is RuleStatus.PENDING
-    assert not profile.configured_cup_qualifications
-    assert policy.competition_identity is competition_ids.COPA_DO_BRASIL
-    assert destination.destination_competition_identity is competition_ids.CONMEBOL_LIBERTADORES
-    assert destination.destination_phase is DestinationPhase.GROUP_STAGE
-    assert destination.qualification_path is QualificationPath.DIRECT
-    runner_up = policy.runner_up_qualification_destination
-    assert runner_up.destination_competition_identity is competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION
-    assert runner_up.destination_phase is DestinationPhase.QUALIFICATION_ROUND
-
-
 def test_portuguese_cup_uses_the_catalogued_identity_and_europa_league_phase():
     policy, = get_competition_profile(competition_ids.LIGA_PORTUGAL).cup_qualifications
     destination = policy.qualification_destination
@@ -299,6 +282,9 @@ def test_qualification_routes_reference_qualification_records():
     assert france.objectives[1].qualification_destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION
     assert france.objectives[2].qualification_destination.destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
     brazil = get_competition_profile(competition_ids.BRASILEIRAO)
+    assert brazil.annual_qualification is None
+    assert [(rule.rank_selection.rank_start, rule.rank_selection.rank_end)
+            for rule in brazil.objectives] == [(1, 4), (5, 5), (6, 11), (17, 20)]
     assert brazil.objectives[1].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION
     assert brazil.objectives[0].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES
     assert brazil.objectives[0].qualification_destination.destination_competition_identity.source_tournament_id is None
@@ -354,7 +340,7 @@ def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament()
     argentina = PROFILES["liga_profesional_de_argentina_apertura"]
     retention = [rule for rule in argentina.objectives if rule.objective_type == "DIVISION_RETENTION"]
     assert {rule.rank_selection.aggregation_scope for rule in retention} == {"SEASON_AGGREGATE", "MULTISEASON_RECORD"}
-    assert all(rule.status == "PENDING" for rule in retention)
+    assert all(rule.status == RuleStatus.CONFIGURED for rule in retention)
 
 
 @pytest.mark.parametrize("label", ["Serie A 26/27", "2026/2027", "2025/26", None, "unknown"])
@@ -463,15 +449,14 @@ def test_confirmed_retention_wins_over_pending_international_qualification(
 
 
 def test_one_unresolved_team_suppresses_operational_pressure_for_both_teams():
-    # In Liga Profesional Argentina, external qualification is PENDING (SEASON_AGGREGATE).
-    # A team outside the group playoff top 8 encounters the unresolved boundary.
+    # The group table can evaluate playoff places. Annual selection needs separate inputs.
     analysis = _table(15, 14, 5, 12)
     for row in analysis.current_standings.values():
         row["group"] = "A"
     result = _calculate_m5(analysis, _configured_event("liga_profesional_de_argentina_apertura"))
     assert result.raw["home"]["objective_type"] == "PHASE_QUALIFICATION"
     assert result.raw["home"]["rule_reason"] is None
-    assert result.raw["away"]["rule_reason"] == "UNRESOLVED_OBJECTIVE_BOUNDARY"
+    assert result.raw["away"]["rule_reason"] == "UNSUPPORTED_OBJECTIVE_SELECTION"
     assert result.raw["m5_status"] == "INSUFFICIENT_DATA"
     assert result.value == 0 and result.bias == "NONE"
     assert result.raw["home"]["final_cost"] == result.raw["away"]["final_cost"] == 0

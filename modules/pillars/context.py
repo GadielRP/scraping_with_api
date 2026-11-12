@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
+from modules.competition.annual_competition_outcomes import AnnualCompetitionOutcomes
 from modules.competition.competitive_rules import CompetitionRules
 from modules.competition.qualification_resolution import QualificationResolution
 from modules.competition.season_aggregate import SeasonAggregateStandings
@@ -27,6 +28,14 @@ class ParticipantContext:
     snapshot_ranking: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class QualificationState(TypedDict, total=False):
+    """Qualification data prepared for this event."""
+
+    table_qualification_resolution: QualificationResolution
+    annual_standings: SeasonAggregateStandings
+    annual_resolution: AnnualCompetitionOutcomes
 
 
 @dataclass
@@ -54,8 +63,7 @@ class CompetitionContext:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     competitive_rules: CompetitionRules | None = None
-    qualification_resolution: QualificationResolution | None = None
-    season_aggregate_standings: SeasonAggregateStandings | None = None
+    qualification_state: QualificationState | None = None
 
 
 @dataclass(frozen=True, slots=True)

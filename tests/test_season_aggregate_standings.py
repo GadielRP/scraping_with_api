@@ -1,20 +1,23 @@
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.models import (
-    Competition, DisciplinaryIncidentTotal, Event, EventSourceMapping, Participant, Result, Season,
+    Competition, DisciplinaryIncidentTotal, Event, EventOutcomeObservation, EventSourceMapping, Participant, Result, Season,
 )
 from modules.alerts.matchup_streak_analysis import standings_engine
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
-    calculate_season_aggregate_standings,
+    calculate_multiseason_averages, calculate_season_aggregate_standings,
 )
 from modules.competition import competition_ids as ids
-from modules.competition.competition_profiles import get_competition_profile, get_season_aggregate_profile
+from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
+from modules.competition.final_outcome import ParticipantIdentity
+from modules.competition.rule_terms import SelectionMethod
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure import qualification_preparation
 from tests.pillars.pillar_1_team_structure.test_competition_rules import _configured_event
@@ -26,10 +29,11 @@ def season_data(request):
     # The season label and calendar year of kickoff can differ.
     cutoff = datetime(season_year + 1, 1, 8, tzinfo=timezone.utc)
     engine = create_engine("sqlite://")
-    for model in (Competition, Participant, Season, Event, Result, EventSourceMapping, DisciplinaryIncidentTotal):
+    for model in (Competition, Participant, Season, Event, Result, EventOutcomeObservation,
+                  EventSourceMapping, DisciplinaryIncidentTotal):
         model.__table__.create(engine)
     with Session(engine) as session:
-        profile = get_season_aggregate_profile(ids.ARGENTINA_CLAUSURA)
+        profile = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA].annual_qualification.standings_profile
         profile = replace(profile, number_of_teams=2, sources=tuple(
             replace(source, games_per_team=1) for source in profile.sources
         ))
@@ -93,9 +97,18 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
 
 
 def test_only_clausura_selects_shared_annual_profile():
-    assert get_season_aggregate_profile(ids.ARGENTINA_APERTURA) is None
-    assert get_season_aggregate_profile(ids.ARGENTINA_CLAUSURA) is not None
-    assert get_season_aggregate_profile(ids.ARGENTINA_CLAUSURA_PLAYOFFS) is None
+    assert [identity for identity, rules in COMPETITION_PROFILES.items()
+            if rules.annual_qualification is not None] == [ids.ARGENTINA_CLAUSURA]
+    clausura = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA]
+    annual = clausura.annual_qualification
+    assert [(source.competition, source.games_per_team) for source in annual.standings_profile.sources] == [
+        (ids.ARGENTINA_APERTURA, COMPETITION_PROFILES[ids.ARGENTINA_APERTURA].total_regular_season_games),
+        (ids.ARGENTINA_CLAUSURA, clausura.total_regular_season_games),
+    ]
+    assert [(rule.destination, len(rule.slots)) for rule in annual.table_berths] == [
+        (rule.qualification_destination, rule.rank_selection.places)
+        for rule in clausura.objectives if rule.rank_selection.selection_method == SelectionMethod.BEST_REMAINING
+    ]
 
 
 def _add_cards(session, event_id, home, away):
@@ -164,19 +177,29 @@ def test_clausura_timeline_carries_apertura_cards_without_its_results(season_dat
 def test_pre_start_prepares_annual_standings_for_capture(monkeypatch, season_data):
     session, profile, season_year, cutoff = season_data
     monkeypatch.setattr(qualification_preparation.db_manager, "get_session", lambda: nullcontext(session))
-    monkeypatch.setattr(qualification_preparation, "get_season_aggregate_profile", lambda *_: profile)
     event = _configured_event("liga_profesional_de_argentina_clausura")
+    rules = event.competition.competitive_rules
+    event.competition = replace(event.competition, competitive_rules=replace(
+        rules, annual_qualification=replace(rules.annual_qualification, standings_profile=profile),
+    ))
     identity = replace(event.to_identity(), season_year=season_year, starts_at=cutoff)
 
     prepared = qualification_preparation.prepare_qualification_resolution(
         identity, event.competition, event.streak_analysis, as_of=cutoff + timedelta(hours=1),
     )
 
-    captured = to_json_value(prepared)["season_aggregate_standings"]
+    state = to_json_value(prepared)["qualification_state"]
+    assert set(state) == {"annual_standings", "annual_resolution"}
+    captured = state["annual_standings"]
     assert captured["season_year"] == season_year
     assert captured["kickoff_cutoff"] == cutoff.isoformat()
     assert captured["regular_season_complete"]
     assert captured["standings"][0]["participant"]["source_participant_id"] == 10
+    resolution = state["annual_resolution"]
+    assert resolution["destination_year"] == season_year + 1
+    assert resolution["relegation"]["reason"] == "incomplete_multiseason_record"
+    berths = {berth["slot"]: berth for berth in resolution["berths"]}
+    assert berths["libertadores_1"]["reason"] == "final_absent"
 
 
 def test_pre_start_does_not_guess_missing_season_year(monkeypatch):
@@ -189,4 +212,24 @@ def test_pre_start_does_not_guess_missing_season_year(monkeypatch):
 
     prepared = qualification_preparation.prepare_qualification_resolution(identity, event.competition, None)
 
-    assert prepared.season_aggregate_standings is None
+    assert prepared.qualification_state is None
+
+
+def test_averages_require_complete_historical_campaigns(season_data):
+    session, profile, season_year, cutoff = season_data
+    annual = calculate_season_aggregate_standings(
+        session, profile, season_year=season_year, kickoff_cutoff=cutoff,
+    )
+    assert calculate_multiseason_averages(session, profile, annual, seasons=2) is None
+
+    session.add(Event(
+        id=100, slug="historic-clausura", sport="Football", competition="Liga Profesional",
+        competition_id=2, season_id=2, round="regular_season", starts_at=cutoff - timedelta(days=300),
+        home_team="Club", away_team="Club", home_participant_id=1, away_participant_id=2,
+    ))
+    session.add(Result(event_id=100, home_score=0, away_score=1))
+    session.flush()
+    assert calculate_multiseason_averages(session, profile, annual, seasons=2) == {
+        ParticipantIdentity("sofascore", 10): Fraction(7, 4),
+        ParticipantIdentity("sofascore", 20): Fraction(4, 4),
+    }

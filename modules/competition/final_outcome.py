@@ -1,7 +1,7 @@
 """Evidence for a final and interpretation of its decisive score."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from .competition_identity import CompetitionIdentity
@@ -11,6 +11,7 @@ from .competition_identity import CompetitionIdentity
 class ParticipantIdentity:
     source: str
     source_participant_id: int
+    source_participant_name: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,12 @@ class CupFinalEvidence:
     winner: ParticipantIdentity | None = None
     decision: str | None = None
     candidate_event_ids: tuple[int, ...] = ()
+
+    @property
+    def loser(self) -> ParticipantIdentity | None:
+        if self.winner is None:
+            return None
+        return self.away if self.winner == self.home else self.home
 
 
 def decisive_winner(result: dict) -> tuple[str | None, str]:

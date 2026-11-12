@@ -1,25 +1,10 @@
-"""Configuration and results for a table shared by multiple tournaments."""
+"""Results of a standings table shared by multiple tournaments."""
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from .competition_identity import CompetitionIdentity
-from .competitive_rules import ScoringRules, StandingsRules
+from .competitive_rules import SeasonAggregateSource
 from .final_outcome import ParticipantIdentity
-
-
-@dataclass(frozen=True, slots=True)
-class SeasonAggregateSource:
-    competition: CompetitionIdentity
-    games_per_team: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class SeasonAggregateProfile:
-    number_of_teams: int | None
-    sources: tuple[SeasonAggregateSource, ...]
-    scoring: ScoringRules
-    standings: StandingsRules
 
 
 @dataclass(frozen=True, slots=True)

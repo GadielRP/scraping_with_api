@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from infrastructure.settings import discovery as settings
 from infrastructure.settings.discovery import DiscoveryFilters
 from modules.competition.tracked_competitions import tracked_competition_ids
+from modules.events.round_policy import round_family
 from modules.jobs.discovery.summary import log_filter_counts
 from modules.sports.catalog import (
     canonical_sport_id,
@@ -246,10 +247,8 @@ def admit_sofascore_event(event, scope=None, *, policy=None, now=None) -> Sofasc
         round_name = classify_event_round(event)
     if settings.SOFASCORE.round_filter_enabled:
         round_key = (round_name or "").strip().lower().replace("_", "-")
-        from modules.events.round_policy import round_family
-
         if (round_key not in settings.SOFASCORE.allowed_rounds
-                and round_family(round_key) not in settings.SOFASCORE.allowed_rounds):
+                and round_family(round_name) not in settings.SOFASCORE.allowed_rounds):
             return SofascoreEventAdmission(event, round_name, "round_not_allowed")
     return SofascoreEventAdmission(event, round_name)
 

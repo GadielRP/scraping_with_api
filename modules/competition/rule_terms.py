@@ -173,6 +173,13 @@ class AggregationScope(StrEnum):
     MULTISEASON_RECORD = "MULTISEASON_RECORD"
 
 
+class Finalist(StrEnum):
+    """Position in a decided final."""
+
+    WINNER = "winner"
+    RUNNER_UP = "runner_up"
+
+
 class SelectionMethod(StrEnum):
     """Selección deportiva; los métodos compuestos requieren datos adicionales."""
 
@@ -181,6 +188,7 @@ class SelectionMethod(StrEnum):
     BEST_REMAINING = "BEST_REMAINING"  # Mejores elegibles tras selecciones/exclusiones.
     CHAMPION = "CHAMPION"  # Campeón del torneo; no líder provisional.
     LOWEST_POINTS_AVERAGE = "LOWEST_POINTS_AVERAGE"  # Menor cociente puntos/partidos.
+    LOWEST_POINTS = "LOWEST_POINTS"
     # Declara una asignación compuesta pendiente, no un algoritmo implementado.
     MULTIPLE_QUALIFICATION_PATHS = "MULTIPLE_QUALIFICATION_PATHS"
 

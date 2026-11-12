@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .competition_identity import CompetitionIdentity
-from .qualification_destination import QualificationDestination
-from .qualification_reallocation import CupReallocationPolicy
 from .rule_terms import (
     AggregationScope,
+    DestinationPhase,
+    DestinationRound,
+    Finalist,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
@@ -18,6 +19,83 @@ from .rule_terms import (
     SelectionMethod,
     StandingsMetric,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class QualificationDestination:
+    """The competition phase reached and the route used to reach it.
+
+    Internal phases may omit provider identity and name. Pending external
+    destinations may also omit facts that have not yet been resolved.
+    """
+
+    destination_competition_identity: CompetitionIdentity | None = None
+    destination_competition_name: str | None = None
+    destination_phase: DestinationPhase | None = None
+    destination_round: DestinationRound | None = None
+    qualification_path: QualificationPath | None = None
+
+    def __post_init__(self) -> None:
+        identity = self.destination_competition_identity
+        if isinstance(identity, dict):
+            identity = CompetitionIdentity(**identity)
+            object.__setattr__(self, "destination_competition_identity", identity)
+        if identity is not None and not isinstance(identity, CompetitionIdentity):
+            raise ValueError("destination_competition_identity requires a provider identity")
+        if self.destination_competition_name is not None:
+            if not isinstance(self.destination_competition_name, str) or not self.destination_competition_name.strip():
+                raise ValueError("destination_competition_name must be a non-empty string")
+        if self.destination_phase is not None:
+            object.__setattr__(self, "destination_phase", DestinationPhase(self.destination_phase))
+        if self.destination_round is not None:
+            object.__setattr__(self, "destination_round", DestinationRound(self.destination_round))
+            if self.destination_phase is None:
+                raise ValueError("destination_round requires destination_phase")
+        if self.qualification_path is not None:
+            object.__setattr__(self, "qualification_path", QualificationPath(self.qualification_path))
+
+
+@dataclass(frozen=True, slots=True)
+class CupReallocationCase:
+    """Select the recipient of a cup berth for a league-rank scenario.
+
+    ``recipient_rank`` is a position in the league table. When omitted, the
+    cup winner keeps the berth. Cases are evaluated in profile order and must
+    not overlap.
+    """
+
+    champion_rank_start: int
+    champion_rank_end: int
+    recipient_rank: int | None = None
+
+    def __post_init__(self) -> None:
+        if not (1 <= self.champion_rank_start <= self.champion_rank_end):
+            raise ValueError("invalid cup-winner rank range")
+        if self.recipient_rank is not None and self.recipient_rank < 1:
+            raise ValueError("recipient_rank must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CupReallocationPolicy:
+    """How a cup berth is reassigned when the cup winner already qualifies.
+
+    Rank-specific cases model competition rules that redirect the cup berth
+    even when there is no league objective with the cup's exact destination.
+    Without a matching case, the cup winner is the intended recipient.
+    """
+
+    cases: tuple[CupReallocationCase, ...] = ()
+    reallocate_if_champion_already_qualified: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cases", tuple(
+            case if isinstance(case, CupReallocationCase) else CupReallocationCase(**case)
+            for case in self.cases
+        ))
+        ordered = sorted(self.cases, key=lambda case: case.champion_rank_start)
+        for previous, current in zip(ordered, ordered[1:]):
+            if current.champion_rank_start <= previous.champion_rank_end:
+                raise ValueError("cup reallocation rank cases must not overlap")
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +296,6 @@ class CupQualificationRule:
     destination_season_offset: int | None = None
     sources: tuple[str, ...] = ()
     status: RuleStatus = RuleStatus.CONFIGURED
-    runner_up_qualification_destination: QualificationDestination | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", RuleStatus(self.status))
@@ -235,22 +312,54 @@ class CupQualificationRule:
                 or self.qualification_destination.destination_phase is None
                 or self.qualification_destination.qualification_path is None):
             raise ValueError("cup qualification requires a complete external destination")
-        runner_up_destination = self.runner_up_qualification_destination
-        if isinstance(runner_up_destination, dict):
-            runner_up_destination = QualificationDestination(**runner_up_destination)
-            object.__setattr__(self, "runner_up_qualification_destination", runner_up_destination)
-        if runner_up_destination is not None:
-            if (not isinstance(runner_up_destination, QualificationDestination)
-                    or runner_up_destination.destination_competition_identity is None
-                    or runner_up_destination.destination_competition_name is None
-                    or runner_up_destination.destination_phase is None
-                    or runner_up_destination.qualification_path is None):
-                raise ValueError("runner-up qualification requires a complete external destination")
-            if self.status != RuleStatus.PENDING:
-                raise ValueError("the cup resolver only supports champion berths")
         if (not isinstance(self.competition_name, str) or not self.competition_name.strip()
                 or not isinstance(self.final_round, str) or not self.final_round.strip()):
             raise ValueError("cup competition_name and final_round are required")
+
+
+@dataclass(frozen=True, slots=True)
+class FinalBerthRule:
+    """A berth awarded through a final, with ordered replacements."""
+
+    slot: str
+    destination: QualificationDestination
+    competition: CompetitionIdentity
+    finalists: tuple[Finalist, ...] = (Finalist.WINNER,)
+    replacement_rounds: tuple[tuple[str, int], ...] = ()
+    reallocate_to_table: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TableBerthRule:
+    """Berths for the next eligible clubs in standings order."""
+
+    destination: QualificationDestination
+    slots: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonAggregateSource:
+    competition: CompetitionIdentity
+    games_per_team: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonAggregateProfile:
+    number_of_teams: int | None
+    sources: tuple[SeasonAggregateSource, ...]
+    scoring: ScoringRules
+    standings: StandingsRules
+
+
+@dataclass(frozen=True, slots=True)
+class AnnualQualificationRules:
+    """Ordered annual allocations, evaluated against a season aggregate."""
+
+    standings_profile: SeasonAggregateProfile
+    destination_season_offset: int
+    final_berths: tuple[FinalBerthRule, ...] = ()
+    table_berths: tuple[TableBerthRule, ...] = ()
+    relegation_average_seasons: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +386,7 @@ class CompetitionRules:
     # Ordered for deterministic handling when configured cup winners overlap.
     cup_qualifications: tuple[CupQualificationRule, ...] = ()
     fair_play_carryover: CompetitionIdentity | None = None
+    annual_qualification: AnnualQualificationRules | None = None
 
     @property
     def configured_cup_qualifications(self) -> tuple[CupQualificationRule, ...]:

@@ -11,17 +11,17 @@ from typing import Mapping
 
 from modules.competition import competition_ids, standings_policies
 from .competition_identity import CompetitionIdentity
-from .qualification_destination import QualificationDestination
-from .qualification_reallocation import CupReallocationCase, CupReallocationPolicy
-from .season_aggregate import SeasonAggregateProfile, SeasonAggregateSource
 from modules.competition.competitive_rules import (
-    CompetitionRules, CupQualificationRule, DisciplineRules, ObjectiveRule, RankSelection, FOOTBALL_SCORING, WINS_SCORING,
+    AnnualQualificationRules, CompetitionRules, CupQualificationRule, CupReallocationCase,
+    CupReallocationPolicy, DisciplineRules, FinalBerthRule, ObjectiveRule, QualificationDestination,
+    RankSelection, SeasonAggregateProfile, SeasonAggregateSource, TableBerthRule, FOOTBALL_SCORING, WINS_SCORING,
     NFL_SCORING, NHL_SCORING, HOCKEY_SCORING,
 )
 from modules.competition.rule_terms import (
     AggregationScope,
     DestinationPhase,
     DestinationRound,
+    Finalist,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
@@ -693,15 +693,16 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name='CONMEBOL Libertadores',
+                destination_competition_name="CONMEBOL Libertadores",
             ),
             create_competition_qualification_rule(
                 start=5,
                 end=5,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
+                destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
-                destination_competition_name='CONMEBOL Libertadores, Qualification',
+                destination_competition_name="CONMEBOL Libertadores, Qualification",
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -709,12 +710,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name='CONMEBOL Sudamericana',
+                destination_competition_name="CONMEBOL Sudamericana",
             ),
-            create_division_retention_rule(
-                start=17, end=20,
-                safe_rank=16,
-            ),
+            create_division_retention_rule(start=17, end=20, safe_rank=16),
         ),
         standings=standings_policies.BRASILEIRAO,
         cup_qualifications=(
@@ -722,33 +720,19 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 competition_identity=competition_ids.COPA_DO_BRASIL,
                 competition_name=competition_ids.COMPETITION_NAMES[competition_ids.COPA_DO_BRASIL],
                 final_round="final",
-                # CBF art. 4 and Série A art. 6 redistribute both places together.
-                # The runner-up can inherit the group-stage place. Continental
-                # winners and 2027 Série A eligibility can also change recipients.
-                status=RuleStatus.PENDING,
+                reallocation_policy=CupReallocationPolicy(reallocate_if_champion_already_qualified=True),
                 destination_season_offset=1,
+                sources=(
+                    "https://www.cbf.com.br/futebol-brasileiro/noticias/copa-brasil/definido-o-regulamento-da-copa-do-brasil-2026",
+                ),
                 qualification_destination=QualificationDestination(
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name='CONMEBOL Libertadores',
+                    destination_competition_name="CONMEBOL Libertadores",
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     qualification_path=QualificationPath.DIRECT,
                 ),
-                runner_up_qualification_destination=QualificationDestination(
-                    destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
-                    destination_competition_name="CONMEBOL Libertadores, Qualification",
-                    destination_phase=DestinationPhase.QUALIFICATION_ROUND,
-                    qualification_path=QualificationPath.DIRECT,
-                ),
-                sources=(
-                    "https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_Copa_do_Brasil_2026_66989a5426.pdf",
-                    "https://stcbfsiteprdimgbrs.blob.core.windows.net/img-site/cdn/REC_Brasileiro_SA_rie_A_2026_v15_12_2025_final_02692c1077.pdf",
-                ),
             ),
-        ),
-        note=(
-            "The league cutoffs are the baseline. Cup and continental reallocations "
-            "require both cup finalists, continental winners and 2027 Série A eligibility."
-        ),
+        )
     ),
 
     # liga_mx_apertura (1-8 a cuartos de final de Liguilla; sin descenso; Concacaf pendiente por acumulado anual)
@@ -769,17 +753,16 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "Resolve together with Clausura using both finals and the season aggregate. "
-                    "Concacaf 2027 used a Round of 16 bye for the best league champion "
-                    "and reassigned overlaps with Leagues Cup."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                destination_phase=None,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                destination_competition_name='CONCACAF Champions Cup',
+                destination_competition_name="CONCACAF Champions Cup",
                 path=None,
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                note=(
+                    "Requires an aggregate spanning the preceding Apertura and the current Clausura, "
+                    "both finals, and the entry and overlap rules published for the destination edition."
+                ),
             ),
         ),
         standings=standings_policies.LIGA_MX_APERTURA,
@@ -804,17 +787,16 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "Resolve together with Apertura using both finals and the season aggregate. "
-                    "Concacaf 2027 used a Round of 16 bye for the best league champion "
-                    "and reassigned overlaps with Leagues Cup."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                destination_phase=None,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                destination_competition_name='CONCACAF Champions Cup',
+                destination_competition_name="CONCACAF Champions Cup",
                 path=None,
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                note=(
+                    "Requires an aggregate spanning the preceding Apertura and the current Clausura, "
+                    "both finals, and the entry and overlap rules published for the destination edition."
+                ),
             ),
         ),
         standings=standings_policies.LIGA_MX_CLAUSURA,
@@ -840,52 +822,45 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_competition_name="Liga Profesional de Fútbol, Apertura Playoffs",
             ),
             create_division_retention_rule(
-                start=30, end=30,
-                safe_rank=29,
-                relegation_path=RelegationPath.DIRECT_RELEGATION,
-                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                status=RuleStatus.PENDING,
-                note="Worst annual team excluding the club relegated by rolling average.",
-            ),
-            create_division_retention_rule(
-                relegation_path=RelegationPath.DIRECT_RELEGATION,
                 aggregation_scope=AggregationScope.MULTISEASON_RECORD,
-                status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.LOWEST_POINTS_AVERAGE,
                 places=1,
-                note="Worst points-per-game average; requires three seasons and exclusions.",
+            ),
+            create_division_retention_rule(
+                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
+                selection_method=SelectionMethod.LOWEST_POINTS,
+                places=1,
+                note="Exclude the club relegated by average.",
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "AFA art. 27. Apertura and Clausura champions and Copa Argentina award separate berths. "
-                    "If the cup champion already holds a league champion berth, select the next eligible "
-                    "top-flight finisher in the cup and break ties using the annual table."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=2,
+                destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name='CONMEBOL Libertadores',
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                destination_competition_name="CONMEBOL Libertadores",
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "AFA art. 28. Take six from the annual table after excluding all Libertadores qualifiers. "
-                    "Participants must be in the 2027 top flight."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=1,
+                destination_phase=DestinationPhase.QUALIFICATION_ROUND,
+                destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
+                destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
+                destination_competition_name="CONMEBOL Libertadores, Qualification",
+            ),
+            create_competition_qualification_rule(
+                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=6,
+                destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name='CONMEBOL Sudamericana',
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                destination_competition_name="CONMEBOL Sudamericana",
             ),
         ),
         standings=standings_policies.ARGENTINA_ZONES,
         grouping_method=GroupingMethod.ARGENTINA_ZONES,
-        note="Two groups of 15; annual table has 32 games per team. Never use a group for relegation.",
+        note="Two groups of 15; annual table has 32 games per team. Relegation uses the annual table and the multiseason average.",
     ),
 
     # liga_profesional_de_argentina_clausura
@@ -903,56 +878,154 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS,
-                destination_competition_name="Liga Profesional, Clausura Playoffs",
+                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS],
             ),
             create_division_retention_rule(
-                start=30, end=30,
-                safe_rank=29,
-                relegation_path=RelegationPath.DIRECT_RELEGATION,
-                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                status=RuleStatus.PENDING,
-                note="Worst annual team excluding the club relegated by rolling average.",
-            ),
-            create_division_retention_rule(
-                relegation_path=RelegationPath.DIRECT_RELEGATION,
                 aggregation_scope=AggregationScope.MULTISEASON_RECORD,
-                status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.LOWEST_POINTS_AVERAGE,
                 places=1,
-                note="Worst points-per-game average; requires three seasons and exclusions.",
+            ),
+            create_division_retention_rule(
+                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
+                selection_method=SelectionMethod.LOWEST_POINTS,
+                places=1,
+                note="Exclude the club relegated by average.",
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "AFA art. 27. Apertura and Clausura champions and Copa Argentina award separate berths. "
-                    "If the cup champion already holds a league champion berth, select the next eligible "
-                    "top-flight finisher in the cup and break ties using the annual table."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=2,
+                destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name='CONMEBOL Libertadores',
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                destination_competition_name="CONMEBOL Libertadores",
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                note=(
-                    "AFA art. 28. Take six from the annual table after excluding all Libertadores qualifiers. "
-                    "Participants must be in the 2027 top flight."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=1,
+                destination_phase=DestinationPhase.QUALIFICATION_ROUND,
+                destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
+                destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
+                destination_competition_name="CONMEBOL Libertadores, Qualification",
+            ),
+            create_competition_qualification_rule(
+                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=6,
+                destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name='CONMEBOL Sudamericana',
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
+                destination_competition_name="CONMEBOL Sudamericana",
             ),
         ),
         standings=standings_policies.ARGENTINA_ZONES,
         grouping_method=GroupingMethod.ARGENTINA_ZONES,
-        note="Two groups of 15; annual table has 32 games per team. Never use a group for relegation.",
+        note="Two groups of 15; annual table has 32 games per team. Relegation uses the annual table and the multiseason average.",
         fair_play_carryover=competition_ids.ARGENTINA_APERTURA,
+        annual_qualification=AnnualQualificationRules(
+            standings_profile=SeasonAggregateProfile(
+                number_of_teams=30,
+                sources=(
+                    SeasonAggregateSource(competition=competition_ids.ARGENTINA_APERTURA, games_per_team=16),
+                    SeasonAggregateSource(competition=competition_ids.ARGENTINA_CLAUSURA, games_per_team=16),
+                ),
+                scoring=FOOTBALL_SCORING,
+                standings=standings_policies.ARGENTINA_ANNUAL,
+            ),
+            destination_season_offset=1,
+            relegation_average_seasons=3,
+            final_berths=(
+                FinalBerthRule(
+                    slot="libertadores_titleholder",
+                    competition=competition_ids.CONMEBOL_LIBERTADORES,
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                FinalBerthRule(
+                    slot="sudamericana_titleholder",
+                    competition=competition_ids.CONMEBOL_SUDAMERICANA,
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                FinalBerthRule(
+                    slot="libertadores_1",
+                    competition=competition_ids.ARGENTINA_APERTURA_PLAYOFFS,
+                    reallocate_to_table=True,
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                FinalBerthRule(
+                    slot="libertadores_2",
+                    competition=competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS,
+                    reallocate_to_table=True,
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                FinalBerthRule(
+                    slot="libertadores_3",
+                    competition=competition_ids.COPA_ARGENTINA,
+                    finalists=(Finalist.WINNER, Finalist.RUNNER_UP),
+                    replacement_rounds=(
+                        ("semifinal", 2), ("quarterfinal", 4), ("round_of_16", 8),
+                        ("round_of_32", 16), ("round_of_64", 32),
+                    ),
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+            ),
+            table_berths=(
+                TableBerthRule(
+                    slots=("libertadores_4", "libertadores_5"),
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
+                        destination_competition_name="CONMEBOL Libertadores",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                TableBerthRule(
+                    slots=("libertadores_6",),
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
+                        destination_competition_name="CONMEBOL Libertadores, Qualification",
+                        destination_phase=DestinationPhase.QUALIFICATION_ROUND,
+                        destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+                TableBerthRule(
+                    slots=(
+                        "sudamericana_1", "sudamericana_2", "sudamericana_3",
+                        "sudamericana_4", "sudamericana_5", "sudamericana_6",
+                    ),
+                    destination=QualificationDestination(
+                        destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
+                        destination_competition_name="CONMEBOL Sudamericana",
+                        destination_phase=DestinationPhase.GROUP_STAGE,
+                        qualification_path=QualificationPath.DIRECT,
+                    ),
+                ),
+            ),
+        ),
     ),
 
     # nba (Conferencia: 1-6 Playoffs, 7-10 Play-In; sin descenso)
@@ -1289,30 +1362,28 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 start=1,
                 end=4,
                 path=QualificationPath.DIRECT,
-                status=RuleStatus.PENDING,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
                 destination_competition_name="China CBA, Playoffs",
-                note='Public reports indicate this entry round; the primary 2026/27 competition regulation remains to be checked.',
+                note="Top four advance directly to the quarterfinals.",
             ),
             create_phase_qualification_rule(
                 start=5,
                 end=12,
                 path=QualificationPath.DIRECT,
-                status=RuleStatus.PENDING,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
                 destination_competition_name="China CBA, Playoffs",
-                note='Public reports indicate a best-of-three format; the primary 2026/27 competition regulation remains to be checked.',
+                note="The first round is a best-of-three series.",
             ),
             create_competition_qualification_rule(
                 path=None,
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.CHAMPION,
                 places=1,
-                note='Champion path only; destination phase unresolved; not a regular season table finish.',
+                note="FIBA included the CBA champion in the preceding edition. Confirm the destination edition's selection criteria.",
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
                 destination_competition_identity=competition_ids.FIBA_INTERCONTINENTAL_CUP,
                 destination_competition_name='FIBA Intercontinental Cup',
@@ -1338,24 +1409,3 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
 def get_competition_profile(identity: CompetitionIdentity | None) -> CompetitionRules | None:
     """Return the current profile by exact provider identity, independent of local IDs."""
     return COMPETITION_PROFILES.get(identity)
-
-
-_ARGENTINA_TOURNAMENTS = (competition_ids.ARGENTINA_APERTURA, competition_ids.ARGENTINA_CLAUSURA)
-_ARGENTINA_AGGREGATE = SeasonAggregateProfile(
-    number_of_teams=COMPETITION_PROFILES[competition_ids.ARGENTINA_CLAUSURA].number_of_teams,
-    sources=tuple(
-        SeasonAggregateSource(identity, COMPETITION_PROFILES[identity].total_regular_season_games)
-        for identity in _ARGENTINA_TOURNAMENTS
-    ),
-    scoring=FOOTBALL_SCORING,
-    standings=standings_policies.ARGENTINA_ANNUAL,
-)
-
-_SEASON_AGGREGATES = MappingProxyType({
-    competition_ids.ARGENTINA_CLAUSURA: _ARGENTINA_AGGREGATE,
-})
-
-
-def get_season_aggregate_profile(identity: CompetitionIdentity | None) -> SeasonAggregateProfile | None:
-    """Select the shared table configuration by tournament identity."""
-    return _SEASON_AGGREGATES.get(identity)

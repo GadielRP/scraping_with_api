@@ -78,7 +78,7 @@ def resolve_p1_competition_context(
                 identity,
             )
         return replace(competition_context, competitive_rules=None, number_of_teams=None,
-                       qualification_resolution=None,
+                       qualification_state=None,
                        total_regular_season_games=None, standings_grouping=None,
                        number_of_teams_source="missing", competition_config_source="missing")
     logger.info(
@@ -105,10 +105,6 @@ def resolve_p1_competition_context(
                 "destination_phase": policy.qualification_destination.destination_phase,
                 "destination_round": policy.qualification_destination.destination_round,
                 "qualification_path": policy.qualification_destination.qualification_path,
-                "runner_up_qualification_destination": (
-                    asdict(policy.runner_up_qualification_destination)
-                    if policy.runner_up_qualification_destination is not None else None
-                ),
                 "reallocation_policy": asdict(policy.reallocation_policy),
             }
             for policy in rules.cup_qualifications
@@ -117,7 +113,7 @@ def resolve_p1_competition_context(
     return replace(
         competition_context,
         competitive_rules=rules,
-        qualification_resolution=None,
+        qualification_state=None,
         number_of_teams=rules.number_of_teams,
         number_of_teams_source="competition_rules",
         total_regular_season_games=rules.total_regular_season_games,

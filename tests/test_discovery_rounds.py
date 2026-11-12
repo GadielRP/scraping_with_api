@@ -52,6 +52,9 @@ def test_default_round_policy_is_enabled_and_regular_season_only():
     ("quarterfinal", "League", "quarterfinal", False),
     ("semifinal", "League", "semifinal", False),
     ("final", "Copa del Rey", "final", False),
+    ("round-of-16", "Copa Argentina", "round_of_16", False),
+    ("round-of-32", "Copa Argentina", "round_of_32", False),
+    ("round-of-64", "Copa Argentina", "round_of_64", False),
     ("conference-finals", "League", "knockouts/playoffs", False),
     ("wild-card-round", "League", "knockouts/playoffs", False),
     ("placement-match", "League", "knockouts/playoffs", False),
@@ -81,7 +84,7 @@ def test_allowed_rounds_are_configurable_and_accept_internal_aliases(monkeypatch
         allowed_rounds=frozenset({" Regular_Season ", "knockouts/playoffs", "custom-stage"}),
     ))
     assert settings.SOFASCORE.allowed_rounds == frozenset({"regular-season", "knockouts/playoffs", "custom-stage"})
-    for raw in (event(), event("quarterfinal"), event("custom-stage")):
+    for raw in (event(), event("quarterfinal"), event("round-of-16"), event("custom-stage")):
         assert filters.admit_sofascore_event(raw).rejection_reason is None
     assert filters.admit_sofascore_event(event(competition="Friendly Games")).rejection_reason == "round_not_allowed"
 
