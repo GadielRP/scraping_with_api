@@ -233,20 +233,13 @@ def _build_standings_payload(
 ) -> Dict[str, Dict]:
     standings: Dict[str, Dict] = {}
 
-    season_complete = bool(
-        profile.total_regular_season_games and profile.number_of_teams
-        and len(team_stats) == profile.number_of_teams
-        and all(stats["games_played"] >= profile.total_regular_season_games for stats in team_stats.values())
-    )
     grouped_teams: Dict[Optional[str], List[Tuple[str, Dict[str, object]]]] = {}
     for team_name, stats in team_stats.items():
         group_name = None if profile.grouping_method == GroupingMethod.LEAGUE_WIDE else stats.get("group") or "UNKNOWN"
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
-        sorted_teams, positions = rank_standings(
-            teams, profile, match_records, season_complete=season_complete,
-        )
+        sorted_teams, positions = rank_standings(teams, profile, match_records)
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]

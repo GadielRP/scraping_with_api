@@ -173,3 +173,8 @@ COMPETITION_NAMES: Final[Mapping[CompetitionIdentity, str]] = MappingProxyType({
     KNVB_BEKER: "KNVB Beker",
     SAUDI_KINGS_CUP: "King's Cup",
 })
+
+
+def name_of(identity: CompetitionIdentity | None) -> str | None:
+    """Registered display name for an identity; None when it is not catalogued."""
+    return COMPETITION_NAMES.get(identity)

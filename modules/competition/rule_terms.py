@@ -36,22 +36,24 @@ RankSelection.reference_rank: puesto de referencia para medir la distancia compe
     En acceso suele ser rank_end; en permanencia es el último puesto seguro.
 RankSelection.selection_method: cómo se eligen los equipos; no define el orden de desempate.
 RankSelection.places: cantidad de plazas cuando la selección no se expresa como un rango.
+RankSelection.seasons: temporadas que abarca un método multianual (por ejemplo el promedio de descenso).
 RankSelection.group_size: número de equipos de la tabla local, no de toda la competición.
 RankSelection.ranking_group: grupo concreto dentro del ámbito, por ejemplo Atlantic.
     Es una identidad local, no un término deportivo global.
 note: detalles humanos, nombre comercial, formato de serie o motivo pendiente.
     El motor no interpreta esta nota para seleccionar equipos.
 
-Campos de CupQualificationRule y CupReallocationPolicy
------------------------------------------------------
-qualification_destination: plaza de fase y vía que entrega la copa; no se
-    deduce de los destinos de las reglas de liga.
-reallocation_policy.cases: escenarios del puesto liguero del campeón que
-    reasignan el cupo de copa a otro puesto concreto de la tabla. Los puestos
-    destinatarios desplazan automáticamente las selecciones de liga posteriores.
-reallocate_if_champion_already_qualified: cuando no hay un caso por puesto,
-    permite pasar una plaza cuyo campeón ya recibió otra plaza de liga al
-    siguiente participante de tabla que aún no tenga una asignación.
+Campos de QualificationSources y TournamentBerthRule
+---------------------------------------------------
+Las plazas de tabla no se declaran aparte: salen de los objetivos
+COMPETITION_QUALIFICATION del perfil, una por puesto, en orden. La
+configuración solo añade las plazas que se ganan fuera de la tabla.
+before_table_slot: posición (1-based) en la secuencia de plazas de tabla que
+    esta plaza precede; None la coloca tras todas. Fija el orden de prioridad.
+reallocate_to_table: si ningún club elegible la gana, pasa al mejor clasificado
+    que aún no tenga plaza.
+open_to_outsiders: el campeón ajeno a la tabla (otra división) conserva la plaza.
+shared_table: tabla compartida por varios torneos que ordena a los clubes.
 
 Campos de CompetitionRules
 --------------------------
@@ -71,8 +73,7 @@ Campos de StandingsRules y RankingCriterion
 ------------------------------------------
 name: identidad de la política de orden, no una vía ni un destino.
 primary_metric: valor principal para ordenar (puntos, victorias o porcentaje).
-criteria: pasos de desempate en orden. in_season_criteria permite otro orden
-    durante la temporada; None reutiliza criteria.
+criteria: pasos de desempate en orden; una sola política por competición.
 record_percentage: expone también el porcentaje en el registro de clasificación.
 regulation_scores_only: excluye el marcador de prórroga en criterios de tanteo.
 fair_play_weights: pares (stat, peso) de la política para calcular puntos de penalización
@@ -84,7 +85,6 @@ meetings: encuentros necesarios por pareja para aplicar el criterio.
 only_two, only_multiple: limita el criterio a empates de dos o varios equipos.
 reapply: vuelve a aplicar el criterio al subconjunto que sigue empatado.
 unavailable: motivo explícito por el que no se puede evaluar el criterio.
-final_only: aplica el criterio al cierre de temporada.
 share_if_incomplete: conserva la igualdad cuando faltan encuentros requeridos.
 
 Campos de ScoringRules

@@ -3,12 +3,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional
 
-from modules.competition.annual_competition_outcomes import AnnualCompetitionOutcomes
+from modules.competition.berth_allocation_engine.models import BerthAllocation
 from modules.competition.competitive_rules import CompetitionRules
-from modules.competition.qualification_resolution import QualificationResolution
-from modules.competition.season_aggregate import SeasonAggregateStandings
 
 from shared.temporal import as_utc
 
@@ -23,19 +21,9 @@ class ParticipantContext:
     name: str
     slug: Optional[str]
     short_name: Optional[str]
-    source_status: str
     code_name: Optional[str] = None
-    snapshot_ranking: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-
-class QualificationState(TypedDict, total=False):
-    """Qualification data prepared for this event."""
-
-    table_qualification_resolution: QualificationResolution
-    annual_standings: SeasonAggregateStandings
-    annual_resolution: AnnualCompetitionOutcomes
 
 
 @dataclass
@@ -56,14 +44,13 @@ class CompetitionContext:
     standings_grouping: Optional[str]
     competition_config_source: Optional[str]
     has_standings_source_endpoint: Optional[bool]
-    source_status: str
     standings_response: Optional[list] = field(default=None, repr=False)
     source_tournament_name: Optional[str] = None
     source_unique_tournament_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     competitive_rules: CompetitionRules | None = None
-    qualification_state: QualificationState | None = None
+    berth_allocation: BerthAllocation | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +70,6 @@ class EventIdentity:
     home_team_name: Optional[str] = None
     away_team_name: Optional[str] = None
     country: Optional[str] = None
-    context_status: str = "VALID"
 
 
 @dataclass
@@ -101,7 +87,6 @@ class EventContext:
     away: ParticipantContext
     competition: CompetitionContext
     participants_label: str
-    context_status: str
     slug: Optional[str] = None
     gender: Optional[str] = None
     country: Optional[str] = None
@@ -109,7 +94,6 @@ class EventContext:
     observations: list[dict] = field(default_factory=list)
     odds_trajectory: list[dict] = field(default_factory=list)
     odds_trajectory_context: Optional[Any] = None
-    ft_1x2_odds_trajectory_context: Optional[Any] = None
     streak_analysis: Optional[Any] = None
     should_send_streak_alert: bool = False
     dual_report: Optional[Any] = None
@@ -119,13 +103,6 @@ class EventContext:
     updated_at: Optional[datetime] = None
 
     def to_identity(self) -> EventIdentity:
-        comp_id = getattr(self.competition, "competition_id", None) if self.competition else None
-        comp_name = (
-            getattr(self.competition, "display_name", None)
-            or getattr(self.competition, "canonical_name", None)
-            if self.competition
-            else None
-        )
         return EventIdentity(
             event_id=self.event_id,
             participants_label=self.participants_label,
@@ -133,22 +110,15 @@ class EventContext:
             minutes_until_start=self.minutes_until_start,
             sport=self.sport,
             round=self.round,
-            competition_id=comp_id,
-            competition_name=comp_name,
+            competition_id=self.competition.competition_id,
+            competition_name=self.competition.display_name or self.competition.canonical_name,
             season_id=self.season_id,
             season_name=self.season_name,
             season_year=self.season_year,
-            home_team_name=getattr(self.home, "name", None),
-            away_team_name=getattr(self.away, "name", None),
+            home_team_name=self.home.name,
+            away_team_name=self.away.name,
             country=self.country,
-            context_status=self.context_status,
         )
-
-
-
-def _missing_context_message(event_obj, missing: list[str]) -> str:
-    event_id = getattr(event_obj, "id", "?")
-    return f"event_id={event_id} missing_normalized_context_fields={','.join(missing)}"
 
 
 def _clean_text(value) -> Optional[str]:
@@ -166,189 +136,84 @@ def build_event_context(
     odds_trajectory: Optional[list[dict]] = None,
     success: bool = True,
 ) -> Optional[EventContext]:
-    """Build EventContext, preferring normalized relations with temporary legacy fallback."""
-    raw_metadata = metadata_snapshot or {}
+    """Build the EventContext of an event whose normalized relations are loaded.
 
-    missing: list[str] = []
-    legacy_fallback_used = False
+    Participants and competition come only from the loaded relations. When one is
+    missing the context cannot be built and None is returned.
+    """
+    raw_metadata = metadata_snapshot or {}
     home_participant = event_obj.__dict__.get("home_participant")
     away_participant = event_obj.__dict__.get("away_participant")
     competition_ref = event_obj.__dict__.get("competition_ref")
     season = event_obj.__dict__.get("season")
-    legacy_home_name = _clean_text(getattr(event_obj, "home_team", None))
-    legacy_away_name = _clean_text(getattr(event_obj, "away_team", None))
-    legacy_competition_name = _clean_text(getattr(event_obj, "competition", None))
-    snapshot_home_team_id = raw_metadata.get("home_team_id")
-    snapshot_away_team_id = raw_metadata.get("away_team_id")
-    snapshot_competition_slug = _clean_text(raw_metadata.get("competition_slug"))
-    snapshot_unique_tournament_id = raw_metadata.get("unique_tournament_id")
-
-    if home_participant is None and legacy_home_name is None:
-        missing.append("home_participant")
-    if away_participant is None and legacy_away_name is None:
-        missing.append("away_participant")
-    if competition_ref is None and legacy_competition_name is None:
-        missing.append("competition_ref")
-
-    if missing:
-        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
-        return None
+    starts_at = getattr(event_obj, "starts_at", None)
 
     home_name = _clean_text(getattr(home_participant, "name", None))
-    if home_name is None and legacy_home_name is not None:
-        home_name = legacy_home_name
-        legacy_fallback_used = True
-
     away_name = _clean_text(getattr(away_participant, "name", None))
-    if away_name is None and legacy_away_name is not None:
-        away_name = legacy_away_name
-        legacy_fallback_used = True
-
     competition_display_name = _clean_text(getattr(competition_ref, "display_name", None))
-    if competition_display_name is None and legacy_competition_name is not None:
-        competition_display_name = legacy_competition_name
-        legacy_fallback_used = True
-
-    if not home_name:
-        missing.append("home_participant.name")
-    if not away_name:
-        missing.append("away_participant.name")
-    if not competition_display_name:
-        missing.append("competition_ref.display_name")
-
+    missing = [
+        label for label, value in (
+            ("home_participant", home_participant),
+            ("home_participant.name", home_name),
+            ("away_participant", away_participant),
+            ("away_participant.name", away_name),
+            ("competition_ref", competition_ref),
+            ("competition_ref.display_name", competition_display_name),
+            ("starts_at", starts_at),
+        ) if not value
+    ]
     if missing:
-        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
-        return None
-
-    starts_at = getattr(event_obj, "starts_at", None)
-    if starts_at is None:
-        missing.append("starts_at")
-    else:
-        starts_at = as_utc(
-            starts_at,
-            field_name="event_context.starts_at",
+        logger.warning(
+            "Normalized EventContext unavailable: event_id=%s missing_normalized_context_fields=%s",
+            getattr(event_obj, "id", "?"), ",".join(missing),
         )
-    if missing:
-        logger.warning("Normalized EventContext unavailable: %s", _missing_context_message(event_obj, missing))
         return None
-
-    home_participant_id = getattr(home_participant, "participant_id", None)
-    if home_participant_id is None:
-        home_participant_id = getattr(event_obj, "home_participant_id", None)
-        if legacy_home_name is not None:
-            legacy_fallback_used = True
-
-    away_participant_id = getattr(away_participant, "participant_id", None)
-    if away_participant_id is None:
-        away_participant_id = getattr(event_obj, "away_participant_id", None)
-        if legacy_away_name is not None:
-            legacy_fallback_used = True
-
-    competition_id = getattr(competition_ref, "competition_id", None)
-    if competition_id is None:
-        competition_id = getattr(event_obj, "competition_id", None)
-        if legacy_competition_name is not None:
-            legacy_fallback_used = True
-
-    home_source_participant_id = getattr(home_participant, "source_participant_id", None)
-    if home_source_participant_id is None:
-        home_source_participant_id = snapshot_home_team_id
-        if home_source_participant_id is not None:
-            legacy_fallback_used = True
-
-    away_source_participant_id = getattr(away_participant, "source_participant_id", None)
-    if away_source_participant_id is None:
-        away_source_participant_id = snapshot_away_team_id
-        if away_source_participant_id is not None:
-            legacy_fallback_used = True
-
-    competition_source_unique_tournament_id = getattr(competition_ref, "source_unique_tournament_id", None)
-    if competition_source_unique_tournament_id is None:
-        competition_source_unique_tournament_id = snapshot_unique_tournament_id
-        if competition_source_unique_tournament_id is not None:
-            legacy_fallback_used = True
-
-    competition_slug = _clean_text(getattr(competition_ref, "slug", None))
-    unique_competition_slug = _clean_text(getattr(competition_ref, "unique_slug", None))
-    if not competition_slug and snapshot_competition_slug:
-        competition_slug = snapshot_competition_slug
-        legacy_fallback_used = True
-    if not unique_competition_slug and snapshot_competition_slug:
-        unique_competition_slug = snapshot_competition_slug
-        legacy_fallback_used = True
 
     home = ParticipantContext(
-        participant_id=home_participant_id,
-        source=getattr(home_participant, "source", None),
-        source_participant_id=home_source_participant_id,
+        participant_id=home_participant.participant_id,
+        source=home_participant.source,
+        source_participant_id=home_participant.source_participant_id,
         name=home_name,
-        slug=getattr(home_participant, "slug", None),
-        short_name=getattr(home_participant, "short_name", None),
-        source_status="normalized" if home_participant is not None and home_name == _clean_text(getattr(home_participant, "name", None)) else "legacy_fallback",
-        code_name=getattr(home_participant, "code_name", None),
-        snapshot_ranking=raw_metadata.get("home_team_ranking"),
-        created_at=getattr(home_participant, "created_at", None),
-        updated_at=getattr(home_participant, "updated_at", None),
+        slug=home_participant.slug,
+        short_name=home_participant.short_name,
+        code_name=home_participant.code_name,
+        created_at=home_participant.created_at,
+        updated_at=home_participant.updated_at,
     )
     away = ParticipantContext(
-        participant_id=away_participant_id,
-        source=getattr(away_participant, "source", None),
-        source_participant_id=away_source_participant_id,
+        participant_id=away_participant.participant_id,
+        source=away_participant.source,
+        source_participant_id=away_participant.source_participant_id,
         name=away_name,
-        slug=getattr(away_participant, "slug", None),
-        short_name=getattr(away_participant, "short_name", None),
-        source_status="normalized" if away_participant is not None and away_name == _clean_text(getattr(away_participant, "name", None)) else "legacy_fallback",
-        code_name=getattr(away_participant, "code_name", None),
-        snapshot_ranking=raw_metadata.get("away_team_ranking"),
-        created_at=getattr(away_participant, "created_at", None),
-        updated_at=getattr(away_participant, "updated_at", None),
+        slug=away_participant.slug,
+        short_name=away_participant.short_name,
+        code_name=away_participant.code_name,
+        created_at=away_participant.created_at,
+        updated_at=away_participant.updated_at,
     )
     competition = CompetitionContext(
-        competition_id=competition_id,
-        source=getattr(competition_ref, "source", None),
-        source_tournament_id=getattr(competition_ref, "source_tournament_id", None),
-        source_unique_tournament_id=competition_source_unique_tournament_id,
-        canonical_name=getattr(competition_ref, "canonical_name", None),
+        competition_id=competition_ref.competition_id,
+        source=competition_ref.source,
+        source_tournament_id=competition_ref.source_tournament_id,
+        source_unique_tournament_id=competition_ref.source_unique_tournament_id,
+        canonical_name=competition_ref.canonical_name,
         display_name=competition_display_name,
-        slug=competition_slug,
-        unique_slug=unique_competition_slug,
-        category_id=getattr(competition_ref, "category_id", None),
-        category_name=getattr(competition_ref, "category_name", None),
-        number_of_teams=getattr(competition_ref, "number_of_teams", None),
-        number_of_teams_source=getattr(competition_ref, "competition_config_source", None)
-        or ("db_cache" if getattr(competition_ref, "number_of_teams", None) is not None else "missing"),
-        total_regular_season_games=getattr(competition_ref, "total_regular_season_games", None),
-        standings_grouping=getattr(competition_ref, "standings_grouping", None),
-        competition_config_source=getattr(competition_ref, "competition_config_source", None) or "missing",
-        has_standings_source_endpoint=getattr(competition_ref, "has_standings_source_endpoint", None),
-        standings_response=getattr(competition_ref, "standings_response", None),
-        source_status="normalized"
-        if competition_ref is not None and competition_display_name == _clean_text(getattr(competition_ref, "display_name", None))
-        else "legacy_fallback",
+        slug=_clean_text(competition_ref.slug),
+        unique_slug=_clean_text(competition_ref.unique_slug),
+        category_id=competition_ref.category_id,
+        category_name=competition_ref.category_name,
+        number_of_teams=competition_ref.number_of_teams,
+        number_of_teams_source=competition_ref.competition_config_source
+        or ("db_cache" if competition_ref.number_of_teams is not None else "missing"),
+        total_regular_season_games=competition_ref.total_regular_season_games,
+        standings_grouping=competition_ref.standings_grouping,
+        competition_config_source=competition_ref.competition_config_source or "missing",
+        has_standings_source_endpoint=competition_ref.has_standings_source_endpoint,
         source_tournament_name=raw_metadata.get("tournament_name"),
         source_unique_tournament_name=raw_metadata.get("unique_tournament_name"),
-        created_at=getattr(competition_ref, "created_at", None),
-        updated_at=getattr(competition_ref, "updated_at", None),
+        created_at=competition_ref.created_at,
+        updated_at=competition_ref.updated_at,
     )
-
-    context_status = "normalized"
-    if legacy_fallback_used or any(
-        value == "legacy_fallback" for value in (home.source_status, away.source_status, competition.source_status)
-    ):
-        normalized_count = sum(
-            1
-            for value in (home.source_status, away.source_status, competition.source_status)
-            if value == "normalized"
-        )
-        context_status = "mixed" if normalized_count > 0 else "legacy_compat"
-
-    if context_status != "normalized":
-        logger.info(
-            "Legacy EventContext fallback used: event_id=%s context_status=%s participants=%s",
-            getattr(event_obj, "id", "?"),
-            context_status,
-            f"{home_name} vs {away_name}",
-        )
 
     return EventContext(
         event_id=getattr(event_obj, "id", 0),
@@ -361,57 +226,17 @@ def build_event_context(
         season_id=getattr(event_obj, "season_id", None),
         season_name=season.name if season else None,
         season_year=season.year if season else None,
-        starts_at=starts_at,
+        starts_at=as_utc(starts_at, field_name="event_context.starts_at"),
         minutes_until_start=minutes_until_start,
         discovery_source=getattr(event_obj, "discovery_source", None),
         home=home,
         away=away,
         competition=competition,
         participants_label=f"{home_name} vs {away_name}",
-        context_status=context_status,
         observations=observations or [],
         odds_trajectory=odds_trajectory or [],
         success=success,
         alert_sent=bool(getattr(event_obj, "alert_sent", False)),
         created_at=getattr(event_obj, "created_at", None),
         updated_at=getattr(event_obj, "updated_at", None),
-    )
-
-
-@dataclass(frozen=True)
-class NumberOfTeamsSummary:
-    unique_team_count: int
-    inferred_number_of_teams: Optional[int]
-
-
-def summarize_number_of_teams_from_streak_analysis(
-    streak_analysis,
-    event_context: Optional[EventContext] = None,
-) -> NumberOfTeamsSummary:
-    sport = getattr(event_context, "sport", None)
-    unique_team_names = set()
-
-    for results in (
-        getattr(streak_analysis, "home_team_results", None) or [],
-        getattr(streak_analysis, "away_team_results", None) or [],
-    ):
-        for result in results:
-            for key in ("team_name", "opponent_name"):
-                value = result.get(key)
-                if value is None:
-                    continue
-                normalized = str(value).strip()
-                if not normalized or normalized == "Unknown":
-                    continue
-                unique_team_names.add(normalized)
-
-    unique_team_count = len(unique_team_names)
-    if sport in {"Tennis", "Tennis Doubles"} or unique_team_count <= 1:
-        inferred = None
-    else:
-        inferred = unique_team_count
-
-    return NumberOfTeamsSummary(
-        unique_team_count=unique_team_count,
-        inferred_number_of_teams=inferred,
     )

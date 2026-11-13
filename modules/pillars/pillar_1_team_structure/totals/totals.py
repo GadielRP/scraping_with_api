@@ -829,7 +829,6 @@ def calculate_p1_totals(
         _debug_line("Sport: %s", _fmt(sport))
         _debug_line("Competition: %s", _fmt(competition_name))
         _debug_line("Season: %s", season_label)
-        _debug_line("Context status: %s", _fmt(getattr(event_identity, "context_status", None)))
         _debug_line(
             "Objetivo del módulo: Evaluar si el ecosistema estructural y temporal de goles del matchup apunta a OVER_PROFILE, UNDER_PROFILE o NEUTRAL_PROFILE."
         )
@@ -2469,7 +2468,6 @@ def calculate_p1_totals(
         "engine_version": _ENGINE_VERSION,
         "event_identity_present": event_identity is not None,
         "competition_context_present": competition_context is not None,
-        "context_status": getattr(event_identity, "context_status", None),
         "total_season_games": total_season_games,
         "n_avail": n_avail,
         "source_fields": {

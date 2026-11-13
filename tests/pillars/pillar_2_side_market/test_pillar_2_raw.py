@@ -50,7 +50,6 @@ def _event_context() -> EventContext:
             name="Home",
             slug="home",
             short_name="H",
-            source_status="normalized",
         ),
         away=ParticipantContext(
             participant_id=2,
@@ -59,7 +58,6 @@ def _event_context() -> EventContext:
             name="Away",
             slug="away",
             short_name="A",
-            source_status="normalized",
         ),
         competition=CompetitionContext(
             competition_id=99,
@@ -78,10 +76,8 @@ def _event_context() -> EventContext:
             standings_grouping="league",
             competition_config_source="test",
             has_standings_source_endpoint=True,
-            source_status="normalized",
         ),
         participants_label="Home vs Away",
-        context_status="normalized",
         round="regular_season",
     )
 

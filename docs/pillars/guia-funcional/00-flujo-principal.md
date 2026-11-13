@@ -63,7 +63,7 @@ Un **objeto** es un expediente con campos relacionados. Una **lista** reúne ele
 | `sport`, `country`, `round` | Deporte, país y fase. El recorrido estudiado admite temporada regular, `regular_season`. |
 | `participants_label` / `participants` | Texto de presentación, como «Equipo A vs Equipo B». |
 | `starts_at`, `minutes_until_start` | Hora de inicio y minutos restantes. |
-| `success`, `context_status` | Si se pudo preparar el expediente y cómo quedó representado. No predicen el ganador. |
+| `success` | Si se pudo preparar el expediente. No predice el ganador. |
 | `observations` | Información adicional, como superficie o recinto cuando aplica. |
 | `trajectories_by_event_id` | Índice de historiales de cuotas por evento. |
 | `trajectory_points`, `odds_trajectory` | Observaciones originales del evento. |

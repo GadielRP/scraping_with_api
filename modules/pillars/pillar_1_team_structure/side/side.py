@@ -673,7 +673,6 @@ def calculate_p1_side(
         "raw": {
             "event_identity_present": True,
             "competition_context_present": True,
-            "context_status": event_identity.context_status,
             "engine_version": aggregation_raw["engine_version"],
             "aggregation_mode": aggregation_raw["aggregation_mode"],
             "layer_a": aggregation_raw["layer_a"],

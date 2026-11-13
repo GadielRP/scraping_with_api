@@ -49,7 +49,6 @@ Definido en [context.py](../../modules/pillars/context.py). Puede completarse du
 | `home`, `away` | Expedientes del participante local y visitante. |
 | `competition` | Expediente de competición. |
 | `participants_label` | Texto de presentación, por ejemplo «A vs B». |
-| `context_status` | Procedencia de preparación: `normalized`, `mixed` o `legacy_compat`. Describe datos normalizados, mezclados o recuperados por compatibilidad. |
 | `slug` | Nombre preparado para identificar el encuentro en rutas o fuentes. |
 | `gender`, `country`, `round` | Categoría de género, país y fase deportiva. |
 | `created_at`, `updated_at` | Fechas de creación y actualización del registro. |
@@ -82,13 +81,11 @@ Las banderas de alertas y preparación no representan probabilidades ni pesos de
 | `source`, `source_participant_id` | Fuente e identidad del participante en ella. |
 | `name` | Nombre principal. |
 | `slug`, `short_name`, `code_name` | Nombre para rutas, nombre corto y código de presentación. |
-| `source_status` | Estado de resolución de la identidad de fuente. |
-| `snapshot_ranking` | Posición recogida en la preparación del encuentro, cuando existe. |
 | `created_at`, `updated_at` | Fechas del registro. |
 
 ### Competición
 
-`CompetitionContext` reúne identidad de torneo, estructura de temporada y procedencia.
+`CompetitionContext` reúne identidad de torneo, estructura de temporada, reglas deportivas y plazas de clasificación.
 
 | Campo | Significado |
 |---|---|
@@ -104,12 +101,11 @@ Las banderas de alertas y preparación no representan probabilidades ni pesos de
 | `standings_grouping` | Organización de clasificación, por ejemplo grupos o tabla conjunta. |
 | `competition_config_source` | Procedencia de las reglas descriptivas de la liga. |
 | `has_standings_source_endpoint` | Si la fuente dispone de una consulta de clasificación conocida. |
-| `source_status` | Estado de resolución de la identidad de fuente. |
 | `standings_response` | Clasificación disponible para construir el contexto deportivo. |
 | `source_tournament_name`, `source_unique_tournament_name` | Nombres originales del torneo y su agrupación. |
 | `created_at`, `updated_at` | Fechas del registro. |
-
-`NumberOfTeamsSummary` es un resumen informativo adicional: `unique_team_count` cuenta equipos únicos y `inferred_number_of_teams` expresa una posible cantidad inferida. En el pipeline este resumen se conserva para explicación; no sustituye automáticamente el dato oficial de competición ni se presenta como una cantidad inferida aplicada a todo P1.
+| `competitive_rules` | Copia del perfil deportivo vigente con el que se calculó todo: formato, puntuación, desempates, objetivos y fuentes de plazas. `None` si la competición no tiene perfil. |
+| `berth_allocation` | Único resultado de clasificación: las plazas resueltas en orden de prioridad, cada una con destino, titular, puesto, resolución, complicación y la final que la decidió, más la tabla compartida cuando existe (Argentina). `None` si el perfil no asigna plazas. |
 
 ## 4. EventIdentity: ficha breve para P2–P5
 
@@ -122,9 +118,6 @@ Las banderas de alertas y preparación no representan probabilidades ni pesos de
 | `sport`, `round` | Deporte y fase. |
 | `competition_id`, `competition_name` | Identidad y nombre de competición. Para el nombre prioriza el presentado y después el canónico. |
 | `season_id`, `country` | Temporada y país. |
-| `context_status` | Procedencia copiada del expediente completo. |
-
-El valor predeterminado del campo `context_status` en una ficha creada directamente es `VALID`; la proyección del pipeline copia el estado de su `EventContext`.
 
 Esta ficha no transporta objetos completos de participantes, historia deportiva ni cuotas. P2–P5 también pueden aceptar `EventContext` en sus entradas independientes, pero el procesador actual les entrega `EventIdentity`. P1 necesita el expediente completo.
 

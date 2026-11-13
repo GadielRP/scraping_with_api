@@ -172,15 +172,15 @@ def test_valencia_early_season_stops_before_objectives_and_preserves_away_core(m
 
 
 @pytest.mark.parametrize("total,played,expected", [
-    (38, 30, "INACTIVE"), (38, 31, "ACTIVE"),
-    (50, 39, "INACTIVE"), (50, 40, "ACTIVE"),
+    (38, 26, "INACTIVE"), (38, 27, "ACTIVE"),
+    (50, 34, "INACTIVE"), (50, 35, "ACTIVE"),
 ])
 def test_late_season_boundary_uses_configured_duration(total, played, expected):
     result = _calculate_m5(_analysis(played), _event(total))
     assert result.raw["m5_status"] == expected
     assert result.raw["total_season_games"] == total
     assert result.raw["games_remaining"] == {"home": total - played, "away": total - played}
-    assert result.raw["season_applicability"]["minimum_completion_ratio"] == 0.8
+    assert result.raw["season_applicability"]["minimum_completion_ratio"] == 0.7
 
 
 def test_late_season_survival_preserves_original_cost_formulas():

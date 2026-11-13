@@ -19,7 +19,6 @@ def _build_event_context():
         name="Celta Vigo",
         slug="celta-vigo",
         short_name="CEL",
-        source_status="normalized",
     )
     away = ParticipantContext(
         participant_id=2,
@@ -28,7 +27,6 @@ def _build_event_context():
         name="Levante UD",
         slug="levante-ud",
         short_name="LEV",
-        source_status="normalized",
     )
     competition = CompetitionContext(
         competition_id=11,
@@ -47,7 +45,6 @@ def _build_event_context():
         standings_grouping="league",
         competition_config_source="test",
         has_standings_source_endpoint=True,
-        source_status="normalized",
     )
     return EventContext(
         event_id=999,
@@ -63,7 +60,6 @@ def _build_event_context():
         away=away,
         competition=competition,
         participants_label="Celta Vigo vs Levante UD",
-        context_status="normalized",
     )
 
 

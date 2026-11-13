@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import (
     read_season_aggregate_team_totals, read_season_card_records,
 )
-from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.competitive_rules import SeasonAggregateProfile
 from modules.competition.final_outcome import ParticipantIdentity
 from modules.competition.season_aggregate import (
@@ -31,7 +30,6 @@ def calculate_season_aggregate_standings(
     cutoff = as_utc(kickoff_cutoff)
     totals_by_team = defaultdict(Counter)
     participants = {}
-    games_by_competition = defaultdict(dict)
     for row in read_season_aggregate_team_totals(
         session, profile.sources, season_year=season_year, kickoff_cutoff=cutoff,
     ):
@@ -40,10 +38,6 @@ def calculate_season_aggregate_standings(
         )
         team = f"{participant.source}:{participant.source_participant_id}"
         participants[team] = (participant, row.name)
-        competition = CompetitionIdentity(
-            row.source_unique_tournament_id, row.source_tournament_id, row.source,
-        )
-        games_by_competition[competition][team] = row.games_played
         totals_by_team[team].update(
             games_played=row.games_played,
             wins=row.wins,
@@ -53,12 +47,6 @@ def calculate_season_aggregate_standings(
             goals_against=row.goals_against,
         )
 
-    complete = len(participants) == profile.number_of_teams and all(
-        source.games_per_team is not None
-        and games_by_competition[source.competition].get(team) == source.games_per_team
-        for source in profile.sources
-        for team in participants
-    )
     # Use plain dicts for ranking so missing tie-break data cannot read as zero.
     stats = {}
     for team, totals in totals_by_team.items():
@@ -75,12 +63,11 @@ def calculate_season_aggregate_standings(
             accumulate_football_fair_play(stats[f"{source}:{participant_id}"], yellow, red, second_yellow)
         for team_stats in stats.values():
             team_stats["fair_play_points"] = profile.standings.fair_play_points(team_stats)
-    ordered, positions = rank_standings(stats.items(), profile, None, season_complete=complete)
+    ordered, positions = rank_standings(stats.items(), profile, None)
     return SeasonAggregateStandings(
         season_year=season_year,
         kickoff_cutoff=cutoff,
         sources=profile.sources,
-        regular_season_complete=complete,
         standings=tuple(
             SeasonStanding(
                 participant=participants[team][0],
@@ -100,9 +87,7 @@ def calculate_multiseason_averages(
     *,
     seasons: int,
 ) -> dict[ParticipantIdentity, Fraction] | None:
-    """Use the current participants' completed top-flight campaigns in the window."""
-    if not annual.regular_season_complete:
-        return None
+    """Points per game over the window: the table so far plus the completed campaigns before it."""
     points = {row.participant: Fraction(str(row.points)) for row in annual.standings}
     played = {row.participant: row.games_played for row in annual.standings}
     expected_games = {

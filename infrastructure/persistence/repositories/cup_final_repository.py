@@ -120,7 +120,6 @@ def read_cup_finals(
     season_year: int | None,
     as_of: datetime | None = None,
     *,
-    final_round: str = "final",
     read_at: datetime | None = None,
 ) -> tuple[CupFinalEvidence, ...]:
     """Find the finals in one query, preserving each competition's evidence status."""
@@ -128,7 +127,7 @@ def read_cup_finals(
         return ()
     historical_cutoff = as_of is not None
     cutoff = as_utc(as_of or utc_now())
-    rows = _cup_matches(session, competitions, season_year, (final_round,), cutoff)
+    rows = _cup_matches(session, competitions, season_year, ("final",), cutoff)
     evidence = []
     for identity in competitions:
         matches = [
@@ -148,21 +147,6 @@ def read_cup_finals(
             )
         evidence.append(item)
     return tuple(evidence)
-
-
-def read_cup_final(
-    session: Session,
-    competition: CompetitionIdentity,
-    season_year: int | None,
-    as_of: datetime | None = None,
-    *,
-    final_round: str,
-    read_at: datetime | None = None,
-) -> CupFinalEvidence:
-    """Read a final without treating a legacy result as known before its read."""
-    return read_cup_finals(
-        session, (competition,), season_year, as_of, final_round=final_round, read_at=read_at,
-    )[0]
 
 
 def read_cup_eliminations(

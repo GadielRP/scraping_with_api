@@ -125,7 +125,6 @@ def test_pipeline_switches_override_production_independently(
         away=None,
         competition=None,
         participants_label="Home vs Away",
-        context_status="VALID",
     )
     monkeypatch.setattr(
         simulator,
@@ -419,7 +418,6 @@ def test_simulated_minutes_respect_production_moment_filters(
         away=None,
         competition=None,
         participants_label="Home vs Away",
-        context_status="VALID",
     )
     monkeypatch.setattr(
         evaluation, "_build_evaluation_payloads", lambda *args: [context]

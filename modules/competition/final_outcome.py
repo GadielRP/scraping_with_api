@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from .competition_identity import CompetitionIdentity
+from .competition_ids import name_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,10 @@ class CupFinalEvidence:
     winner: ParticipantIdentity | None = None
     decision: str | None = None
     candidate_event_ids: tuple[int, ...] = ()
+    competition_name: str | None = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "competition_name", name_of(self.competition))
 
     @property
     def loser(self) -> ParticipantIdentity | None:

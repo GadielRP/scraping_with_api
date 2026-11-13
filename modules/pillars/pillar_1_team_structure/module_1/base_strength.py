@@ -1425,7 +1425,6 @@ def calculate_base_strength(
         "away_team": away_team_name,
         "event_identity_present": True,
         "competition_context_present": True,
-        "context_status": "normalized",
         "competition_id": competition_id,
         "competition_display_name": competition_display_name,
         "competition_number_of_teams": competition_number_of_teams,

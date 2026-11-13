@@ -33,5 +33,4 @@ class SeasonAggregateStandings:
     season_year: int
     kickoff_cutoff: datetime
     sources: tuple[SeasonAggregateSource, ...]
-    regular_season_complete: bool
     standings: tuple[SeasonStanding, ...]

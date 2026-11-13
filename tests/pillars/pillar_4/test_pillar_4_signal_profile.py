@@ -29,7 +29,6 @@ def _event(target: int = 5):
         participants_label="Home vs Away",
         minutes_until_start=target,
         starts_at=KICKOFF,
-        context_status="normalized",
         competition=SimpleNamespace(competition_id=99, display_name="League"),
     )
 

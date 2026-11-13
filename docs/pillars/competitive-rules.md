@@ -28,7 +28,7 @@ Los 25 perfiles se conservan en `competition_profiles.py`. La migración de voca
 
 ## Cálculo y diagnósticos de M5
 
-Se conserva la activación al 80 %, con partidos regulares restantes, y un solo objetivo por equipo seleccionado por zona. No se suman objetivos; título y siembra quedan fuera. La severidad es 0.70 para otra competición, 0.85 para otra fase y 1.00 para permanencia. La clasificación conserva multiplicador 1.00; descenso directo y eliminatoria de permanencia usan 1.25. Un equipo sin objetivo aplicable aporta cero.
+Se conserva la activación al 70 %, con partidos regulares restantes, y un solo objetivo por equipo seleccionado por zona. No se suman objetivos; título y siembra quedan fuera. La severidad es 0.70 para otra competición, 0.85 para otra fase y 1.00 para permanencia. La clasificación conserva multiplicador 1.00; descenso directo y eliminatoria de permanencia usan 1.25. Un equipo sin objetivo aplicable aporta cero.
 
 Las fórmulas de corte, distancia, urgencia y comparación relativa permanecen iguales. Los cortes usan la zona y referencia de la regla en lugar de deducirse de `n_league`. El máximo restante se deriva de `profile.scoring.maximum_per_game`: la misma regla que calcula los puntos de las tablas generales y los desempates. NBA, MLB y NFL registran máximo 1 y NFL empate 0.5, pero no se calculan por aproximación sus tablas ordenadas por porcentaje.
 

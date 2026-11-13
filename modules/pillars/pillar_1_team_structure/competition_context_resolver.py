@@ -1,7 +1,7 @@
 """Bind current sporting rules to P1's existing competition context."""
 
 import logging
-from dataclasses import asdict, replace
+from dataclasses import replace
 
 from modules.competition.competition_profiles import get_competition_profile
 from modules.competition.competition_identity import CompetitionIdentity
@@ -78,13 +78,13 @@ def resolve_p1_competition_context(
                 identity,
             )
         return replace(competition_context, competitive_rules=None, number_of_teams=None,
-                       qualification_state=None,
+                       berth_allocation=None,
                        total_regular_season_games=None, standings_grouping=None,
                        number_of_teams_source="missing", competition_config_source="missing")
     logger.info(
         "Competition profile selected event_id=%s identity=%s profile_name=%s "
         "reference_season=%s teams=%s regular_season_games=%s standings_policy=%s "
-        "standings_criteria=%s objectives=%s cup_qualification_rules=%s",
+        "standings_criteria=%s objectives=%s tournament_berths=%s",
         event_identity.event_id,
         identity,
         competition_context.canonical_name or competition_context.display_name,
@@ -96,24 +96,20 @@ def resolve_p1_competition_context(
         _objective_summary(rules),
         [
             {
-                "competition": policy.competition_name,
-                "competition_identity": policy.competition_identity,
-                "final_round": policy.final_round,
-                "status": policy.status.value,
-                "destination_competition_identity": policy.qualification_destination.destination_competition_identity,
-                "destination_competition_name": policy.qualification_destination.destination_competition_name,
-                "destination_phase": policy.qualification_destination.destination_phase,
-                "destination_round": policy.qualification_destination.destination_round,
-                "qualification_path": policy.qualification_destination.qualification_path,
-                "reallocation_policy": asdict(policy.reallocation_policy),
+                "competition": rule.competition_name,
+                "competition_identity": rule.competition,
+                "before_table_slot": rule.before_table_slot,
+                "reallocate_to_table": rule.reallocate_to_table,
+                "destination_competition_identity": rule.destination.destination_competition_identity,
+                "destination_phase": rule.destination.destination_phase,
             }
-            for policy in rules.cup_qualifications
+            for rule in (rules.qualification_sources.tournament_berths if rules.qualification_sources else ())
         ],
     )
     return replace(
         competition_context,
         competitive_rules=rules,
-        qualification_state=None,
+        berth_allocation=None,
         number_of_teams=rules.number_of_teams,
         number_of_teams_source="competition_rules",
         total_regular_season_games=rules.total_regular_season_games,

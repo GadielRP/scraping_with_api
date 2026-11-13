@@ -26,10 +26,9 @@ def _game(home, away, scored, conceded, subtype="REG"):
                 result_subtype=subtype)
 
 
-def _rank(cid, a=None, b=None, games=(), final=False):
+def _rank(cid, a=None, b=None, games=()):
     return rank_standings(
-        {"A": a or _stats(), "B": b or _stats()}.items(), get_competition_profile(cid),
-        list(games), season_complete=final,
+        {"A": a or _stats(), "B": b or _stats()}.items(), get_competition_profile(cid), list(games),
     )
 
 
@@ -89,54 +88,39 @@ def test_bundesliga_incomplete_direct_games_do_not_allow_away_goal_fallback():
     assert positions["A"]["ranking_status"] == "SHARED_POSITION"
 
 
-def test_saudi_uses_different_interim_and_final_orders():
+def test_saudi_orders_by_goal_difference_before_any_head_to_head():
     a, b = _stats(goal_diff=-4), _stats(goal_diff=10)
     games = [_game("A", "B", 1, 0), _game("B", "A", 0, 1)]
     assert _rank(50, a, b, games)[0][0][0] == "B"
-    assert _rank(50, a, b, games, final=True)[0][0][0] == "A"
-
-
-def test_saudi_finishes_the_full_h2h_block_before_reapplying_to_a_subgroup():
-    games = [_game("A", "B", 1, 0), _game("B", "A", 0, 1),
-             _game("A", "C", 5, 0), _game("C", "A", 0, 5),
-             _game("B", "C", 1, 0), _game("C", "B", 3, 0)]
-    ordered, positions = rank_standings(
-        {t: _stats(points=50) for t in "ABC"}.items(),
-        get_competition_profile(50), games, season_complete=True,
-    )
-    # A wins on points; B's original mini-table GD (-4) beats C's (-8).
-    # Restarting immediately on points would incorrectly put C ahead of B.
-    assert [name for name, _ in ordered] == ["A", "B", "C"]
-    assert all(p["ranking_status"] == "RESOLVED" for p in positions.values())
 
 
 @pytest.mark.parametrize("first", [2, 10])
-def test_premier_league_final_tie_shares_a_position_without_a_sporting_boundary(first):
+def test_premier_league_tie_shares_a_position_without_a_sporting_boundary(first):
     rows = {f"T{i:02}": _stats(points=100 - 4 * i) for i in range(1, 21)}
     points = rows.pop(f"T{first:02}")["points"]
     rows.pop(f"T{first + 1:02}")
     rows.update({team: _stats(points=points) for team in ("A", "B")})
     games = [_game("A", "B", 2, 1), _game("B", "A", 0, 0)]
-    _, positions = rank_standings(rows.items(), get_competition_profile(168), games, season_complete=True)
+    _, positions = rank_standings(rows.items(), get_competition_profile(168), games)
     assert positions["A"]["position"] == positions["B"]["position"] == first
     assert positions["A"]["ranking_status"] == positions["B"]["ranking_status"] == "SHARED_POSITION"
 
 
 @pytest.mark.parametrize("first", [1, 4, 17])
-def test_premier_league_final_h2h_still_decides_title_qualification_and_relegation(first):
+def test_premier_league_h2h_decides_title_qualification_and_relegation(first):
     rows = {f"T{i:02}": _stats(points=100 - 4 * i) for i in range(1, 21)}
     points = rows.pop(f"T{first:02}")["points"]
     rows.pop(f"T{first + 1:02}")
     rows.update({team: _stats(points=points) for team in ("A", "B")})
     games = [_game("A", "B", 2, 1), _game("B", "A", 0, 0)]
-    _, positions = rank_standings(rows.items(), get_competition_profile(168), games, season_complete=True)
+    _, positions = rank_standings(rows.items(), get_competition_profile(168), games)
     assert (positions["A"]["position"], positions["B"]["position"]) == (first, first + 1)
 
 
 @pytest.mark.parametrize("cid", [328, 2192])
 def test_mexico_uses_away_goals_when_away_match_counts_are_equal(cid):
     games = [_game("A", "B", 2, 0), _game("B", "A", 3, 1)]
-    ordered, positions = _rank(cid, _stats(games_played=2), _stats(games_played=2), games, final=True)
+    ordered, positions = _rank(cid, _stats(games_played=2), _stats(games_played=2), games)
     assert ordered[0][0] == "A"  # One away goal against zero, at one visit each.
     assert positions["A"]["ranking_status"] == "RESOLVED"
 
@@ -147,7 +131,7 @@ def test_mexico_does_not_compare_unequal_away_counts_without_the_matchday_cutoff
     # Both clubs have 4 GF and +1 GD after three games. A has played two
     # away games, B only one: raw away totals (2 vs 0) are not comparable.
     _, positions = _rank(328, _stats(games_played=3, goals_for=4, goal_diff=1),
-                         _stats(games_played=3, goals_for=4, goal_diff=1), games, final=True)
+                         _stats(games_played=3, goals_for=4, goal_diff=1), games)
     assert positions["A"]["ranking_reason"] == "MISSING_BALANCED_AWAY_GOALS"
     assert positions["A"]["position"] is positions["B"]["position"] is None
 
@@ -156,7 +140,7 @@ def test_mexico_does_not_compare_unequal_away_counts_without_the_matchday_cutoff
 def test_mexico_fair_play_precedes_quotient_and_never_uses_h2h(cid):
     games = [_game("A", "B", 2, 0), _game("B", "A", 0, 0)]
     # Equal overall GD/GF and zero away goals, despite A winning H2H.
-    _, positions = _rank(cid, _stats(games_played=2), _stats(games_played=2), games, final=True)
+    _, positions = _rank(cid, _stats(games_played=2), _stats(games_played=2), games)
     assert positions["A"]["ranking_reason"] == "MISSING_DISCIPLINARY_RECORD"
     assert positions["A"]["position"] is positions["B"]["position"] is None
 
@@ -174,7 +158,20 @@ def test_liiga_h2h_regulation_wins_follow_h2h_points_before_h2h_goal_difference(
 def test_eredivisie_interim_table_prefers_fewer_games_before_goal_difference():
     a, b = _stats(games_played=15, goal_diff=-4), _stats(games_played=16, goal_diff=10)
     assert _rank(317, a, b)[0][0][0] == "A"
-    assert _rank(317, a, b, final=True)[0][0][0] == "B"
+    a, b = _stats(goal_diff=-4), _stats(goal_diff=10)
+    assert _rank(317, a, b)[0][0][0] == "B"
+
+
+def test_premier_h2h_decides_a_boundary_tie_once_both_legs_are_played():
+    # Level on points, goal difference and goals scored, tied across the title boundary.
+    both_legs = [_game("A", "B", 0, 1), _game("B", "A", 2, 0)]  # B wins both meetings
+    ordered, positions = _rank(168, games=both_legs)
+    assert [name for name, _ in ordered] == ["B", "A"]
+    assert {p["ranking_status"] for p in positions.values()} == {"RESOLVED"}
+
+    # With a single meeting the head-to-head cannot apply yet: the position is shared.
+    _, positions = _rank(168, games=both_legs[:1])
+    assert {p["ranking_status"] for p in positions.values()} == {"SHARED_POSITION"}
 
 
 def test_shl_goal_difference_precedes_regulation_wins():

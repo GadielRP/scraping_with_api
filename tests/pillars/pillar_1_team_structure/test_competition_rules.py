@@ -102,15 +102,16 @@ def test_brazil_qualification_destinations_use_family_or_specific_identity():
 
 def test_saudi_two_is_awarded_through_the_king_cup():
     profile = get_competition_profile(50)
-    rule, = profile.configured_cup_qualifications
-    assert rule.competition_identity == competition_ids.SAUDI_KINGS_CUP
+    rule, = profile.qualification_sources.tournament_berths
+    assert rule.competition == competition_ids.SAUDI_KINGS_CUP
     assert all(
-        objective.qualification_destination != rule.qualification_destination
+        objective.qualification_destination != rule.destination
         for objective in profile.objectives
     )
-    assert rule.qualification_destination.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO
-    assert rule.qualification_destination.destination_phase is DestinationPhase.GROUP_STAGE
-    assert rule.qualification_destination.qualification_path is QualificationPath.DIRECT
+    assert rule.destination.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO
+    assert rule.destination.destination_phase is DestinationPhase.GROUP_STAGE
+    assert rule.destination.qualification_path is QualificationPath.DIRECT
+    assert rule.before_table_slot is None
 
 
 def test_wnba_2026_uses_one_global_playoff_cutoff():
@@ -229,24 +230,26 @@ def test_catalogue_uses_registered_names_and_marks_missing_general_records_pendi
                 assert rule.qualification_destination is None
 
 
-def test_cup_qualification_profiles_use_registered_competition_names():
-    policies = [
-        policy
-        for profile in COMPETITION_PROFILES.values()
-        for policy in profile.cup_qualifications
+def test_tournament_berths_are_unique_per_profile_and_carry_registered_names():
+    berths = [
+        (profile, rule)
+        for profile in COMPETITION_PROFILES.values() if profile.qualification_sources
+        for rule in profile.qualification_sources.tournament_berths
     ]
-    assert policies
-    for policy in policies:
-        assert policy.competition_name == competition_ids.COMPETITION_NAMES[policy.competition_identity]
+    assert berths
+    for profile, rule in berths:
+        assert rule.competition_name == competition_ids.COMPETITION_NAMES[rule.competition]
+        competitions = [r.competition for r in profile.qualification_sources.tournament_berths]
+        assert len(competitions) == len(set(competitions))
 
 
 def test_premier_league_cup_rules_keep_their_distinct_explicit_destinations():
-    policies = {
-        policy.competition_identity: policy
-        for policy in get_competition_profile(competition_ids.PREMIER_LEAGUE).cup_qualifications
+    berths = {
+        rule.competition: rule
+        for rule in get_competition_profile(competition_ids.PREMIER_LEAGUE).qualification_sources.tournament_berths
     }
-    fa_cup = policies[competition_ids.FA_CUP].qualification_destination
-    efl_cup = policies[competition_ids.EFL_CUP].qualification_destination
+    fa_cup = berths[competition_ids.FA_CUP].destination
+    efl_cup = berths[competition_ids.EFL_CUP].destination
 
     assert fa_cup.destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
     assert fa_cup.destination_phase is DestinationPhase.LEAGUE_PHASE
@@ -256,25 +259,6 @@ def test_premier_league_cup_rules_keep_their_distinct_explicit_destinations():
     assert efl_cup.qualification_path is QualificationPath.DIRECT
 
 
-def test_portuguese_cup_uses_the_catalogued_identity_and_europa_league_phase():
-    policy, = get_competition_profile(competition_ids.LIGA_PORTUGAL).cup_qualifications
-    destination = policy.qualification_destination
-
-    assert policy.competition_identity is competition_ids.TACA_DE_PORTUGAL
-    assert destination.destination_competition_identity is competition_ids.UEFA_EUROPA_LEAGUE
-    assert destination.destination_phase is DestinationPhase.LEAGUE_PHASE
-
-
-def test_knvb_beker_reallocates_its_league_phase_berth_when_the_winner_finishes_top_two():
-    policy, = get_competition_profile(competition_ids.EREDIVISIE).cup_qualifications
-    case, = policy.reallocation_policy.cases[:1]
-
-    assert policy.competition_identity is competition_ids.KNVB_BEKER
-    assert case.champion_rank_start == 1
-    assert case.champion_rank_end == 2
-    assert case.recipient_rank == 3
-
-
 def test_qualification_routes_reference_qualification_records():
     laliga = get_competition_profile(competition_ids.LALIGA)
     assert laliga.objectives[2].qualification_destination.destination_competition_identity == competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
@@ -282,7 +266,7 @@ def test_qualification_routes_reference_qualification_records():
     assert france.objectives[1].qualification_destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION
     assert france.objectives[2].qualification_destination.destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
     brazil = get_competition_profile(competition_ids.BRASILEIRAO)
-    assert brazil.annual_qualification is None
+    assert brazil.qualification_sources.tournament_berths[0].competition == competition_ids.COPA_DO_BRASIL
     assert [(rule.rank_selection.rank_start, rule.rank_selection.rank_end)
             for rule in brazil.objectives] == [(1, 4), (5, 5), (6, 11), (17, 20)]
     assert brazil.objectives[1].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION

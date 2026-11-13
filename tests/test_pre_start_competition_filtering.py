@@ -38,25 +38,6 @@ def test_tracked_competitions_are_canonical_and_season_independent():
     assert not is_tracked_competition(None)
 
 
-def test_pre_start_query_scope_uses_competition_ids(monkeypatch):
-    monkeypatch.setattr(
-        pre_start_job.Config,
-        "PRE_START_TRACKED_COMPETITIONS_ONLY",
-        True,
-    )
-
-    assert set(pre_start_job._tracked_competition_ids()) == (
-        EXPECTED_TRACKED_COMPETITION_IDS
-    )
-
-    monkeypatch.setattr(
-        pre_start_job.Config,
-        "PRE_START_TRACKED_COMPETITIONS_ONLY",
-        False,
-    )
-    assert pre_start_job._tracked_competition_ids() is None
-
-
 def test_event_repository_pushes_competition_filter_into_query(monkeypatch):
     class RecordingQuery:
         def __init__(self):

@@ -22,7 +22,6 @@ def _pillar_context(event_id: int, minutes_until_start: int) -> EventContext:
         away=None,
         competition=None,
         participants_label="Test event",
-        context_status="VALID",
     )
 
 

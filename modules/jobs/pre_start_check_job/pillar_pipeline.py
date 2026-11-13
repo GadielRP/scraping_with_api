@@ -96,7 +96,7 @@ from modules.pillars.pillar_5.run_pillar_5 import (
 
 from modules.pillars.pillar_5.ports import MemorySamplePersistenceError
 from shared.temporal import utc_now
-from modules.pillars.pillar_1_team_structure.qualification_preparation import prepare_qualification_resolution
+from modules.pillars.pillar_1_team_structure.qualification_preparation import prepare_qualification
 from modules.pillars.instrumentation import (
     capture_calculations,
     calculation_scope,
@@ -163,9 +163,8 @@ def _safe_debug_name(value: Any) -> str:
 
 def _write_debug_json(filepath: Path, payload: Any) -> None:
     with filepath.open("w", encoding="utf-8") as handle:
-        json.dump(
-            to_json_value(payload), handle, ensure_ascii=False, indent=2, sort_keys=True
-        )
+        # Keys keep the order the dataclasses declare them in.
+        json.dump(to_json_value(payload), handle, ensure_ascii=False, indent=2)
 
 
 def _save_pillar_debug_snapshots(
@@ -318,7 +317,7 @@ class EventPillarProcessor:
                 context, debug_mode=self.debug_mode
             )
             context.streak_analysis = streak
-            context.competition = prepare_qualification_resolution(
+            context.competition = prepare_qualification(
                 context.to_identity(), context.competition, streak
             )
             return None
@@ -666,16 +665,16 @@ class EventPillarProcessor:
         # No persistence exception is converted into a pillar signal or swallowed.
         if self.debug_mode:
             competition = event_context.competition
-            annual_standings = (competition.qualification_state or {}).get("annual_standings")
+            annual_table = competition.berth_allocation.table if competition.berth_allocation else None
             if (
                 competition.competitive_rules is not None
                 and competition.competitive_rules.grouping_method
                 == GroupingMethod.ARGENTINA_ZONES
-                and annual_standings is not None
+                and annual_table is not None
             ):
                 send_argentina_zones_standings_debug(
                     current_standings=getattr(event_context.streak_analysis, "current_standings", None),
-                    annual_standings=annual_standings,
+                    annual_table=annual_table,
                     kickoff=identity.starts_at,
                     season_year=identity.season_year,
                 )

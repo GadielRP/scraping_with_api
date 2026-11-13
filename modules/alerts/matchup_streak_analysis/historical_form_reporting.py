@@ -3,10 +3,10 @@
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 from infrastructure.settings import Config
-from modules.competition.season_aggregate import SeasonAggregateStandings
+from modules.competition.season_aggregate import SeasonStanding
 from shared.temporal import in_timezone
 
 logger = logging.getLogger(__name__)
@@ -149,13 +149,13 @@ def format_fair_play_table_for_telegram(
 
 
 def format_annual_standings_table_for_telegram(
-    standings: SeasonAggregateStandings,
+    standings: Sequence[SeasonStanding],
     title: str,
 ) -> str:
     """Format a shared season aggregate table using the standard standings rows."""
     message = f"STANDINGS: <b>{title}</b>\n\n"
     ordered_standings = sorted(
-        standings.standings,
+        standings,
         key=lambda item: (item.rank is None, item.rank or 0, item.name.casefold()),
     )
     for row in ordered_standings:
@@ -177,7 +177,7 @@ def format_annual_standings_table_for_telegram(
 def send_argentina_zones_standings_debug(
     *,
     current_standings: Dict[str, Dict] | None,
-    annual_standings: SeasonAggregateStandings,
+    annual_table: Sequence[SeasonStanding],
     kickoff: datetime,
     season_year: int,
 ) -> None:
@@ -194,9 +194,9 @@ def send_argentina_zones_standings_debug(
         )
         send_debug_telegram(current_message, chat_id)
 
-    if annual_standings and annual_standings.standings:
+    if annual_table:
         annual_message = format_annual_standings_table_for_telegram(
-            annual_standings, f"ARGENTINA ANNUAL {season_year} (at {date_label})",
+            annual_table, f"ARGENTINA ANNUAL {season_year} (at {date_label})",
         )
         send_debug_telegram(annual_message, chat_id)
 

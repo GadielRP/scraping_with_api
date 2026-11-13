@@ -17,6 +17,7 @@ from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculato
 from modules.competition import competition_ids as ids
 from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
 from modules.competition.final_outcome import ParticipantIdentity
+from modules.competition.qualification_rules import build_qualification_rules
 from modules.competition.rule_terms import SelectionMethod
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure import qualification_preparation
@@ -33,7 +34,7 @@ def season_data(request):
                   EventSourceMapping, DisciplinaryIncidentTotal):
         model.__table__.create(engine)
     with Session(engine) as session:
-        profile = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA].annual_qualification.standings_profile
+        profile = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA].qualification_sources.shared_table
         profile = replace(profile, number_of_teams=2, sources=tuple(
             replace(source, games_per_team=1) for source in profile.sources
         ))
@@ -84,11 +85,9 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
         session, profile, season_year=season_year, kickoff_cutoff=cutoff,
     )
 
-    assert not interim.regular_season_complete
     assert len(interim.standings) == 2
     assert {row.points for row in interim.standings} == {1}
     assert {row.ranking_reason for row in interim.standings} == {"MISSING_FAIR_PLAY_POINTS"}
-    assert final.regular_season_complete
     assert final.season_year == season_year
     assert [
         (row.participant.source_participant_id, row.rank, row.points, row.games_played)
@@ -98,14 +97,15 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
 
 def test_only_clausura_selects_shared_annual_profile():
     assert [identity for identity, rules in COMPETITION_PROFILES.items()
-            if rules.annual_qualification is not None] == [ids.ARGENTINA_CLAUSURA]
+            if rules.qualification_sources is not None and rules.qualification_sources.shared_table is not None] == [ids.ARGENTINA_CLAUSURA]
     clausura = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA]
-    annual = clausura.annual_qualification
-    assert [(source.competition, source.games_per_team) for source in annual.standings_profile.sources] == [
+    annual = clausura.qualification_sources.shared_table
+    assert [(source.competition, source.games_per_team) for source in annual.sources] == [
         (ids.ARGENTINA_APERTURA, COMPETITION_PROFILES[ids.ARGENTINA_APERTURA].total_regular_season_games),
         (ids.ARGENTINA_CLAUSURA, clausura.total_regular_season_games),
     ]
-    assert [(rule.destination, len(rule.slots)) for rule in annual.table_berths] == [
+    rules = build_qualification_rules(clausura)
+    assert [(rule.destination, rule.places) for rule in rules.table_berths] == [
         (rule.qualification_destination, rule.rank_selection.places)
         for rule in clausura.objectives if rule.rank_selection.selection_method == SelectionMethod.BEST_REMAINING
     ]
@@ -180,26 +180,20 @@ def test_pre_start_prepares_annual_standings_for_capture(monkeypatch, season_dat
     event = _configured_event("liga_profesional_de_argentina_clausura")
     rules = event.competition.competitive_rules
     event.competition = replace(event.competition, competitive_rules=replace(
-        rules, annual_qualification=replace(rules.annual_qualification, standings_profile=profile),
+        rules, qualification_sources=replace(rules.qualification_sources, shared_table=profile),
     ))
     identity = replace(event.to_identity(), season_year=season_year, starts_at=cutoff)
 
-    prepared = qualification_preparation.prepare_qualification_resolution(
+    prepared = qualification_preparation.prepare_qualification(
         identity, event.competition, event.streak_analysis, as_of=cutoff + timedelta(hours=1),
     )
 
-    state = to_json_value(prepared)["qualification_state"]
-    assert set(state) == {"annual_standings", "annual_resolution"}
-    captured = state["annual_standings"]
-    assert captured["season_year"] == season_year
-    assert captured["kickoff_cutoff"] == cutoff.isoformat()
-    assert captured["regular_season_complete"]
-    assert captured["standings"][0]["participant"]["source_participant_id"] == 10
-    resolution = state["annual_resolution"]
-    assert resolution["destination_year"] == season_year + 1
-    assert resolution["relegation"]["reason"] == "incomplete_multiseason_record"
-    berths = {berth["slot"]: berth for berth in resolution["berths"]}
-    assert berths["libertadores_1"]["reason"] == "final_absent"
+    allocation = to_json_value(prepared)["berth_allocation"]
+    assert set(allocation) == {"destination_season_year", "berths", "table"}
+    assert allocation["table"][0]["participant"]["source_participant_id"] == 10
+    assert allocation["destination_season_year"] == season_year + 1
+    berths = {berth["source"]["source_unique_tournament_id"]: berth for berth in allocation["berths"] if berth["source"]}
+    assert berths[ids.ARGENTINA_APERTURA_PLAYOFFS.source_unique_tournament_id]["issue"] == "final_absent"
 
 
 def test_pre_start_does_not_guess_missing_season_year(monkeypatch):
@@ -210,9 +204,9 @@ def test_pre_start_does_not_guess_missing_season_year(monkeypatch):
     event = _configured_event("liga_profesional_de_argentina_clausura")
     identity = replace(event.to_identity(), season_year=None)
 
-    prepared = qualification_preparation.prepare_qualification_resolution(identity, event.competition, None)
+    prepared = qualification_preparation.prepare_qualification(identity, event.competition, None)
 
-    assert prepared.qualification_state is None
+    assert prepared.berth_allocation is None
 
 
 def test_averages_require_complete_historical_campaigns(season_data):

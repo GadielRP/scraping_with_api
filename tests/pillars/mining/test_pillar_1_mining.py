@@ -17,7 +17,6 @@ def _event_context(*, evaluation_minute: int | None = 5):
         participants_label="Home vs Away",
         minutes_until_start=evaluation_minute,
         starts_at=datetime(2026, 9, 2, 18, 0, tzinfo=timezone.utc),
-        context_status="normalized",
         competition=SimpleNamespace(competition_id=99, display_name="League"),
     )
 

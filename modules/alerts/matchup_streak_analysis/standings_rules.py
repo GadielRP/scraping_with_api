@@ -83,7 +83,7 @@ def _without_nhl_odd_games(names, records):
     return [m for i, m in enumerate(records) if i not in excluded]
 
 
-def rank_standings(items, profile, match_records, *, season_complete=False):
+def rank_standings(items, profile, match_records):
     """Evaluate rules in order; missing data stops a tie rather than skipping it.
 
     Names stabilize display only. They cannot break a sporting tie unless the
@@ -92,8 +92,7 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
     rows = dict(items)
     records = match_records or []
     policy = profile.standings
-    criteria = (policy.in_season_criteria if not season_complete and policy.in_season_criteria is not None
-                else policy.criteria)
+    criteria = policy.criteria
     summaries = {}
     complex_records = None
 
@@ -168,8 +167,6 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
                 complex_records = TieBreakRecords(records, profile.scoring)
             return [(cluster, path + ((-index,),), reason)
                     for index, (cluster, reason) in enumerate(COMPLEX_TIEBREAKS[step.metrics[0]](names, complex_records))]
-        if step.final_only and not season_complete:
-            return separate(names, remaining, path)
         if (step.only_two and len(names) != 2) or (step.only_multiple and len(names) <= 2):
             return separate(names, remaining, path)
         if policy.name == "PREMIER_LEAGUE" and step.metrics == ("h2h_points", "h2h_away_goals"):
@@ -188,8 +185,6 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
         if step.meetings:
             direct_games = [m for m in records if m["home_team"] in names and m["away_team"] in names]
             if not _complete_home_and_away(names, direct_games):
-                if season_complete:
-                    return [(names, path, "MISSING_HEAD_TO_HEAD_MATCHES")]
                 if step.share_if_incomplete:
                     return [(names, path, None)]
                 return separate(names, remaining, path)
@@ -202,9 +197,7 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
                               else "MISSING_" + measure.removeprefix("negative_").upper())
                     return [(names, path, reason)]
                 values_by_team[team] += (value,)
-            # SPL art. 9.1.4 finishes the whole H2H block before reapplying it.
-            # Preserve early reapplication for the other configured policies.
-            if step.reapply and policy.name != "SAUDI_PRO_LEAGUE" and len(set(values_by_team.values())) > 1:
+            if step.reapply and len(set(values_by_team.values())) > 1:
                 break
         buckets = defaultdict(list)
         for team, values in values_by_team.items():
@@ -241,12 +234,4 @@ def rank_standings(items, profile, match_records, *, season_complete=False):
                 "ranking_rules_verified": policy.verified,
             }
         offset += len(names)
-    if season_complete and policy.name == "SERIE_A":
-        # Mini-table order seeds a decider; it cannot determine its winner.
-        for names in by_primary.values():
-            occupied = [i + 1 for i, (team, _) in enumerate(ordered) if team in names]
-            if len(names) > 1 and (1 in occupied or (17 in occupied and 18 in occupied)):
-                for team in names:
-                    positions[team].update(position=None, ranking_status="UNRESOLVED",
-                                           ranking_reason="SERIE_A_DECIDER_OR_UEFA_EXCEPTION_REQUIRED")
     return ordered, positions
