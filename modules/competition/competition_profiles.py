@@ -15,7 +15,7 @@ from modules.competition.berth_allocation_engine.models import QualificationDest
 from modules.competition.competitive_rules import (
     CompetitionRules, DisciplineRules, ObjectiveRule, QualificationSources, RankSelection,
     SeasonAggregateProfile, SeasonAggregateSource, FOOTBALL_SCORING, WINS_SCORING,
-    NFL_SCORING, NHL_SCORING, HOCKEY_SCORING,
+    NFL_SCORING, NHL_SCORING, HOCKEY_SCORING, CBA_SCORING,
 )
 from modules.competition.rule_terms import (
     AggregationScope,
@@ -1322,7 +1322,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
         ),
         standings=standings_policies.CBA,
-        scoring=WINS_SCORING,
+        scoring=CBA_SCORING,
     ),
 
     # pfl philippines football league (2026/27: formato y objetivos incompletos)

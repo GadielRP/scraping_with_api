@@ -66,14 +66,15 @@ def _build_rows_for_record(team_name, wins, losses, ties=0):
     return rows
 
 
-def _compute(monkeypatch, season_id, rows, sport, source_unique_tournament_id=None):
+def _compute(monkeypatch, season_id, rows, sport, source_unique_tournament_id=None, competition_id=None):
     monkeypatch.setattr(
         se.db_manager,
         "get_session",
         lambda: _fake_session_ctx(rows),
     )
-    competition_id = {"Football": 168, "Basketball": 174, "American football": 5153, "Ice hockey": 5196}[sport]
-    competition_id = {SHL_UNIQUE_TOURNAMENT_ID: 180, NBA_UNIQUE_TOURNAMENT_ID: 176}.get(source_unique_tournament_id, competition_id)
+    competition_id = {SHL_UNIQUE_TOURNAMENT_ID: 180, NBA_UNIQUE_TOURNAMENT_ID: 176}.get(
+        source_unique_tournament_id, competition_id or {"Football": 168, "Basketball": 174, "American football": 5153, "Ice hockey": 5196}[sport],
+    )
     monkeypatch.setattr(se, "get_competition_profile", get_competition_profile)
     simulator = se.HistoricalStandingsCalculator()
     return simulator._calculate_standings_bundle_internal(
@@ -104,7 +105,8 @@ def test_win_pct_ranks_by_percentage_not_raw_wins(monkeypatch, season_id):
     rows.extend(_build_rows_for_record("Team Eight Four", wins=8, losses=4))
     rows.extend(_build_rows_for_record("Team Seven Three", wins=7, losses=3))
 
-    standings = _compute(monkeypatch, season_id, rows, "Basketball")
+    # WNBA ranks by win percentage; CBA now ranks by classification points.
+    standings = _compute(monkeypatch, season_id, rows, "Basketball", competition_id=145)
 
     assert standings["Team Seven Three"]["pct"] > standings["Team Eight Four"]["pct"]
     assert standings["Team Seven Three"]["position"] < standings["Team Eight Four"]["position"]
@@ -214,3 +216,56 @@ def test_liga_mx_apertura_and_clausura_are_collected_with_gd_method():
         assert profile.number_of_teams == 18
         assert profile.total_regular_season_games == 17
         assert profile.grouping_method is GroupingMethod.LEAGUE_WIDE
+
+
+def _euroleague_row(home, away, home_score, away_score, home_sets, away_sets):
+    row = _make_row(home, away, home_score, away_score, "1" if home_score > away_score else "2", "REG")
+    row.home_sets, row.away_sets = home_sets, away_sets
+    return row
+
+
+def test_euroleague_compares_regulation_quarters_even_when_the_view_reports_regular_time(monkeypatch):
+    # The source view cannot flag basketball overtime: both games arrive as REG. Game 1 went to overtime
+    # (86-86 after four quarters), game 2 was settled in regulation. Final scores would level the
+    # head-to-head differential (+2 for A, +2 for B); the regulation scores give B the edge.
+    rows = [
+        _euroleague_row("Team A", "Team B", 90, 88, "20-22-22-22-(4)", "22-20-22-22-(2)"),
+        _euroleague_row("Team B", "Team A", 82, 80, "20-20-21-21", "20-20-20-20"),
+    ]
+    standings = _compute(monkeypatch=monkeypatch, season_id=1, rows=rows, sport="Basketball", competition_id=429)
+    assert standings["Team B"]["position"] == 1
+    assert standings["Team A"]["position"] == 2
+
+
+def test_euroleague_without_period_scores_cannot_use_the_score_differential_but_wins_still_count(monkeypatch):
+    rows = [
+        _euroleague_row("Team A", "Team B", 90, 88, None, None),
+        _euroleague_row("Team B", "Team A", 80, 85, None, None),
+    ]
+    standings = _compute(monkeypatch=monkeypatch, season_id=1, rows=rows, sport="Basketball", competition_id=429)
+    # A wins both meetings: the head-to-head wins decide before any score differential is needed.
+    assert (standings["Team A"]["position"], standings["Team B"]["position"]) == (1, 2)
+    assert standings["Team A"]["ranking_status"] == "RESOLVED"
+
+
+def test_euroleague_missing_periods_report_missing_regulation_scores_when_the_differential_is_reached(monkeypatch):
+    rows = [
+        _euroleague_row("Team A", "Team B", 90, 88, None, None),
+        _euroleague_row("Team B", "Team A", 85, 80, None, None),
+    ]
+    standings = _compute(monkeypatch=monkeypatch, season_id=1, rows=rows, sport="Basketball", competition_id=429)
+    assert standings["Team A"]["position"] is None
+    assert standings["Team A"]["ranking_reason"] == "MISSING_REGULATION_SCORES"
+
+
+@pytest.mark.parametrize(("home_sets", "away_sets", "expected"), [
+    ("23-23-31-24", "19-35-24-31", (101, 109)),
+    ("23-23-31-24-(16)", "19-35-24-31-(10)", (101, 109)),
+    ("23-23-31-24", "19-35-24", (None, None)),            # three quarters only
+    ("23-23-31-24", None, (None, None)),                  # periods absent
+    ("23-23-31-25", "19-35-24-31", (None, None)),         # quarters do not add up to the final score
+])
+def test_regulation_scores_require_four_quarters_that_reproduce_the_final_score(home_sets, away_sets, expected):
+    home_final = 101 + (16 if "(16)" in (home_sets or "") else 0)
+    away_final = 109 + (10 if "(10)" in (away_sets or "") else 0)
+    assert se._regulation_scores(home_sets, away_sets, home_final, away_final) == expected

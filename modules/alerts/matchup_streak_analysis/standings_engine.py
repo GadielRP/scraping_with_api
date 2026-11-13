@@ -5,6 +5,7 @@ historical form retrieval.
 """
 
 import logging
+import re
 from collections import defaultdict
 from itertools import repeat
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
@@ -30,6 +31,28 @@ from .standings_rules import normalize_result_subtype, rank_standings, select_st
 logger = logging.getLogger(__name__)
 FOOTBALL_CARD_STATS = (("yellow_cards", "yellow_card"), ("red_cards", "red_card"))
 SECOND_YELLOW_CARD_STAT = ("second_yellow_dismissals", IncidentType.RED_CARD_SECOND_YELLOW.value)
+
+
+_QUARTERS_AND_OVERTIME = re.compile(r"(\d+)-(\d+)-(\d+)-(\d+)((?:-?\(\d+\))*)")
+
+
+def _regulation_scores(home_sets, away_sets, home_score, away_score):
+    """Four-quarter totals from period strings such as ``23-23-31-24-(16)``.
+
+    Each parenthesised number is an overtime period. The totals are trusted only when the
+    quarters plus overtime reproduce both final scores; otherwise the regulation score is unknown.
+    """
+    totals = []
+    for sets in (home_sets, away_sets):
+        parsed = _QUARTERS_AND_OVERTIME.fullmatch((sets or "").strip())
+        if parsed is None:
+            return None, None
+        overtime = sum(int(points) for points in re.findall(r"\((\d+)\)", parsed.group(5)))
+        totals.append((sum(int(points) for points in parsed.groups()[:4]), overtime))
+    (home_regulation, home_overtime), (away_regulation, away_overtime) = totals
+    if home_regulation + home_overtime != home_score or away_regulation + away_overtime != away_score:
+        return None, None
+    return home_regulation, away_regulation
 
 
 def _create_team_stats(group: Optional[str]) -> Dict[str, object]:
@@ -412,6 +435,9 @@ class HistoricalStandingsCalculator:
         profile: CompetitionRules,
     ) -> List[Dict[str, Any]]:
         cutoff_dt = from_unix_timestamp(cutoff_timestamp)
+        # Period scores are read only where the rules compare regulation scores; LEFT JOIN keeps
+        # the games that carry no periods.
+        regulation_scores_only = profile.standings.regulation_scores_only
         query_sql = """
             SELECT
                 v.event_id, v.starts_at, v.home_team, v.away_team,
@@ -419,14 +445,17 @@ class HistoricalStandingsCalculator:
                 hp.source AS home_participant_source,
                 hp.source_participant_id AS home_source_participant_id,
                 ap.source AS away_participant_source,
-                ap.source_participant_id AS away_source_participant_id
+                ap.source_participant_id AS away_source_participant_id{regulation_columns}
             FROM season_events_with_results v
             JOIN events e ON e.id = v.event_id
             LEFT JOIN participants hp ON hp.participant_id = e.home_participant_id
-            LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id
+            LEFT JOIN participants ap ON ap.participant_id = e.away_participant_id{regulation_join}
             WHERE v.round = 'regular_season'
               AND v.starts_at < :cutoff_dt
-        """
+        """.format(
+            regulation_columns=", r.home_sets, r.away_sets" if regulation_scores_only else "",
+            regulation_join=" LEFT JOIN results r ON r.event_id = v.event_id" if regulation_scores_only else "",
+        )
         query_params: Dict[str, Any] = {
             "cutoff_dt": cutoff_dt,
         }
@@ -470,6 +499,10 @@ class HistoricalStandingsCalculator:
                     "result_subtype": result_subtype,
                     "game_total": home_score + away_score,
                 }
+                if regulation_scores_only:
+                    record["regulation_home_score"], record["regulation_away_score"] = _regulation_scores(
+                        getattr(row, "home_sets", None), getattr(row, "away_sets", None), home_score, away_score,
+                    )
                 if getattr(row, "sport", None) == "Football":
                     football_records.append(record)
                 for side in ("home", "away"):

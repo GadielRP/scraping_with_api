@@ -18,7 +18,7 @@ from modules.competition.berth_allocation_engine.relegation_engine import resolv
 from modules.competition.final_outcome import ParticipantIdentity
 from modules.competition.qualification_rules import build_qualification_rules
 from modules.competition.rule_terms import AggregationScope, ObjectiveType, RuleStatus, SelectionMethod
-from modules.competition.standings_rows import table_rows
+from modules.competition.standings_rows import annual_table_rows, table_rows
 from shared.temporal import as_utc, utc_now
 
 logger = logging.getLogger(__name__)
@@ -86,19 +86,21 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
                 session, config.shared_table, season_year=season_year,
                 kickoff_cutoff=min(cutoff, as_utc(event.starts_at)),
             )
-            standings = table = annual.standings
+            # The berth engine reads the annual table under the league-table contract; the original
+            # aggregate still feeds relegation and the report.
+            table = annual.standings
+            standings = annual_table_rows(table)
             relegation, roster = _aggregate_inputs(session, profile, annual)
             relegated = frozenset(relegation.participants)
             # Relegation is a projection until the next season's roster confirms who stays.
             eligibility_unconfirmed = roster is None
         else:
-            current = getattr(streak, "current_standings", None)
-            standings = table_rows(current)
-            if standings is None:
-                logger.warning(
-                    "Qualification skipped: standings lack participant identity or a resolved position "
-                    "event_id=%s competition=%s", event.event_id, competition.canonical_name or competition.display_name,
-                )
+            standings = table_rows(getattr(streak, "current_standings", None))
+        if standings is None and (config.shared_table is None or table):
+            logger.warning(
+                "Qualification skipped: standings lack participant identity, ordering or group membership "
+                "event_id=%s competition=%s", event.event_id, competition.canonical_name or competition.display_name,
+            )
         if not standings:
             return replace(competition, berth_allocation=None)
         competitions = tuple(dict.fromkeys(rule.competition for rule in rules.tournament_berths))

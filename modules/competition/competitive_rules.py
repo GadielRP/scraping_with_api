@@ -153,6 +153,7 @@ WINS_SCORING = ScoringRules(1, 1)
 NFL_SCORING = ScoringRules(1, 1, draw=0.5)
 NHL_SCORING = ScoringRules(2, 2, overtime_loss=1)
 HOCKEY_SCORING = ScoringRules(3, 2, overtime_loss=1)
+CBA_SCORING = ScoringRules(2, 2, loss=1)
 
 # What a criterion with ``meetings`` does when a required home/away meeting is missing:
 # continue with the next step, keep the tie as a shared position, or fall back to the
@@ -170,7 +171,11 @@ class RankingCriterion:
     Missing required data stops the comparison. It never authorizes using a
     later criterion. ``meetings`` applies per pair, not to the total match count.
     ``only_across_boundaries`` applies the criterion only when the tied places
-    cross the title or a configured sporting boundary.
+    cross the title or a configured sporting boundary; elsewhere it is skipped.
+    ``pending_across_boundaries`` orders the candidates but leaves their places
+    pending when the tie crosses the title or the relegation line, because the
+    official resolution decides them. ``complete_block`` compares every metric of
+    a mini-table before it is reapplied to the clubs still tied.
     """
 
     metrics: tuple[str, ...]
@@ -181,6 +186,8 @@ class RankingCriterion:
     unavailable: str | None = None
     incomplete_meetings_action: IncompleteMeetingsAction = "skip"
     only_across_boundaries: bool = False
+    pending_across_boundaries: bool = False
+    complete_block: bool = False
 
 
 @dataclass(frozen=True, slots=True)

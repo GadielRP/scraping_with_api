@@ -145,3 +145,13 @@ def test_relegation_direct_and_average():
     res = resolve_relegation([direct_rule], standings)
     assert len(res.participants) == 1
     assert res.participants[0].source_participant_id == 5
+
+
+def test_a_points_tie_across_the_annual_relegation_line_stays_pending_for_the_official_match():
+    # Two clubs level on points at the 19th/20th line: goal difference or Fair Play does not decide
+    # relegation, so the engine reports it pending and names nobody.
+    standings = [make_standing(1, 1, 60), make_standing(2, 2, 40), make_standing(3, 3, 40)]
+    rule = RankSelection(rank_start=3, rank_end=3, places=1, selection_method=SelectionMethod.LOWEST_POINTS)
+    outcome = resolve_relegation([rule], standings)
+    assert (outcome.resolution, outcome.issue, outcome.participants) == (
+        "UNRESOLVED", "relegation_decider_required", ())

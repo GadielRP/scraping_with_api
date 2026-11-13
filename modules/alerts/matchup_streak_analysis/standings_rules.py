@@ -4,8 +4,9 @@ from collections import Counter, defaultdict
 from fractions import Fraction
 from itertools import combinations
 
-from modules.competition.rule_terms import StandingsMetric
+from modules.competition.rule_terms import GroupingMethod, ObjectiveType, StandingsMetric
 
+from .constants import AHL_CONFERENCE_BY_DIVISION, get_team_group
 from .standings_tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
 
 
@@ -35,7 +36,9 @@ def build_head_to_head_stats(team_names, match_records, scoring, *, regulation_s
         winner = match.get("winner") or ("1" if home_score > away_score else "2" if away_score > home_score else "X")
         subtype = normalize_result_subtype(match.get("result_subtype"), winner)
         complete_scores = True
-        if regulation_scores_only and subtype in {"OT", "SO"}:
+        # A record that carries its regulation tally (even an unknown one) is compared by it: the source
+        # view cannot flag basketball overtime, so the subtype alone would pass final scores as regulation.
+        if regulation_scores_only and ("regulation_home_score" in match or subtype in {"OT", "SO"}):
             home_score, away_score = match.get("regulation_home_score"), match.get("regulation_away_score")
             complete_scores = home_score is not None and away_score is not None
         for team, won_code, scored, conceded, is_away in (
@@ -102,11 +105,32 @@ def select_standings_policy(games_played_by_team, *, number_of_teams, games_per_
     return played / expected, "closing_projection" if closing else "in_season"
 
 
+PENDING_RESOLUTION_REASON = "OFFICIAL_RESOLUTION_PENDING"
+
+
+def _sporting_boundaries(profile, *, retention_only=False):
+    """Ranks r such that places r and r + 1 sit on opposite sides of a sporting line."""
+    ranks = {1}
+    # Annual aggregate profiles carry no objectives and therefore no sporting lines.
+    for rule in getattr(profile, "objectives", None) or ():
+        reference = rule.rank_selection.reference_rank
+        if reference is not None and (not retention_only or rule.objective_type == ObjectiveType.DIVISION_RETENTION):
+            ranks.add(reference)
+    return ranks
+
+
+def _crosses(boundaries, first_place, size):
+    """Whether a tie occupying ``size`` places from ``first_place`` straddles any boundary."""
+    return any(first_place <= boundary < first_place + size - 1 for boundary in boundaries)
+
+
 def rank_standings(items, profile, match_records, *, standings_policy):
     """Evaluate rules in order; missing data stops a tie rather than skipping it.
 
     ``standings_policy`` (``in_season`` or ``closing_projection``) is chosen by the
     caller from the whole competition, never inferred from a zone or conference.
+    A closing criterion that needs a home and away meeting hands the clubs still tied
+    to the in-season sequence when one is missing; their rows record that fallback.
 
     Names stabilize display only. They cannot break a sporting tie unless the
     policy explicitly prescribes alphabetical order (interim KNVB).
@@ -114,8 +138,10 @@ def rank_standings(items, profile, match_records, *, standings_policy):
     rows = dict(items)
     records = match_records or []
     policy = profile.standings
-    criteria = (policy.closing_projection_criteria if standings_policy == "closing_projection"
-                else policy.in_season_criteria)
+    closing = standings_policy == "closing_projection"
+    in_season = policy.in_season_criteria
+    criteria = policy.closing_projection_criteria if closing else in_season
+    all_boundaries = _sporting_boundaries(profile)
     summaries = {}
     complex_records = None
 
@@ -130,6 +156,21 @@ def rank_standings(items, profile, match_records, *, standings_policy):
             )
         return summaries[key]
 
+    def conference_percentage(team):
+        """Points percentage against clubs of the team's own conference (AHL)."""
+        def conference(name):
+            return AHL_CONFERENCE_BY_DIVISION.get(get_team_group(name, GroupingMethod.AHL_DIVISION))
+
+        own = conference(team)
+        if own is None:
+            return None
+        games = [m for m in records if team in (m["home_team"], m["away_team"])
+                 and conference(m["away_team"] if m["home_team"] == team else m["home_team"]) == own]
+        stats = build_head_to_head_stats((team,), games, profile.scoring)[team]
+        if not stats["matches"]:
+            return None
+        return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / stats["matches"]
+
     def metric(name, team, names):
         stats = rows[team]
         if name == "negative_games_played":
@@ -140,10 +181,15 @@ def rank_standings(items, profile, match_records, *, standings_policy):
         if name == "negative_fair_play_points":
             points = policy.fair_play_points(stats)
             return -points if points is not None else None
+        if name == "negative_fair_play_points_per_game":
+            points = policy.fair_play_points(stats)
+            games = stats["games_played"]
+            return -Fraction(points, games) if points is not None and games else None
         if name == "negative_fair_play_red_cards":
             return -(stats["second_yellow_dismissals"] + stats["direct_red_cards"])
         if name == "alphabetical_order":
-            return tuple(-ord(c) for c in team.casefold())
+            # The trailing 0 ranks a name ahead of every longer name it prefixes.
+            return tuple(-ord(c) for c in team.casefold()) + (0,)
         if name == StandingsMetric.WIN_PERCENTAGE:
             games = stats["games_played"]
             return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / games if games else Fraction(0)
@@ -158,6 +204,8 @@ def rank_standings(items, profile, match_records, *, standings_policy):
             if len({away_counts[t] for t in names}) != 1:
                 return None
             return totals[team]["away_goals"]
+        if name == "ahl_conference_points_percentage":
+            return conference_percentage(team)
         if name in {"nhl_h2h", "ahl_h2h"}:
             direct = summary(names, True, nhl=name == "nhl_h2h")[team]
             if not direct["matches"]:
@@ -190,37 +238,42 @@ def rank_standings(items, profile, match_records, *, standings_policy):
             return _complete_home_and_away(names, records)
         return False
 
-    def separate(names, steps, path=()):
+    def separate(names, steps, path, full, fallback, first_place):
+        """Order ``names`` (tied so far, starting at ``first_place``) by the remaining steps.
+
+        Returns ``(clubs, rank key, pending reason, fallback reason)`` clusters in table order.
+        """
         nonlocal complex_records
+
+        def settled(reason=None):
+            return [(names, path, reason, fallback)]
+
+        def continue_with(next_steps):
+            return separate(names, next_steps, path, full, fallback, first_place)
+
         if len(names) == 1 or not steps:
-            return [(names, path, None)]
+            return settled()
         step, *remaining = steps
         if len(step.metrics) == 1 and step.metrics[0] in COMPLEX_TIEBREAKS:
             if complex_records is None:
                 complex_records = TieBreakRecords(records, profile.scoring)
-            return [(cluster, path + ((-index,),), reason)
+            return [(cluster, path + ((-index,),), reason, fallback)
                     for index, (cluster, reason) in enumerate(COMPLEX_TIEBREAKS[step.metrics[0]](names, complex_records))]
         if (step.only_two and len(names) != 2) or (step.only_multiple and len(names) <= 2):
-            return separate(names, remaining, path)
-        if step.only_across_boundaries:
-            # C.7 permits a shared placing; C.17 is only for a sporting boundary.
-            def league_key(row):
-                return row["points"], row["goal_diff"], row["goals_for"]
-
-            first = 1 + sum(league_key(row) > league_key(rows[names[0]]) for row in rows.values())
-            last = first + len(names) - 1
-            boundaries = {1} | {rule.rank_selection.reference_rank for rule in profile.objectives or ()
-                                if rule.rank_selection.reference_rank is not None}
-            if not any(first <= boundary < last for boundary in boundaries):
-                return [(names, path, None)]
+            return continue_with(remaining)
+        if step.only_across_boundaries and not _crosses(all_boundaries, first_place, len(names)):
+            return continue_with(remaining)
         if step.unavailable:
-            return [(names, path, step.unavailable)]
+            return settled(step.unavailable)
         if step.meetings:
             direct_games = [m for m in records if m["home_team"] in names and m["away_team"] in names]
             if not _complete_home_and_away(names, direct_games):
-                if step.incomplete_meetings_action == "share_position":
-                    return [(names, path, None)]
-                return separate(names, remaining, path)
+                action = step.incomplete_meetings_action
+                if action == "share_position":
+                    return settled()
+                if action == "use_in_season" and closing and fallback is None:
+                    return separate(names, in_season, path, in_season, "INCOMPLETE_HEAD_TO_HEAD", first_place)
+                return continue_with(remaining)
         values_by_team = {team: () for team in names}
         for measure in step.metrics:
             for team in names:
@@ -228,40 +281,55 @@ def rank_standings(items, profile, match_records, *, standings_policy):
                 if value is None:
                     reason = ("MISSING_REGULATION_SCORES" if policy.regulation_scores_only
                               else "MISSING_" + measure.removeprefix("negative_").upper())
-                    return [(names, path, reason)]
+                    return settled(reason)
                 values_by_team[team] += (value,)
-            if step.reapply and len(set(values_by_team.values())) > 1:
+            if step.reapply and not step.complete_block and len(set(values_by_team.values())) > 1:
                 break
         buckets = defaultdict(list)
         for team, values in values_by_team.items():
             buckets[values].append(team)
-        result = []
+        result, place = [], first_place
         for values in sorted(buckets, reverse=True):
             subgroup = buckets[values]
             next_steps = steps if step.reapply and len(buckets) > 1 else remaining
             if len(buckets) > 1 and restarts(step, names, subgroup):
-                next_steps = criteria
-            result.extend(separate(subgroup, next_steps, path + (values,)))
+                next_steps = full
+            result.extend(separate(subgroup, next_steps, path + (values,), full, fallback, place))
+            place += len(subgroup)
         return result
+
+    pending_across_boundaries = any(step.pending_across_boundaries for step in criteria)
+    retention_boundaries = _sporting_boundaries(profile, retention_only=True)
 
     by_primary = defaultdict(list)
     for team in rows:
         by_primary[metric(policy.primary_metric, team, tuple(rows))].append(team)
-    clusters = []
+    clusters, place = [], 1
     for primary in sorted(by_primary, reverse=True):
-        clusters.extend(separate(by_primary[primary], criteria, ((primary,),)))
+        group = by_primary[primary]
+        found = separate(group, criteria, ((primary,),), criteria, None, place)
+        if pending_across_boundaries and _crosses(retention_boundaries, place, len(group)):
+            # The mini-table still orders the candidates; the official resolution assigns the places.
+            # A group handed to the in-season sequence keeps that table's order and is not pending.
+            found = [(names, key, reason or PENDING_RESOLUTION_REASON, fallback) if fallback is None
+                     else (names, key, reason, fallback) for names, key, reason, fallback in found]
+        clusters.extend(found)
+        place += len(group)
 
     ordered, positions, offset = [], {}, 1
-    for names, key, reason in clusters:
+    for names, key, reason, fallback in clusters:
         for team in sorted(names, key=str.casefold):
             ordered.append((team, rows[team]))
             positions[team] = {
                 "position": None if reason else offset,
+                "ranking_order": offset,
                 "is_primary_tie": len(names) > 1,
                 "primary_rank_key": tuple(tuple(float(value) if isinstance(value, Fraction) else value for value in part) for part in key),
                 "ranking_status": "UNRESOLVED" if reason else "SHARED_POSITION" if len(names) > 1 else "RESOLVED",
                 "ranking_reason": reason,
                 "ranking_rules_verified": policy.verified,
             }
+            if fallback:
+                positions[team].update(ranking_policy="in_season", ranking_policy_reason=fallback)
         offset += len(names)
     return ordered, positions

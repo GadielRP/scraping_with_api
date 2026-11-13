@@ -6,6 +6,7 @@ network calls, qualification projections or invented last-resort ordering.
 
 from collections import defaultdict
 from fractions import Fraction
+from functools import partial
 
 from modules.competition.rule_terms import GroupingMethod
 
@@ -44,8 +45,15 @@ class TieBreakRecords:
         return sum(scored - allowed for _, _, scored, allowed in self.against(team, opponents))
 
 
-def _resolve(names, criteria_factory):
-    """Reapply the procedure to remaining tied clubs after a partial split."""
+OFFICIAL_TIEBREAK_UNRESOLVED = "OFFICIAL_TIEBREAK_UNRESOLVED"
+
+
+def _resolve(names, criteria_factory, exhausted=OFFICIAL_TIEBREAK_UNRESOLVED):
+    """Reapply the procedure to remaining tied clubs after a partial split.
+
+    ``exhausted`` is the reason when every criterion leaves clubs level; ``None``
+    leaves a legitimate tie, as in a table that has not reached the closing steps.
+    """
     if len(names) == 1:
         return [(names, None)]
     for compare in criteria_factory(names):
@@ -57,8 +65,8 @@ def _resolve(names, criteria_factory):
             buckets[values[name]].append(name)
         if len(buckets) > 1:
             return [cluster for value in sorted(buckets, reverse=True)
-                    for cluster in _resolve(buckets[value], criteria_factory)]
-    return [(names, "OFFICIAL_TIEBREAK_UNRESOLVED")]
+                    for cluster in _resolve(buckets[value], criteria_factory, exhausted)]
+    return [(names, exhausted)]
 
 
 def _comparison(names, measure):
@@ -126,8 +134,8 @@ def nba_tiebreak(names, records):
     return _resolve(list(names), criteria)
 
 
-def mlb_tiebreak(names, records):
-    """Two-/three-/four-club orders up to the All-Star-break-dependent step."""
+def mlb_tiebreak(names, records, *, closing=True):
+    """Two-/three-/four-club orders; the All-Star-break step belongs to the closing projection."""
     def criteria(tied):
         if len(tied) > 4:
             return [_unavailable("UNIMPLEMENTED_MLB_FIVE_PLUS_TEAM_PROCEDURE")]
@@ -141,20 +149,25 @@ def mlb_tiebreak(names, records):
             _comparison(tied, lambda team: records.percentage(team, tied)),
             _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_DIVISION, get_team_group(team, GroupingMethod.MLB_DIVISION)))),
             _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_LEAGUE, get_team_group(team, GroupingMethod.MLB_LEAGUE)))),
-            _unavailable("MISSING_ALL_STAR_BREAK_BOUNDARY"),
-        ]
+        ] + ([_unavailable("MISSING_ALL_STAR_BREAK_BOUNDARY")] if closing else [])
+    exhausted = OFFICIAL_TIEBREAK_UNRESOLVED if closing else None
     remaining, ranked = list(names), []
     while remaining:
-        first, reason = _resolve(remaining, criteria)[0]
+        first, reason = _resolve(remaining, criteria, exhausted)[0]
         if reason or len(first) != 1:
-            return ranked + [(remaining, reason or "OFFICIAL_TIEBREAK_UNRESOLVED")]
+            return ranked + [(remaining, reason or exhausted)]
         ranked.append((list(first), None))
         remaining.remove(first[0])
     return ranked
 
 
-def nfl_tiebreak(names, records):
-    """Division and wild-card procedures; advance one club, then restart."""
+def nfl_tiebreak(names, records, *, closing=True):
+    """Division and wild-card procedures; advance one club, then restart.
+
+    In season the branch stops after head-to-head and the division, conference and
+    common-game records; the strength, ranking and net-point steps are closing steps.
+    """
+    exhausted = OFFICIAL_TIEBREAK_UNRESOLVED if closing else None
     def division(team):
         return get_team_group(team, GroupingMethod.NFL_DIVISION)
 
@@ -200,6 +213,8 @@ def nfl_tiebreak(names, records):
             sequence.append(conf_metric)
             if all(len(records.against(team, common)) >= 4 for team in tied):
                 sequence.append(common_metric)
+        if not closing:
+            return sequence
         sequence.extend((
             _comparison(tied, lambda team: opponent_strength(team, True)),
             _comparison(tied, lambda team: opponent_strength(team, False)),
@@ -214,9 +229,9 @@ def nfl_tiebreak(names, records):
     def one_at_a_time(tied):
         remaining, ranked = list(tied), []
         while remaining:
-            first, reason = _resolve(remaining, criteria)[0]
+            first, reason = _resolve(remaining, criteria, exhausted)[0]
             if reason or len(first) != 1:
-                return ranked + [(remaining, reason or "OFFICIAL_TIEBREAK_UNRESOLVED")]
+                return ranked + [(remaining, reason or exhausted)]
             ranked.append((list(first), None))
             remaining.remove(first[0])
         return ranked
@@ -238,12 +253,12 @@ def nfl_tiebreak(names, records):
             first, reason = queue[0]
             if reason or len(first) != 1:
                 remaining = [team for q in queues.values() for teams, _ in q for team in teams]
-                return ranked + [(remaining, reason or "UNRESOLVED_NFL_DIVISION_SEED")]
+                return ranked + [(remaining, reason or ("UNRESOLVED_NFL_DIVISION_SEED" if closing else None))]
             candidates.extend(first)
-        first, reason = _resolve(candidates, criteria)[0]
+        first, reason = _resolve(candidates, criteria, exhausted)[0]
         if reason or len(first) != 1:
             remaining = [team for q in queues.values() for teams, _ in q for team in teams]
-            return ranked + [(remaining, reason or "OFFICIAL_TIEBREAK_UNRESOLVED")]
+            return ranked + [(remaining, reason or exhausted)]
         ranked.append((list(first), None))
         group = division(first[0])
         queues[group].pop(0)
@@ -252,4 +267,10 @@ def nfl_tiebreak(names, records):
     return ranked
 
 
-COMPLEX_TIEBREAKS = {"nba_tiebreak": nba_tiebreak, "mlb_tiebreak": mlb_tiebreak, "nfl_tiebreak": nfl_tiebreak}
+COMPLEX_TIEBREAKS = {
+    "nba_tiebreak": nba_tiebreak,
+    "mlb_tiebreak": mlb_tiebreak,
+    "mlb_in_season_tiebreak": partial(mlb_tiebreak, closing=False),
+    "nfl_tiebreak": nfl_tiebreak,
+    "nfl_in_season_tiebreak": partial(nfl_tiebreak, closing=False),
+}

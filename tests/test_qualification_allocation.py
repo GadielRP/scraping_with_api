@@ -256,10 +256,61 @@ def test_rows_follow_the_position_even_if_the_table_is_not_ordered():
     assert [row.rank for row in table_rows(standings)] == list(range(1, 21))
 
 
-def test_an_unresolved_position_makes_the_table_unusable():
-    standings = table()
-    standings["Club 5"].update(rank=None, ranking_status="UNRESOLVED", ranking_reason="OFFICIAL_DECIDER_REQUIRED")
-    assert table_rows(standings) is None
+def unresolved_position(standings, *ranks, reason="OFFICIAL_DECIDER_REQUIRED"):
+    """Leave the clubs at these ranks pending an official resolution, keeping their table order."""
+    for row in standings.values():
+        if row["rank"] in ranks:
+            row.update(ranking_order=row["rank"], rank=None, ranking_status="UNRESOLVED", ranking_reason=reason)
+    return standings
+
+
+def test_an_unresolved_position_keeps_its_place_in_the_table_with_its_reason():
+    rows = table_rows(unresolved_position(table(), 5))
+    assert [row.rank for row in rows[3:6]] == [4, None, 6]
+    assert rows[4].ranking_reason == "OFFICIAL_DECIDER_REQUIRED"
+
+
+def test_an_unresolved_position_below_the_last_berth_does_not_discard_the_table():
+    standings = unresolved_position(table(), 12)
+
+    _, rows, outcome = allocate(COMPETITION_PROFILES[ids.PREMIER_LEAGUE], standings=standings)
+
+    assert rows[11].rank is None
+    assert [b.table_rank for b in outcome.berths if b.participant] == [1, 2, 3, 4, 5]
+
+
+def test_an_unresolved_position_on_a_berth_boundary_leaves_only_the_berths_that_depend_on_it_pending():
+    standings = unresolved_position(table(), 5, reason="OFFICIAL_RESOLUTION_PENDING")
+
+    _, _, outcome = allocate(COMPETITION_PROFILES[ids.PREMIER_LEAGUE], standings=standings)
+
+    assert [b.table_rank for b in outcome.berths[:4]] == [1, 2, 3, 4]
+    europa = outcome.berths[5]
+    assert (europa.participant, europa.resolution, europa.issue) == (
+        None, BerthResolution.UNRESOLVED, "OFFICIAL_RESOLUTION_PENDING")
+
+
+def test_a_row_without_order_or_with_unknown_group_membership_makes_the_table_unusable():
+    unordered = table()
+    unordered["Club 5"].update(rank=None, ranking_status="UNRESOLVED", ranking_reason="OFFICIAL_DECIDER_REQUIRED")
+    assert table_rows(unordered) is None
+    assert table_rows(unresolved_position(table(), 5, reason="MISSING_GROUP_MEMBERSHIP")) is None
+
+
+def test_the_annual_table_is_read_under_the_same_contract_as_a_league_table():
+    from modules.competition.season_aggregate import SeasonStanding
+    from modules.competition.standings_rows import annual_table_rows
+
+    def annual(rank, order, status="RESOLVED", reason=None):
+        return SeasonStanding(identity(order), f"Club {order}", rank, 10, 2, 1, 0, 1, 1, 0, 0, reason,
+                              ranking_status=status, ranking_order=order)
+
+    rows = annual_table_rows((annual(1, 1), annual(2, 2, "SHARED_POSITION"), annual(2, 3, "SHARED_POSITION"),
+                              annual(None, 4, "UNRESOLVED", "OFFICIAL_DRAW_PENDING")))
+    assert [(row.rank, row.ranking_reason) for row in rows] == [
+        (1, None), (None, "shared_position"), (None, "shared_position"), (None, "OFFICIAL_DRAW_PENDING"),
+    ]
+    assert annual_table_rows(()) is None
 
 
 def test_each_tournament_berth_carries_the_final_that_decided_it():

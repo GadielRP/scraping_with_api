@@ -90,7 +90,11 @@ reapply: vuelve a aplicar el criterio al subconjunto que sigue empatado.
 unavailable: motivo explícito por el que no se puede evaluar el criterio.
 incomplete_meetings_action: qué hace el criterio si falta una ida o vuelta exigida: skip continúa,
     share_position conserva la igualdad y use_in_season vuelve a los criterios en curso.
-only_across_boundaries: aplica el criterio solo si los puestos empatados cruzan el título o una frontera.
+only_across_boundaries: aplica el criterio solo si los puestos empatados cruzan el título o una frontera;
+    en otro caso se omite.
+pending_across_boundaries: ordena a los candidatos pero deja sus puestos pendientes si el empate cruza
+    el título o el descenso, porque lo decide la resolución oficial.
+complete_block: compara todas las métricas de la minitabla antes de reaplicarla a los que siguen empatados.
 
 Campos de ScoringRules
 ----------------------

@@ -236,6 +236,9 @@ _CURRENT_GROUPS = {
         ),
     },
 }
+AHL_CONFERENCE_BY_DIVISION = {
+    "Atlantic": "Eastern", "North": "Eastern", "Central": "Western", "Pacific": "Western",
+}
 _CURRENT_GROUP_INDEX = {
     method: {team.casefold(): group for group, teams in groups.items() for team in teams}
     for method, groups in _CURRENT_GROUPS.items()

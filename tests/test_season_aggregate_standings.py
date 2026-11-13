@@ -87,7 +87,10 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
 
     assert len(interim.standings) == 2
     assert {row.points for row in interim.standings} == {1}
-    assert {row.ranking_reason for row in interim.standings} == {"MISSING_FAIR_PLAY_POINTS"}
+    # One of four expected club-games is below 85 %: the in-season order (GD, GF) shares the place
+    # and never reaches the annual Fair Play.
+    assert {row.ranking_reason for row in interim.standings} == {None}
+    assert {row.rank for row in interim.standings} == {1}
     assert final.season_year == season_year
     assert [
         (row.participant.source_participant_id, row.rank, row.points, row.games_played)
@@ -142,7 +145,7 @@ def test_argentina_annual_fair_play_uses_both_editions_and_fewer_reds(season_dat
 def test_clausura_timeline_carries_apertura_cards_without_its_results(season_data, monkeypatch):
     session, _, season_year, cutoff = season_data
     _add_cards(session, 1, (2, 1, 1), (0, 0, 0))
-    profile = replace(get_competition_profile(ids.ARGENTINA_CLAUSURA), number_of_teams=2)
+    profile = replace(get_competition_profile(ids.ARGENTINA_CLAUSURA), number_of_teams=2, total_regular_season_games=1)
     apertura = replace(get_competition_profile(ids.ARGENTINA_APERTURA), total_regular_season_games=1)
     monkeypatch.setattr(standings_engine, "get_competition_profile", lambda _: profile)
     monkeypatch.setattr(standings_engine, "get_profile_by_identity", lambda _: apertura)

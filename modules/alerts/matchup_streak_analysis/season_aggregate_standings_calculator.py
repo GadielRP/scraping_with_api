@@ -63,7 +63,7 @@ def calculate_season_aggregate_standings(
             accumulate_football_fair_play(stats[f"{source}:{participant_id}"], yellow, red, second_yellow)
         for team_stats in stats.values():
             team_stats["fair_play_points"] = profile.standings.fair_play_points(team_stats)
-    _, standings_policy = select_standings_policy(
+    completion_ratio, standings_policy = select_standings_policy(
         (team_stats["games_played"] for team_stats in stats.values()),
         number_of_teams=profile.number_of_teams,
         games_per_team=sum(source.games_per_team or 0 for source in profile.sources),
@@ -73,12 +73,18 @@ def calculate_season_aggregate_standings(
         season_year=season_year,
         kickoff_cutoff=cutoff,
         sources=profile.sources,
+        season_completion_ratio=completion_ratio,
+        standings_policy=standings_policy,
         standings=tuple(
             SeasonStanding(
                 participant=participants[team][0],
                 name=participants[team][1],
                 rank=positions[team]["position"],
                 ranking_reason=positions[team]["ranking_reason"],
+                ranking_status=positions[team]["ranking_status"],
+                ranking_order=positions[team]["ranking_order"],
+                ranking_policy=positions[team].get("ranking_policy"),
+                ranking_policy_reason=positions[team].get("ranking_policy_reason"),
                 **team_stats,
             )
             for team, team_stats in ordered

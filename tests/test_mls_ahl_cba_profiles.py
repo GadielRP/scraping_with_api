@@ -19,7 +19,7 @@ def _resolved_event(cid):
 
 
 def test_current_profiles_have_sizes_duration_scoring_and_explicit_objectives():
-    for cid, teams, games, maximum in ((76, 30, 34, 3), (554, 32, 72, 2), (174, 20, 46, 1)):
+    for cid, teams, games, maximum in ((76, 30, 34, 3), (554, 32, 72, 2), (174, 20, 46, 2)):
         profile = get_competition_profile(cid)
         assert (profile.number_of_teams, profile.total_regular_season_games) == (teams, games)
         assert profile.scoring.maximum_per_game == maximum
@@ -82,8 +82,9 @@ def test_mls_direct_and_wild_card_match_use_the_correct_conference():
     assert result.raw["away"]["objective_rule"]["qualification_destination"]["destination_phase"] == "PLAY_IN"
 
 
-def test_cba_declared_retention_does_not_bypass_percentage_calculation_limit():
+def test_cba_classification_points_make_its_declared_retention_computable():
+    # CBA ranks by classification points (2 per win, 1 per ordinary loss), a metric M5 supports.
     table = {name: dict(rank=rank, points=10, games_played=40)
              for name, rank in (("Valencia", 19), ("Real Sociedad", 20))}
     result = _calculate_m5(SimpleNamespace(current_standings=table), _resolved_event(174))
-    assert result.raw["m5_status_reason"] == "UNSUPPORTED_RANKING_METRIC"
+    assert result.raw["m5_status"] == "ACTIVE"
