@@ -84,7 +84,7 @@ def resolve_p1_competition_context(
     logger.info(
         "Competition profile selected event_id=%s identity=%s profile_name=%s "
         "reference_season=%s teams=%s regular_season_games=%s standings_policy=%s "
-        "standings_criteria=%s objectives=%s tournament_berths=%s",
+        "standings_criteria=%s/%s objectives=%s tournament_berths=%s",
         event_identity.event_id,
         identity,
         competition_context.canonical_name or competition_context.display_name,
@@ -92,7 +92,8 @@ def resolve_p1_competition_context(
         rules.number_of_teams,
         rules.total_regular_season_games,
         rules.standings.name,
-        len(rules.standings.criteria),
+        len(rules.standings.in_season_criteria),
+        len(rules.standings.closing_projection_criteria),
         _objective_summary(rules),
         [
             {

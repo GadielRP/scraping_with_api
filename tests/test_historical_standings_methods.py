@@ -25,8 +25,8 @@ class _FakeResult:
     def __init__(self, rows):
         self._rows = rows
 
-    def fetchall(self):
-        return self._rows
+    def __iter__(self):
+        return iter(self._rows)
 
 
 class _FakeSession:

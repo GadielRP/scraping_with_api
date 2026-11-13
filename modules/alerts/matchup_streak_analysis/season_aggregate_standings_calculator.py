@@ -16,7 +16,7 @@ from modules.competition.season_aggregate import (
 )
 from shared.temporal import as_utc
 from modules.discipline.policies import accumulate_football_fair_play
-from .standings_rules import rank_standings
+from .standings_rules import rank_standings, select_standings_policy
 
 
 def calculate_season_aggregate_standings(
@@ -63,7 +63,12 @@ def calculate_season_aggregate_standings(
             accumulate_football_fair_play(stats[f"{source}:{participant_id}"], yellow, red, second_yellow)
         for team_stats in stats.values():
             team_stats["fair_play_points"] = profile.standings.fair_play_points(team_stats)
-    ordered, positions = rank_standings(stats.items(), profile, None)
+    _, standings_policy = select_standings_policy(
+        (team_stats["games_played"] for team_stats in stats.values()),
+        number_of_teams=profile.number_of_teams,
+        games_per_team=sum(source.games_per_team or 0 for source in profile.sources),
+    )
+    ordered, positions = rank_standings(stats.items(), profile, None, standings_policy=standings_policy)
     return SeasonAggregateStandings(
         season_year=season_year,
         kickoff_cutoff=cutoff,

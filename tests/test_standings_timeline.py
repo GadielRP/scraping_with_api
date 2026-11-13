@@ -12,6 +12,7 @@ import logging
 import pytest
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -68,6 +69,9 @@ class _FakeResult:
 
     def fetchall(self):
         return self._rows
+
+    def __iter__(self):
+        return iter(self._rows)
 
 
 def _make_row(event_id, days_offset, home, away, home_score, away_score, winner):
@@ -127,6 +131,73 @@ def test_timeline_matches_per_cutoff_standings_with_single_fetch(monkeypatch):
         assert timeline[cutoff] == expected[cutoff], (
             f"Timeline standings diverged at cutoff {cutoff}"
         )
+
+
+_ROUND_ROBIN_PAIRS = (
+    ("Hawks", "Bulls"), ("Celtics", "Knicks"), ("Hawks", "Celtics"),
+    ("Knicks", "Bulls"), ("Bulls", "Celtics"), ("Knicks", "Hawks"),
+)
+
+
+def _closing_threshold_rows():
+    """19 matches among 4 clubs; the last two share one start, 17 played before it.
+
+    With 4 clubs and 10 games per club (40 expected club-games), 16 matches are 80 %,
+    17 matches are exactly 85 % and 19 are 95 %.
+    """
+    rows = [
+        _make_row(index + 1, index if index < 18 else 17, *_ROUND_ROBIN_PAIRS[index % 6], 2, 1, "1")
+        for index in range(19)
+    ]
+    return rows
+
+
+def _patch_profile_size(monkeypatch, games_per_team):
+    base = se.get_competition_profile(174)
+    sized = replace(base, number_of_teams=4, total_regular_season_games=games_per_team)
+    monkeypatch.setattr(se, "get_competition_profile", lambda competition_id: sized)
+
+
+def test_timeline_selects_policy_per_cutoff_and_matches_individual_bundles(monkeypatch):
+    rows = _closing_threshold_rows()
+    fake_db = _FakeDb(rows)
+    monkeypatch.setattr(se.db_manager, "get_session", fake_db.get_session)
+    _patch_profile_size(monkeypatch, 10)
+
+    def day(offset):
+        return (SEASON_START + timedelta(days=offset)).timestamp()
+
+    # Cutoff semantics are ``starts_at < cutoff``: day 16 sees 16 matches (80 %), day 17 sees 17
+    # (exactly 85 %, inclusive) and day 18 also sees the two matches that share day 17 (19, 95 %).
+    cutoffs = {day(16): ("in_season", 32 / 40), day(17): ("closing_projection", 34 / 40),
+               day(18): ("closing_projection", 38 / 40)}
+
+    timeline = se.HistoricalStandingsCalculator().calculate_standings_timeline(
+        SEASON_ID, cutoffs, "Basketball", competition_id=174,
+    )
+    assert len(fake_db.execute_calls) == 1
+    for cutoff, (policy, ratio) in cutoffs.items():
+        assert {row["standings_policy"] for row in timeline[cutoff].values()} == {policy}
+        assert {row["season_completion_ratio"] for row in timeline[cutoff].values()} == {ratio}
+
+    fake_db.execute_calls.clear()
+    individual = se.HistoricalStandingsCalculator()
+    for cutoff in cutoffs:
+        assert individual.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174) == timeline[cutoff]
+
+
+def test_unknown_calendar_keeps_in_season_policy_without_ratio(monkeypatch):
+    fake_db = _FakeDb(_closing_threshold_rows())
+    monkeypatch.setattr(se.db_manager, "get_session", fake_db.get_session)
+    _patch_profile_size(monkeypatch, None)
+
+    cutoff = (SEASON_START + timedelta(days=18)).timestamp()
+    standings = se.HistoricalStandingsCalculator().calculate_standings_timeline(
+        SEASON_ID, [cutoff], "Basketball", competition_id=174,
+    )[cutoff]
+
+    assert {row["standings_policy"] for row in standings.values()} == {"in_season"}
+    assert {row["season_completion_ratio"] for row in standings.values()} == {None}
 
 
 def test_timeline_empty_cutoffs_skips_db(monkeypatch):

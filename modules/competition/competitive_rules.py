@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from .competition_identity import CompetitionIdentity
 from .competition_ids import name_of
@@ -153,12 +154,23 @@ NFL_SCORING = ScoringRules(1, 1, draw=0.5)
 NHL_SCORING = ScoringRules(2, 2, overtime_loss=1)
 HOCKEY_SCORING = ScoringRules(3, 2, overtime_loss=1)
 
+# What a criterion with ``meetings`` does when a required home/away meeting is missing:
+# continue with the next step, keep the tie as a shared position, or fall back to the
+# in-season sequence (closing projection only).
+IncompleteMeetingsAction = Literal["skip", "share_position", "use_in_season"]
+# When a split restarts the whole sequence for the clubs still tied: pairs left after a
+# reapplied step (LaLiga), any pair (AHL) or any subgroup once every pair met home and away.
+RestartSequence = Literal["pair_after_reapply", "pair", "complete_meetings"]
+
+
 @dataclass(frozen=True, slots=True)
 class RankingCriterion:
     """One ordered comparison; a mini-table may contain several metrics.
 
     Missing required data stops the comparison. It never authorizes using a
     later criterion. ``meetings`` applies per pair, not to the total match count.
+    ``only_across_boundaries`` applies the criterion only when the tied places
+    cross the title or a configured sporting boundary.
     """
 
     metrics: tuple[str, ...]
@@ -167,7 +179,8 @@ class RankingCriterion:
     only_multiple: bool = False
     reapply: bool = False
     unavailable: str | None = None
-    share_if_incomplete: bool = False
+    incomplete_meetings_action: IncompleteMeetingsAction = "skip"
+    only_across_boundaries: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +189,9 @@ class StandingsRules:
 
     name: str
     primary_metric: StandingsMetric
-    criteria: tuple[RankingCriterion, ...]
+    in_season_criteria: tuple[RankingCriterion, ...]
+    closing_projection_criteria: tuple[RankingCriterion, ...]
+    restart_sequence: RestartSequence | None = None
     record_percentage: bool = False
     regulation_scores_only: bool = False
     verified: bool = True

@@ -83,8 +83,30 @@ def _without_nhl_odd_games(names, records):
     return [m for i, m in enumerate(records) if i not in excluded]
 
 
-def rank_standings(items, profile, match_records):
+CLOSING_PROJECTION_PERCENT = 85
+
+
+def select_standings_policy(games_played_by_team, *, number_of_teams, games_per_team):
+    """Choose the ranking sequence of one cut from the whole competition's progress.
+
+    Returns ``(season_completion_ratio, standings_policy)``. An unknown, non-positive
+    or incompatible format (more clubs or more games per club than configured) has no
+    ratio and keeps the in-season sequence.
+    """
+    games = list(games_played_by_team)
+    if (not number_of_teams or not games_per_team or number_of_teams < 1 or games_per_team < 1
+            or len(games) > number_of_teams or any(g < 0 or g > games_per_team for g in games)):
+        return None, "in_season"
+    expected, played = number_of_teams * games_per_team, sum(games)
+    closing = played * 100 >= expected * CLOSING_PROJECTION_PERCENT
+    return played / expected, "closing_projection" if closing else "in_season"
+
+
+def rank_standings(items, profile, match_records, *, standings_policy):
     """Evaluate rules in order; missing data stops a tie rather than skipping it.
+
+    ``standings_policy`` (``in_season`` or ``closing_projection``) is chosen by the
+    caller from the whole competition, never inferred from a zone or conference.
 
     Names stabilize display only. They cannot break a sporting tie unless the
     policy explicitly prescribes alphabetical order (interim KNVB).
@@ -92,7 +114,8 @@ def rank_standings(items, profile, match_records):
     rows = dict(items)
     records = match_records or []
     policy = profile.standings
-    criteria = policy.criteria
+    criteria = (policy.closing_projection_criteria if standings_policy == "closing_projection"
+                else policy.in_season_criteria)
     summaries = {}
     complex_records = None
 
@@ -157,6 +180,16 @@ def rank_standings(items, profile, match_records):
             return round(scores["score_quotients"], 5) if name == "game_score_quotients" else scores[name]
         return stats.get(name)
 
+    def restarts(step, names, subgroup):
+        """Whether a split sends the clubs still tied back to the full sequence."""
+        if policy.restart_sequence == "pair_after_reapply":
+            return step.reapply and len(subgroup) == 2
+        if policy.restart_sequence == "pair":
+            return len(subgroup) == 2
+        if policy.restart_sequence == "complete_meetings":
+            return _complete_home_and_away(names, records)
+        return False
+
     def separate(names, steps, path=()):
         nonlocal complex_records
         if len(names) == 1 or not steps:
@@ -169,7 +202,7 @@ def rank_standings(items, profile, match_records):
                     for index, (cluster, reason) in enumerate(COMPLEX_TIEBREAKS[step.metrics[0]](names, complex_records))]
         if (step.only_two and len(names) != 2) or (step.only_multiple and len(names) <= 2):
             return separate(names, remaining, path)
-        if policy.name == "PREMIER_LEAGUE" and step.metrics == ("h2h_points", "h2h_away_goals"):
+        if step.only_across_boundaries:
             # C.7 permits a shared placing; C.17 is only for a sporting boundary.
             def league_key(row):
                 return row["points"], row["goal_diff"], row["goals_for"]
@@ -185,7 +218,7 @@ def rank_standings(items, profile, match_records):
         if step.meetings:
             direct_games = [m for m in records if m["home_team"] in names and m["away_team"] in names]
             if not _complete_home_and_away(names, direct_games):
-                if step.share_if_incomplete:
+                if step.incomplete_meetings_action == "share_position":
                     return [(names, path, None)]
                 return separate(names, remaining, path)
         values_by_team = {team: () for team in names}
@@ -206,10 +239,7 @@ def rank_standings(items, profile, match_records):
         for values in sorted(buckets, reverse=True):
             subgroup = buckets[values]
             next_steps = steps if step.reapply and len(buckets) > 1 else remaining
-            if policy.name == "LALIGA" and step.reapply and len(buckets) > 1 and len(subgroup) == 2:
-                next_steps = policy.criteria
-            euro_complete = policy.name == "EUROLEAGUE" and _complete_home_and_away(names, records)
-            if len(buckets) > 1 and (euro_complete or (policy.name == "AHL" and len(subgroup) == 2)):
+            if len(buckets) > 1 and restarts(step, names, subgroup):
                 next_steps = criteria
             result.extend(separate(subgroup, next_steps, path + (values,)))
         return result

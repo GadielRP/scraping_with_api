@@ -25,7 +25,7 @@ from modules.discipline.contracts import IncidentType
 from modules.discipline.policies import accumulate_football_fair_play
 from .historical_form_reporting import format_standings_table_for_telegram
 from .constants import get_team_group
-from .standings_rules import normalize_result_subtype, rank_standings
+from .standings_rules import normalize_result_subtype, rank_standings, select_standings_policy
 
 logger = logging.getLogger(__name__)
 FOOTBALL_CARD_STATS = (("yellow_cards", "yellow_card"), ("red_cards", "red_card"))
@@ -223,13 +223,25 @@ def _finalize_standings_snapshot(
             for key, count in prior.items():
                 stats[key] = stats.get(key, 0) + count
         _finalize_team_stats(stats, profile)
-    return _build_standings_payload(finalized_stats, profile, match_records)
+    # Progress is read across the whole competition, before grouping into zones or conferences.
+    completion_ratio, standings_policy = select_standings_policy(
+        (stats["games_played"] for stats in finalized_stats.values()),
+        number_of_teams=profile.number_of_teams,
+        games_per_team=profile.total_regular_season_games,
+    )
+    return _build_standings_payload(
+        finalized_stats, profile, match_records,
+        season_completion_ratio=completion_ratio, standings_policy=standings_policy,
+    )
 
 
 def _build_standings_payload(
     team_stats: Dict[str, Dict[str, object]],
     profile: CompetitionRules,
     match_records: Optional[List[Dict[str, object]]] = None,
+    *,
+    season_completion_ratio: Optional[float] = None,
+    standings_policy: str = "in_season",
 ) -> Dict[str, Dict]:
     standings: Dict[str, Dict] = {}
 
@@ -239,10 +251,13 @@ def _build_standings_payload(
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():
-        sorted_teams, positions = rank_standings(teams, profile, match_records)
+        sorted_teams, positions = rank_standings(
+            teams, profile, match_records, standings_policy=standings_policy,
+        )
 
         for team_name, stats in sorted_teams:
             pos_meta = positions[team_name]
+            pos_meta.update(season_completion_ratio=season_completion_ratio, standings_policy=standings_policy)
             if group_name == "UNKNOWN":
                 pos_meta.update(position=None, ranking_status="UNRESOLVED", ranking_reason="MISSING_GROUP_MEMBERSHIP")
             standings[team_name] = _build_team_standing_payload(stats, pos_meta, profile, group_name)
@@ -436,10 +451,7 @@ class HistoricalStandingsCalculator:
         match_records: List[Dict[str, Any]] = []
         football_records: List[Dict[str, Any]] = []
         with db_manager.get_session() as session:
-            result = session.execute(query, query_params)
-            all_rows = result.fetchall()
-
-            for row in all_rows:
+            for row in session.execute(query, query_params):
                 home_score = int(row.home_score)
                 away_score = int(row.away_score)
                 winner = row.winner

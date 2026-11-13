@@ -29,6 +29,7 @@ def _game(home, away, scored, conceded, subtype="REG"):
 def _rank(cid, a=None, b=None, games=()):
     return rank_standings(
         {"A": a or _stats(), "B": b or _stats()}.items(), get_competition_profile(cid), list(games),
+        standings_policy="in_season",
     )
 
 
@@ -39,7 +40,7 @@ def _rank_games(cid, names, games):
         _apply_game_result(stats, **game)
     for row in stats.values():
         _finalize_team_stats(row, profile)
-    ordered, positions = rank_standings([(name, stats[name]) for name in names], profile, games)
+    ordered, positions = rank_standings([(name, stats[name]) for name in names], profile, games, standings_policy="in_season")
     assert set(positions) == {name for name, _ in ordered} == set(names)
     return [name for name, _ in ordered], positions
 
@@ -101,7 +102,7 @@ def test_premier_league_tie_shares_a_position_without_a_sporting_boundary(first)
     rows.pop(f"T{first + 1:02}")
     rows.update({team: _stats(points=points) for team in ("A", "B")})
     games = [_game("A", "B", 2, 1), _game("B", "A", 0, 0)]
-    _, positions = rank_standings(rows.items(), get_competition_profile(168), games)
+    _, positions = rank_standings(rows.items(), get_competition_profile(168), games, standings_policy="in_season")
     assert positions["A"]["position"] == positions["B"]["position"] == first
     assert positions["A"]["ranking_status"] == positions["B"]["ranking_status"] == "SHARED_POSITION"
 
@@ -113,7 +114,7 @@ def test_premier_league_h2h_decides_title_qualification_and_relegation(first):
     rows.pop(f"T{first + 1:02}")
     rows.update({team: _stats(points=points) for team in ("A", "B")})
     games = [_game("A", "B", 2, 1), _game("B", "A", 0, 0)]
-    _, positions = rank_standings(rows.items(), get_competition_profile(168), games)
+    _, positions = rank_standings(rows.items(), get_competition_profile(168), games, standings_policy="in_season")
     assert (positions["A"]["position"], positions["B"]["position"]) == (first, first + 1)
 
 
@@ -302,3 +303,25 @@ def test_auxiliary_percentage_dropped_by_the_first_refactor_is_restored(cid):
 ])
 def test_published_group_memberships_match_stored_event_names(method, team, group):
     assert get_team_group(team, method) == group
+
+
+@pytest.mark.parametrize(("played", "ratio", "policy"), [
+    (320, 640 / 760, "in_season"),
+    (323, 646 / 760, "closing_projection"),
+    (350, 700 / 760, "closing_projection"),
+])
+def test_standings_policy_switches_at_85_percent_inclusive(played, ratio, policy):
+    from modules.alerts.matchup_streak_analysis.standings_rules import select_standings_policy
+
+    team_games = played * 2  # each match counts for both participants
+    games = [team_games // 20 + (i < team_games % 20) for i in range(20)]
+    assert select_standings_policy(games, number_of_teams=20, games_per_team=38) == (ratio, policy)
+
+
+@pytest.mark.parametrize(("games", "teams", "per_team"), [
+    ([10] * 20, None, 38), ([10] * 20, 20, None), ([10] * 20, 20, 0), ([10] * 21, 20, 38), ([39] + [10] * 19, 20, 38),
+])
+def test_unknown_or_incompatible_format_keeps_in_season_policy(games, teams, per_team):
+    from modules.alerts.matchup_streak_analysis.standings_rules import select_standings_policy
+
+    assert select_standings_policy(games, number_of_teams=teams, games_per_team=per_team) == (None, "in_season")

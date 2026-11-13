@@ -73,7 +73,10 @@ Campos de StandingsRules y RankingCriterion
 ------------------------------------------
 name: identidad de la política de orden, no una vía ni un destino.
 primary_metric: valor principal para ordenar (puntos, victorias o porcentaje).
-criteria: pasos de desempate en orden; una sola política por competición.
+in_season_criteria: pasos de desempate mientras no se alcanza el 85 % de partidos computados.
+closing_projection_criteria: pasos desde el 85 % inclusive, para aproximar la clasificación de cierre.
+restart_sequence: cuándo una separación reinicia la secuencia completa (pair_after_reapply, pair o
+    complete_meetings); None si nunca.
 record_percentage: expone también el porcentaje en el registro de clasificación.
 regulation_scores_only: excluye el marcador de prórroga en criterios de tanteo.
 fair_play_weights: pares (stat, peso) de la política para calcular puntos de penalización
@@ -85,7 +88,9 @@ meetings: encuentros necesarios por pareja para aplicar el criterio.
 only_two, only_multiple: limita el criterio a empates de dos o varios equipos.
 reapply: vuelve a aplicar el criterio al subconjunto que sigue empatado.
 unavailable: motivo explícito por el que no se puede evaluar el criterio.
-share_if_incomplete: conserva la igualdad cuando faltan encuentros requeridos.
+incomplete_meetings_action: qué hace el criterio si falta una ida o vuelta exigida: skip continúa,
+    share_position conserva la igualdad y use_in_season vuelve a los criterios en curso.
+only_across_boundaries: aplica el criterio solo si los puestos empatados cruzan el título o una frontera.
 
 Campos de ScoringRules
 ----------------------
