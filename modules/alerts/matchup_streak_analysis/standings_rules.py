@@ -1,10 +1,20 @@
 """Pure evaluation of the ordered standings criteria in a competition profile."""
 
+
 from collections import Counter, defaultdict
 from fractions import Fraction
 from itertools import combinations
 
-from modules.competition.rule_terms import GroupingMethod, ObjectiveType, StandingsMetric
+from modules.competition.rule_terms import (
+    GroupingMethod,
+    IncompleteMeetingsAction,
+    ObjectiveType,
+    RankingIssue,
+    RankingMetric,
+    RankingStatus,
+    RestartSequence,
+    StandingsMetric,
+)
 
 from .constants import AHL_CONFERENCE_BY_DIVISION, get_team_group
 from .standings_tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
@@ -58,9 +68,9 @@ def build_head_to_head_stats(team_names, match_records, scoring, *, regulation_s
                 stats["ot_losses"] += subtype in {"OT", "SO"}
             stats["complete_scores"] &= complete_scores
             if complete_scores:
-                stats["goals_for"] += scored
-                stats["goal_diff"] += scored - conceded
-                stats["away_goals"] += scored if is_away else 0
+                stats[RankingMetric.GOALS_FOR] += scored
+                stats[RankingMetric.GOAL_DIFF] += scored - conceded
+                stats[RankingMetric.AWAY_GOALS] += scored if is_away else 0
                 if conceded:
                     stats["score_quotients"] += Fraction(scored, conceded)
     for stats in result.values():
@@ -105,7 +115,7 @@ def select_standings_policy(games_played_by_team, *, number_of_teams, games_per_
     return played / expected, "closing_projection" if closing else "in_season"
 
 
-PENDING_RESOLUTION_REASON = "OFFICIAL_RESOLUTION_PENDING"
+PENDING_RESOLUTION_REASON = RankingIssue.OFFICIAL_RESOLUTION_PENDING
 
 
 def _sporting_boundaries(profile, *, retention_only=False):
@@ -173,27 +183,27 @@ def rank_standings(items, profile, match_records, *, standings_policy):
 
     def metric(name, team, names):
         stats = rows[team]
-        if name == "negative_games_played":
+        if name == RankingMetric.NEGATIVE_GAMES_PLAYED:
             return -stats["games_played"]
-        if name in {"negative_red_cards", "negative_yellow_cards"}:
+        if name in {RankingMetric.NEGATIVE_RED_CARDS, RankingMetric.NEGATIVE_YELLOW_CARDS}:
             count = stats.get(name.removeprefix("negative_"))
             return -count if count is not None else None
-        if name == "negative_fair_play_points":
+        if name == RankingMetric.NEGATIVE_FAIR_PLAY_POINTS:
             points = policy.fair_play_points(stats)
             return -points if points is not None else None
-        if name == "negative_fair_play_points_per_game":
+        if name == RankingMetric.NEGATIVE_FAIR_PLAY_POINTS_PER_GAME:
             points = policy.fair_play_points(stats)
             games = stats["games_played"]
             return -Fraction(points, games) if points is not None and games else None
-        if name == "negative_fair_play_red_cards":
+        if name == RankingMetric.NEGATIVE_FAIR_PLAY_RED_CARDS:
             return -(stats["second_yellow_dismissals"] + stats["direct_red_cards"])
-        if name == "alphabetical_order":
+        if name == RankingMetric.ALPHABETICAL_ORDER:
             # The trailing 0 ranks a name ahead of every longer name it prefixes.
             return tuple(-ord(c) for c in team.casefold()) + (0,)
         if name == StandingsMetric.WIN_PERCENTAGE:
             games = stats["games_played"]
             return Fraction(str(stats["points"])) / Fraction(str(profile.scoring.maximum_per_game)) / games if games else Fraction(0)
-        if name == "balanced_away_goals":
+        if name == RankingMetric.BALANCED_AWAY_GOALS:
             # FMF art. 25: totals are comparable only at equal away counts.
             # With unequal counts, the official matchday cutoff is required;
             # chronological truncation is wrong when matches were postponed.
@@ -203,8 +213,8 @@ def rank_standings(items, profile, match_records, *, standings_policy):
             away_counts = Counter(m["away_team"] for m in records)
             if len({away_counts[t] for t in names}) != 1:
                 return None
-            return totals[team]["away_goals"]
-        if name == "ahl_conference_points_percentage":
+            return totals[team][RankingMetric.AWAY_GOALS]
+        if name == RankingMetric.AHL_CONFERENCE_POINTS_PERCENTAGE:
             return conference_percentage(team)
         if name in {"nhl_h2h", "ahl_h2h"}:
             direct = summary(names, True, nhl=name == "nhl_h2h")[team]
@@ -214,27 +224,27 @@ def rank_standings(items, profile, match_records, *, standings_policy):
         if name.startswith("h2h_"):
             direct = summary(names, True)[team]
             measure = name[4:]
-            if measure == "regulation_wins":
+            if measure == RankingMetric.REGULATION_WINS:
                 return direct["wins"] - direct["ot_so_wins"]
             if measure == "win_percentage":
                 return Fraction(direct["wins"], direct["matches"]) if direct["matches"] else Fraction(0)
-            if measure in {"goal_diff", "goals_for", "away_goals"} and not direct["complete_scores"]:
+            if measure in {RankingMetric.GOAL_DIFF, RankingMetric.GOALS_FOR, RankingMetric.AWAY_GOALS} and not direct["complete_scores"]:
                 return None
             return direct.get(measure)
-        if policy.regulation_scores_only and name in {"goal_diff", "goals_for", "game_score_quotients"}:
+        if policy.regulation_scores_only and name in {RankingMetric.GOAL_DIFF, RankingMetric.GOALS_FOR, RankingMetric.GAME_SCORE_QUOTIENTS}:
             scores = summary(names)[team]
             if not scores["complete_scores"]:
                 return None
-            return round(scores["score_quotients"], 5) if name == "game_score_quotients" else scores[name]
+            return round(scores["score_quotients"], 5) if name == RankingMetric.GAME_SCORE_QUOTIENTS else scores[name]
         return stats.get(name)
 
     def restarts(step, names, subgroup):
         """Whether a split sends the clubs still tied back to the full sequence."""
-        if policy.restart_sequence == "pair_after_reapply":
+        if policy.restart_sequence == RestartSequence.PAIR_AFTER_REAPPLY:
             return step.reapply and len(subgroup) == 2
-        if policy.restart_sequence == "pair":
+        if policy.restart_sequence == RestartSequence.PAIR:
             return len(subgroup) == 2
-        if policy.restart_sequence == "complete_meetings":
+        if policy.restart_sequence == RestartSequence.COMPLETE_MEETINGS:
             return _complete_home_and_away(names, records)
         return False
 
@@ -269,18 +279,18 @@ def rank_standings(items, profile, match_records, *, standings_policy):
             direct_games = [m for m in records if m["home_team"] in names and m["away_team"] in names]
             if not _complete_home_and_away(names, direct_games):
                 action = step.incomplete_meetings_action
-                if action == "share_position":
+                if action == IncompleteMeetingsAction.SHARE_POSITION:
                     return settled()
-                if action == "use_in_season" and closing and fallback is None:
-                    return separate(names, in_season, path, in_season, "INCOMPLETE_HEAD_TO_HEAD", first_place)
+                if action == IncompleteMeetingsAction.USE_IN_SEASON and closing and fallback is None:
+                    return separate(names, in_season, path, in_season, RankingIssue.INCOMPLETE_HEAD_TO_HEAD, first_place)
                 return continue_with(remaining)
         values_by_team = {team: () for team in names}
         for measure in step.metrics:
             for team in names:
                 value = metric(measure, team, names)
                 if value is None:
-                    reason = ("MISSING_REGULATION_SCORES" if policy.regulation_scores_only
-                              else "MISSING_" + measure.removeprefix("negative_").upper())
+                    reason = (RankingIssue.MISSING_REGULATION_SCORES if policy.regulation_scores_only
+                              else RankingIssue("MISSING_" + measure.removeprefix("negative_").upper()))
                     return settled(reason)
                 values_by_team[team] += (value,)
             if step.reapply and not step.complete_block and len(set(values_by_team.values())) > 1:
@@ -325,7 +335,7 @@ def rank_standings(items, profile, match_records, *, standings_policy):
                 "ranking_order": offset,
                 "is_primary_tie": len(names) > 1,
                 "primary_rank_key": tuple(tuple(float(value) if isinstance(value, Fraction) else value for value in part) for part in key),
-                "ranking_status": "UNRESOLVED" if reason else "SHARED_POSITION" if len(names) > 1 else "RESOLVED",
+                "ranking_status": RankingStatus.UNRESOLVED if reason else RankingStatus.SHARED_POSITION if len(names) > 1 else RankingStatus.RESOLVED,
                 "ranking_reason": reason,
                 "ranking_rules_verified": policy.verified,
             }

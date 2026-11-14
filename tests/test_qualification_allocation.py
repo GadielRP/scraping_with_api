@@ -12,14 +12,14 @@ from sqlalchemy.orm import Session
 from infrastructure.persistence.models import (
     Competition, Event, EventOutcomeObservation, Participant, Result, Season,
 )
-from infrastructure.persistence.repositories.cup_final_repository import read_cup_finals
+from infrastructure.persistence.repositories.tournament_final_repository import read_tournament_finals
 from modules.competition import competition_ids as ids
 from modules.competition.berth_allocation_engine.berth_allocation_engine import allocate_berths
 from modules.competition.berth_allocation_engine.models import BerthResolution
 from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.competition_profiles import COMPETITION_PROFILES
 from modules.competition.competitive_rules import QualificationSources
-from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity, decisive_winner
+from modules.competition.final_outcome import TournamentFinalEvidence, ParticipantIdentity, decisive_winner
 from modules.competition.qualification_rules import build_qualification_rules
 from modules.competition.standings_rows import table_rows
 from modules.pillars.mining.serialization import to_json_value
@@ -42,18 +42,17 @@ def table(*, games=33):
 
 
 def cup(winner_rank=7, competition=ids.COPA_DEL_REY):
-    return CupFinalEvidence(competition, 2026, "DECIDED", event_id=100,
-                            season_id=777, starts_at=FINAL, observed_at=FINAL + timedelta(hours=3),
-                            observation_id="known-final", evidence_source="sofascore",
+    return TournamentFinalEvidence(competition, 2026, "DECIDED", event_id=100,
+                            season_id=777, starts_at=FINAL,
                             home=identity(winner_rank), away=identity(101), winner=identity(winner_rank),
                             result={"home_score": 1, "away_score": 0, "winner": "1"}, decision="regulation")
 
 
-def allocate(profile, *cups, standings=None):
+def allocate(profile, *cups, standings=None, profile_identity=ids.LALIGA):
     standings = standings or table()
     rules = build_qualification_rules(profile)
     rows = table_rows(standings)
-    outcome = allocate_berths(rules, rows, season_year=2026, tournament_evidence=cups)
+    outcome = allocate_berths(rules, rows, season_year=2026, profile_identity=profile_identity, tournament_evidence=cups)
     return rules, rows, outcome
 
 
@@ -84,7 +83,7 @@ def test_laliga_cup_berth_goes_to_the_winner_or_to_the_next_ranked_club(winner, 
 
 def test_table_berths_are_projected_and_a_decided_cup_is_confirmed():
     outcome = allocate(BASE, cup())[2]
-    assert {b.resolution for b in outcome.berths if b.source is None} == {BerthResolution.PROJECTED}
+    assert {b.resolution for b in outcome.berths if b.berth_type == "TABLE"} == {BerthResolution.PROJECTED}
     assert outcome.berths_by_source[ids.COPA_DEL_REY].resolution is BerthResolution.CONFIRMED
 
 
@@ -146,8 +145,7 @@ def test_allocation_uses_the_profile_for_destinations_and_slot_counts(winner, re
             template,
             qualification_destination=replace(
                 template.qualification_destination,
-                destination_competition_identity=target,
-                destination_competition_name=f"Test destination {target.source_tournament_id}",
+                destination_competition_identity=replace(target, competition_name=f"Test destination {target.source_tournament_id}"),
             ),
             rank_selection=replace(template.rank_selection, rank_start=start, rank_end=end, reference_rank=end),
         )
@@ -205,7 +203,6 @@ def test_pending_cup_leaves_the_table_berths_unchanged(change, reason):
 
 @pytest.mark.parametrize("change", [
     {"starts_at": NOW + timedelta(days=1)},
-    {"observed_at": NOW + timedelta(seconds=1)},
     {"starts_at": NOW - timedelta(hours=1)},
 ])
 def test_final_unknown_before_the_event_or_the_cutoff_is_dropped(change):
@@ -318,21 +315,23 @@ def test_each_tournament_berth_carries_the_final_that_decided_it():
     captured = to_json_value(allocation)
     assert captured == to_json_value(allocation)
     assert set(captured) == {"destination_season_year", "berths", "table"}
-    assert [b["final"] is not None for b in captured["berths"]] == [False] * 4 + [True, False, False]
-    evidence = next(b["final"] for b in captured["berths"] if b["final"])
-    assert evidence["observation_id"] == "known-final"
+    assert [b["tournament_final_evidence"] is not None for b in captured["berths"]] == (
+        [False] * 4 + [True, False, False]
+    )
+    evidence = captured["berths"][4]["tournament_final_evidence"]
+    assert not {"observation_id", "observed_at", "evidence_source", "competition_name"} & evidence.keys()
     assert evidence["result"]["home_score"] == 1
-    assert evidence["observed_at"] < NOW.isoformat()
 
 
 def test_an_absent_final_adds_no_evidence_beyond_the_issue():
     _, _, allocation = allocate(BASE)
     berth = allocation.berths_by_source[ids.COPA_DEL_REY]
-    assert (berth.final, berth.issue) == (None, "final_absent")
+    assert berth.berth_type == "TOURNAMENT"
+    assert (berth.tournament_final_evidence, berth.issue) == (None, "final_absent")
 
 
 def read_final(session, competition, season_year, as_of):
-    return read_cup_finals(session, (competition,), season_year, as_of, read_at=NOW)[0]
+    return read_tournament_finals(session, (competition,), season_year, as_of, read_at=NOW)[0]
 
 
 @pytest.fixture
@@ -365,7 +364,6 @@ def session():
 def test_83369_penalties_and_wrong_edition_are_read_only(session):
     evidence = read_final(session, ids.COPA_DEL_REY, 2025, NOW)
     assert evidence.winner == identity(2) and evidence.decision == "penalties"
-    assert evidence.observed_at == NOW and evidence.evidence_source == "legacy_result_read"
     assert evidence.event_id == 83369 and evidence.season_id == 82988
     assert read_final(session, ids.COPA_DEL_REY, 2026, NOW).status == "final_absent"
     assert session.get(Result, 83369).winner == "X"
@@ -380,7 +378,7 @@ def test_legacy_result_cannot_be_known_before_its_read(session):
 def test_repository_accepts_a_tournament_family(session):
     family = replace(ids.COPA_DEL_REY, source_tournament_id=None)
 
-    evidence = read_cup_finals(session, (family,), 2025, NOW, read_at=NOW)[0]
+    evidence = read_tournament_finals(session, (family,), 2025, NOW, read_at=NOW)[0]
 
     assert evidence.event_id == 83369
     assert evidence.winner == identity(2)
@@ -400,7 +398,7 @@ def test_use_known_observation_even_if_result_and_later_observations_differ(sess
     session.get(Result, 83369).winner = "1"
     session.flush()
     evidence = read_final(session, ids.COPA_DEL_REY, 2025, NOW)
-    assert evidence.observation_id == "old" and evidence.winner == identity(2)
+    assert evidence.winner == identity(2)
     assert evidence.result == original
 
 
@@ -454,7 +452,7 @@ def test_participant_identity_survives_standings_calculation():
 def test_profiles_without_tournament_berths_do_not_read_cup_evidence(monkeypatch):
     def unexpected(*args, **kwargs):
         pytest.fail("Only profiles with qualification berths can read final evidence")
-    monkeypatch.setattr(qualification_preparation, "read_cup_finals", unexpected)
+    monkeypatch.setattr(qualification_preparation, "read_tournament_finals", unexpected)
     event = _configured_event("shl")
     before = event.competition.competitive_rules
     resolved = qualification_preparation.prepare_qualification(event.to_identity(), event.competition, None)
@@ -464,7 +462,7 @@ def test_profiles_without_tournament_berths_do_not_read_cup_evidence(monkeypatch
 def test_pipeline_captures_allocation_after_standings_and_before_calculation(session, monkeypatch):
     from contextlib import contextmanager
     from infrastructure.persistence.database import DatabaseManager
-    from infrastructure.persistence.repositories import cup_final_repository, pillar_mining_repository
+    from infrastructure.persistence.repositories import tournament_final_repository, pillar_mining_repository
     from modules.jobs.pre_start_check_job import pillar_pipeline as pipeline
     from infrastructure.persistence.repositories.pillar_mining_repository import PillarMiningRepository
     preparation = qualification_preparation
@@ -479,7 +477,7 @@ def test_pipeline_captures_allocation_after_standings_and_before_calculation(ses
     def read_session():
         yield session
     monkeypatch.setattr(preparation, "db_manager", SimpleNamespace(get_session=read_session))
-    for module in (preparation, cup_final_repository, pipeline):
+    for module in (preparation, tournament_final_repository, pipeline):
         monkeypatch.setattr(module, "utc_now", lambda: NOW)
     manager = DatabaseManager("sqlite://")
     manager.create_tables()
@@ -496,22 +494,24 @@ def test_pipeline_captures_allocation_after_standings_and_before_calculation(ses
     original_calculate = processor._calculate_p1
     def calculate(*args):
         allocation = args[1].berth_allocation
-        assert allocation.berths_by_source[ids.COPA_DEL_REY].final.event_id == 100
-        # No subsequent cup reads are allowed once preparation is complete.
-        monkeypatch.setattr(preparation, "read_cup_finals", lambda *_a, **_k: pytest.fail("calculation queried cup"))
+        assert allocation.berths_by_source[ids.COPA_DEL_REY].tournament_final_evidence.event_id == 100
+        # No subsequent final reads are allowed once preparation is complete.
+        monkeypatch.setattr(
+            preparation, "read_tournament_finals", lambda *_a, **_k: pytest.fail("calculation queried finals"),
+        )
         return original_calculate(*args)
     monkeypatch.setattr(processor, "_calculate_p1", calculate)
     try:
         output = processor.process_event(event)
         stored = PillarMiningRepository.get_evaluation(output["evaluation_id"])
         allocation = stored["inputs"]["p1"]["competition_context"]["berth_allocation"]
-        cup_berth = next(b for b in allocation["berths"] if b["source_name"] == "Copa del Rey")
-        captured_cup = cup_berth["final"]
+        cup_berth = next(b for b in allocation["berths"] if b["source"] and b["source"]["competition_name"] == "Copa del Rey")
+        assert cup_berth["berth_type"] == "TOURNAMENT"
+        assert "final" not in cup_berth
+        captured_cup = cup_berth["tournament_final_evidence"]
         assert captured_cup["season_id"] == 104108
-        assert captured_cup["evidence_source"] == "legacy_result_read"
-        assert captured_cup["observed_at"] <= stored["evaluation_as_of"]
         assert allocation["table"] is None
-        assert (cup_berth["source_name"], cup_berth["table_rank"]) == ("Copa del Rey", 5)
+        assert (cup_berth["source"]["competition_name"], cup_berth["table_rank"]) == ("Copa del Rey", 5)
         assert cup_berth["destination"]["destination_phase"] == "LEAGUE_PHASE"
         assert cup_berth["destination"]["qualification_path"] == "DIRECT"
         assert stored["inputs"]["p1_preparation_error"] is None
@@ -527,19 +527,25 @@ def test_pipeline_captures_allocation_after_standings_and_before_calculation(ses
 def test_payload_names_competitions_and_describes_each_berth():
     profile = COMPETITION_PROFILES[ids.PREMIER_LEAGUE]
     fa, efl = cup(2, ids.FA_CUP), cup(2, ids.EFL_CUP)
-    rules, _, outcome = allocate(profile, fa, efl)
+    rules, _, outcome = allocate(profile, fa, efl, profile_identity=ids.PREMIER_LEAGUE)
 
-    assert [b.source_name for b in outcome.berths] == [None, None, None, None, "FA Cup", None, "EFL Cup"]
+    assert [b.source for b in outcome.berths] == (
+        [ids.PREMIER_LEAGUE] * 4 + [ids.FA_CUP, ids.PREMIER_LEAGUE, ids.EFL_CUP]
+    )
+    assert ids.PREMIER_LEAGUE not in outcome.berths_by_source
+    assert [b["berth_type"] for b in to_json_value(outcome)["berths"]] == (
+        ["TABLE"] * 4 + ["TOURNAMENT", "TABLE", "TOURNAMENT"]
+    )
     assert [b.table_rank for b in outcome.berths] == [1, 2, 3, 4, 5, 6, 7]
     assert [b.issue for b in outcome.berths] == [None] * 4 + ["tournament_winner_already_qualified", None, "tournament_winner_already_qualified"]
     reallocated = outcome.berths_by_source[ids.FA_CUP]
     assert reallocated.participant == identity(5)
-    assert reallocated.source_name == "FA Cup"
-    assert outcome.berths_by_source[ids.EFL_CUP].destination.destination_competition_name == (
+    assert reallocated.source.competition_name == "FA Cup"
+    assert outcome.berths_by_source[ids.EFL_CUP].destination.destination_competition_identity.competition_name == (
         "UEFA Conference League, Qualification"
     )
-    assert (fa.competition_name, rules.tournament_berths[0].competition_name) == ("FA Cup", "FA Cup")
-    assert all(b.destination.destination_competition_name for b in outcome.berths)
+    assert (fa.competition.competition_name, rules.tournament_berths[0].competition.competition_name) == ("FA Cup", "FA Cup")
+    assert all(b.destination.destination_competition_identity.competition_name for b in outcome.berths)
 
 
 def test_a_club_outside_the_table_cannot_take_two_cup_berths():

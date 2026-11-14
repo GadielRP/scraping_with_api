@@ -44,7 +44,6 @@ def _event(total_games=38):
                 rank_selection=RankSelection(rank_start=1, rank_end=7, reference_rank=7),
                 qualification_destination=QualificationDestination(
                     destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                    destination_competition_name="UEFA Champions League",
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     qualification_path=QualificationPath.DIRECT,
                 ),

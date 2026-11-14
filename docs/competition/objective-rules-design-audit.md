@@ -27,7 +27,7 @@ Las identidades concretas son datos; no forman parte del enum de comportamientos
 
 `DestinationPhase` contiene `LEAGUE_PHASE`, `GROUP_STAGE`, `QUALIFICATION_ROUND`, `PLAYOFFS` para la fase de disputa del título posterior a la clasificación regular, y `PLAY_IN` para la fase previa que decide el acceso a playoffs. `DestinationRound` identifica la ronda concreta de entrada dentro de esa fase cuando se conoce (por ejemplo, `FIRST_ROUND` o `QUARTER_FINALS`). Esa descripción no permite calcular exenciones ni ventajas por saltarse rondas.
 
-`destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
+El nombre legible vive en `destination_competition_identity.competition_name` y se serializa dentro de esa identidad, también en el diagnóstico de M5. Los identificadores del proveedor determinan la igualdad de la identidad.
 
 ## Referencias verificadas
 
@@ -70,7 +70,6 @@ create_competition_qualification_rule(
     end=4,
     destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
     destination_phase=DestinationPhase.LEAGUE_PHASE,
-    destination_competition_name="UEFA Champions League",
     path=QualificationPath.DIRECT,
 )
 

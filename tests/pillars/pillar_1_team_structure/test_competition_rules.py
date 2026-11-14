@@ -150,8 +150,8 @@ def test_rank_selection_and_destination_validate_their_own_fields():
         RankSelection(rank_start=4, rank_end=2)
     with pytest.raises(ValueError, match="destination_round requires destination_phase"):
         QualificationDestination(destination_round="FIRST_ROUND")
-    with pytest.raises(ValueError, match="destination_competition_name must be a non-empty string"):
-        QualificationDestination(destination_competition_name=" ")
+    with pytest.raises(ValueError, match="competition_name must be a non-empty string"):
+        replace(competition_ids.LALIGA, competition_name=" ")
 
 
 def test_canonical_terms_remain_immutable_and_serialize_as_plain_strings():
@@ -200,15 +200,17 @@ def test_internal_destinations_use_generic_stages(cid, index, stage, path, desti
 def test_destination_name_is_stored_and_serialized_independently_of_note():
     rule = get_competition_profile(competition_ids.LALIGA).objectives[0]
     assert rule.qualification_destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE
-    assert rule.qualification_destination.destination_competition_name == "UEFA Champions League"
+    assert rule.qualification_destination.destination_competition_identity.competition_name == "UEFA Champions League"
     changed_note = replace(rule, note="Human explanation only.")
-    assert changed_note.qualification_destination.destination_competition_name == rule.qualification_destination.destination_competition_name
-    assert asdict(rule)["qualification_destination"]["destination_competition_name"] == "UEFA Champions League"
+    assert changed_note.qualification_destination.destination_competition_identity.competition_name == rule.qualification_destination.destination_competition_identity.competition_name
+    assert asdict(rule)["qualification_destination"]["destination_competition_identity"]["competition_name"] == "UEFA Champions League"
     renamed = replace(rule, qualification_destination=replace(
-        rule.qualification_destination, destination_competition_name="Champions League"
+        rule.qualification_destination, destination_competition_identity=replace(
+            competition_ids.UEFA_CHAMPIONS_LEAGUE, competition_name="Champions League",
+        )
     ))
     restored = ObjectiveRule(**json.loads(json.dumps(asdict(renamed))))
-    assert restored.qualification_destination.destination_competition_name == "Champions League"
+    assert restored.qualification_destination.destination_competition_identity.competition_name == "Champions League"
     assert restored.qualification_destination.destination_competition_identity == rule.qualification_destination.destination_competition_identity
 
 
@@ -218,14 +220,13 @@ def test_catalogue_uses_registered_names_and_marks_missing_general_records_pendi
         for rule in profile.objectives or ():
             if rule.objective_type == ObjectiveType.COMPETITION_QUALIFICATION:
                 assert rule.qualification_destination.destination_phase is not None or rule.status is RuleStatus.PENDING
-                assert rule.qualification_destination.destination_competition_name
                 assert rule.qualification_destination.destination_competition_identity is not None or rule.status is RuleStatus.PENDING
                 if rule.qualification_destination.destination_competition_identity is not None:
-                    assert rule.qualification_destination.destination_competition_name == competition_ids.COMPETITION_NAMES[rule.qualification_destination.destination_competition_identity]
+                    assert rule.qualification_destination.destination_competition_identity.competition_name == competition_ids.COMPETITION_NAMES[rule.qualification_destination.destination_competition_identity]
             elif rule.objective_type == ObjectiveType.PHASE_QUALIFICATION:
                 assert rule.qualification_destination.destination_phase in DestinationPhase
                 if rule.qualification_destination.destination_competition_identity is not None:
-                    assert rule.qualification_destination.destination_competition_name == competition_ids.COMPETITION_NAMES[rule.qualification_destination.destination_competition_identity]
+                    assert rule.qualification_destination.destination_competition_identity.competition_name == competition_ids.COMPETITION_NAMES[rule.qualification_destination.destination_competition_identity]
             else:
                 assert rule.qualification_destination is None
 
@@ -238,7 +239,7 @@ def test_tournament_berths_are_unique_per_profile_and_carry_registered_names():
     ]
     assert berths
     for profile, rule in berths:
-        assert rule.competition_name == competition_ids.COMPETITION_NAMES[rule.competition]
+        assert rule.competition.competition_name == competition_ids.COMPETITION_NAMES[rule.competition]
         competitions = [r.competition for r in profile.qualification_sources.tournament_berths]
         assert len(competitions) == len(set(competitions))
 
@@ -310,7 +311,7 @@ def test_m5_diagnostic_preserves_destination_id_and_readable_name():
     result = _calculate_m5(_table(20, 35, 2, 5), _configured_event("laliga"))
     rule = result.raw["home"]["objective_rule"]
     assert rule["qualification_destination"]["destination_competition_identity"] == asdict(competition_ids.UEFA_CHAMPIONS_LEAGUE)
-    assert rule["qualification_destination"]["destination_competition_name"] == "UEFA Champions League"
+    assert rule["qualification_destination"]["destination_competition_identity"]["competition_name"] == "UEFA Champions League"
 
 
 def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament():

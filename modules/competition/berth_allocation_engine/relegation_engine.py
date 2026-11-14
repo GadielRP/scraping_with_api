@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -9,7 +10,7 @@ from typing import Protocol
 
 from modules.competition.competitive_rules import RankSelection
 from modules.competition.final_outcome import ParticipantIdentity
-from modules.competition.rule_terms import SelectionMethod
+from modules.competition.rule_terms import RelegationIssue, RelegationResolution, SelectionMethod
 
 
 class StandingRow(Protocol):
@@ -25,8 +26,8 @@ class StandingRow(Protocol):
 class RelegationOutcome:
     """The result of evaluating relegation rules against standings and averages."""
     participants: tuple[ParticipantIdentity, ...]
-    resolution: str = "RESOLVED"
-    issue: str | None = None
+    resolution: RelegationResolution = RelegationResolution.RESOLVED
+    issue: RelegationIssue | None = None
 
 
 def resolve_relegation(
@@ -47,14 +48,14 @@ def resolve_relegation(
             if multiseason_averages is None or not remaining_points.keys() <= multiseason_averages.keys():
                 return RelegationOutcome(
                     participants=tuple(relegated),
-                    resolution="UNRESOLVED",
-                    issue="incomplete_multiseason_record",
+                    resolution=RelegationResolution.UNRESOLVED,
+                    issue=RelegationIssue.INCOMPLETE_MULTISEASON_RECORD,
                 )
             scores = {club: multiseason_averages[club] for club in remaining_points}
-            tie_reason = "average_relegation_decider_required"
+            tie_reason = RelegationIssue.AVERAGE_RELEGATION_DECIDER_REQUIRED
         elif rule.selection_method == SelectionMethod.LOWEST_POINTS:
             scores = remaining_points
-            tie_reason = "relegation_decider_required"
+            tie_reason = RelegationIssue.RELEGATION_DECIDER_REQUIRED
         else:
             raise ValueError(f"Unsupported relegation selection method: {rule.selection_method}")
 
@@ -62,8 +63,8 @@ def resolve_relegation(
         if count is None or len(scores) < count:
             return RelegationOutcome(
                 participants=tuple(relegated),
-                resolution="UNRESOLVED",
-                issue="insufficient_relegation_candidates",
+                resolution=RelegationResolution.UNRESOLVED,
+                issue=RelegationIssue.INSUFFICIENT_RELEGATION_CANDIDATES,
             )
 
         ordered = sorted(scores, key=scores.__getitem__)
@@ -71,7 +72,7 @@ def resolve_relegation(
         if len(ordered) > count and scores[ordered[count - 1]] == scores[ordered[count]]:
             return RelegationOutcome(
                 participants=tuple(relegated),
-                resolution="UNRESOLVED",
+                resolution=RelegationResolution.UNRESOLVED,
                 issue=tie_reason,
             )
 
@@ -80,5 +81,4 @@ def resolve_relegation(
         for club in selected:
             del remaining_points[club]
 
-    return RelegationOutcome(participants=tuple(relegated), resolution="RESOLVED")
-
+    return RelegationOutcome(participants=tuple(relegated), resolution=RelegationResolution.RESOLVED)

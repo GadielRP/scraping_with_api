@@ -10,19 +10,17 @@ from modules.competition.berth_allocation_engine.models import (
     TournamentBerthRule,
 )
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
-from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity
+from modules.competition.final_outcome import TournamentFinalEvidence, ParticipantIdentity
 from modules.competition.rule_terms import DestinationPhase, QualificationPath, SelectionMethod
 from modules.competition.competitive_rules import RankSelection
 from modules.competition.season_aggregate import SeasonStanding
 
 
 UCL_DEST = QualificationDestination(
-    destination_competition_name="UEFA Champions League",
     destination_phase=DestinationPhase.GROUP_STAGE,
     qualification_path=QualificationPath.DIRECT,
 )
 UEL_DEST = QualificationDestination(
-    destination_competition_name="UEFA Europa League",
     destination_phase=DestinationPhase.GROUP_STAGE,
     qualification_path=QualificationPath.DIRECT,
 )
@@ -70,7 +68,7 @@ def test_premier_league_standard_berths_without_cup_evidence():
         ),
     )
 
-    outcome = allocate_berths(rules, standings, season_year=2026)
+    outcome = allocate_berths(rules, standings, season_year=2026, profile_identity=CompetitionIdentity(17, 1))
 
     # FA cup final is absent -> pending
     assert outcome.berths_by_source[FA_CUP_ID].resolution == BerthResolution.UNRESOLVED
@@ -108,7 +106,7 @@ def test_cup_winner_already_qualified_reallocates_to_table():
 
     # Winner of FA Cup is Club 1.
     # In tournament allocation, Club 1 gets the tournament slot (first berth).
-    cup_evidence = CupFinalEvidence(
+    cup_evidence = TournamentFinalEvidence(
         competition=FA_CUP_ID,
         season_year=2026,
         status="DECIDED",
@@ -118,7 +116,7 @@ def test_cup_winner_already_qualified_reallocates_to_table():
     outcome = allocate_berths(
         rules,
         standings,
-        season_year=2026,
+        season_year=2026, profile_identity=CompetitionIdentity(17, 1),
         tournament_evidence=[cup_evidence],
     )
 

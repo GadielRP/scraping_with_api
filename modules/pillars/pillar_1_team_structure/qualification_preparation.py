@@ -1,12 +1,13 @@
 """Load evidence, allocate qualification berths and re-cut objectives before P1 captures its inputs."""
 
+
 import logging
 from dataclasses import replace
 
 from infrastructure.persistence.database import db_manager
-from infrastructure.persistence.repositories.cup_final_repository import (
-    read_cup_eliminations,
-    read_cup_finals,
+from infrastructure.persistence.repositories.tournament_final_repository import (
+    read_tournament_eliminations,
+    read_tournament_finals,
 )
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_members
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
@@ -16,8 +17,16 @@ from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculato
 from modules.competition.berth_allocation_engine.berth_allocation_engine import allocate_berths
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
 from modules.competition.final_outcome import ParticipantIdentity
+from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.qualification_rules import build_qualification_rules
-from modules.competition.rule_terms import AggregationScope, ObjectiveType, RuleStatus, SelectionMethod
+from modules.competition.rule_terms import (
+    AggregationScope,
+    BerthType,
+    ObjectiveType,
+    RuleStatus,
+    SelectionMethod,
+    TournamentFinalStatus,
+)
 from modules.competition.standings_rows import annual_table_rows, table_rows
 from shared.temporal import as_utc, utc_now
 
@@ -25,13 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 def _usable_finals(finals, event_starts_at, cutoff):
-    """Finals that were decided and observed before the event and the cutoff."""
+    """Discard decided finals played after the event began."""
     return tuple(
         item for item in finals
-        if item.status != "DECIDED" or (
-            item.starts_at is not None and item.observed_at is not None
+        if item.status != TournamentFinalStatus.DECIDED or (
+            item.starts_at is not None
             and as_utc(item.starts_at) < min(cutoff, as_utc(event_starts_at))
-            and as_utc(item.observed_at) <= cutoff
         )
     )
 
@@ -105,19 +113,26 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
             return replace(competition, berth_allocation=None)
         competitions = tuple(dict.fromkeys(rule.competition for rule in rules.tournament_berths))
         finals = _usable_finals(
-            read_cup_finals(session, competitions, season_year, cutoff, read_at=now),
+            read_tournament_finals(session, competitions, season_year, cutoff, read_at=now),
             event.starts_at, cutoff,
         )
         eliminations = {
-            rule.competition: read_cup_eliminations(
+            rule.competition: read_tournament_eliminations(
                 session, rule.competition, season_year, rule.replacement_rounds, cutoff, read_at=now,
             )
             for rule in rules.tournament_berths if rule.replacement_rounds
         }
 
+    profile_identity = CompetitionIdentity(
+        source_unique_tournament_id=competition.source_unique_tournament_id,
+        source_tournament_id=competition.source_tournament_id,
+        source=competition.source,
+        competition_name=competition.display_name or competition.canonical_name,
+    )
     outcome = allocate_berths(
         rules, standings,
         season_year=season_year,
+        profile_identity=profile_identity,
         tournament_evidence=finals,
         bracket_eliminations=eliminations,
         excluded_participants=relegated,
@@ -132,7 +147,7 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
         season_year,
         cutoff.isoformat(),
         allocation.destination_season_year,
-        [(b.source_name or b.destination.destination_competition_name, b.participant, b.table_rank, b.resolution.value, b.issue)
-         for b in allocation.berths if b.source or b.issue],
+        [(b.source, b.participant, b.table_rank, b.resolution.value, b.issue)
+         for b in allocation.berths if b.berth_type is BerthType.TOURNAMENT or b.issue],
     )
     return replace(competition, berth_allocation=allocation)

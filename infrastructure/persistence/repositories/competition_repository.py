@@ -18,14 +18,16 @@ class CompetitionRepository:
     @staticmethod
     def get_identity_for_local_id(session: Session, competition_id: int) -> CompetitionIdentity | None:
         row = session.query(Competition.source, Competition.source_unique_tournament_id,
-                            Competition.source_tournament_id).filter(
+                            Competition.source_tournament_id, Competition.display_name,
+                            Competition.canonical_name).filter(
             Competition.competition_id == competition_id,
         ).first()
         if row is None or row.source_unique_tournament_id is None:
             return None
         return CompetitionIdentity(source=row.source,
                                    source_unique_tournament_id=row.source_unique_tournament_id,
-                                   source_tournament_id=row.source_tournament_id)
+                                   source_tournament_id=row.source_tournament_id,
+                                   competition_name=row.display_name or row.canonical_name)
 
     @staticmethod
     def get_local_ids_for_identities(

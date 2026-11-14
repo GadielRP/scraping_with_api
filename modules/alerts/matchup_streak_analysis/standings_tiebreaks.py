@@ -4,11 +4,12 @@ All inputs come from the already loaded regular-season matches. No repositories,
 network calls, qualification projections or invented last-resort ordering.
 """
 
+
 from collections import defaultdict
 from fractions import Fraction
 from functools import partial
 
-from modules.competition.rule_terms import GroupingMethod
+from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingMetric
 
 from .constants import get_team_group
 
@@ -45,7 +46,7 @@ class TieBreakRecords:
         return sum(scored - allowed for _, _, scored, allowed in self.against(team, opponents))
 
 
-OFFICIAL_TIEBREAK_UNRESOLVED = "OFFICIAL_TIEBREAK_UNRESOLVED"
+OFFICIAL_TIEBREAK_UNRESOLVED = RankingIssue.OFFICIAL_TIEBREAK_UNRESOLVED
 
 
 def _resolve(names, criteria_factory, exhausted=OFFICIAL_TIEBREAK_UNRESOLVED):
@@ -107,7 +108,7 @@ def nba_tiebreak(names, records):
     def criteria(tied, choosing_division=False):
         h2h = _comparison(tied, lambda team: records.percentage(team, tied))
         if any(not group(team) or not division(team) for team in tied):
-            return ([h2h] if len(tied) == 2 else []) + [_unavailable("MISSING_NBA_GROUP_MEMBERSHIP")]
+            return ([h2h] if len(tied) == 2 else []) + [_unavailable(RankingIssue.MISSING_NBA_GROUP_MEMBERSHIP)]
 
         def leaders():
             values = {team: division_winner(team) for team in tied}
@@ -140,7 +141,7 @@ def mlb_tiebreak(names, records, *, closing=True):
         if len(tied) > 4:
             return [_unavailable("UNIMPLEMENTED_MLB_FIVE_PLUS_TEAM_PROCEDURE")]
         if any(not get_team_group(team, GroupingMethod.MLB_DIVISION) or not get_team_group(team, GroupingMethod.MLB_LEAGUE) for team in tied):
-            return [_comparison(tied, lambda team: records.percentage(team, tied)), _unavailable("MISSING_MLB_GROUP_MEMBERSHIP")]
+            return [_comparison(tied, lambda team: records.percentage(team, tied)), _unavailable(RankingIssue.MISSING_MLB_GROUP_MEMBERSHIP)]
         def beats_each(team):
             return int(all(records.against(team, {opponent}) and records.percentage(team, {opponent}) > Fraction(1, 2)
                            for opponent in tied if opponent != team))
@@ -149,7 +150,7 @@ def mlb_tiebreak(names, records, *, closing=True):
             _comparison(tied, lambda team: records.percentage(team, tied)),
             _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_DIVISION, get_team_group(team, GroupingMethod.MLB_DIVISION)))),
             _comparison(tied, lambda team: records.percentage(team, records.members(GroupingMethod.MLB_LEAGUE, get_team_group(team, GroupingMethod.MLB_LEAGUE)))),
-        ] + ([_unavailable("MISSING_ALL_STAR_BREAK_BOUNDARY")] if closing else [])
+        ] + ([_unavailable(RankingIssue.MISSING_ALL_STAR_BREAK_BOUNDARY)] if closing else [])
     exhausted = OFFICIAL_TIEBREAK_UNRESOLVED if closing else None
     remaining, ranked = list(names), []
     while remaining:
@@ -189,7 +190,7 @@ def nfl_tiebreak(names, records, *, closing=True):
 
     def criteria(tied):
         if any(not division(team) or not conference(team) for team in tied):
-            return [_unavailable("MISSING_NFL_GROUP_MEMBERSHIP")]
+            return [_unavailable(RankingIssue.MISSING_NFL_GROUP_MEMBERSHIP)]
         same_division = len({division(team) for team in tied}) == 1
         common = set.intersection(*(set(game[0] for game in records.games[team]) for team in tied))
         common_metric = _comparison(tied, lambda team: records.percentage(team, common))
@@ -222,7 +223,7 @@ def nfl_tiebreak(names, records, *, closing=True):
             _comparison(tied, lambda team: combined_rank(team, False)),
             _comparison(tied, lambda team: records.net_points(team, common if same_division else records.members(GroupingMethod.NFL_CONFERENCE, conference(team)))),
             _comparison(tied, records.net_points),
-            _unavailable("MISSING_NET_TOUCHDOWNS"),
+            _unavailable(RankingIssue.MISSING_NET_TOUCHDOWNS),
         ))
         return sequence
 
@@ -237,7 +238,7 @@ def nfl_tiebreak(names, records, *, closing=True):
         return ranked
 
     if any(not division(team) for team in names):
-        return [(list(names), "MISSING_NFL_GROUP_MEMBERSHIP")]
+        return [(list(names), RankingIssue.MISSING_NFL_GROUP_MEMBERSHIP)]
     by_division = defaultdict(list)
     for team in names:
         by_division[division(team)].append(team)
@@ -268,9 +269,9 @@ def nfl_tiebreak(names, records, *, closing=True):
 
 
 COMPLEX_TIEBREAKS = {
-    "nba_tiebreak": nba_tiebreak,
-    "mlb_tiebreak": mlb_tiebreak,
-    "mlb_in_season_tiebreak": partial(mlb_tiebreak, closing=False),
-    "nfl_tiebreak": nfl_tiebreak,
-    "nfl_in_season_tiebreak": partial(nfl_tiebreak, closing=False),
+    RankingMetric.NBA_TIEBREAK: nba_tiebreak,
+    RankingMetric.MLB_TIEBREAK: mlb_tiebreak,
+    RankingMetric.MLB_IN_SEASON_TIEBREAK: partial(mlb_tiebreak, closing=False),
+    RankingMetric.NFL_TIEBREAK: nfl_tiebreak,
+    RankingMetric.NFL_IN_SEASON_TIEBREAK: partial(nfl_tiebreak, closing=False),
 }

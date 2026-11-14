@@ -195,7 +195,11 @@ def test_pre_start_prepares_annual_standings_for_capture(monkeypatch, season_dat
     assert set(allocation) == {"destination_season_year", "berths", "table"}
     assert allocation["table"][0]["participant"]["source_participant_id"] == 10
     assert allocation["destination_season_year"] == season_year + 1
-    berths = {berth["source"]["source_unique_tournament_id"]: berth for berth in allocation["berths"] if berth["source"]}
+    assert all(
+        b["source"]["source_tournament_id"] == ids.ARGENTINA_CLAUSURA.source_tournament_id
+        for b in allocation["berths"] if b["berth_type"] == "TABLE"
+    )
+    berths = {berth["source"]["source_unique_tournament_id"]: berth for berth in allocation["berths"] if berth["berth_type"] == "TOURNAMENT"}
     assert berths[ids.ARGENTINA_APERTURA_PLAYOFFS.source_unique_tournament_id]["issue"] == "final_absent"
 
 

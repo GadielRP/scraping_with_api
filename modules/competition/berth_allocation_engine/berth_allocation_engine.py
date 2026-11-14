@@ -6,6 +6,7 @@ Independent of whether standings come from a single league, conferences, or mult
 
 from __future__ import annotations
 
+
 from collections.abc import Mapping, Sequence, Set
 from typing import Protocol
 
@@ -17,8 +18,14 @@ from modules.competition.berth_allocation_engine.models import (
     QualificationRules,
     TournamentBerthRule,
 )
-from modules.competition.final_outcome import CupFinalEvidence, ParticipantIdentity
-from modules.competition.rule_terms import Finalist
+from modules.competition.final_outcome import TournamentFinalEvidence, ParticipantIdentity
+from modules.competition.rule_terms import (
+    BerthIssue,
+    BerthType,
+    Finalist,
+    RankingIssue,
+    TournamentFinalStatus,
+)
 
 
 class StandingRow(Protocol):
@@ -27,47 +34,47 @@ class StandingRow(Protocol):
     @property
     def rank(self) -> int | None: ...
     @property
-    def ranking_reason(self) -> str | None: ...
+    def ranking_reason(self) -> RankingIssue | BerthIssue | None: ...
 
 
 def _resolve_tournament_candidate(
     rule: TournamentBerthRule,
-    evidence: CupFinalEvidence | None,
+    evidence: TournamentFinalEvidence | None,
     ranks: Mapping[ParticipantIdentity, int | None],
     eligible: Set[ParticipantIdentity],
     held: Set[ParticipantIdentity],
     eliminated: Mapping[str, tuple[ParticipantIdentity, ...]],
     roster_complete: bool,
-) -> tuple[ParticipantIdentity | None, str | None]:
+) -> tuple[ParticipantIdentity | None, BerthIssue | TournamentFinalStatus | None]:
     if evidence is None:
-        return None, "final_absent"
-    if evidence.status != "DECIDED":
+        return None, TournamentFinalStatus.FINAL_ABSENT
+    if evidence.status != TournamentFinalStatus.DECIDED:
         return None, evidence.status
     if evidence.winner is None:
-        return None, "incomplete_cup_evidence"
+        return None, BerthIssue.INCOMPLETE_CUP_EVIDENCE
 
     for finalist in rule.finalists:
         club = evidence.winner if finalist == Finalist.WINNER else evidence.loser
         if club is None:
-            return None, "incomplete_cup_evidence"
+            return None, BerthIssue.INCOMPLETE_CUP_EVIDENCE
         if club in held:
             continue  # a club holds one berth only: try the next finalist, then the replacement rounds
         if club in eligible or (club not in ranks and rule.open_to_outsiders):
             return club, None
         if club not in ranks and not roster_complete:
-            return None, "finalist_eligibility_unknown"
+            return None, BerthIssue.FINALIST_ELIGIBILITY_UNKNOWN
 
     for round_name, expected_matches in rule.replacement_rounds:
         losers = eliminated.get(round_name, ())
         if len(set(losers)) != expected_matches:
-            return None, "incomplete_cup_bracket"
+            return None, BerthIssue.INCOMPLETE_CUP_BRACKET
         candidates = set(losers) & eligible
         if len(candidates) == 1:
             return next(iter(candidates)), None
         if candidates:
             positions = {ranks.get(club) for club in candidates}
             if None in positions or len(positions) != len(candidates):
-                return None, "cup_replacement_annual_tiebreak_pending"
+                return None, BerthIssue.CUP_REPLACEMENT_ANNUAL_TIEBREAK_PENDING
             return min(candidates, key=ranks.__getitem__), None
 
     return None, None
@@ -78,7 +85,8 @@ def allocate_berths(
     standings: Sequence[StandingRow],
     *,
     season_year: int,
-    tournament_evidence: Sequence[CupFinalEvidence] = (),
+    profile_identity: CompetitionIdentity,
+    tournament_evidence: Sequence[TournamentFinalEvidence] = (),
     bracket_eliminations: Mapping[CompetitionIdentity, Mapping[str, tuple[ParticipantIdentity, ...]]] | None = None,
     excluded_participants: Set[ParticipantIdentity] = frozenset(),
     next_season_roster: Set[ParticipantIdentity] | None = None,
@@ -114,39 +122,46 @@ def allocate_berths(
     ranked_candidates = iter(row for row in standings if row.participant in available)
     table_pending_issue = None
 
-    def record_berth(destination, club, *, source=None, resolution, issue=None, final=None):
+    def record_berth(destination, club, *, source, berth_type, resolution, issue=None, final_evidence=None):
         if club is not None:
             available.discard(club)
             held.add(club)
         if issue is None and resolution is BerthResolution.PROJECTED and earlier_berth_pending:
-            issue = "earlier_berth_pending"
+            issue = BerthIssue.EARLIER_BERTH_PENDING
         berths.append(AllocatedBerth(
-            destination, club, source, resolution, issue, ranks.get(club) if club is not None else None, final,
+            destination=destination,
+            participant=club,
+            source=source,
+            berth_type=berth_type,
+            resolution=resolution,
+            issue=issue,
+            table_rank=ranks.get(club) if club is not None else None,
+            tournament_final_evidence=final_evidence,
         ))
 
-    def award_from_table(destination, *, source=None, issue=None, final=None):
+    def award_from_table(destination, *, source, berth_type, issue=None, final_evidence=None):
         """Give the berth to the best remaining ranked club, or leave it pending."""
         nonlocal table_pending_issue
         if table_pending_issue is None:
             row = next(ranked_candidates, None)
             if row is None:
-                table_pending_issue = "insufficient_eligible_participants"
+                table_pending_issue = BerthIssue.INSUFFICIENT_ELIGIBLE_PARTICIPANTS
             elif row.rank is None:
-                table_pending_issue = row.ranking_reason or "ranking_unresolved"
+                table_pending_issue = row.ranking_reason or BerthIssue.RANKING_UNRESOLVED
             else:
-                record_berth(destination, row.participant, source=source, issue=issue, final=final,
+                record_berth(destination, row.participant, source=source, berth_type=berth_type, issue=issue, final_evidence=final_evidence,
                              resolution=BerthResolution.PROJECTED)
                 return
-        record_berth(destination, None, source=source, resolution=BerthResolution.UNRESOLVED,
-                     issue=table_pending_issue, final=final)
+        record_berth(destination, None, source=source, berth_type=berth_type, resolution=BerthResolution.UNRESOLVED,
+                     issue=table_pending_issue, final_evidence=final_evidence)
 
     for destination, rule in rules.ordered_berths:
         if rule is None:
-            award_from_table(destination)
+            award_from_table(destination, source=profile_identity, berth_type=BerthType.TABLE)
             continue
         evidence = evidence_by_comp.get(rule.competition)
         # An absent final adds nothing beyond the berth's issue.
-        final = evidence if evidence is not None and evidence.status != "final_absent" else None
+        final_evidence = evidence if evidence is not None and evidence.status != TournamentFinalStatus.FINAL_ABSENT else None
         club, issue = _resolve_tournament_candidate(
             rule,
             evidence,
@@ -162,15 +177,16 @@ def allocate_berths(
             resolution = BerthResolution.UNRESOLVED
             earlier_berth_pending = True
         elif rule.reallocate_to_table:
-            award_from_table(destination, source=rule.competition, final=final,
-                             issue="tournament_winner_already_qualified")
+            award_from_table(destination, source=rule.competition, berth_type=BerthType.TOURNAMENT, final_evidence=final_evidence,
+                             issue=BerthIssue.TOURNAMENT_WINNER_ALREADY_QUALIFIED)
             continue
         elif rule.replacement_rounds:
-            resolution, issue = BerthResolution.UNRESOLVED, "no_eligible_cup_participant"
+            resolution, issue = BerthResolution.UNRESOLVED, BerthIssue.NO_ELIGIBLE_CUP_PARTICIPANT
             earlier_berth_pending = True
         else:
-            resolution, issue = BerthResolution.UNAWARDED, "winner_not_available"
-        record_berth(destination, club, source=rule.competition, resolution=resolution, issue=issue, final=final)
+            resolution, issue = BerthResolution.UNAWARDED, BerthIssue.WINNER_NOT_AVAILABLE
+        record_berth(destination, club, source=rule.competition, berth_type=BerthType.TOURNAMENT, resolution=resolution,
+                     issue=issue, final_evidence=final_evidence)
 
     return BerthAllocation(
         destination_season_year=season_year + rules.destination_season_offset,

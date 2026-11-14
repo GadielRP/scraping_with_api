@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import dataclass
 
 from .competition_identity import CompetitionIdentity
-from .competition_ids import name_of
 from modules.competition.berth_allocation_engine.models import (
     QualificationDestination,
     TournamentBerthRule,
 )
 from .rule_terms import (
     AggregationScope,
+    FairPlayMetric,
+    IncompleteMeetingsAction,
+    RankingIssue,
+    RankingMetric,
+    RestartSequence,
     GroupingMethod,
     ObjectiveType,
     QualificationPath,
@@ -79,7 +82,12 @@ class ObjectiveRule:
         if not isinstance(self.rank_selection, RankSelection):
             raise ValueError("rank_selection requires RankSelection")
         if isinstance(self.qualification_destination, dict):
-            object.__setattr__(self, "qualification_destination", QualificationDestination(**self.qualification_destination))
+            destination_fields = dict(self.qualification_destination)
+            legacy_name = destination_fields.pop("destination_competition_name", None)
+            identity = destination_fields.get("destination_competition_identity")
+            if isinstance(identity, dict) and legacy_name is not None:
+                destination_fields["destination_competition_identity"] = {"competition_name": legacy_name, **identity}
+            object.__setattr__(self, "qualification_destination", QualificationDestination(**destination_fields))
         destination = self.qualification_destination
         if destination is not None and not isinstance(destination, QualificationDestination):
             raise ValueError("qualification_destination requires QualificationDestination")
@@ -91,8 +99,8 @@ class ObjectiveRule:
                 raise ValueError("competition qualification requires qualification_destination")
             if destination.destination_competition_identity is None and self.status != RuleStatus.PENDING:
                 raise ValueError("configured competition qualification requires destination_competition_identity")
-            if destination.destination_competition_name is None and self.status != RuleStatus.PENDING:
-                raise ValueError("configured competition qualification requires destination_competition_name")
+            if self.status != RuleStatus.PENDING and destination.destination_competition_identity.competition_name is None:
+                raise ValueError("configured competition qualification requires a destination competition name")
             if destination.destination_phase is None and self.status != RuleStatus.PENDING:
                 raise ValueError("configured competition qualification requires destination_phase")
             if self.relegation_path is not None:
@@ -158,10 +166,8 @@ CBA_SCORING = ScoringRules(2, 2, loss=1)
 # What a criterion with ``meetings`` does when a required home/away meeting is missing:
 # continue with the next step, keep the tie as a shared position, or fall back to the
 # in-season sequence (closing projection only).
-IncompleteMeetingsAction = Literal["skip", "share_position", "use_in_season"]
 # When a split restarts the whole sequence for the clubs still tied: pairs left after a
 # reapplied step (LaLiga), any pair (AHL) or any subgroup once every pair met home and away.
-RestartSequence = Literal["pair_after_reapply", "pair", "complete_meetings"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,13 +184,13 @@ class RankingCriterion:
     a mini-table before it is reapplied to the clubs still tied.
     """
 
-    metrics: tuple[str, ...]
+    metrics: tuple[RankingMetric | StandingsMetric, ...]
     meetings: int = 0
     only_two: bool = False
     only_multiple: bool = False
     reapply: bool = False
-    unavailable: str | None = None
-    incomplete_meetings_action: IncompleteMeetingsAction = "skip"
+    unavailable: RankingIssue | None = None
+    incomplete_meetings_action: IncompleteMeetingsAction = IncompleteMeetingsAction.SKIP
     only_across_boundaries: bool = False
     pending_across_boundaries: bool = False
     complete_block: bool = False
@@ -203,7 +209,7 @@ class StandingsRules:
     regulation_scores_only: bool = False
     verified: bool = True
     note: str = ""
-    fair_play_weights: tuple[tuple[str, int], ...] = ()
+    fair_play_weights: tuple[tuple[FairPlayMetric, int], ...] = ()
     require_complete_fair_play: bool = False
 
     def __post_init__(self) -> None:
@@ -242,10 +248,6 @@ class DisciplineRules:
 class SeasonAggregateSource:
     competition: CompetitionIdentity
     games_per_team: int | None
-    competition_name: str | None = field(init=False, default=None)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "competition_name", name_of(self.competition))
 
 
 @dataclass(frozen=True, slots=True)

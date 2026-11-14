@@ -4,6 +4,7 @@ This layer owns the DB-backed standings computation and the cache used by
 historical form retrieval.
 """
 
+
 import logging
 import re
 from collections import defaultdict
@@ -17,7 +18,7 @@ from infrastructure.persistence.models import Season
 from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
 from modules.competition.competition_profiles import get_competition_profile as get_profile_by_identity
-from modules.competition.rule_terms import GroupingMethod
+from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingStatus
 from shared.temporal import from_unix_timestamp
 
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
@@ -282,7 +283,7 @@ def _build_standings_payload(
             pos_meta = positions[team_name]
             pos_meta.update(season_completion_ratio=season_completion_ratio, standings_policy=standings_policy)
             if group_name == "UNKNOWN":
-                pos_meta.update(position=None, ranking_status="UNRESOLVED", ranking_reason="MISSING_GROUP_MEMBERSHIP")
+                pos_meta.update(position=None, ranking_status=RankingStatus.UNRESOLVED, ranking_reason=RankingIssue.MISSING_GROUP_MEMBERSHIP)
             standings[team_name] = _build_team_standing_payload(stats, pos_meta, profile, group_name)
 
     return standings

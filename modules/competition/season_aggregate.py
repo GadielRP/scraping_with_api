@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from modules.competition.rule_terms import RankingIssue, RankingStatus
+
 from .competitive_rules import SeasonAggregateSource
 from .final_outcome import ParticipantIdentity
 
@@ -20,7 +22,7 @@ class SeasonStanding:
     goals_for: int
     goals_against: int
     goal_diff: int
-    ranking_reason: str | None
+    ranking_reason: RankingIssue | None
     fair_play_points: int | None = None
     fair_play_games_counted: int = 0
     standalone_yellow_cards: int | None = None
@@ -29,7 +31,7 @@ class SeasonStanding:
     # Order data from the ranker: ``ranking_order`` is the first place of the row's tie group and
     # sorts rows even when ``rank`` is None; the policy fields appear when a closing criterion
     # handed the group to the in-season order.
-    ranking_status: str = "RESOLVED"
+    ranking_status: RankingStatus = RankingStatus.RESOLVED
     ranking_order: int | None = None
     ranking_policy: str | None = None
     ranking_policy_reason: str | None = None

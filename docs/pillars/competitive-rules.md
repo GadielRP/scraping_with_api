@@ -87,7 +87,7 @@ La agrupación argentina está declarada como grupos. Si los datos no permiten a
 
 `COMPETITION_QUALIFICATION` usa `destination_competition_identity` y `destination_phase`. `PHASE_QUALIFICATION` usa `destination_phase` y puede añadir una identidad cuando SofaScore tiene un torneo separado para esa fase, como NBA Playoffs o NBA Play-In. `DIVISION_RETENTION` usa `relegation_path`, no una fase de clasificación. Las dataclasses rechazan destinos de fase ausentes en reglas configuradas, combinaciones contradictorias, vías incompatibles y reglas configuradas por rango sin puestos.
 
-`destination_competition_name` es un campo de la dataclass, configurado explícitamente en cada regla de clasificación externa. Puede nombrar un destino pendiente cuyo ID aún se desconoce. El ID sigue siendo la identidad de la competición; el nombre es descriptivo y no se interpreta como lógica. `dataclasses.asdict` incluye el nombre automáticamente, también en el diagnóstico de M5.
+El nombre legible vive en `destination_competition_identity.competition_name` y se serializa dentro de esa identidad, también en el diagnóstico de M5. Los identificadores del proveedor determinan la igualdad de la identidad.
 
 Una plaza directa a la ronda clasificatoria de Champions se configura con la identidad y nombre de Champions Qualification, fase `QUALIFICATION_ROUND` y vía `DIRECT`. `destination_phase` identifica la fase concreta; `qualification_path` identifica cómo se llega a ella. Acceder al propio Play-In usa fase `PLAY_IN` y vía `DIRECT`.
 

@@ -1,7 +1,9 @@
-"""Read the matching cup edition and evidence known at the evaluation cutoff."""
+"""Read the matching tournament edition and evidence known at the evaluation cutoff."""
 
 from dataclasses import replace
 from datetime import datetime
+
+from modules.competition.rule_terms import TournamentFinalStatus, TournamentRound
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -11,7 +13,7 @@ from infrastructure.persistence.models import (
 )
 from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.final_outcome import (
-    CupFinalEvidence, ParticipantIdentity, decisive_winner,
+    TournamentFinalEvidence, ParticipantIdentity, decisive_winner,
 )
 from shared.temporal import as_utc, utc_now
 
@@ -48,7 +50,7 @@ def _participant_identity(participant: Participant | None) -> ParticipantIdentit
     )
 
 
-def _cup_matches(session, competitions, season_year, rounds, cutoff):
+def _tournament_matches(session, competitions, season_year, rounds, cutoff):
     home_participant, away_participant = aliased(Participant), aliased(Participant)
     observation = aliased(EventOutcomeObservation)
     observations = select(EventOutcomeObservation.observation_id).where(EventOutcomeObservation.event_id == Event.id)
@@ -84,50 +86,47 @@ def _read_match_outcome(row, evidence, as_of, *, historical_cutoff, read_at):
     evidence = replace(evidence, event_id=event.id, season_id=season.id,
                        starts_at=event.starts_at, home=_participant_identity(home), away=_participant_identity(away))
     if as_utc(event.starts_at) >= as_of:
-        return replace(evidence, status="final_future")
+        return replace(evidence, status=TournamentFinalStatus.FINAL_FUTURE)
     if known:
         result = _normalize_observed_result(known.payload)
-        evidence = replace(evidence, observed_at=known.received_at,
-                           observation_id=known.observation_id, evidence_source=known.source)
     elif has_observations:
-        return replace(evidence, status="no_observation_before_cutoff")
+        return replace(evidence, status=TournamentFinalStatus.NO_OBSERVATION_BEFORE_CUTOFF)
     elif current_result is not None:
         observed_at = as_utc(read_at or utc_now())
-        evidence = replace(evidence, observed_at=observed_at, evidence_source="legacy_result_read")
         if historical_cutoff and observed_at > as_of:
-            return replace(evidence, status="legacy_result_not_known_at_cutoff")
+            return replace(evidence, status=TournamentFinalStatus.LEGACY_RESULT_NOT_KNOWN_AT_CUTOFF)
         result = {key: getattr(current_result, key) for key in
                   ("home_score", "away_score", "winner", "home_sets", "away_sets")}
     else:
-        return replace(evidence, status="final_unfinished")
+        return replace(evidence, status=TournamentFinalStatus.FINAL_UNFINISHED)
     if result is None:
-        return replace(evidence, status="final_unfinished")
+        return replace(evidence, status=TournamentFinalStatus.FINAL_UNFINISHED)
     side, decision = decisive_winner(result)
     winner = {"1": evidence.home, "2": evidence.away}.get(side)
     if side is None:
         status = decision
     elif winner is None:
-        status = "missing_participant_identity"
+        status = TournamentFinalStatus.MISSING_PARTICIPANT_IDENTITY
     else:
-        status = "DECIDED"
+        status = TournamentFinalStatus.DECIDED
     return replace(evidence, status=status,
                    result=dict(result), winner=winner, decision=decision)
 
 
-def read_cup_finals(
+def read_tournament_finals(
     session: Session,
     competitions: tuple[CompetitionIdentity, ...],
     season_year: int | None,
     as_of: datetime | None = None,
     *,
     read_at: datetime | None = None,
-) -> tuple[CupFinalEvidence, ...]:
+) -> tuple[TournamentFinalEvidence, ...]:
     """Find the finals in one query, preserving each competition's evidence status."""
     if not competitions:
         return ()
     historical_cutoff = as_of is not None
     cutoff = as_utc(as_of or utc_now())
-    rows = _cup_matches(session, competitions, season_year, ("final",), cutoff)
+    rows = _tournament_matches(session, competitions, season_year, (TournamentRound.FINAL,), cutoff)
     evidence = []
     for identity in competitions:
         matches = [
@@ -137,8 +136,8 @@ def read_cup_finals(
             and (identity.source_tournament_id is None
                  or row[5].source_tournament_id == identity.source_tournament_id)
         ]
-        item = CupFinalEvidence(
-            identity, season_year, "final_ambiguous" if len(matches) > 1 else "final_absent",
+        item = TournamentFinalEvidence(
+            identity, season_year, TournamentFinalStatus.FINAL_AMBIGUOUS if len(matches) > 1 else TournamentFinalStatus.FINAL_ABSENT,
             candidate_event_ids=tuple(sorted(row[0].id for row in matches)),
         )
         if len(matches) == 1:
@@ -149,17 +148,17 @@ def read_cup_finals(
     return tuple(evidence)
 
 
-def read_cup_eliminations(
+def read_tournament_eliminations(
     session: Session,
     competition: CompetitionIdentity,
     season_year: int,
-    rounds: tuple[tuple[str, int], ...],
+    rounds: tuple[tuple[TournamentRound, int], ...],
     as_of: datetime,
     *,
     read_at: datetime,
 ) -> dict[str, tuple[ParticipantIdentity, ...]]:
-    """Read complete single-leg rounds in sporting order for a cup replacement."""
-    rows = _cup_matches(session, (competition,), season_year, tuple(name for name, _ in rounds), as_of)
+    """Read complete single-leg rounds in sporting order for tournament berth replacement."""
+    rows = _tournament_matches(session, (competition,), season_year, tuple(name for name, _ in rounds), as_of)
     eliminations = {}
     for name, expected in rounds:
         matches = [row for row in rows if row[0].round == name]
@@ -168,11 +167,11 @@ def read_cup_eliminations(
         losers = []
         for row in matches:
             item = _read_match_outcome(
-                row, CupFinalEvidence(competition, season_year, "final_absent"),
+                row, TournamentFinalEvidence(competition, season_year, TournamentFinalStatus.FINAL_ABSENT),
                 as_of, historical_cutoff=True, read_at=read_at,
             )
             loser = item.loser
-            if item.status == "DECIDED" and loser is not None:
+            if item.status == TournamentFinalStatus.DECIDED and loser is not None:
                 losers.append(loser)
         if len(set(losers)) != expected:
             break

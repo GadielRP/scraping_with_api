@@ -22,7 +22,7 @@ def test_qualification_record_and_phase_remain_distinct_and_round_trip():
     destination = rule.qualification_destination
     assert destination.destination_competition_identity == ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
     assert destination.destination_competition_identity != ids.UEFA_CONFERENCE_LEAGUE
-    assert destination.destination_competition_name == "UEFA Conference League, Qualification"
+    assert destination.destination_competition_identity.competition_name == "UEFA Conference League, Qualification"
     assert destination.destination_phase is DestinationPhase.QUALIFICATION_ROUND
     assert ObjectiveRule(**json.loads(json.dumps(asdict(rule)))) == rule
     with pytest.raises(ValueError):

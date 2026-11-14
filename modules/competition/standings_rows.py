@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 
 from .final_outcome import ParticipantIdentity
 
-MISSING_GROUP_MEMBERSHIP = "MISSING_GROUP_MEMBERSHIP"
+from .rule_terms import BerthIssue, RankingIssue, RankingStatus
 
 
 def standing_identity(row: dict | None, participant_name: str | None = None) -> ParticipantIdentity | None:
@@ -27,7 +27,7 @@ def standing_identity(row: dict | None, participant_name: str | None = None) -> 
 class TableRow:
     participant: ParticipantIdentity
     rank: int | None
-    ranking_reason: str | None = None
+    ranking_reason: RankingIssue | BerthIssue | None = None
 
 
 def _ordered_rows(entries) -> tuple[TableRow, ...] | None:
@@ -38,10 +38,10 @@ def _ordered_rows(entries) -> tuple[TableRow, ...] | None:
     """
     rows = []
     for identity, order, rank, status, reason in entries:
-        if identity is None or not isinstance(order, int) or reason == MISSING_GROUP_MEMBERSHIP:
+        if identity is None or not isinstance(order, int) or reason == RankingIssue.MISSING_GROUP_MEMBERSHIP:
             return None
-        if status in ("SHARED_POSITION", "UNRESOLVED") or not isinstance(rank, int):
-            pending = "shared_position" if status == "SHARED_POSITION" else reason or "ranking_unresolved"
+        if status in (RankingStatus.SHARED_POSITION, RankingStatus.UNRESOLVED) or not isinstance(rank, int):
+            pending = BerthIssue.SHARED_POSITION if status == RankingStatus.SHARED_POSITION else reason or BerthIssue.RANKING_UNRESOLVED
             rows.append((order, TableRow(identity, None, pending)))
         else:
             rows.append((order, TableRow(identity, rank)))

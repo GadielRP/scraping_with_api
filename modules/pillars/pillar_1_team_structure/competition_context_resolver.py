@@ -20,10 +20,6 @@ def _objective_summary(rules):
                 rule.qualification_destination.destination_competition_identity
                 if rule.qualification_destination else None
             ),
-            "destination_competition_name": (
-                rule.qualification_destination.destination_competition_name
-                if rule.qualification_destination else None
-            ),
             "destination_phase": (
                 rule.qualification_destination.destination_phase
                 if rule.qualification_destination else None
@@ -57,6 +53,7 @@ def resolve_p1_competition_context(
             source=competition_context.source,
             source_unique_tournament_id=competition_context.source_unique_tournament_id,
             source_tournament_id=competition_context.source_tournament_id,
+            competition_name=competition_context.display_name or competition_context.canonical_name,
         )
     if identity is None:
         logger.warning(
@@ -97,7 +94,6 @@ def resolve_p1_competition_context(
         _objective_summary(rules),
         [
             {
-                "competition": rule.competition_name,
                 "competition_identity": rule.competition,
                 "before_table_slot": rule.before_table_slot,
                 "reallocate_to_table": rule.reallocate_to_table,

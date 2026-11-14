@@ -3,31 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from modules.competition.competition_identity import CompetitionIdentity
-from modules.competition.competition_ids import name_of
-from modules.competition.final_outcome import ParticipantIdentity, CupFinalEvidence
-from modules.competition.rule_terms import DestinationPhase, DestinationRound, Finalist, QualificationPath
+from modules.competition.final_outcome import ParticipantIdentity, TournamentFinalEvidence
+from modules.competition.rule_terms import (
+    BerthIssue, BerthResolution, BerthType, DestinationPhase, DestinationRound,
+    Finalist, QualificationPath, RankingIssue, TournamentFinalStatus, TournamentRound,
+)
 
 if TYPE_CHECKING:
     from modules.competition.season_aggregate import SeasonStanding
-
-
-class BerthResolution(StrEnum):
-    """How far a sporting berth is resolved."""
-    CONFIRMED = "CONFIRMED"      # The holder is decided and will not change
-    PROJECTED = "PROJECTED"      # The holder according to the current table and evidence; may change
-    UNRESOLVED = "UNRESOLVED"    # No holder can be named yet: missing evidence or a tied position
-    UNAWARDED = "UNAWARDED"      # The berth was not awarded to anyone
 
 
 @dataclass(frozen=True, slots=True)
 class QualificationDestination:
     """The competition phase reached and the route used to reach it."""
     destination_competition_identity: CompetitionIdentity | None = None
-    destination_competition_name: str | None = None
     destination_phase: DestinationPhase | None = None
     destination_round: DestinationRound | None = None
     qualification_path: QualificationPath | None = None
@@ -39,11 +31,6 @@ class QualificationDestination:
             object.__setattr__(self, "destination_competition_identity", identity)
         if identity is not None and not isinstance(identity, CompetitionIdentity):
             raise ValueError("destination_competition_identity requires a provider identity")
-        if self.destination_competition_name is None and identity is not None:
-            object.__setattr__(self, "destination_competition_name", name_of(identity))
-        if self.destination_competition_name is not None:
-            if not isinstance(self.destination_competition_name, str) or not self.destination_competition_name.strip():
-                raise ValueError("destination_competition_name must be a non-empty string")
         if self.destination_phase is not None:
             object.__setattr__(self, "destination_phase", DestinationPhase(self.destination_phase))
         if self.destination_round is not None:
@@ -68,15 +55,11 @@ class TournamentBerthRule:
     destination: QualificationDestination
     competition: CompetitionIdentity
     finalists: tuple[Finalist, ...] = (Finalist.WINNER,)
-    replacement_rounds: tuple[tuple[str, int], ...] = ()
+    replacement_rounds: tuple[tuple[TournamentRound, int], ...] = ()
     reallocate_to_table: bool = False
     before_table_slot: int | None = 1
     open_to_outsiders: bool = False
     sources: tuple[str, ...] = ()
-    competition_name: str | None = field(init=False, default=None)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "competition_name", name_of(self.competition))
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,24 +99,23 @@ class QualificationRules:
 class AllocatedBerth:
     """A resolved berth: the plaza (``destination``) and the club that holds it.
 
-    ``source`` is the tournament the plaza belongs to (None for table plazas),
-    even when the plaza was reassigned to the table. ``issue`` is None for a
-    plain assignment and names the complication otherwise (unresolved evidence,
+    ``source`` identifies the profile for table berths and the awarding tournament
+    for tournament berths, including those reassigned through the standings.
+    ``issue`` is None for a plain assignment and names the complication
+    otherwise (unresolved evidence,
     unawarded, reassigned to the table, or waiting on an earlier berth).
     ``table_rank`` is the holder's position in the table, None if pending or
-    outside the table. ``final`` is the evidence that decided a tournament berth.
+    outside the table. ``tournament_final_evidence`` records the available
+    evidence about the source tournament's final.
     """
-    destination: QualificationDestination
     participant: ParticipantIdentity | None
-    source: CompetitionIdentity | None
+    destination: QualificationDestination
+    source: CompetitionIdentity
     resolution: BerthResolution
-    issue: str | None = None
+    issue: BerthIssue | TournamentFinalStatus | RankingIssue | None = None
     table_rank: int | None = None
-    final: CupFinalEvidence | None = None
-    source_name: str | None = field(init=False, default=None)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "source_name", name_of(self.source))
+    tournament_final_evidence: TournamentFinalEvidence | None = None
+    berth_type: BerthType = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,5 +132,5 @@ class BerthAllocation:
     @property
     def berths_by_source(self) -> dict[CompetitionIdentity, AllocatedBerth]:
         """Berths that belong to a tournament, keyed by that tournament."""
-        return {berth.source: berth for berth in self.berths if berth.source is not None}
+        return {berth.source: berth for berth in self.berths if berth.berth_type is BerthType.TOURNAMENT}
 

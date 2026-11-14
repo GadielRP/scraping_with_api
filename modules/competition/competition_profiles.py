@@ -19,6 +19,7 @@ from modules.competition.competitive_rules import (
 )
 from modules.competition.rule_terms import (
     AggregationScope,
+    TournamentRound,
     DestinationPhase,
     DestinationRound,
     Finalist,
@@ -38,7 +39,6 @@ def create_phase_qualification_rule(
     destination_phase: DestinationPhase,
     destination_round: DestinationRound | None = None,
     destination_competition_identity: CompetitionIdentity | None = None,
-    destination_competition_name: str | None = None,
     path: QualificationPath | None = QualificationPath.DIRECT,
     scope: RankingScope = RankingScope.GLOBAL,
     status: RuleStatus = RuleStatus.CONFIGURED,
@@ -53,7 +53,6 @@ def create_phase_qualification_rule(
         objective_type=ObjectiveType.PHASE_QUALIFICATION,
         qualification_destination=QualificationDestination(
             destination_competition_identity=destination_competition_identity,
-            destination_competition_name=destination_competition_name,
             destination_phase=destination_phase,
             destination_round=destination_round,
             qualification_path=path,
@@ -100,7 +99,6 @@ def create_competition_qualification_rule(
     end: int | None = None,
     *,
     destination_competition_identity: CompetitionIdentity | None,
-    destination_competition_name: str,
     destination_phase: DestinationPhase | None,
     destination_round: DestinationRound | None = None,
     path: QualificationPath | None = QualificationPath.DIRECT,
@@ -115,7 +113,6 @@ def create_competition_qualification_rule(
         objective_type=ObjectiveType.COMPETITION_QUALIFICATION,
         qualification_destination=QualificationDestination(
             destination_competition_identity=destination_competition_identity,
-            destination_competition_name=destination_competition_name,
             destination_phase=destination_phase,
             destination_round=destination_round,
             qualification_path=path,
@@ -134,7 +131,6 @@ def create_cup_berth(
     competition: CompetitionIdentity,
     *,
     destination_competition_identity: CompetitionIdentity,
-    destination_competition_name: str,
     destination_phase: DestinationPhase,
     destination_round: DestinationRound | None = None,
     path: QualificationPath = QualificationPath.DIRECT,
@@ -146,7 +142,6 @@ def create_cup_berth(
         competition=competition,
         destination=QualificationDestination(
             destination_competition_identity=destination_competition_identity,
-            destination_competition_name=destination_competition_name,
             destination_phase=destination_phase,
             destination_round=destination_round,
             qualification_path=path,
@@ -162,12 +157,11 @@ def create_tournament_berth(
     competition: CompetitionIdentity,
     *,
     destination_competition_identity: CompetitionIdentity,
-    destination_competition_name: str,
     destination_phase: DestinationPhase,
     destination_round: DestinationRound | None = None,
     path: QualificationPath = QualificationPath.DIRECT,
     finalists: tuple[Finalist, ...] = (Finalist.WINNER,),
-    replacement_rounds: tuple[tuple[str, int], ...] = (),
+    replacement_rounds: tuple[tuple[TournamentRound, int], ...] = (),
     reallocate_to_table: bool = False,
 ) -> TournamentBerthRule:
     """Berth awarded to a title holder, playoff winner or cup finalist."""
@@ -175,7 +169,6 @@ def create_tournament_berth(
         competition=competition,
         destination=QualificationDestination(
             destination_competition_identity=destination_competition_identity,
-            destination_competition_name=destination_competition_name,
             destination_phase=destination_phase,
             destination_round=destination_round,
             qualification_path=path,
@@ -202,7 +195,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -210,7 +202,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -218,7 +209,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=18, end=20,
@@ -232,7 +222,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.COPA_DEL_REY,
                     before_table_slot=5,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://rfef.es/sites/default/files/2026-06/1._CNL_Primera_y_Segunda_Division.pdf#page=5",
@@ -258,7 +247,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -266,7 +254,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
             ),
             create_division_retention_rule(
                 start=18, end=20,
@@ -280,14 +267,12 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.FA_CUP,
                     before_table_slot=5,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                 ),
                 create_cup_berth(
                     competition_ids.EFL_CUP,
                     before_table_slot=None,
                     destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
                     destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                     destination_round=DestinationRound.QUALIFYING_PLAYOFF,
                     sources=(
@@ -311,7 +296,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -319,7 +303,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -327,7 +310,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=18, end=20,
@@ -341,7 +323,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.COPPA_ITALIA,
                     before_table_slot=5,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://documents.uefa.com/r/Regulations-of-the-UEFA-Europa-League-2026/27/Article-3-Entries-for-the-competition-Online",
@@ -365,7 +346,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -373,7 +353,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -381,7 +360,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=16, end=16,
@@ -400,7 +378,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.DFB_POKAL,
                     before_table_slot=5,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://www.bundesliga.com/en/bundesliga/news/germany-nine-teams-qualify-for-europe-2026-27-bayern-munich-freiburg-36936",
@@ -424,7 +401,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=4,
@@ -432,7 +408,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -440,7 +415,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -448,7 +422,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=16, end=16,
@@ -467,7 +440,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.COUPE_DE_FRANCE,
                     before_table_slot=5,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://media.fff.fr/uploads/documents/comex-20260217-annexe-5.-nombre-de-clubs-qualifies-par-ligue-au-terme-du-6e-tour-de-la-cdf-credit-agricole-26-27.pdf",
@@ -491,7 +463,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=3,
@@ -500,7 +471,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.THIRD_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=4,
@@ -509,7 +479,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -518,7 +487,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=16, end=16,
@@ -537,7 +505,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.TACA_DE_PORTUGAL,
                     before_table_slot=4,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://www.ligaportugal.pt/competition/854/liga-portugal-betclic/round/20262027?tab=standings",
@@ -561,7 +528,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE],
             ),
             create_competition_qualification_rule(
                 start=2,
@@ -570,7 +536,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.THIRD_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=3,
@@ -579,7 +544,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=4,
@@ -589,7 +553,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 note="Positions 4-7 enter the domestic playoff for a UEFA Conference League qualifying place.",
                 destination_competition_identity=competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=16, end=16,
@@ -608,7 +571,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.KNVB_BEKER,
                     before_table_slot=3,
                     destination_competition_identity=competition_ids.UEFA_EUROPA_LEAGUE,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.UEFA_EUROPA_LEAGUE],
                     destination_phase=DestinationPhase.LEAGUE_PHASE,
                     sources=(
                         "https://www.knvb.nl/downloads/bestand/30196/reglement-play-off-europees-ticket-seizoen-2026-27",
@@ -635,7 +597,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.LEAGUE_PHASE,
                 destination_competition_identity=competition_ids.AFC_CHAMPIONS_LEAGUE_ELITE,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.AFC_CHAMPIONS_LEAGUE_ELITE],
             ),
             create_competition_qualification_rule(
                 start=4,
@@ -643,7 +604,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_competition_identity=competition_ids.AFC_CHAMPIONS_LEAGUE_ELITE_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.AFC_CHAMPIONS_LEAGUE_ELITE_QUALIFICATION],
             ),
             create_division_retention_rule(
                 start=16, end=18,
@@ -657,7 +617,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.SAUDI_KINGS_CUP,
                     before_table_slot=None,
                     destination_competition_identity=competition_ids.AFC_CHAMPIONS_LEAGUE_TWO,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.AFC_CHAMPIONS_LEAGUE_TWO],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     sources=(
                         "https://www.saff.com.sa/news.php?id=4184",
@@ -681,7 +640,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
             ),
             create_competition_qualification_rule(
                 start=5,
@@ -690,7 +648,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 start=6,
@@ -698,7 +655,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_SUDAMERICANA],
             ),
             create_division_retention_rule(start=17, end=20, safe_rank=16),
         ),
@@ -709,7 +665,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                     competition_ids.COPA_DO_BRASIL,
                     before_table_slot=1,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     sources=(
                         "https://www.cbf.com.br/futebol-brasileiro/noticias/copa-brasil/definido-o-regulamento-da-copa-do-brasil-2026",
@@ -733,13 +688,11 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.LIGA_MX_APERTURA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.LIGA_MX_APERTURA_PLAYOFFS],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
                 destination_phase=None,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONCACAF_CHAMPIONS_CUP],
                 path=None,
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
@@ -767,13 +720,11 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
                 destination_phase=None,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONCACAF_CHAMPIONS_CUP],
                 path=None,
                 status=RuleStatus.PENDING,
                 selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
@@ -803,7 +754,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.ARGENTINA_APERTURA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.ARGENTINA_APERTURA_PLAYOFFS],
             ),
             create_division_retention_rule(
                 aggregation_scope=AggregationScope.MULTISEASON_RECORD,
@@ -823,7 +773,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=2,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
@@ -832,7 +781,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
@@ -840,7 +788,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=6,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_SUDAMERICANA],
             ),
         ),
         standings=standings_policies.ARGENTINA_ZONES,
@@ -863,7 +810,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS],
             ),
             create_division_retention_rule(
                 aggregation_scope=AggregationScope.MULTISEASON_RECORD,
@@ -883,7 +829,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=2,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
@@ -892,7 +837,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.QUALIFICATION_ROUND,
                 destination_round=DestinationRound.SECOND_QUALIFYING_ROUND,
                 destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION],
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
@@ -900,7 +844,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=6,
                 destination_phase=DestinationPhase.GROUP_STAGE,
                 destination_competition_identity=competition_ids.CONMEBOL_SUDAMERICANA,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_SUDAMERICANA],
             ),
         ),
         standings=standings_policies.ARGENTINA_ZONES,
@@ -922,38 +865,33 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 create_tournament_berth(
                     competition_ids.CONMEBOL_LIBERTADORES,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                 ),
                 create_tournament_berth(
                     competition_ids.CONMEBOL_SUDAMERICANA,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                 ),
                 create_tournament_berth(
                     competition_ids.ARGENTINA_APERTURA_PLAYOFFS,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     reallocate_to_table=True,
                 ),
                 create_tournament_berth(
                     competition_ids.ARGENTINA_CLAUSURA_PLAYOFFS,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     reallocate_to_table=True,
                 ),
                 create_tournament_berth(
                     competition_ids.COPA_ARGENTINA,
                     destination_competition_identity=competition_ids.CONMEBOL_LIBERTADORES,
-                    destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONMEBOL_LIBERTADORES],
                     destination_phase=DestinationPhase.GROUP_STAGE,
                     finalists=(Finalist.WINNER, Finalist.RUNNER_UP),
                     replacement_rounds=(
-                        ("semifinal", 2), ("quarterfinal", 4), ("round_of_16", 8),
-                        ("round_of_32", 16), ("round_of_64", 32),
+                        (TournamentRound.SEMIFINAL, 2), (TournamentRound.QUARTERFINAL, 4), (TournamentRound.ROUND_OF_16, 8),
+                        (TournamentRound.ROUND_OF_32, 16), (TournamentRound.ROUND_OF_64, 32),
                     ),
                 ),
             ),
@@ -974,7 +912,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 group_size=15,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.NBA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NBA_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 start=7,
@@ -984,7 +921,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 group_size=15,
                 destination_phase=DestinationPhase.PLAY_IN,
                 destination_competition_identity=competition_ids.NBA_PLAY_IN,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NBA_PLAY_IN],
             ),
         ),
         standings=standings_policies.NBA,
@@ -1005,7 +941,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.EUROLEAGUE_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.EUROLEAGUE_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 start=7,
@@ -1013,7 +948,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.PLAY_IN,
                 destination_competition_identity=competition_ids.EUROLEAGUE_PLAY_IN,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.EUROLEAGUE_PLAY_IN],
             ),
         ),
         standings=standings_policies.EUROLEAGUE,
@@ -1033,7 +967,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=3,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.MLB_POSTSEASON,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.MLB_POSTSEASON],
             ),
             create_phase_qualification_rule(
                 path=QualificationPath.DIRECT,
@@ -1043,7 +976,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=3,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.MLB_POSTSEASON,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.MLB_POSTSEASON],
             ),
         ),
         standings=standings_policies.MLB,
@@ -1064,7 +996,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=4,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.NFL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NFL_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 path=QualificationPath.DIRECT,
@@ -1074,7 +1005,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=3,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.NFL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NFL_PLAYOFFS],
             ),
         ),
         standings=standings_policies.NFL,
@@ -1095,7 +1025,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.SHL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.SHL_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 start=7,
@@ -1104,7 +1033,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.SHL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.SHL_PLAYOFFS],
             ),
             create_division_retention_rule(
                 start=13, end=14,
@@ -1128,7 +1056,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.LIIGA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.LIIGA_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 start=5,
@@ -1136,7 +1063,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
                 destination_competition_identity=competition_ids.LIIGA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.LIIGA_PLAYOFFS],
             ),
             create_division_retention_rule(
                 start=15, end=17,
@@ -1162,7 +1088,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 group_size=8,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.NHL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NHL_PLAYOFFS],
             ),
             create_phase_qualification_rule(
                 path=QualificationPath.DIRECT,
@@ -1172,7 +1097,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 places=2,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.NHL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.NHL_PLAYOFFS],
             ),
         ),
         standings=standings_policies.NHL,
@@ -1195,7 +1119,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
                 destination_competition_identity=competition_ids.MLS_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.MLS_PLAYOFFS],
                 note='MLS Round One: best-of-three series.',
             ),
             create_phase_qualification_rule(
@@ -1207,7 +1130,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 note="MLS Wild Card match: single-game entry to Round One.",
                 destination_phase=DestinationPhase.PLAY_IN,
                 destination_competition_identity=competition_ids.MLS_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.MLS_PLAYOFFS],
             ),
             create_competition_qualification_rule(
                 path=None,
@@ -1221,7 +1143,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 ),
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CONCACAF_CHAMPIONS_CUP],
             ),
         ),
         standings=standings_policies.MLS,
@@ -1245,7 +1166,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 group_size=size,
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_competition_identity=competition_ids.AHL_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.AHL_PLAYOFFS],
             )
             for division, size, places in (
                 ("Atlantic", 7, 5), ("North", 8, 6), ("Central", 7, 5), ("Pacific", 10, 7),
@@ -1272,7 +1192,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
                 destination_competition_identity=competition_ids.WNBA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.WNBA_PLAYOFFS],
             ),
         ),
         standings=standings_policies.WNBA,
@@ -1297,7 +1216,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CBA_PLAYOFFS],
                 note="Top four advance directly to the quarterfinals.",
             ),
             create_phase_qualification_rule(
@@ -1307,7 +1225,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_phase=DestinationPhase.PLAYOFFS,
                 destination_round=DestinationRound.FIRST_ROUND,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.CBA_PLAYOFFS],
                 note="The first round is a best-of-three series.",
             ),
             create_competition_qualification_rule(
@@ -1318,7 +1235,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 note="FIBA included the CBA champion in the preceding edition. Confirm the destination edition's selection criteria.",
                 destination_phase=None,  # Pending: routes or destination phase unresolved.
                 destination_competition_identity=competition_ids.FIBA_INTERCONTINENTAL_CUP,
-                destination_competition_name=competition_ids.COMPETITION_NAMES[competition_ids.FIBA_INTERCONTINENTAL_CUP],
             ),
         ),
         standings=standings_policies.CBA,
