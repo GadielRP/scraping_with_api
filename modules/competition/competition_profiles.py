@@ -1259,12 +1259,6 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         number_of_teams=20,
         total_regular_season_games=46,
         objectives=(
-            create_division_retention_rule(
-                start=19, end=20,
-                safe_rank=18,
-                relegation_path=RelegationPath.RELEGATION_PLAYOFF,
-                note="Bottom two meet the top two eligible NBL clubs in the promotion and relegation playoff.",
-            ),
             create_phase_qualification_rule(
                 start=1,
                 end=4,
@@ -1282,6 +1276,12 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
                 note="Round of 16: best-of-three series; the top four clubs have byes to the quarterfinals.",
+            ),
+            create_division_retention_rule(
+                start=19, end=20,
+                safe_rank=18,
+                relegation_path=RelegationPath.RELEGATION_PLAYOFF,
+                note="Bottom two meet the top two eligible NBL clubs in the promotion and relegation playoff.",
             ),
         ),
         standings=standings_policies.CBA,

@@ -79,6 +79,7 @@ season_to_process = [
     # {"season_name": "Premier League 2021", "tournament_id": 17, "season_id": 37036},
     # {"season_name": "Premier League 2020", "tournament_id": 17, "season_id": 29415},
     {"season_name": "MLS 2026", "tournament_id": 242, "season_id": 86668},
+    {"season_name": "MLS 2025", "tournament_id": 242, "season_id": 70158},
     # {"season_name": "NFL 2025", "tournament_id": 9464, "season_id": 75522},
     # {"season_name": "NFL 2024", "tournament_id": 9464, "season_id": 60592},
     # {"season_name": "NFL 2023", "tournament_id": 9464, "season_id": 51361},
