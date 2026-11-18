@@ -179,6 +179,17 @@ LIGA_MX_CLAUSURA = _standings(
 LIGA_MX_APERTURA = replace(
     LIGA_MX_CLAUSURA, name="LIGA_MX_APERTURA",
 )
+LIGA_MX_ANNUAL = replace(
+    LIGA_MX_CLAUSURA,
+    name="LIGA_MX_ANNUAL",
+    in_season_criteria=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
+    closing_projection_criteria=(
+        GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
+        _unavailable_criterion(RankingIssue.MISSING_BALANCED_AWAY_GOALS),
+    ),
+    fair_play_weights=(),
+    note="Concacaf aggregate of Apertura and Clausura. Visitor matchday evidence is unavailable in the aggregate.",
+)
 
 _ARGENTINA_FAIR_PLAY = (FAIR_PLAY_CRITERION, _metric_criterion(RankingMetric.NEGATIVE_FAIR_PLAY_RED_CARDS))
 _ARGENTINA_FAIR_PLAY_WEIGHTS = (

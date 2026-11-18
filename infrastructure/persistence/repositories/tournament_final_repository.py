@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import datetime
 
+from modules.competition import competition_ids
 from modules.competition.rule_terms import TournamentFinalStatus, TournamentRound
 
 from sqlalchemy import and_, or_, select
@@ -33,7 +34,11 @@ def _normalize_observed_result(payload):
         "winner": {1: "1", 2: "2", 3: "X"}.get(event.get("winnerCode")),
     }
     for side, score in (("home", home), ("away", away)):
-        value = "(extra_time)" if "overtime" in score else ""
+        value = ""
+        if score.get("overtime") is not None and score.get("normaltime") is not None:
+            value = f"{score['normaltime']}-({score['overtime']})"
+        elif "overtime" in score:
+            value = "(extra_time)"
         if score.get("penalties") is not None:
             value += f"+{score['penalties']}"
         result[f"{side}_sets"] = value
@@ -81,7 +86,7 @@ def _tournament_matches(session, competitions, season_year, rounds, cutoff):
     return session.execute(query).all()
 
 
-def _read_match_outcome(row, evidence, as_of, *, historical_cutoff, read_at):
+def _read_match_outcome(row, evidence, as_of, *, historical_cutoff, read_at, decide_match=True):
     event, season, home, away, current_result, _, known, has_observations = row
     evidence = replace(evidence, event_id=event.id, season_id=season.id,
                        starts_at=event.starts_at, home=_participant_identity(home), away=_participant_identity(away))
@@ -101,6 +106,10 @@ def _read_match_outcome(row, evidence, as_of, *, historical_cutoff, read_at):
         return replace(evidence, status=TournamentFinalStatus.FINAL_UNFINISHED)
     if result is None:
         return replace(evidence, status=TournamentFinalStatus.FINAL_UNFINISHED)
+    if not decide_match:
+        status = (TournamentFinalStatus.DECIDED if evidence.home and evidence.away
+                  else TournamentFinalStatus.MISSING_PARTICIPANT_IDENTITY)
+        return replace(evidence, status=status, result=dict(result))
     side, decision = decisive_winner(result)
     winner = {"1": evidence.home, "2": evidence.away}.get(side)
     if side is None:
@@ -111,6 +120,50 @@ def _read_match_outcome(row, evidence, as_of, *, historical_cutoff, read_at):
         status = TournamentFinalStatus.DECIDED
     return replace(evidence, status=status,
                    result=dict(result), winner=winner, decision=decision)
+
+
+def _read_two_leg_final(matches, evidence, cutoff, *, historical_cutoff, read_at):
+    """Resolve both legs with the same cutoff and score evidence as single games."""
+    if len(matches) < 2:
+        return replace(evidence, status=TournamentFinalStatus.FINAL_UNFINISHED)
+    if len(matches) > 2:
+        return replace(evidence, status=TournamentFinalStatus.FINAL_AMBIGUOUS)
+    games = [
+        _read_match_outcome(row, evidence, cutoff, historical_cutoff=historical_cutoff,
+                            read_at=read_at, decide_match=False)
+        for row in sorted(matches, key=lambda row: as_utc(row[0].starts_at))
+    ]
+    finalists = {games[0].home, games[0].away}
+    if None in finalists:
+        return replace(evidence, status=TournamentFinalStatus.MISSING_PARTICIPANT_IDENTITY)
+    if len(finalists) != 2 or any({game.home, game.away} != finalists for game in games):
+        return replace(evidence, status=TournamentFinalStatus.FINAL_AMBIGUOUS)
+    first_leg, second_leg = games
+    for game in games:
+        if game.status != TournamentFinalStatus.DECIDED:
+            return game
+    if first_leg.home != second_leg.away or first_leg.away != second_leg.home:
+        return replace(evidence, status=TournamentFinalStatus.FINAL_AMBIGUOUS)
+    # Align both legs to the second leg's venue before applying extra time and penalties.
+    aggregate = {}
+    for side, first_side in (("home", "away"), ("away", "home")):
+        score_key = f"{side}_score"
+        first_score = first_leg.result.get(f"{first_side}_score")
+        second_score = second_leg.result.get(score_key)
+        if any(type(score) is not int or score < 0 for score in (first_score, second_score)):
+            return replace(second_leg, status=TournamentFinalStatus.INVALID_SCORE)
+        aggregate[score_key] = first_score + second_score
+        sets_key = f"{side}_sets"
+        sets = second_leg.result.get(sets_key) or ""
+        if "(extra_time)" in sets:
+            return replace(second_leg, status=TournamentFinalStatus.CONTRADICTORY_EXTRA_TIME)
+        # Preserve period details used by decisive_winner to reconcile regulation and extra time.
+        aggregate[sets_key] = f"{first_score}-{sets}" if sets[:1].isdigit() else sets
+    side, decision = decisive_winner(aggregate)
+    winner = {"1": second_leg.home, "2": second_leg.away}.get(side)
+    if winner is None:
+        return replace(second_leg, status=decision)
+    return replace(second_leg, result=aggregate, winner=winner, decision=decision)
 
 
 def read_tournament_finals(
@@ -140,7 +193,13 @@ def read_tournament_finals(
             identity, season_year, TournamentFinalStatus.FINAL_AMBIGUOUS if len(matches) > 1 else TournamentFinalStatus.FINAL_ABSENT,
             candidate_event_ids=tuple(sorted(row[0].id for row in matches)),
         )
-        if len(matches) == 1:
+        if matches and identity in (
+            competition_ids.LIGA_MX_APERTURA_PLAYOFFS, competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS,
+        ):
+            item = _read_two_leg_final(
+                matches, item, cutoff, historical_cutoff=historical_cutoff, read_at=read_at,
+            )
+        elif len(matches) == 1:
             item = _read_match_outcome(
                 matches[0], item, cutoff, historical_cutoff=historical_cutoff, read_at=read_at,
             )

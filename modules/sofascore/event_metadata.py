@@ -130,6 +130,8 @@ def _specific_knockout_round(round_info: Dict) -> str | None:
             key = re.sub(r'[\s_-]+', '-', value.strip().lower())
             if key in aliases:
                 return aliases[key]
+            if re.fullmatch(r'finals?[,]?-(?:(?:game|leg)-[1-7]|[12](?:st|nd)-leg|ida|vuelta)', key):
+                return 'final'
     return None
 
 

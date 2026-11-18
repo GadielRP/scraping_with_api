@@ -111,8 +111,27 @@ def test_portugal_cup_updates_the_qualifying_round_berths(winner, recipient, eur
 
 @pytest.mark.parametrize("winner,recipient", [(4, 6), (8, 8)])
 def test_saudi_king_cup_cedes_its_berth_only_when_the_winner_has_an_elite_berth(winner, recipient):
-    _, _, outcome = allocate(COMPETITION_PROFILES[ids.SAUDI_PRO_LEAGUE], cup(winner, ids.SAUDI_KINGS_CUP))
-    assert ranks_for(outcome, ids.AFC_CHAMPIONS_LEAGUE_TWO) == [recipient]
+    final = replace(cup(winner, ids.SAUDI_KINGS_CUP), away=identity(2))
+    _, _, outcome = allocate(
+        COMPETITION_PROFILES[ids.SAUDI_PRO_LEAGUE], final,
+        profile_identity=ids.SAUDI_PRO_LEAGUE,
+    )
+    assert [b.participant for b in outcome.berths
+            if b.destination.destination_competition_identity == ids.AFC_CHAMPIONS_LEAGUE_TWO] == [identity(recipient)]
+
+
+
+def test_liga_mx_uses_annual_table_and_reassigns_duplicate_finalists():
+    apertura = replace(cup(4, ids.LIGA_MX_APERTURA_PLAYOFFS), away=identity(2))
+    clausura = replace(cup(1, ids.LIGA_MX_CLAUSURA_PLAYOFFS), away=identity(4))
+    profile = COMPETITION_PROFILES[ids.LIGA_MX_CLAUSURA]
+    _, _, outcome = allocate(profile, apertura, clausura, profile_identity=ids.LIGA_MX_CLAUSURA)
+
+    assert outcome.destination_season_year == 2028
+    assert len(outcome.berths) == 6
+    assert {b.participant for b in outcome.berths} == {identity(rank) for rank in range(1, 7)}
+    assert [b.participant for b in outcome.berths if b.destination.destination_round == "ROUND_OF_16"] == [identity(1)]
+    assert all(b.resolution is BerthResolution.PROJECTED for b in outcome.berths)
 
 
 def test_premier_league_cups_share_berths_in_priority_order():
@@ -384,6 +403,42 @@ def test_repository_accepts_a_tournament_family(session):
     assert evidence.winner == identity(2)
 
 
+@pytest.mark.parametrize("competition,sport,scores,expected_decision", [
+    (ids.LIGA_MX_APERTURA_PLAYOFFS, "Football",
+     [(1, 0, None, None), (2, 1, "1-1-(0)+9", "1-0-(0)+8")], "penalties"),
+])
+def test_multi_match_final_requires_the_decisive_leg_or_series_win(session, competition, sport, scores,
+                                                                 expected_decision):
+    stored_competition = session.get(Competition, 77)
+    stored_competition.source_unique_tournament_id = competition.source_unique_tournament_id
+    stored_competition.source_tournament_id = competition.source_tournament_id
+    session.get(Event, 83369).round = "semifinal"
+    session.flush()
+    for index, (home_score, away_score, home_sets, away_sets) in enumerate(scores):
+        home, away = (509, 515) if sport == "Football" and index == 0 else (515, 509)
+        event = Event(id=90000 + index, slug="final", starts_at=FINAL + timedelta(days=index),
+                      sport=sport, competition="Playoffs", home_team="A", away_team="B",
+                      season_id=82988, round="final", home_participant_id=home,
+                      away_participant_id=away, competition_id=77)
+        session.add(event)
+        session.flush()
+        if index < len(scores) - 1:
+            session.add(EventOutcomeObservation(
+                observation_id=f"pending-final-{index}", event_id=event.id, source="sofascore",
+                received_at=FINAL + timedelta(days=index, hours=2),
+                payload=dict(home_score=home_score, away_score=away_score,
+                             home_sets=home_sets, away_sets=away_sets, winner="1"),
+            ))
+        session.add(Result(event_id=event.id, home_score=home_score, away_score=away_score, winner="1",
+                           home_sets=home_sets, away_sets=away_sets))
+    session.flush()
+
+    assert read_final(session, competition, 2025, FINAL + timedelta(days=len(scores) - 1)).status == "final_future"
+    evidence = read_final(session, competition, 2025, NOW)
+    assert evidence.winner == identity(1)
+    assert evidence.decision == expected_decision
+
+
 def observation(session, name, when, payload):
     session.add(EventOutcomeObservation(observation_id=name, event_id=83369, source="sofascore",
                                         received_at=when, payload=payload))
@@ -576,5 +631,5 @@ def test_issue_is_empty_for_plain_assignments_and_names_what_a_berth_waits_on():
 
 def test_a_profile_cannot_repeat_a_tournament():
     berth, = BASE.qualification_sources.tournament_berths
-    with pytest.raises(ValueError, match="only one berth rule"):
+    with pytest.raises(ValueError, match="only one berth per destination"):
         QualificationSources(tournament_berths=(berth, berth))

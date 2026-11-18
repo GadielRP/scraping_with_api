@@ -163,6 +163,7 @@ def create_tournament_berth(
     finalists: tuple[Finalist, ...] = (Finalist.WINNER,),
     replacement_rounds: tuple[tuple[TournamentRound, int], ...] = (),
     reallocate_to_table: bool = False,
+    sources: tuple[str, ...] = (),
 ) -> TournamentBerthRule:
     """Berth awarded to a title holder, playoff winner or cup finalist."""
     return TournamentBerthRule(
@@ -176,6 +177,7 @@ def create_tournament_berth(
         finalists=finalists,
         replacement_rounds=replacement_rounds,
         reallocate_to_table=reallocate_to_table,
+        sources=sources,
     )
 
 
@@ -584,7 +586,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         ),
     ),
 
-    # saudi_pro_league (1-3 Elite League Phase, 4-5 Elite Qualification Round; 16-18 Descenso directo)
+    # Saudi Pro League: AFC qualification and domestic relegation.
     competition_ids.SAUDI_PRO_LEAGUE: CompetitionRules(
         reference_season="2026/27",
         number_of_teams=18,
@@ -674,7 +676,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         ),
     ),
 
-    # liga_mx_apertura (1-8 a cuartos de final de Liguilla; sin descenso; Concacaf pendiente por acumulado anual)
+    # Liga MX Apertura: top eight to Liguilla; Clausura owns the shared season sources.
     competition_ids.LIGA_MX_APERTURA: CompetitionRules(
         reference_season="2026",
         number_of_teams=18,
@@ -689,24 +691,12 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.LIGA_MX_APERTURA_PLAYOFFS,
             ),
-            create_competition_qualification_rule(
-                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                destination_phase=None,
-                destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
-                note=(
-                    "Requires an aggregate spanning the preceding Apertura and the current Clausura, "
-                    "both finals, and the entry and overlap rules published for the destination edition."
-                ),
-            ),
         ),
         standings=standings_policies.LIGA_MX_APERTURA,
-        note="FMF 2026/27 regulation: Apertura 2026, top eight to quarterfinals; international allocations remain pending.",
+        note="Top eight enter Liguilla. Clausura declares the shared season qualification sources.",
     ),
 
-    # liga_mx_clausura (1-8 a cuartos de final de Liguilla; sin descenso; Concacaf pendiente por acumulado anual)
+    # Liga MX Clausura closes the same aggregate as Apertura.
     competition_ids.LIGA_MX_CLAUSURA: CompetitionRules(
         reference_season="2027",
         number_of_teams=18,
@@ -723,19 +713,84 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
             ),
             create_competition_qualification_rule(
                 aggregation_scope=AggregationScope.SEASON_AGGREGATE,
-                destination_phase=None,
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=2,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
-                note=(
-                    "Requires an aggregate spanning the preceding Apertura and the current Clausura, "
-                    "both finals, and the entry and overlap rules published for the destination edition."
-                ),
+                destination_phase=DestinationPhase.PLAYOFFS,
+                destination_round=DestinationRound.ROUND_OF_32,
+                note="Two highest eligible non-finalists in the Apertura and Clausura aggregate. The round before the round of 16 has 22 entrants and five byes.",
+            ),
+            create_competition_qualification_rule(
+                aggregation_scope=AggregationScope.SEASON_AGGREGATE,
+                selection_method=SelectionMethod.CHAMPION,
+                places=1,
+                destination_competition_identity=competition_ids.LIGA_MX_CAMPEON_DE_CAMPEONES,
+                destination_phase=DestinationPhase.PLAYOFFS,
+                destination_round=DestinationRound.FINAL,
+                note="Each tournament champion qualifies. A double champion plays the Supercopa under FMF Appendix VIII.",
             ),
         ),
         standings=standings_policies.LIGA_MX_CLAUSURA,
-        note="FMF 2026/27 regulation: Clausura 2027, top eight to quarterfinals; international allocations remain pending.",
+        qualification_sources=QualificationSources(
+            # Both editions use their opening year in the database.
+            destination_season_offset=2,
+            shared_table=SeasonAggregateProfile(
+                number_of_teams=18,
+                sources=(
+                    SeasonAggregateSource(competition=competition_ids.LIGA_MX_APERTURA, games_per_team=17),
+                    SeasonAggregateSource(competition=competition_ids.LIGA_MX_CLAUSURA, games_per_team=17),
+                ),
+                scoring=FOOTBALL_SCORING,
+                standings=standings_policies.LIGA_MX_ANNUAL,
+            ),
+            tournament_berths=(
+                create_tournament_berth(
+                    competition_ids.LIGA_MX_APERTURA_PLAYOFFS,
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    reallocate_to_table=True,
+                    sources=(
+                        "https://www.concacaf.com/media/mouphckx/26-ccc-regs-spa.pdf",
+                        "https://es.concacaf.com/competitions/champions-cup/news/copa-de-campeones-concacaf-2027-clubes-clasificados",
+                    ),
+                ),
+                create_tournament_berth(
+                    competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS,
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    reallocate_to_table=True,
+                    sources=(
+                        "https://www.concacaf.com/media/mouphckx/26-ccc-regs-spa.pdf",
+                        "https://es.concacaf.com/competitions/champions-cup/news/copa-de-campeones-concacaf-2027-clubes-clasificados",
+                    ),
+                ),
+                create_tournament_berth(
+                    competition_ids.LIGA_MX_APERTURA_PLAYOFFS,
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    destination_round=DestinationRound.ROUND_OF_32,
+                    finalists=(Finalist.RUNNER_UP,),
+                    reallocate_to_table=True,
+                    sources=(
+                        "https://www.concacaf.com/media/mouphckx/26-ccc-regs-spa.pdf",
+                        "https://es.concacaf.com/competitions/champions-cup/news/copa-de-campeones-concacaf-2027-clubes-clasificados",
+                    ),
+                ),
+                create_tournament_berth(
+                    competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS,
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    destination_round=DestinationRound.ROUND_OF_32,
+                    finalists=(Finalist.RUNNER_UP,),
+                    reallocate_to_table=True,
+                    sources=(
+                        "https://www.concacaf.com/media/mouphckx/26-ccc-regs-spa.pdf",
+                        "https://es.concacaf.com/competitions/champions-cup/news/copa-de-campeones-concacaf-2027-clubes-clasificados",
+                    ),
+                ),
+            ),
+        ),
+        note="All 18 clubs enter Leagues Cup 2027. Concacaf 2028 uses the last published Liga MX allocation as the projection basis.",
     ),
 
     # liga_profesional_de_argentina_apertura (Dos grupos de 15; 1-8 de cada grupo a octavos; descenso anual y promedios)
@@ -1061,7 +1116,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 start=5,
                 end=12,
                 destination_phase=DestinationPhase.PLAYOFFS,
-                destination_round=DestinationRound.FIRST_ROUND,
+                destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.LIIGA_PLAYOFFS,
             ),
             create_division_retention_rule(
@@ -1117,7 +1172,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 scope=RankingScope.CONFERENCE,
                 group_size=15,
                 destination_phase=DestinationPhase.PLAYOFFS,
-                destination_round=DestinationRound.FIRST_ROUND,
+                destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.MLS_PLAYOFFS,
                 note='MLS Round One: best-of-three series.',
             ),
@@ -1190,7 +1245,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 scope=RankingScope.GLOBAL,
                 group_size=15,
                 destination_phase=DestinationPhase.PLAYOFFS,
-                destination_round=DestinationRound.FIRST_ROUND,
+                destination_round=DestinationRound.QUARTER_FINALS,
                 destination_competition_identity=competition_ids.WNBA_PLAYOFFS,
             ),
         ),
@@ -1208,6 +1263,7 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 start=19, end=20,
                 safe_rank=18,
                 relegation_path=RelegationPath.RELEGATION_PLAYOFF,
+                note="Bottom two meet the top two eligible NBL clubs in the promotion and relegation playoff.",
             ),
             create_phase_qualification_rule(
                 start=1,
@@ -1223,18 +1279,9 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 end=12,
                 path=QualificationPath.DIRECT,
                 destination_phase=DestinationPhase.PLAYOFFS,
-                destination_round=DestinationRound.FIRST_ROUND,
+                destination_round=DestinationRound.ROUND_OF_16,
                 destination_competition_identity=competition_ids.CBA_PLAYOFFS,
-                note="The first round is a best-of-three series.",
-            ),
-            create_competition_qualification_rule(
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.CHAMPION,
-                places=1,
-                note="FIBA included the CBA champion in the preceding edition. Confirm the destination edition's selection criteria.",
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
-                destination_competition_identity=competition_ids.FIBA_INTERCONTINENTAL_CUP,
+                note="Round of 16: best-of-three series; the top four clubs have byes to the quarterfinals.",
             ),
         ),
         standings=standings_policies.CBA,

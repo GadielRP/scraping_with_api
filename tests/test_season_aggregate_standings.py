@@ -98,9 +98,17 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
     ] == [(10, 1, 4, 2), (20, 2, 1, 2)]
 
 
-def test_only_clausura_selects_shared_annual_profile():
+def test_only_argentina_and_liga_mx_clausura_select_shared_profiles():
     assert [identity for identity, rules in COMPETITION_PROFILES.items()
-            if rules.qualification_sources is not None and rules.qualification_sources.shared_table is not None] == [ids.ARGENTINA_CLAUSURA]
+            if rules.qualification_sources is not None and rules.qualification_sources.shared_table is not None] == [
+        ids.LIGA_MX_CLAUSURA, ids.ARGENTINA_CLAUSURA,
+    ]
+    mexico = COMPETITION_PROFILES[ids.LIGA_MX_CLAUSURA].qualification_sources
+    assert COMPETITION_PROFILES[ids.LIGA_MX_APERTURA].qualification_sources is None
+    assert mexico.destination_season_offset == 2
+    assert [(source.competition, source.games_per_team) for source in mexico.shared_table.sources] == [
+        (ids.LIGA_MX_APERTURA, 17), (ids.LIGA_MX_CLAUSURA, 17),
+    ]
     clausura = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA]
     annual = clausura.qualification_sources.shared_table
     assert [(source.competition, source.games_per_team) for source in annual.sources] == [

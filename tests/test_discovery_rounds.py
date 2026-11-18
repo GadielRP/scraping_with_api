@@ -139,6 +139,8 @@ def test_round_policy_preserves_existing_round_without_downgrading_playoffs():
 
 @pytest.mark.parametrize("round_info,expected", [
     ({"round": 29, "name": "Final", "slug": "final", "cupRoundType": 1}, "final"),
+    ({"name": "Final, Game 5"}, "final"),
+    ({"slug": "final-2nd-leg"}, "final"),
     ({"name": "Semi Finals"}, "semifinal"),
     ({"slug": "quarter-finals"}, "quarterfinal"),
     ({"slug": "round-of-8"}, "quarterfinal"),

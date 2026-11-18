@@ -296,9 +296,8 @@ def test_current_standings_debug_preserves_season_year_scope(monkeypatch):
 
     assert len(messages) == 1
     assert messages[0][1] == "test-chat"
-    # Team form, historical timeline and Telegram must all use the same year,
-    # so another season_id in that campaign is not excluded from debug.
-    assert len(fake_db.execute_calls) == 3
+    # Telegram reuses the timeline. Both reads stay within the same season year.
+    assert len(fake_db.execute_calls) == 2
     for query, params in fake_db.execute_calls:
         assert params["season_year"] == 2026
         assert "season_year = :season_year" in query

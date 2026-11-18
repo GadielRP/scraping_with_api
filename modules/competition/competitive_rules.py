@@ -272,9 +272,10 @@ class QualificationSources:
     shared_table: SeasonAggregateProfile | None = None
 
     def __post_init__(self) -> None:
-        competitions = [rule.competition for rule in self.tournament_berths]
-        if len(competitions) != len(set(competitions)):
-            raise ValueError("a tournament can grant only one berth rule per profile")
+        routes = [(rule.competition, rule.destination.destination_competition_identity, finalist)
+                  for rule in self.tournament_berths for finalist in rule.finalists]
+        if len(routes) != len(set(routes)):
+            raise ValueError("a tournament finalist can grant only one berth per destination")
 
 
 @dataclass(frozen=True, slots=True)

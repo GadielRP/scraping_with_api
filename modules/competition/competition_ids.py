@@ -79,7 +79,6 @@ CONMEBOL_LIBERTADORES_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIde
 # (source_unique_tournament_id with source_tournament_id=None) and an explicit destination_phase in the qualification rule.
 CONMEBOL_LIBERTADORES: Final[CompetitionIdentity] = CompetitionIdentity(384, None, "sofascore", competition_name="CONMEBOL Libertadores")  # competition_ids de la familia: 131, 136, 360, 1195, 2748, 4185, 4190, 4219, 4220, 4227
 CONMEBOL_SUDAMERICANA: Final[CompetitionIdentity] = CompetitionIdentity(480, None, "sofascore", competition_name="CONMEBOL Sudamericana")  # competition_ids de la familia: 137, 139, 144, 363, 1196, 1765, 3319, 4183, 4216, 4217
-FIBA_INTERCONTINENTAL_CUP: Final[CompetitionIdentity] = CompetitionIdentity(1512, None, "sofascore", competition_name="FIBA Intercontinental Cup")  # competition_ids de la familia: 14562, 14563, 15110, 15111
 AFC_CHAMPIONS_LEAGUE_TWO_QUALIFICATION: Final[CompetitionIdentity] = CompetitionIdentity(668, 19500, "sofascore", competition_name="AFC Champions League Two, Qualification")  # competition_id=9447
 AFC_CHAMPIONS_LEAGUE_TWO: Final[CompetitionIdentity] = CompetitionIdentity(668, None, "sofascore", competition_name="AFC Champions League Two")  # competition_ids de la familia: 1567, 1592, 1597, 1598, 1909, 1916, 1917, 1918, 2882, 9447
 
@@ -96,6 +95,7 @@ TACA_DE_PORTUGAL: Final[CompetitionIdentity] = CompetitionIdentity(336, 207, "so
 KNVB_BEKER: Final[CompetitionIdentity] = CompetitionIdentity(330, 121, "sofascore", competition_name="KNVB Beker")  # competition_id=390
 US_OPEN_CUP: Final[CompetitionIdentity] = CompetitionIdentity(495, 6814, "sofascore")  # competition_id=3661; Fútbol; no la homónima de tenis.
 SAUDI_KINGS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(2058, 42021, "sofascore", competition_name="King's Cup")  # competition_id=681; FUTBOL MASCULINO
+LIGA_MX_CAMPEON_DE_CAMPEONES: Final[CompetitionIdentity] = CompetitionIdentity(2103, 54197, "sofascore", competition_name="Campeón de Campeones")  # competition_id=7935
 LEAGUES_CUP_GROUP_STAGE: Final[CompetitionIdentity] = CompetitionIdentity(13783, 146257, "sofascore")  # competition_id=8807; Fútbol; no la homónima de tenis.
 LEAGUES_CUP: Final[CompetitionIdentity] = CompetitionIdentity(13783, 10964, "sofascore")  # sin fila en DB para (13783, 10964); Fútbol; no la homónima de tenis.
 # WINNER OF MLS REGULAR SEASON GETS A SPOT IN CONCACAF CHAMPIONS CUP, BUT THERE IS NO SEPARATE TOURNAMENT RECORD FOR IT. SO TECHNICALLY MLS_PLAYOFFS: Final[CompetitionIdentity] = CompetitionIdentity(242, 7048, "sofascore")

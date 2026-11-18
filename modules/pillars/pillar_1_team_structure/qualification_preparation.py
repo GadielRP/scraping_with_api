@@ -65,13 +65,15 @@ def _aggregate_inputs(session, profile, annual):
             session, config.shared_table, annual, seasons=average_seasons,
         )
     relegation = resolve_relegation(relegation_rules, annual.standings, multiseason_averages=averages)
+    if not relegation_rules:
+        return relegation, None, False
     members = frozenset(ParticipantIdentity(*row) for row in read_season_members(
         session, config.shared_table.sources,
         season_year=annual.season_year + config.destination_season_offset,
         known_at=annual.kickoff_cutoff,
     ))
     roster = members if len(members) == config.shared_table.number_of_teams else None
-    return relegation, roster
+    return relegation, roster, roster is None
 
 
 def prepare_qualification(event, competition, streak, *, as_of=None):
@@ -98,10 +100,8 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
             # aggregate still feeds relegation and the report.
             table = annual.standings
             standings = annual_table_rows(table)
-            relegation, roster = _aggregate_inputs(session, profile, annual)
+            relegation, roster, eligibility_unconfirmed = _aggregate_inputs(session, profile, annual)
             relegated = frozenset(relegation.participants)
-            # Relegation is a projection until the next season's roster confirms who stays.
-            eligibility_unconfirmed = roster is None
         else:
             standings = table_rows(getattr(streak, "current_standings", None))
         if standings is None and (config.shared_table is None or table):

@@ -131,6 +131,10 @@ class BerthAllocation:
 
     @property
     def berths_by_source(self) -> dict[CompetitionIdentity, AllocatedBerth]:
-        """Berths that belong to a tournament, keyed by that tournament."""
-        return {berth.source: berth for berth in self.berths if berth.berth_type is BerthType.TOURNAMENT}
+        """First berth in allocation order for each source. See ``berths`` for every route."""
+        by_source = {}
+        for berth in self.berths:
+            if berth.berth_type is BerthType.TOURNAMENT:
+                by_source.setdefault(berth.source, berth)
+        return by_source
 

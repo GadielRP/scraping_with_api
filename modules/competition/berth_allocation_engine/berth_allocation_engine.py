@@ -8,8 +8,10 @@ from __future__ import annotations
 
 
 from collections.abc import Mapping, Sequence, Set
+from dataclasses import replace
 from typing import Protocol
 
+from modules.competition import competition_ids
 from modules.competition.competition_identity import CompetitionIdentity
 from modules.competition.berth_allocation_engine.models import (
     AllocatedBerth,
@@ -22,6 +24,7 @@ from modules.competition.final_outcome import TournamentFinalEvidence, Participa
 from modules.competition.rule_terms import (
     BerthIssue,
     BerthType,
+    DestinationRound,
     Finalist,
     RankingIssue,
     TournamentFinalStatus,
@@ -115,11 +118,28 @@ def allocate_berths(
         for item in tournament_evidence
         if item.season_year == season_year
     }
+    liga_mx_finals = tuple(evidence_by_comp.get(identity) for identity in (
+        competition_ids.LIGA_MX_APERTURA_PLAYOFFS, competition_ids.LIGA_MX_CLAUSURA_PLAYOFFS,
+    )) if profile_identity in (competition_ids.LIGA_MX_APERTURA, competition_ids.LIGA_MX_CLAUSURA) else ()
+    liga_mx_finalists = {
+        club for final in liga_mx_finals if final and final.status == TournamentFinalStatus.DECIDED
+        for club in (final.winner, final.loser) if club is not None
+    }
+    concacaf_bye_holder = None
+    champions = {final.winner for final in liga_mx_finals
+                 if final and final.status == TournamentFinalStatus.DECIDED and final.winner is not None}
+    if liga_mx_finals and all(final and final.status == TournamentFinalStatus.DECIDED
+                             and final.winner in champions for final in liga_mx_finals):
+        if len(champions) == 1:
+            concacaf_bye_holder = next(iter(champions))
+        elif all(ranks.get(club) is not None for club in champions):
+            concacaf_bye_holder = min(champions, key=ranks.__getitem__)
 
     berths: list[AllocatedBerth] = []
     held: set[ParticipantIdentity] = set()
     earlier_berth_pending = False
-    ranked_candidates = iter(row for row in standings if row.participant in available)
+    ranked_candidates = iter(row for row in standings
+                             if row.participant in available and row.participant not in liga_mx_finalists)
     table_pending_issue = None
 
     def record_berth(destination, club, *, source, berth_type, resolution, issue=None, final_evidence=None):
@@ -172,11 +192,19 @@ def allocate_berths(
             roster_complete,
         )
         if club is not None:
+            if liga_mx_finals and destination.destination_round is None and concacaf_bye_holder is not None:
+                destination = replace(destination, destination_round=(
+                    DestinationRound.ROUND_OF_16 if club == concacaf_bye_holder else DestinationRound.ROUND_OF_32
+                ))
             resolution = BerthResolution.PROJECTED if (eligibility_unconfirmed or earlier_berth_pending) else BerthResolution.CONFIRMED
+            if liga_mx_finals:
+                resolution = BerthResolution.PROJECTED
         elif issue is not None:
             resolution = BerthResolution.UNRESOLVED
             earlier_berth_pending = True
         elif rule.reallocate_to_table:
+            if liga_mx_finals:
+                destination = replace(destination, destination_round=DestinationRound.ROUND_OF_32)
             award_from_table(destination, source=rule.competition, berth_type=BerthType.TOURNAMENT, final_evidence=final_evidence,
                              issue=BerthIssue.TOURNAMENT_WINNER_ALREADY_QUALIFIED)
             continue

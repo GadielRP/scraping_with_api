@@ -102,7 +102,8 @@ def test_brazil_qualification_destinations_use_family_or_specific_identity():
 
 def test_saudi_two_is_awarded_through_the_king_cup():
     profile = get_competition_profile(50)
-    rule, = profile.qualification_sources.tournament_berths
+    rule, = (berth for berth in profile.qualification_sources.tournament_berths
+             if berth.destination.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO)
     assert rule.competition == competition_ids.SAUDI_KINGS_CUP
     assert all(
         objective.qualification_destination != rule.destination
@@ -149,7 +150,7 @@ def test_rank_selection_and_destination_validate_their_own_fields():
     with pytest.raises(ValueError, match="invalid objective rank range"):
         RankSelection(rank_start=4, rank_end=2)
     with pytest.raises(ValueError, match="destination_round requires destination_phase"):
-        QualificationDestination(destination_round="FIRST_ROUND")
+        QualificationDestination(destination_round="ROUND_OF_16")
     with pytest.raises(ValueError, match="competition_name must be a non-empty string"):
         replace(competition_ids.LALIGA, competition_name=" ")
 
@@ -171,11 +172,36 @@ def test_canonical_terms_remain_immutable_and_serialize_as_plain_strings():
 
 
 def test_unknown_route_is_allowed_only_while_the_objective_is_pending():
-    pending = get_competition_profile(328).objectives[1]
+    pending = replace(
+        next(rule for rule in get_competition_profile(174).objectives
+             if rule.objective_type == "PHASE_QUALIFICATION"), status=RuleStatus.PENDING,
+        qualification_destination=QualificationDestination(
+            destination_competition_identity=competition_ids.CBA_PLAYOFFS,
+            destination_phase=DestinationPhase.PLAYOFFS,
+        ),
+    )
     assert pending.status is RuleStatus.PENDING
     assert pending.qualification_destination.qualification_path is None
     with pytest.raises(ValueError, match="only pending"):
         replace(pending, status=RuleStatus.CONFIGURED)
+
+
+def test_profiles_use_explicit_knockout_rounds_and_only_relevant_destinations():
+    for competition, objective_index, expected_round in (
+        (competition_ids.LIIGA, 1, "ROUND_OF_16"),
+        (competition_ids.MLS, 0, "ROUND_OF_16"),
+        (competition_ids.WNBA, 0, "QUARTER_FINALS"),
+    ):
+        objective = COMPETITION_PROFILES[competition].objectives[objective_index]
+        assert objective.qualification_destination.destination_round == expected_round
+    cba = COMPETITION_PROFILES[competition_ids.CBA]
+    assert next(rule for rule in cba.objectives if rule.rank_selection.rank_start == 5
+                ).qualification_destination.destination_round == "ROUND_OF_16"
+    assert cba.qualification_sources is None
+    assert all(rule.objective_type != "COMPETITION_QUALIFICATION" for rule in cba.objectives)
+    saudi = COMPETITION_PROFILES[competition_ids.SAUDI_PRO_LEAGUE]
+    assert len(saudi.objectives) == 3
+    assert len(saudi.qualification_sources.tournament_berths) == 1
 
 
 @pytest.mark.parametrize("cid,index,stage,path,destination", [
@@ -240,8 +266,9 @@ def test_tournament_berths_are_unique_per_profile_and_carry_registered_names():
     assert berths
     for profile, rule in berths:
         assert rule.competition.competition_name == competition_ids.COMPETITION_NAMES[rule.competition]
-        competitions = [r.competition for r in profile.qualification_sources.tournament_berths]
-        assert len(competitions) == len(set(competitions))
+        routes = [(r.competition, r.destination.destination_competition_identity, finalist)
+                  for r in profile.qualification_sources.tournament_berths for finalist in r.finalists]
+        assert len(routes) == len(set(routes))
 
 
 def test_premier_league_cup_rules_keep_their_distinct_explicit_destinations():
