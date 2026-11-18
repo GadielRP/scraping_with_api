@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-SEASON_EVENTS_WITH_RESULTS_VIEW_SQL = """
+
+def build_season_events_with_results_view_sql(*, finished_at: bool = True) -> str:
+    """Create-or-replace statement for the season results view.
+
+    ``finished_at`` is appended as the last column, the only position ``CREATE OR REPLACE VIEW`` can
+    add one. Migrations that run before ``results.finished_at`` exists pass ``False``.
+    """
+    finished_at_column = ",\n    r.finished_at" if finished_at else ""
+    return f"""
 CREATE OR REPLACE VIEW season_events_with_results AS
 SELECT
     e.id AS event_id,
@@ -29,7 +37,7 @@ SELECT
         THEN 'OT'
         ELSE 'REG'
     END AS result_subtype,
-    e.round
+    e.round{finished_at_column}
 FROM events e
 JOIN results r ON r.event_id = e.id
 JOIN participants hp ON hp.participant_id = e.home_participant_id

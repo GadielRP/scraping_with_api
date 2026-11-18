@@ -96,7 +96,7 @@ class MatchupStreakContext:
     #   "source": "db_standings_calculator",
     #   "season_id": int,
     #   "cutoff_timestamp": float,
-    #   "cutoff_rule": "starts_at < cutoff_dt",
+    #   "cutoff_rule": "available_at < cutoff_dt",
     #   "sport": str,
     #   "source_unique_tournament_id": Optional[int],
     #   "source_tournament_id": Optional[int],

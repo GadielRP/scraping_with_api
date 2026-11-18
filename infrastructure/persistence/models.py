@@ -299,7 +299,10 @@ class Result(Base):
     winner = Column(Text)  # '1' | 'X' | '2' or NULL
     home_sets = Column(Text)  # Sets string for home team (e.g., '23-23-31-24' for basketball, '2-0-1+4' for football with penalties)
     away_sets = Column(Text)  # Sets string for away team (e.g., '19-35-24-31' for basketball, '0-2' for football)
-    
+    # Instant the provider recorded the final status. Written once and only when the provider shows it;
+    # NULL means unknown (including every result stored before this column), never "not finished".
+    finished_at = Column(UTCDateTime())
+
     # Relationships
     event = relationship("Event", back_populates="result")
 

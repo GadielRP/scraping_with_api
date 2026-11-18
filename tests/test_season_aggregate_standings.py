@@ -11,6 +11,7 @@ from infrastructure.persistence.models import (
     Competition, DisciplinaryIncidentTotal, Event, EventOutcomeObservation, EventSourceMapping, Participant, Result, Season,
 )
 from modules.alerts.matchup_streak_analysis import standings_engine
+from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
     calculate_multiseason_averages, calculate_season_aggregate_standings,
 )
@@ -98,6 +99,41 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
     ] == [(10, 1, 4, 2), (20, 2, 1, 2)]
 
 
+def test_annual_table_ignores_a_match_still_in_play_at_the_cutoff(season_data):
+    session, profile, season_year, cutoff = season_data
+    session.add(Event(
+        id=7, slug="match-7", sport="Football", competition="Liga Profesional", competition_id=2,
+        season_id=1, round="regular_season", starts_at=cutoff - timedelta(minutes=30),
+        home_team="Club", away_team="Club", home_participant_id=1, away_participant_id=2,
+    ))
+    session.add(Result(event_id=7, home_score=3, away_score=0))
+    session.flush()
+    competitions = tuple(source.competition for source in profile.sources)
+
+    def table():
+        annual = calculate_season_aggregate_standings(
+            session, profile, season_year=season_year, kickoff_cutoff=cutoff,
+        )
+        return {row.participant.source_participant_id: (row.games_played, row.points) for row in annual.standings}
+
+    # Football allows 2.5 hours after kickoff when no final instant was recorded.
+    assert table() == {10: (2, 4), 20: (2, 1)}
+    assert len(read_season_card_records(
+        session, competitions, season_year=season_year, kickoff_cutoff=cutoff)) == 4
+
+    session.get(Result, 7).finished_at = cutoff + timedelta(minutes=40)
+    session.flush()
+    assert table() == {10: (2, 4), 20: (2, 1)}
+
+    session.get(Result, 7).finished_at = cutoff - timedelta(minutes=5)
+    session.flush()
+    assert table() == {10: (3, 7), 20: (3, 1)}
+    records = read_season_card_records(session, competitions, season_year=season_year, kickoff_cutoff=cutoff)
+    assert len(records) == 6
+    assert [record[0] for record in records] == sorted(record[0] for record in records)
+    assert records[-1][0] == cutoff - timedelta(minutes=5)
+
+
 def test_only_argentina_and_liga_mx_clausura_select_shared_profiles():
     assert [identity for identity, rules in COMPETITION_PROFILES.items()
             if rules.qualification_sources is not None and rules.qualification_sources.shared_table is not None] == [
@@ -161,7 +197,8 @@ def test_clausura_timeline_carries_apertura_cards_without_its_results(season_dat
     match_time = cutoff - timedelta(days=181)
     record = {
         "event_id": 2, "startTimestamp": int(match_time.timestamp()),
-        "starts_at": match_time, "home_team": "Boca Juniors", "away_team": "Vélez Sarsfield",
+        "starts_at": match_time, "available_at": match_time,
+        "home_team": "Boca Juniors", "away_team": "Vélez Sarsfield",
         "home_score": 1, "away_score": 1, "winner": "X", "game_total": 2,
         "home_participant_identity": {"source": "sofascore", "source_participant_id": 10},
         "away_participant_identity": {"source": "sofascore", "source_participant_id": 20},

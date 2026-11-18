@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Competition, Event, Participant, Result, Season
 from modules.competition.competitive_rules import SeasonAggregateSource
+from modules.events.result_availability import available_at, available_before
 from .disciplinary_incident_repository import DisciplinaryIncidentRepository
 
 
@@ -21,11 +22,13 @@ def _season_matches(competitions, season_year, kickoff_cutoff):
         select(
             Event.id.label("event_id"),
             Event.starts_at,
+            Event.sport,
             Event.competition_id,
             Event.home_participant_id,
             Event.away_participant_id,
             Result.home_score,
             Result.away_score,
+            Result.finished_at,
         )
         .select_from(Event)
         .join(Result, Result.event_id == Event.id)
@@ -36,7 +39,9 @@ def _season_matches(competitions, season_year, kickoff_cutoff):
                    Competition.source_tournament_id).in_(identities),
             Season.year == season_year,
             Event.round == "regular_season",
-            Event.starts_at < kickoff_cutoff,
+            available_before(
+                kickoff_cutoff, starts_at=Event.starts_at, finished_at=Result.finished_at, sport=Event.sport,
+            ),
             Event.home_participant_id != Event.away_participant_id,
             Result.home_score >= 0,
             Result.away_score >= 0,
@@ -46,29 +51,34 @@ def _season_matches(competitions, season_year, kickoff_cutoff):
 
 
 def read_season_card_records(session: Session, competitions, *, season_year, kickoff_cutoff):
-    """Return dated team-side card counts for the same fixtures as the annual table."""
+    """Return team-side card counts for the same fixtures as the annual table.
+
+    Each record leads with the instant its result becomes available, and records are ordered by it.
+    """
     matches = _season_matches(competitions, season_year, kickoff_cutoff)
     sides = union_all(
-        select(matches.c.event_id, matches.c.starts_at, matches.c.home_participant_id.label("participant_id"),
-               literal("home").label("side")),
-        select(matches.c.event_id, matches.c.starts_at, matches.c.away_participant_id,
-               literal("away")),
+        select(matches.c.event_id, matches.c.starts_at, matches.c.sport, matches.c.finished_at,
+               matches.c.home_participant_id.label("participant_id"), literal("home").label("side")),
+        select(matches.c.event_id, matches.c.starts_at, matches.c.sport, matches.c.finished_at,
+               matches.c.away_participant_id, literal("away")),
     ).subquery()
     rows = session.execute(
-        select(sides.c.event_id, sides.c.starts_at, sides.c.side, Participant.source, Participant.source_participant_id)
+        select(sides.c.event_id, sides.c.starts_at, sides.c.sport, sides.c.finished_at, sides.c.side,
+               Participant.source, Participant.source_participant_id)
         .join(Participant, Participant.participant_id == sides.c.participant_id)
-        .order_by(sides.c.starts_at)
     ).all()
     totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals(
         "sofascore", {row.event_id for row in rows}, include_second_yellow=True, session=session,
     )
-    return [
-        (row.starts_at, (row.source, row.source_participant_id),
+    records = [
+        (available_at(row.starts_at, row.finished_at, row.sport), (row.source, row.source_participant_id),
          totals.get((row.event_id, row.side, "yellow_card")),
          totals.get((row.event_id, row.side, "red_card")),
          totals.get((row.event_id, row.side, "red_card_second_yellow")))
         for row in rows
     ]
+    records.sort(key=lambda record: record[0])
+    return records
 
 
 def read_season_aggregate_team_totals(

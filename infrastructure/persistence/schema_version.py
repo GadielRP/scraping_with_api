@@ -49,6 +49,7 @@ def verify_schema_at_head(engine: Engine) -> bool:
                                              "endpoint", "created_at", "updated_at"},
             "disciplinary_incidents": {"id", "event_source_mapping_id", "type", "origin",
                                        "source_player_id", "player_name", "side", "created_at", "updated_at"},
+            "results": {"finished_at"},
             "canonical_market_types": {"market_type_id", "requires_line_value"},
             "market_source_mappings": {"market_type_id"},
             "markets": {"market_type_id", "line_value"},

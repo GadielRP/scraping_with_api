@@ -5,14 +5,40 @@ import logging
 from time import monotonic
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.dialects import postgresql, sqlite
 
+from modules.events.result_availability import settled_at
 from infrastructure.persistence.models import Event, EventSourceMapping, Result
 from infrastructure.persistence.database import db_manager
+from .observation_repository import ObservationRepository
 from .outcome_observation_repository import append_outcome_observation
+from .reporting_refresh_repository import invalidate_reporting
 from infrastructure.settings import Config
 from shared.batching import chunks
 
 logger = logging.getLogger(__name__)
+
+
+def _sofascore_mapping_columns(session):
+    """Single SofaScore identity per event and how many mappings it has.
+
+    A canonical event may have several external mappings: do not duplicate page rows or
+    arbitrarily choose an ambiguous identity.
+    """
+    source_id = (
+        session.query(func.min(EventSourceMapping.source_event_id))
+        .filter(EventSourceMapping.event_id == Event.id, EventSourceMapping.source == "sofascore")
+        .having(func.count() == 1)
+        .correlate(Event)
+        .scalar_subquery()
+    )
+    mapping_count = (
+        session.query(func.count(EventSourceMapping.source_event_id))
+        .filter(EventSourceMapping.event_id == Event.id, EventSourceMapping.source == "sofascore")
+        .correlate(Event)
+        .scalar_subquery()
+    )
+    return source_id, mapping_count
 
 
 @dataclass(frozen=True)
@@ -53,27 +79,7 @@ class ResultRepository:
         after_id = lower_id - 1
         while after_id < upper_id:
             with db_manager.get_session() as session:
-                # A canonical event may have several external mappings. Do not
-                # duplicate page rows or arbitrarily choose an ambiguous identity.
-                source_id = (
-                    session.query(func.min(EventSourceMapping.source_event_id))
-                    .filter(
-                        EventSourceMapping.event_id == Event.id,
-                        EventSourceMapping.source == "sofascore",
-                    )
-                    .having(func.count() == 1)
-                    .correlate(Event)
-                    .scalar_subquery()
-                )
-                mapping_count = (
-                    session.query(func.count(EventSourceMapping.source_event_id))
-                    .filter(
-                        EventSourceMapping.event_id == Event.id,
-                        EventSourceMapping.source == "sofascore",
-                    )
-                    .correlate(Event)
-                    .scalar_subquery()
-                )
+                source_id, mapping_count = _sofascore_mapping_columns(session)
                 rows = (
                     session.query(Event.id, Event.sport, source_id, mapping_count)
                     .filter(
@@ -116,7 +122,7 @@ class ResultRepository:
             }
             with db_manager.get_session() as session:
                 parents = (
-                    session.query(Event.id, Event.sport)
+                    session.query(Event.id, Event.sport, Event.starts_at)
                     .filter(
                         Event.id.in_(values),
                     )
@@ -124,23 +130,26 @@ class ResultRepository:
                     .with_for_update()
                     .all()
                 )
-                sports = dict(parents)
+                sports = {event_id: sport for event_id, sport, _ in parents}
+                starts_at = {event_id: kickoff for event_id, _, kickoff in parents}
                 existing_ids = sorted(sports)
+                for event_id in existing_ids:
+                    data = result_payloads[event_id]
+                    values[event_id]["finished_at"] = data.get("finished_at") or settled_at(
+                        starts_at[event_id], sports[event_id], data.get("last_changed_at")
+                    )
                 if not existing_ids:
                     continue
-                if session.get_bind().dialect.name == "postgresql":
-                    from sqlalchemy.dialects.postgresql import insert
-                else:
-                    from sqlalchemy.dialects.sqlite import insert
-                statement = insert(Result).values([values[event_id] for event_id in existing_ids])
+                dialect = postgresql if session.get_bind().dialect.name == "postgresql" else sqlite
+                statement = dialect.insert(Result).values([values[event_id] for event_id in existing_ids])
+                updates = {key: getattr(statement.excluded, key) for key in fields}
+                # The first recorded final instant stays: later edits of the event must not move it.
+                updates["finished_at"] = func.coalesce(Result.finished_at, statement.excluded.finished_at)
                 committed = session.execute(
                     statement.on_conflict_do_update(
-                        index_elements=["event_id"],
-                        set_={key: getattr(statement.excluded, key) for key in fields},
+                        index_elements=["event_id"], set_=updates,
                     ).returning(Result.event_id)
                 ).all()
-                from .observation_repository import ObservationRepository
-
                 observations = []
                 for (event_id,) in committed:
                     append_outcome_observation(session, event_id, result_payloads[event_id])
@@ -156,8 +165,6 @@ class ResultRepository:
                                 )
                             )
                 ObservationRepository.write_observations(session, observations)
-                from .reporting_refresh_repository import invalidate_reporting
-
                 invalidate_reporting(session)
             confirmed.update(row[0] for row in committed)
             logger.info(
@@ -168,6 +175,21 @@ class ResultRepository:
                 monotonic() - started,
             )
         return confirmed
+
+    @staticmethod
+    def missing_finished_at_page(after_id, limit, season_id=None):
+        """Next stored results without a final instant, by event id, at most ``limit`` rows."""
+        with db_manager.get_session() as session:
+            source_id, mapping_count = _sofascore_mapping_columns(session)
+            query = (
+                session.query(Event.id, Event.sport, source_id, mapping_count)
+                .join(Result, Result.event_id == Event.id)
+                .filter(Event.id > after_id, Result.finished_at.is_(None))
+            )
+            if season_id is not None:
+                query = query.filter(Event.season_id == season_id)
+            rows = query.order_by(Event.id).limit(limit).all()
+        return [ResultCandidate(*row) for row in rows]
 
     @staticmethod
     def get_result_by_event_id(event_id):

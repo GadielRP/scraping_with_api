@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from copy import deepcopy
 from datetime import datetime
-from shared.temporal import utc_now
+from shared.temporal import from_unix_timestamp, utc_now
 from typing import Dict, Literal, Optional
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,22 @@ class ParsedEventResult:
 
 def _normalize_status_text(value: object) -> str:
     return str(value or "").lower().strip()
+
+
+def _change_instants(event_data: Dict) -> Dict[str, datetime]:
+    """Instants of the provider's latest update, keyed by what they can be trusted to mean.
+
+    ``changes.changeTimestamp`` is the time of the latest update, and every later edit (cards, injury
+    time, period bookkeeping) overwrites it. It marks the end of the event only while the fields
+    changed by that update include ``status.type`` (``finished_at``). Otherwise it is only an upper
+    bound of the end (``last_changed_at``) that the persistence layer caps with the sport's window.
+    """
+    changes = event_data.get("changes") or {}
+    timestamp = changes.get("changeTimestamp")
+    if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        return {}
+    key = "finished_at" if "status.type" in (changes.get("changes") or ()) else "last_changed_at"
+    return {key: from_unix_timestamp(timestamp)}
 
 
 def _is_walkover_status(status_description: str) -> bool:
@@ -202,6 +218,21 @@ def _build_sets_string(score_data: Dict, sport: str) -> Optional[str]:
     return sets_string
 
 
+SCORE_PRIORITY = ("display", "current", "normaltime", "overtime", "penalties")
+
+
+def _first_present(score_data: Dict, keys) -> Optional[int]:
+    """First of ``keys`` that carries a value; 0 counts as a value."""
+    return next((score_data[key] for key in keys if score_data.get(key) is not None), None)
+
+
+def _point_score(score_data: Dict) -> Optional[int]:
+    try:
+        return int(score_data["point"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _extract_score_payload(
     event_data: Dict,
     *,
@@ -237,16 +268,8 @@ def _extract_score_payload(
                 # Use a complete display/current pair if normaltime is missing
                 # on either side. Mixing a single normaltime value with a
                 # display value can combine scores from different phases.
-                home_fallback = (
-                    home_score_data.get("display")
-                    if home_score_data.get("display") is not None
-                    else home_score_data.get("current")
-                )
-                away_fallback = (
-                    away_score_data.get("display")
-                    if away_score_data.get("display") is not None
-                    else away_score_data.get("current")
-                )
+                home_fallback = _first_present(home_score_data, ("display", "current"))
+                away_fallback = _first_present(away_score_data, ("display", "current"))
                 if home_fallback is not None and away_fallback is not None:
                     home_score = home_fallback
                     away_score = away_fallback
@@ -254,44 +277,13 @@ def _extract_score_payload(
                     home_score = home_normaltime
                     away_score = away_normaltime
     else:
-        home_score = (
-            home_score_data.get("display")
-            if home_score_data.get("display") is not None
-            else home_score_data.get("current")
-            if home_score_data.get("current") is not None
-            else home_score_data.get("normaltime")
-            if home_score_data.get("normaltime") is not None
-            else home_score_data.get("overtime")
-            if home_score_data.get("overtime") is not None
-            else home_score_data.get("penalties")
-            if home_score_data.get("penalties") is not None
-            else None
-        )
-        away_score = (
-            away_score_data.get("display")
-            if away_score_data.get("display") is not None
-            else away_score_data.get("current")
-            if away_score_data.get("current") is not None
-            else away_score_data.get("normaltime")
-            if away_score_data.get("normaltime") is not None
-            else away_score_data.get("overtime")
-            if away_score_data.get("overtime") is not None
-            else away_score_data.get("penalties")
-            if away_score_data.get("penalties") is not None
-            else None
-        )
+        home_score = _first_present(home_score_data, SCORE_PRIORITY)
+        away_score = _first_present(away_score_data, SCORE_PRIORITY)
 
-    if home_score is None and "point" in home_score_data:
-        try:
-            home_score = int(home_score_data["point"])
-        except (TypeError, ValueError):
-            pass
-
-    if away_score is None and "point" in away_score_data:
-        try:
-            away_score = int(away_score_data["point"])
-        except (TypeError, ValueError):
-            pass
+    if home_score is None:
+        home_score = _point_score(home_score_data)
+    if away_score is None:
+        away_score = _point_score(away_score_data)
 
     if home_score is None and away_score is None:
         if home_score_data.get("current") == 0 and away_score_data.get("current") == 0:
@@ -483,6 +475,8 @@ def parse_event_result(
                     event_id,
                 )
                 return ParsedEventResult(kind="unparseable", **base_kwargs)
+
+        result_data.update(_change_instants(event_data))
 
         return ParsedEventResult(kind="finished", result=result_data, **base_kwargs)
     except Exception as exc:

@@ -19,7 +19,7 @@ from infrastructure.persistence.views.dual_process_views import (
     MV_ALERT_EVENTS_SQL,
     build_dual_process_event_odds_view_sql,
 )
-from infrastructure.persistence.views.season_views import SEASON_EVENTS_WITH_RESULTS_VIEW_SQL
+from infrastructure.persistence.views.season_views import build_season_events_with_results_view_sql
 from infrastructure.settings import Config
 
 revision = "20260919_02"
@@ -53,7 +53,8 @@ def upgrade() -> None:
     )
     connection.exec_driver_sql(EVENT_ALL_ODDS_VIEW_SQL)
     connection.exec_driver_sql(BASKETBALL_RESULTS_VIEW_SQL)
-    connection.exec_driver_sql(SEASON_EVENTS_WITH_RESULTS_VIEW_SQL)
+    # results.finished_at does not exist yet at this revision.
+    connection.exec_driver_sql(build_season_events_with_results_view_sql(finished_at=False))
     connection.exec_driver_sql(MV_ALERT_EVENTS_SQL)
     for statement in MV_ALERT_EVENTS_INDEXES_SQL:
         connection.exec_driver_sql(statement)

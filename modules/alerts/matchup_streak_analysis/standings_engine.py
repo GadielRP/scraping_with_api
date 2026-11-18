@@ -19,6 +19,7 @@ from infrastructure.persistence.repositories.disciplinary_incident_repository im
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
 from modules.competition.competition_profiles import get_competition_profile as get_profile_by_identity
 from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingStatus
+from modules.events.result_availability import available_at
 from shared.temporal import from_unix_timestamp
 
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
@@ -385,7 +386,7 @@ def _build_league_totals_context(
         "source": "db_standings_calculator",
         "season_id": season_id,
         "cutoff_timestamp": cutoff_timestamp,
-        "cutoff_rule": "starts_at < cutoff_dt",
+        "cutoff_rule": "available_at < cutoff_dt",
         "sport": sport,
         "source_unique_tournament_id": source_unique_tournament_id,
         "source_tournament_id": source_tournament_id,
@@ -419,6 +420,50 @@ def _serialize_match_records(match_records: List[Dict[str, Any]]) -> List[Dict[s
     return serialized_records
 
 
+def _match_record_from_row(row, regulation_scores_only: bool) -> Dict[str, Any]:
+    """One standings match record, carrying the instant its result becomes available."""
+    home_score = int(row.home_score)
+    away_score = int(row.away_score)
+    winner = row.winner
+    starts_at = row.starts_at
+    record = {
+        "event_id": int(row.event_id),
+        "starts_at": starts_at,
+        "available_at": available_at(starts_at, getattr(row, "finished_at", None), getattr(row, "sport", None)),
+        "startTimestamp": int(starts_at.timestamp()),
+        "home_team": row.home_team,
+        "away_team": row.away_team,
+        "home_score": home_score,
+        "away_score": away_score,
+        "winner": winner,
+        "result_subtype": normalize_result_subtype(getattr(row, "result_subtype", None), winner),
+        "game_total": home_score + away_score,
+    }
+    if regulation_scores_only:
+        record["regulation_home_score"], record["regulation_away_score"] = _regulation_scores(
+            getattr(row, "home_sets", None), getattr(row, "away_sets", None), home_score, away_score,
+        )
+    for side in ("home", "away"):
+        source = getattr(row, f"{side}_participant_source", None)
+        source_id = getattr(row, f"{side}_source_participant_id", None)
+        if source and source_id is not None:
+            record[f"{side}_participant_identity"] = {"source": source, "source_participant_id": int(source_id)}
+    return record
+
+
+def _attach_card_totals(football_records: List[Dict[str, Any]], profile: CompetitionRules) -> None:
+    """Add per-side card counts to football records; an unrecorded count stays None."""
+    include_second_yellow = any(stat == SECOND_YELLOW_CARD_STAT[0] for stat, _ in profile.standings.fair_play_weights)
+    totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals(
+        "sofascore", [record["event_id"] for record in football_records], include_second_yellow=include_second_yellow,
+    )
+    card_stats = (*FOOTBALL_CARD_STATS, SECOND_YELLOW_CARD_STAT) if include_second_yellow else FOOTBALL_CARD_STATS
+    for record in football_records:
+        for side in ("home", "away"):
+            for stat, kind in card_stats:
+                record[f"{side}_{stat}"] = totals.get((record["event_id"], side, kind))
+
+
 class HistoricalStandingsCalculator:
     """Compute standings at any point in time for a collected season."""
 
@@ -442,7 +487,7 @@ class HistoricalStandingsCalculator:
         query_sql = """
             SELECT
                 v.event_id, v.starts_at, v.home_team, v.away_team,
-                v.home_score, v.away_score, v.winner, v.result_subtype, v.sport,
+                v.home_score, v.away_score, v.winner, v.result_subtype, v.sport, v.finished_at,
                 hp.source AS home_participant_source,
                 hp.source_participant_id AS home_source_participant_id,
                 ap.source AS away_participant_source,
@@ -482,50 +527,16 @@ class HistoricalStandingsCalculator:
         football_records: List[Dict[str, Any]] = []
         with db_manager.get_session() as session:
             for row in session.execute(query, query_params):
-                home_score = int(row.home_score)
-                away_score = int(row.away_score)
-                winner = row.winner
-                result_subtype = normalize_result_subtype(getattr(row, "result_subtype", None), winner)
-                starts_at = row.starts_at
-
-                record = {
-                    "event_id": int(row.event_id),
-                    "starts_at": starts_at,
-                    "startTimestamp": int(starts_at.timestamp()),
-                    "home_team": row.home_team,
-                    "away_team": row.away_team,
-                    "home_score": home_score,
-                    "away_score": away_score,
-                    "winner": winner,
-                    "result_subtype": result_subtype,
-                    "game_total": home_score + away_score,
-                }
-                if regulation_scores_only:
-                    record["regulation_home_score"], record["regulation_away_score"] = _regulation_scores(
-                        getattr(row, "home_sets", None), getattr(row, "away_sets", None), home_score, away_score,
-                    )
+                record = _match_record_from_row(row, regulation_scores_only)
+                # Started is not finished: an event still in play at the cutoff has a stored score
+                # that was not known then.
+                if record["available_at"] >= cutoff_dt:
+                    continue
                 if getattr(row, "sport", None) == "Football":
                     football_records.append(record)
-                for side in ("home", "away"):
-                    source = getattr(row, f"{side}_participant_source", None)
-                    source_id = getattr(row, f"{side}_source_participant_id", None)
-                    if source and source_id is not None:
-                        record[f"{side}_participant_identity"] = {
-                            "source": source, "source_participant_id": int(source_id),
-                        }
                 match_records.append(record)
 
-        football_ids = [record["event_id"] for record in football_records]
-        include_second_yellow = any(stat == SECOND_YELLOW_CARD_STAT[0] for stat, _ in profile.standings.fair_play_weights)
-        totals = DisciplinaryIncidentRepository(db_manager).get_event_card_totals(
-            "sofascore", football_ids, include_second_yellow=include_second_yellow,
-        )
-        card_stats = (*FOOTBALL_CARD_STATS, SECOND_YELLOW_CARD_STAT) if include_second_yellow else FOOTBALL_CARD_STATS
-        for record in football_records:
-            for side in ("home", "away"):
-                for stat, kind in card_stats:
-                    record[f"{side}_{stat}"] = totals.get((record["event_id"], side, kind))
-
+        _attach_card_totals(football_records, profile)
         return match_records
 
     def calculate_standings_at(
@@ -663,29 +674,36 @@ class HistoricalStandingsCalculator:
             season_year=season_year,
             profile=profile,
         )
-        record_timestamps = [record["starts_at"].timestamp() for record in match_records]
+        # A match joins the table when its result becomes available, which need not follow kickoff
+        # order: a later kickoff can finish before an earlier, longer one. Stats only add up, so they
+        # take records in availability order while the records handed to the ranker keep kickoff order.
+        available = [record["available_at"].timestamp() for record in match_records]
+        availability_order = sorted(range(len(match_records)), key=available.__getitem__)
 
         snapshots: Dict[float, Dict[str, Dict]] = {}
         team_stats: Dict[str, Dict[str, object]] = {}
         warned_unknown_group_teams: Set[str] = set()
+        applied = [False] * len(match_records)
         applied_count = 0
 
         carryovers = _fair_play_carryover_snapshots(profile, season_id, season_year, unique_cutoffs)
         for cutoff, carryover in zip(unique_cutoffs, carryovers):
-            while applied_count < len(match_records) and record_timestamps[applied_count] < cutoff:
+            while applied_count < len(availability_order) and available[availability_order[applied_count]] < cutoff:
+                index = availability_order[applied_count]
                 _register_match_record(
-                    match_records[applied_count],
+                    match_records[index],
                     team_stats,
                     profile,
                     season_id,
                     warned_unknown_group_teams,
                 )
+                applied[index] = True
                 applied_count += 1
 
             snapshots[cutoff] = _finalize_standings_snapshot(
                 team_stats,
                 profile,
-                match_records[:applied_count],
+                [record for record, is_applied in zip(match_records, applied) if is_applied],
                 carryover,
             )
 

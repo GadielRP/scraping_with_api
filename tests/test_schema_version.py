@@ -20,6 +20,7 @@ def test_schema_gate_requires_current_revision() -> None:
                 "CREATE TABLE canonical_market_types (market_type_id INTEGER, requires_line_value BOOLEAN)"
             )
         )
+        connection.execute(text("CREATE TABLE results (event_id INTEGER, finished_at DATETIME)"))
         connection.execute(text("CREATE TABLE market_source_mappings (market_type_id INTEGER)"))
         connection.execute(
             text("CREATE TABLE markets (market_type_id INTEGER, line_value NUMERIC)")

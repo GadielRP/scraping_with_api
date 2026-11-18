@@ -19,7 +19,8 @@ from shared.temporal import utc_now
 logger = logging.getLogger(__name__)
 
 
-def collect_batch(events, job_name, *, on_results_committed=None):
+def collect_batch(events, job_name, *, on_results_committed=None, on_deletions=None):
+    """``on_deletions`` receives the deletion evidence instead of deleting the events."""
     stats = dict(updated=0, deferred=0, failed=0, deleted=0)
     deletions = DeletionBatch(origin=job_name)
     results = {}
@@ -109,7 +110,9 @@ def collect_batch(events, job_name, *, on_results_committed=None):
     stats["failed"] += len(persistable) - stats["updated"]
     outcomes[ResultOutcome.PERSISTED.value] += stats["updated"]
     outcomes[ResultOutcome.CONFLICT.value] += len(persistable) - stats["updated"]
-    if deletions:
+    if deletions and on_deletions is not None:
+        on_deletions(deletions)
+    elif deletions:
         stats["deleted"] = EventRepository.batch_delete_events(deletions)
         stats["failed"] += len(deletions) - stats["deleted"]
         outcomes[ResultOutcome.DELETED.value] += stats["deleted"]
