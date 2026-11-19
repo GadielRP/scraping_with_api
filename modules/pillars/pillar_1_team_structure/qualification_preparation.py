@@ -19,6 +19,7 @@ from modules.competition.berth_allocation_engine.berth_allocation_engine import 
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
 from modules.competition.final_outcome import ParticipantIdentity
 from modules.competition.competition_identity import CompetitionIdentity
+from modules.competition.competition_profiles import apply_european_performance_spot
 from modules.competition.qualification_rules import build_qualification_rules
 from modules.competition.rule_terms import (
     AggregationScope,
@@ -78,12 +79,30 @@ def _aggregate_inputs(session, profile, annual):
     return relegation, roster, roster is None
 
 
+def _season_completion_ratio(streak):
+    """Progress of the whole competition, as stamped on its current standings rows."""
+    standings = getattr(streak, "current_standings", None)
+    rows = standings.values() if isinstance(standings, dict) else standings or ()
+    return next((row.get("season_completion_ratio") for row in rows if isinstance(row, dict)), None)
+
+
 def prepare_qualification(event, competition, streak, *, as_of=None):
     profile = competition.competitive_rules
     rules = build_qualification_rules(profile) if profile is not None else None
     season_year = event.season_year
     if rules is None or season_year is None:
         return replace(competition, berth_allocation=None)
+
+    profile_identity = CompetitionIdentity(
+        source_unique_tournament_id=competition.source_unique_tournament_id,
+        source_tournament_id=competition.source_tournament_id,
+        source=competition.source,
+        competition_name=competition.display_name or competition.canonical_name,
+    )
+    with_eps = apply_european_performance_spot(profile_identity, profile, _season_completion_ratio(streak))
+    if with_eps is not profile:
+        profile, rules = with_eps, build_qualification_rules(with_eps)
+        competition = replace(competition, competitive_rules=profile)
 
     # Freeze the evaluation instant. A retrospective evaluation may use evidence
     # already available now, even when it was persisted after the event kickoff.
@@ -144,12 +163,6 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
             for rule in rules.tournament_berths if rule.replacement_rounds
         }
 
-    profile_identity = CompetitionIdentity(
-        source_unique_tournament_id=competition.source_unique_tournament_id,
-        source_tournament_id=competition.source_tournament_id,
-        source=competition.source,
-        competition_name=competition.display_name or competition.canonical_name,
-    )
     outcome = allocate_berths(
         rules, standings,
         season_year=season_year,

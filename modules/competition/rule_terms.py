@@ -71,8 +71,8 @@ Campos de StandingsRules y RankingCriterion
 ------------------------------------------
 name: identidad de la política de orden, no una vía ni un destino.
 primary_metric: valor principal para ordenar (puntos, victorias o porcentaje).
-in_season_criteria: pasos de desempate mientras no se alcanza el 85 % de partidos computados.
-closing_projection_criteria: pasos desde el 85 % inclusive, para aproximar la clasificación de cierre.
+in_season_criteria: pasos de desempate mientras no se han jugado todos los partidos de la temporada.
+closing_projection_criteria: pasos con el 100 % de los partidos jugados, que definen la clasificación final.
 restart_sequence: cuándo una separación reinicia la secuencia completa (pair_after_reapply, pair o
     complete_meetings); None si nunca.
 record_percentage: expone también el porcentaje en el registro de clasificación.

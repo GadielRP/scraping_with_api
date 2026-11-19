@@ -6,6 +6,9 @@ Examples:
 
 The calculators require a cutoff. A far-future bound includes every stored result
 for the selected season; it does not force final rankings or invent missing games.
+The tie-break sequence is chosen from the stored results: the closing sequence applies
+only when every game of the season is stored (100 %); otherwise the in-season one does.
+The report title shows the policy used and the season completion ratio.
 """
 
 import argparse
@@ -28,6 +31,10 @@ from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import calculate_season_aggregate_standings
 from modules.alerts.matchup_streak_analysis.standings_engine import standings_calculator
 from modules.competition.rule_terms import RankingMetric
+
+
+def _policy_label(policy, ratio):
+    return f"policy={policy} completion={'n/a' if ratio is None else f'{ratio:.1%}'}"
 
 
 def main():
@@ -71,10 +78,11 @@ def main():
             result = calculate_season_aggregate_standings(
                 session, sources.shared_table, season_year=season.year, kickoff_cutoff=all_results_bound,
             )
+            policy_name = result.standings_policy
+            title += f" | {_policy_label(policy_name, result.season_completion_ratio)}"
             report = format_annual_standings_table_for_telegram(result.standings, title)
             fair_play_standings = {row.name: asdict(row) for row in result.standings}
             standings_rules = sources.shared_table.standings
-            policy_name = result.standings_policy
         else:
             result = standings_calculator.calculate_standings_bundle_at(
                 season_id=season.id, cutoff_timestamp=all_results_bound.timestamp(),
@@ -84,10 +92,12 @@ def main():
             )
             if result.get("status") == "ERROR":
                 parser.error(result["error"])
-            report = format_standings_table_for_telegram(result["standings"], title)
             fair_play_standings = result["standings"]
+            first_row = next(iter(fair_play_standings.values()), {})
+            policy_name = first_row.get("standings_policy", "in_season")
+            title += f" | {_policy_label(policy_name, first_row.get('season_completion_ratio'))}"
+            report = format_standings_table_for_telegram(result["standings"], title)
             standings_rules = profile.standings
-            policy_name = next(iter(fair_play_standings.values()), {}).get("standings_policy", "in_season")
     send_debug_telegram(report, os.environ["PERSONAL_CHAT_ID"])
     criteria = getattr(standings_rules, f"{policy_name}_criteria")
     metrics = {metric for criterion in criteria for metric in criterion.metrics}

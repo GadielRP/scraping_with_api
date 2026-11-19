@@ -308,10 +308,11 @@ def test_published_group_memberships_match_stored_event_names(method, team, grou
 
 @pytest.mark.parametrize(("played", "ratio", "policy"), [
     (320, 640 / 760, "in_season"),
-    (323, 646 / 760, "closing_projection"),
-    (350, 700 / 760, "closing_projection"),
+    (350, 700 / 760, "in_season"),
+    (379, 758 / 760, "in_season"),
+    (380, 760 / 760, "closing_projection"),
 ])
-def test_standings_policy_switches_at_85_percent_inclusive(played, ratio, policy):
+def test_closing_policy_applies_only_when_the_whole_season_is_played(played, ratio, policy):
     from modules.alerts.matchup_streak_analysis.standings_rules import select_standings_policy
 
     team_games = played * 2  # each match counts for both participants

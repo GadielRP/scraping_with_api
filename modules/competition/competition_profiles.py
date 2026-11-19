@@ -6,6 +6,7 @@ Tracking is configured separately in tracked_competitions.py.
 Sporting boundaries distinguish confirmed rules from pending allocations.
 """
 
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
@@ -31,6 +32,20 @@ from modules.competition.rule_terms import (
     RuleStatus,
     SelectionMethod,
 )
+
+# ---------------------------------------------------------------------------
+# Annual configuration: UEFA European Performance Spots (EPS).
+# Each season UEFA gives two associations one extra Champions League league-phase place. It goes to the
+# best-placed club of that association's top division that has not reached the league phase by another route.
+# List the top-division profile of each benefited association, for example (competition_ids.PREMIER_LEAGUE,).
+# Empty means that no association has the spot. The extra place follows the profile's last direct league-phase
+# place; the later UEFA table places, and the cup berths that precede them, move down by one.
+# The spot only applies once the season completion ratio reaches the minimum below (inclusive); before that
+# the profile keeps its base places.
+# ---------------------------------------------------------------------------
+UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS: tuple[CompetitionIdentity, ...] = (competition_ids.PREMIER_LEAGUE, competition_ids.LALIGA)
+UEFA_EPS_MIN_SEASON_COMPLETION_RATIO = 0.85
+
 
 def create_phase_qualification_rule(
     start: int | None = None,
@@ -182,6 +197,77 @@ def create_tournament_berth(
         reallocate_to_table=reallocate_to_table,
         sources=sources,
     )
+
+
+def _is_direct_champions_league_place(rule: ObjectiveRule) -> bool:
+    destination = rule.qualification_destination
+    return (
+        rule.objective_type == ObjectiveType.COMPETITION_QUALIFICATION
+        and rule.status == RuleStatus.CONFIGURED
+        and rule.rank_selection.selection_method == SelectionMethod.RANK_RANGE
+        and rule.rank_selection.ranking_scope == RankingScope.GLOBAL
+        and destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE
+        and destination.destination_phase == DestinationPhase.LEAGUE_PHASE
+    )
+
+
+def _with_european_performance_spot(rules: CompetitionRules) -> CompetitionRules:
+    """Add one direct Champions League league-phase place after the profile's last one."""
+    objectives = rules.objectives or ()
+    last = max((i for i, rule in enumerate(objectives) if _is_direct_champions_league_place(rule)), default=None)
+    if last is None:
+        raise ValueError("a European Performance Spot needs a direct Champions League league-phase objective")
+    spot_rank = objectives[last].rank_selection.rank_end + 1
+    spot = create_competition_qualification_rule(
+        start=spot_rank,
+        end=spot_rank,
+        path=QualificationPath.DIRECT,
+        destination_phase=DestinationPhase.LEAGUE_PHASE,
+        destination_competition_identity=competition_ids.UEFA_CHAMPIONS_LEAGUE,
+        note="UEFA European Performance Spot: best-placed club without a league-phase place.",
+    )
+
+    def moved_down(rule: ObjectiveRule) -> ObjectiveRule:
+        selection = rule.rank_selection
+        if rule.objective_type != ObjectiveType.COMPETITION_QUALIFICATION or (selection.rank_start or 0) < spot_rank:
+            return rule
+        return replace(rule, rank_selection=replace(
+            selection,
+            rank_start=selection.rank_start + 1,
+            rank_end=selection.rank_end + 1,
+            reference_rank=None if selection.reference_rank is None else selection.reference_rank + 1,
+        ))
+
+    sources = rules.qualification_sources
+    if sources is not None:
+        sources = replace(sources, tournament_berths=tuple(
+            replace(berth, before_table_slot=berth.before_table_slot + 1)
+            if berth.before_table_slot is not None and berth.before_table_slot >= spot_rank else berth
+            for berth in sources.tournament_berths
+        ))
+    return replace(
+        rules,
+        objectives=(*objectives[:last + 1], spot, *map(moved_down, objectives[last + 1:])),
+        qualification_sources=sources,
+    )
+
+
+def apply_european_performance_spot(
+    identity: CompetitionIdentity,
+    rules: CompetitionRules,
+    season_completion_ratio: float | None,
+) -> CompetitionRules:
+    """The profile with its EPS place, if the federation has one and enough of the season is played.
+
+    An unknown ratio (unknown season format) never applies the spot.
+    """
+    if (
+        identity not in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS
+        or season_completion_ratio is None
+        or season_completion_ratio < UEFA_EPS_MIN_SEASON_COMPLETION_RATIO
+    ):
+        return rules
+    return _with_european_performance_spot(rules)
 
 
 # One current profile per provider tournament identity.
@@ -1333,6 +1419,18 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
         note="PFF publishes ten participants for 2026/27; regular-season duration, phase boundaries and international allocations remain unconfirmed.",
     ),
 })
+
+
+def _validate_eps_federations() -> None:
+    """Reject a misconfigured federation at import, not in the middle of a pipeline run."""
+    for identity in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS:
+        rules = COMPETITION_PROFILES.get(identity)
+        if rules is None:
+            raise ValueError(f"UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS has no profile for {identity}")
+        _with_european_performance_spot(rules)
+
+
+_validate_eps_federations()
 
 
 def get_competition_profile(identity: CompetitionIdentity | None) -> CompetitionRules | None:

@@ -96,7 +96,7 @@ def _without_nhl_odd_games(names, records):
     return [m for i, m in enumerate(records) if i not in excluded]
 
 
-CLOSING_PROJECTION_PERCENT = 85
+CLOSING_PROJECTION_PERCENT = 100
 
 
 def select_standings_policy(games_played_by_team, *, number_of_teams, games_per_team):

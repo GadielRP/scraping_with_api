@@ -140,14 +140,15 @@ _ROUND_ROBIN_PAIRS = (
 
 
 def _closing_threshold_rows():
-    """19 matches among 4 clubs; the last two share one start, 17 played before it.
+    """20 matches among 4 clubs; matches 18 and 19 share one start, 17 played before it.
 
     With 4 clubs and 10 games per club (40 expected club-games), 16 matches are 80 %,
-    17 matches are exactly 85 % and 19 are 95 %.
+    17 matches are 85 %, 19 are 95 % and only all 20 complete the season.
     """
+    start_days = (*range(18), 17, 18)
     rows = [
-        _make_row(index + 1, index if index < 18 else 17, *_ROUND_ROBIN_PAIRS[index % 6], 2, 1, "1")
-        for index in range(19)
+        _make_row(index + 1, start_days[index], *_ROUND_ROBIN_PAIRS[index % 6], 2, 1, "1")
+        for index in range(20)
     ]
     return rows
 
@@ -168,9 +169,10 @@ def test_timeline_selects_policy_per_cutoff_and_matches_individual_bundles(monke
         return (SEASON_START + timedelta(days=offset)).timestamp()
 
     # Cutoff semantics are ``starts_at < cutoff``: day 16 sees 16 matches (80 %), day 17 sees 17
-    # (exactly 85 %, inclusive) and day 18 also sees the two matches that share day 17 (19, 95 %).
-    cutoffs = {day(16): ("in_season", 32 / 40), day(17): ("closing_projection", 34 / 40),
-               day(18): ("closing_projection", 38 / 40)}
+    # (85 %), day 18 also sees the two matches that share day 17 (19, 95 %) and day 19 sees all 20.
+    # Only the complete season uses the closing sequence.
+    cutoffs = {day(16): ("in_season", 32 / 40), day(17): ("in_season", 34 / 40),
+               day(18): ("in_season", 38 / 40), day(19): ("closing_projection", 40 / 40)}
 
     timeline = se.HistoricalStandingsCalculator().calculate_standings_timeline(
         SEASON_ID, cutoffs, "Basketball", competition_id=174,

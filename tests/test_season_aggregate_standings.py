@@ -88,7 +88,7 @@ def test_annual_table_uses_exact_editions_regular_round_and_cutoff(season_data):
 
     assert len(interim.standings) == 2
     assert {row.points for row in interim.standings} == {1}
-    # One of four expected club-games is below 85 %: the in-season order (GD, GF) shares the place
+    # One of four expected club-games is below 100 %: the in-season order (GD, GF) shares the place
     # and never reaches the annual Fair Play.
     assert {row.ranking_reason for row in interim.standings} == {None}
     assert {row.rank for row in interim.standings} == {1}

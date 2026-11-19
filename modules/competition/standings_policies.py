@@ -1,7 +1,7 @@
 """Configured standings orders used by current competition profiles.
 
 Each policy declares the sequence used in season (the published table) and the one
-used from the 85 % closing projection, which approximates the final classification.
+used once the whole season is played (100 %), which defines the final classification.
 Metrics are evaluated by standings_rules, not by the catalogue. An unavailable step
 records an actual data/implementation limit or an official resolution at the exact
 point where it would apply; later steps are only declared when they can be reached.
@@ -22,10 +22,14 @@ from .rule_terms import (
 )
 
 
-def _standings(name, primary_metric, in_season, *, closing=None, **options):
-    """Policy whose closing sequence repeats the in-season one unless ``closing`` is given."""
+# ``closing=SAME_AS_IN_SEASON`` declares a policy whose final order repeats the in-season one.
+SAME_AS_IN_SEASON = object()
+
+
+def _standings(name, primary_metric, *, in_season, closing, **options):
+    """Policy with both sequences declared: ``in_season`` (partial table) and ``closing`` (complete season)."""
     return StandingsRules(
-        name, primary_metric, in_season, in_season if closing is None else closing, **options,
+        name, primary_metric, in_season, in_season if closing is SAME_AS_IN_SEASON else closing, **options,
     )
 
 
@@ -57,18 +61,20 @@ _LALIGA_HEAD_TO_HEAD = (
     Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_GOAL_DIFF), meetings=2, only_multiple=True, reapply=True),
 )
 LALIGA = _standings(
-    "LALIGA", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION,),
+    "LALIGA", StandingsMetric.POINTS,
+    in_season=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
     closing=(
         *map(_use_in_season_if_incomplete, _LALIGA_HEAD_TO_HEAD),
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, FAIR_PLAY_CRITERION,
     ),
     restart_sequence=RestartSequence.PAIR_AFTER_REAPPLY,
     fair_play_weights=((FairPlayMetric.STANDALONE_YELLOW_CARDS, 1), (FairPlayMetric.SECOND_YELLOW_DISMISSALS, 2), (FairPlayMetric.DIRECT_RED_CARDS, 3)),
-    note="In season: published table (points, goal difference). Closing: RFEF art. 10 with internal card-based fair play; pending when sanctions are missing.",
+    note="In season: published table (points, goal difference, goals scored). Closing: RFEF art. 10 with internal card-based fair play; pending when sanctions are missing.",
 )
 
 SERIE_A = _standings(
-    "SERIE_A", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION,),
+    "SERIE_A", StandingsMetric.POINTS,
+    in_season=(GOAL_DIFFERENCE_CRITERION,),
     closing=(
         _use_in_season_if_incomplete(replace(HEAD_TO_HEAD_POINTS_AND_GOAL_DIFFERENCE, pending_across_boundaries=True)),
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, OFFICIAL_DRAW_PENDING,
@@ -77,7 +83,8 @@ SERIE_A = _standings(
 )
 
 PREMIER_LEAGUE = _standings(
-    "PREMIER_LEAGUE", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
+    "PREMIER_LEAGUE", StandingsMetric.POINTS,
+    in_season=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
     closing=(
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
         _use_in_season_if_incomplete(
@@ -89,11 +96,8 @@ PREMIER_LEAGUE = _standings(
 )
 
 BUNDESLIGA = _standings(
-    "BUNDESLIGA", StandingsMetric.POINTS, (
-        GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
-        Criterion((RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_AWAY_GOALS), meetings=2, incomplete_meetings_action=IncompleteMeetingsAction.SHARE_POSITION),
-        _metric_criterion(RankingMetric.AWAY_GOALS),
-    ),
+    "BUNDESLIGA", StandingsMetric.POINTS,
+    in_season=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
     closing=(
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
         Criterion((RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_AWAY_GOALS), meetings=2, incomplete_meetings_action=IncompleteMeetingsAction.SHARE_POSITION),
@@ -106,14 +110,15 @@ _LIGUE_1_IN_SEASON = (
     WINS_CRITERION, _metric_criterion(RankingMetric.AWAY_WINS), FAIR_PLAY_CRITERION,
 )
 LIGUE_1 = _standings(
-    "LIGUE_1", StandingsMetric.POINTS, _LIGUE_1_IN_SEASON,
+    "LIGUE_1", StandingsMetric.POINTS,
+    in_season=_LIGUE_1_IN_SEASON,
     closing=(*_LIGUE_1_IN_SEASON, OFFICIAL_DRAW_PENDING),
     fair_play_weights=((FairPlayMetric.YELLOW_CARDS, 1), (FairPlayMetric.RED_CARDS, 3)),
     note="LFP art. 518 TER: without both legs the head-to-head is skipped; fewer disciplinary points wins.",
 )
 
 LIGA_PORTUGAL = _standings(
-    "LIGA_PORTUGAL", StandingsMetric.POINTS, (
+    "LIGA_PORTUGAL", StandingsMetric.POINTS, in_season=(
         Criterion((RankingMetric.H2H_POINTS,)), Criterion((RankingMetric.H2H_GOAL_DIFF,), meetings=2),
         GOAL_DIFFERENCE_CRITERION, WINS_CRITERION, GOALS_FOR_CRITERION,
     ),
@@ -126,7 +131,7 @@ LIGA_PORTUGAL = _standings(
 
 _EREDIVISIE_HEAD_TO_HEAD = Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_GOALS_FOR, RankingMetric.H2H_AWAY_GOALS))
 EREDIVISIE = _standings(
-    "EREDIVISIE", StandingsMetric.POINTS, (
+    "EREDIVISIE", StandingsMetric.POINTS, in_season=(
         _metric_criterion(RankingMetric.NEGATIVE_GAMES_PLAYED), GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
         _EREDIVISIE_HEAD_TO_HEAD, _metric_criterion(RankingMetric.ALPHABETICAL_ORDER),
     ),
@@ -139,7 +144,7 @@ EREDIVISIE = _standings(
 )
 
 SAUDI_PRO_LEAGUE = _standings(
-    "SAUDI_PRO_LEAGUE", StandingsMetric.POINTS, (
+    "SAUDI_PRO_LEAGUE", StandingsMetric.POINTS, in_season=(
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, _unavailable_criterion(RankingIssue.MISSING_PREVIOUS_SEASON_RANK),
     ),
     closing=(
@@ -151,12 +156,12 @@ SAUDI_PRO_LEAGUE = _standings(
     fair_play_weights=((FairPlayMetric.STANDALONE_YELLOW_CARDS, 1),
                        (FairPlayMetric.SECOND_YELLOW_DISMISSALS, 3),
                        (FairPlayMetric.DIRECT_RED_CARDS, 3)),
-    note="SPL §9: the closing order is adopted at 85 %, ahead of the official transition. The extra-time or penalty step applies only across a sporting boundary. Card weights: yellow 1, second-yellow dismissal 3, direct red 3 (2025/26 Appendix 2).",
+    note="SPL §9: the closing order applies once the whole season is played. The extra-time or penalty step applies only across a sporting boundary. Card weights: yellow 1, second-yellow dismissal 3, direct red 3 (2025/26 Appendix 2).",
 )
 
 _BRASILEIRAO_IN_SEASON = (WINS_CRITERION, GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION)
 BRASILEIRAO = _standings(
-    "BRASILEIRAO", StandingsMetric.POINTS, _BRASILEIRAO_IN_SEASON,
+    "BRASILEIRAO", StandingsMetric.POINTS, in_season=_BRASILEIRAO_IN_SEASON,
     closing=(
         *_BRASILEIRAO_IN_SEASON,
         _use_in_season_if_incomplete(Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_GOAL_DIFF), meetings=2, only_two=True)),
@@ -166,7 +171,7 @@ BRASILEIRAO = _standings(
 )
 
 LIGA_MX_CLAUSURA = _standings(
-    "LIGA_MX_CLAUSURA", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION,),
+    "LIGA_MX_CLAUSURA", StandingsMetric.POINTS, in_season=(GOAL_DIFFERENCE_CRITERION,),
     closing=(
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, _metric_criterion(RankingMetric.BALANCED_AWAY_GOALS),
         FAIR_PLAY_CRITERION, _unavailable_criterion(RankingIssue.MISSING_MULTISEASON_QUOTIENT),
@@ -196,7 +201,7 @@ _ARGENTINA_FAIR_PLAY_WEIGHTS = (
     (FairPlayMetric.STANDALONE_YELLOW_CARDS, 1), (FairPlayMetric.SECOND_YELLOW_DISMISSALS, 4), (FairPlayMetric.DIRECT_RED_CARDS, 5),
 )
 ARGENTINA_ZONES = _standings(
-    "ARGENTINA_ZONES", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
+    "ARGENTINA_ZONES", StandingsMetric.POINTS, in_season=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
     closing=(
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
         Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_GOALS_FOR), reapply=True),
@@ -207,7 +212,7 @@ ARGENTINA_ZONES = _standings(
 )
 
 ARGENTINA_ANNUAL = _standings(
-    "ARGENTINA_ANNUAL", StandingsMetric.POINTS, (GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
+    "ARGENTINA_ANNUAL", StandingsMetric.POINTS, in_season=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION),
     closing=(GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, *_ARGENTINA_FAIR_PLAY, OFFICIAL_DRAW_PENDING),
     fair_play_weights=_ARGENTINA_FAIR_PLAY_WEIGHTS,
     require_complete_fair_play=True,
@@ -216,7 +221,7 @@ ARGENTINA_ANNUAL = _standings(
 
 _MLS_IN_SEASON = (WINS_CRITERION, GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION)
 MLS = _standings(
-    "MLS", StandingsMetric.POINTS, _MLS_IN_SEASON,
+    "MLS", StandingsMetric.POINTS, in_season=_MLS_IN_SEASON,
     closing=(
         *_MLS_IN_SEASON, _metric_criterion(RankingMetric.NEGATIVE_FAIR_PLAY_POINTS_PER_GAME),
         _metric_criterion(RankingMetric.AWAY_GOAL_DIFF), _metric_criterion(RankingMetric.AWAY_GOALS),
@@ -234,18 +239,22 @@ _SHL_IN_SEASON = (
     Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_GOALS_FOR)),
 )
 SHL = _standings(
-    "SHL", StandingsMetric.POINTS, _SHL_IN_SEASON,
+    "SHL", StandingsMetric.POINTS, in_season=_SHL_IN_SEASON,
     closing=(*_SHL_IN_SEASON, OFFICIAL_TIEBREAK_PENDING), record_percentage=True,
 )
 
-NHL = _standings("NHL", StandingsMetric.POINTS, (
-    _metric_criterion(RankingMetric.NEGATIVE_GAMES_PLAYED), _metric_criterion(RankingMetric.REGULATION_WINS),
-    _metric_criterion(RankingMetric.REGULATION_OVERTIME_WINS), WINS_CRITERION, _metric_criterion(RankingMetric.NHL_H2H),
-    GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
-), record_percentage=True)
+NHL = _standings(
+    "NHL", StandingsMetric.POINTS, in_season=(
+        _metric_criterion(RankingMetric.NEGATIVE_GAMES_PLAYED), _metric_criterion(RankingMetric.REGULATION_WINS),
+        _metric_criterion(RankingMetric.REGULATION_OVERTIME_WINS), WINS_CRITERION, _metric_criterion(RankingMetric.NHL_H2H),
+        GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
+    ),
+    closing=SAME_AS_IN_SEASON,
+    record_percentage=True,
+)
 
 AHL = _standings(
-    "AHL", StandingsMetric.POINTS, (_unavailable_criterion(RankingIssue.AHL_IN_SEASON_TIEBREAK_UNCONFIRMED),),
+    "AHL", StandingsMetric.POINTS, in_season=(_unavailable_criterion(RankingIssue.AHL_IN_SEASON_TIEBREAK_UNCONFIRMED),),
     closing=(
         _metric_criterion(RankingMetric.REGULATION_WINS), _metric_criterion(RankingMetric.REGULATION_OVERTIME_WINS), WINS_CRITERION,
         _metric_criterion(RankingMetric.AHL_H2H), GOAL_DIFFERENCE_CRITERION,
@@ -258,50 +267,56 @@ AHL = _standings(
 )
 
 EUROLEAGUE = _standings(
-    "EUROLEAGUE", StandingsMetric.WINS, (
+    "EUROLEAGUE", StandingsMetric.WINS, in_season=(
         _metric_criterion(RankingMetric.NEGATIVE_GAMES_PLAYED),
         Criterion((RankingMetric.H2H_WINS, RankingMetric.H2H_GOAL_DIFF), meetings=2, reapply=True),
         GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION, _metric_criterion(RankingMetric.GAME_SCORE_QUOTIENTS),
     ),
+    closing=SAME_AS_IN_SEASON,
     record_percentage=True, regulation_scores_only=True, restart_sequence=RestartSequence.COMPLETE_MEETINGS,
     note="Article 19: scores compared are the four regulation quarters; sanctions are not represented in match results and must be documented before they take precedence.",
 )
 
 NBA = _standings(
-    "NBA", StandingsMetric.WIN_PERCENTAGE, (Criterion((RankingMetric.H2H_WIN_PERCENTAGE,), only_two=True),),
+    "NBA", StandingsMetric.WIN_PERCENTAGE, in_season=(Criterion((RankingMetric.H2H_WIN_PERCENTAGE,), only_two=True),),
     closing=(_metric_criterion(RankingMetric.NBA_TIEBREAK),),
     record_percentage=True,
     note="In season only a two-team head-to-head breaks a tie. Closing: two-team H2H precedes division winner; multi-team ties reverse that order. No generic GD fallback.",
 )
 
 MLB = _standings(
-    "MLB", StandingsMetric.WIN_PERCENTAGE, (_metric_criterion(RankingMetric.MLB_IN_SEASON_TIEBREAK),),
+    "MLB", StandingsMetric.WIN_PERCENTAGE, in_season=(_metric_criterion(RankingMetric.MLB_IN_SEASON_TIEBREAK),),
     closing=(_metric_criterion(RankingMetric.MLB_TIEBREAK),),
     record_percentage=True,
     note="Two/three/four-club procedures. The closing step that goes back from the All-Star break is pending without the edition's official date.",
 )
 
 NFL = _standings(
-    "NFL", StandingsMetric.WIN_PERCENTAGE, (_metric_criterion(RankingMetric.NFL_IN_SEASON_TIEBREAK),),
+    "NFL", StandingsMetric.WIN_PERCENTAGE, in_season=(_metric_criterion(RankingMetric.NFL_IN_SEASON_TIEBREAK),),
     closing=(_metric_criterion(RankingMetric.NFL_TIEBREAK),),
     record_percentage=True,
     note="Division and multi-division procedures preserve division seeding and restart after each selected club. In season the branch stops at the common-game record; net touchdowns and official draws require additional data.",
 )
 
 CBA = _standings(
-    "CBA", StandingsMetric.POINTS, (_unavailable_criterion(RankingIssue.CURRENT_CBA_TIEBREAK_REGULATION_UNCONFIRMED),),
+    "CBA", StandingsMetric.POINTS, in_season=(_unavailable_criterion(RankingIssue.CURRENT_CBA_TIEBREAK_REGULATION_UNCONFIRMED),),
+    closing=SAME_AS_IN_SEASON,
     record_percentage=True, verified=False,
     note="Classification points: two per win, one per ordinary loss. Do not import NBA/EuroLeague tiebreaks or mistake a WCBA regulation for CBA.",
 )
 
 # Not tracked: retain basic ordering without claiming a verified current policy.
-LIIGA = _standings("LIIGA", StandingsMetric.POINTS, (
-    _metric_criterion(RankingMetric.REGULATION_WINS), GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
-    Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_REGULATION_WINS, RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_GOALS_FOR)),
-), record_percentage=True, verified=False,
-    note="Liiga competition rules section 27: after the overall criteria, compare H2H points, regulation wins, goal difference and goals scored. Full edition verification remains pending.")
+LIIGA = _standings(
+    "LIIGA", StandingsMetric.POINTS, in_season=(
+        _metric_criterion(RankingMetric.REGULATION_WINS), GOAL_DIFFERENCE_CRITERION, GOALS_FOR_CRITERION,
+        Criterion((RankingMetric.H2H_POINTS, RankingMetric.H2H_REGULATION_WINS, RankingMetric.H2H_GOAL_DIFF, RankingMetric.H2H_GOALS_FOR)),
+    ),
+    closing=SAME_AS_IN_SEASON,
+    record_percentage=True, verified=False,
+    note="Liiga competition rules section 27: after the overall criteria, compare H2H points, regulation wins, goal difference and goals scored. Full edition verification remains pending.",
+)
 WNBA = _standings(
-    "WNBA", StandingsMetric.WIN_PERCENTAGE, (Criterion((RankingMetric.H2H_WIN_PERCENTAGE,)),),
+    "WNBA", StandingsMetric.WIN_PERCENTAGE, in_season=(Criterion((RankingMetric.H2H_WIN_PERCENTAGE,)),),
     closing=(
         Criterion((RankingMetric.H2H_WIN_PERCENTAGE,), reapply=True),
         _unavailable_criterion(RankingIssue.MISSING_FINAL_RECORD_VS_WINNING_TEAMS),
@@ -310,5 +325,6 @@ WNBA = _standings(
     note="Closing: after head-to-head the record against clubs finishing .500 or better needs the final records; point difference in head-to-head games and overall point difference follow it.",
 )
 PFL = _standings(
-    "PFL", StandingsMetric.POINTS, (_unavailable_criterion(RankingIssue.PFL_TIEBREAK_ORDER_UNCONFIRMED),), verified=False,
+    "PFL", StandingsMetric.POINTS, in_season=(_unavailable_criterion(RankingIssue.PFL_TIEBREAK_ORDER_UNCONFIRMED),),
+    closing=SAME_AS_IN_SEASON, verified=False,
 )
