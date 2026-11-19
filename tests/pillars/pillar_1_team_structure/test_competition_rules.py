@@ -12,7 +12,6 @@ from modules.competition.rule_terms import (
     AggregationScope, DestinationPhase, GroupingMethod, ObjectiveType,
     QualificationPath, RelegationPath, RankingScope, RuleStatus, SelectionMethod, StandingsMetric,
 )
-from modules.competition.competition_history_config import get_competition_history_config
 from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDENTITIES
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import (
     resolve_p1_competition_context,
@@ -63,9 +62,6 @@ def test_sporting_profiles_and_operational_allowlist_remain_independent():
         assert isinstance(rules.grouping_method, GroupingMethod)
         assert isinstance(rules.standings.primary_metric, StandingsMetric)
         assert rules.reference_season in {"2026", "2027", "2026/27"}
-    assert get_competition_history_config(238, 52).code == "liga_portugal"
-    assert get_competition_history_config(155, 143625).code.endswith("argentina_apertura")
-    assert get_competition_history_config(155, 156467).code.endswith("argentina_clausura")
 
 
 @pytest.mark.parametrize("code,teams,games,safe", [

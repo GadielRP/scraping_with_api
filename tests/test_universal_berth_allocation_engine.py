@@ -11,7 +11,8 @@ from modules.competition.berth_allocation_engine.models import (
 )
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
 from modules.competition.final_outcome import TournamentFinalEvidence, ParticipantIdentity
-from modules.competition.rule_terms import DestinationPhase, QualificationPath, SelectionMethod
+from modules.competition.rule_terms import DestinationPhase, QualificationPath, RankingScope, SelectionMethod
+from modules.competition.standings_rows import TableRow
 from modules.competition.competitive_rules import RankSelection
 from modules.competition.season_aggregate import SeasonStanding
 
@@ -129,6 +130,30 @@ def test_cup_winner_already_qualified_reallocates_to_table():
     assert outcome.berths[1].participant.source_participant_id == 2
     assert outcome.berths[4].participant.source_participant_id == 5
     assert outcome.berths[5].participant.source_participant_id == 6
+
+
+def test_scoped_rank_ranges_keep_their_destination_before_overall_remaining_places():
+    standings = [make_standing(club_id, rank=club_id, points=100 - club_id) for club_id in range(1, 7)]
+    rules = QualificationRules(table_berths=(
+        TableBerthRule(UCL_DEST, 2, RankSelection(
+            rank_start=2, rank_end=2, ranking_scope=RankingScope.GROUP, places=2,
+        )),
+        TableBerthRule(UEL_DEST, 2),
+    ))
+    group_rows = tuple(
+        TableRow(row.participant, rank, ranking_order=rank, ranking_group=group)
+        for group, members in (("north", standings[:3]), ("south", standings[3:]))
+        for rank, row in enumerate(members, start=1)
+    )
+
+    outcome = allocate_berths(
+        rules, standings, season_year=2026, profile_identity=CompetitionIdentity(999, source="test"),
+        scoped_standings={RankingScope.GROUP: group_rows},
+    )
+
+    assert [berth.participant.source_participant_id for berth in outcome.berths] == [2, 5, 1, 3]
+    assert [berth.destination for berth in outcome.berths] == [UCL_DEST, UCL_DEST, UEL_DEST, UEL_DEST]
+    assert [berth.table_rank for berth in outcome.berths] == [2, 5, 1, 3]
 
 
 def test_relegation_direct_and_average():

@@ -18,6 +18,7 @@ from modules.competition.berth_allocation_engine.models import (
     BerthAllocation,
     BerthResolution,
     QualificationRules,
+    TableBerthRule,
     TournamentBerthRule,
 )
 from modules.competition.final_outcome import TournamentFinalEvidence, ParticipantIdentity
@@ -27,8 +28,10 @@ from modules.competition.rule_terms import (
     DestinationRound,
     Finalist,
     RankingIssue,
+    RankingScope,
     TournamentFinalStatus,
 )
+from modules.competition.standings_rows import TableRow
 
 
 class StandingRow(Protocol):
@@ -90,6 +93,7 @@ def allocate_berths(
     season_year: int,
     profile_identity: CompetitionIdentity,
     tournament_evidence: Sequence[TournamentFinalEvidence] = (),
+    scoped_standings: Mapping[RankingScope, Sequence[TableRow]] | None = None,
     bracket_eliminations: Mapping[CompetitionIdentity, Mapping[str, tuple[ParticipantIdentity, ...]]] | None = None,
     excluded_participants: Set[ParticipantIdentity] = frozenset(),
     next_season_roster: Set[ParticipantIdentity] | None = None,
@@ -140,6 +144,17 @@ def allocate_berths(
     earlier_berth_pending = False
     ranked_candidates = iter(row for row in standings
                              if row.participant in available and row.participant not in liga_mx_finalists)
+    scoped_candidates = {}
+    for table_rule in rules.table_berths:
+        selection = table_rule.rank_selection
+        if selection is None or selection.ranking_scope == RankingScope.GLOBAL:
+            continue
+        scoped_candidates[table_rule] = tuple(
+            row for row in (scoped_standings or {}).get(selection.ranking_scope, ())
+            if selection.rank_start <= row.ranking_order <= selection.rank_end
+            and (selection.ranking_group is None
+                 or row.ranking_group == selection.ranking_group.strip().casefold())
+        )
     table_pending_issue = None
 
     def record_berth(destination, club, *, source, berth_type, resolution, issue=None, final_evidence=None):
@@ -159,25 +174,34 @@ def allocate_berths(
             tournament_final_evidence=final_evidence,
         ))
 
-    def award_from_table(destination, *, source, berth_type, issue=None, final_evidence=None):
-        """Give the berth to the best remaining ranked club, or leave it pending."""
+    def award_from_table(destination, *, source, berth_type, table_rule=None, issue=None, final_evidence=None):
+        """Select by the rule's scope, then pass duplicate berths to the overall table."""
         nonlocal table_pending_issue
         if table_pending_issue is None:
-            row = next(ranked_candidates, None)
-            if row is None:
-                table_pending_issue = BerthIssue.INSUFFICIENT_ELIGIBLE_PARTICIPANTS
-            elif row.rank is None:
-                table_pending_issue = row.ranking_reason or BerthIssue.RANKING_UNRESOLVED
+            selection = table_rule.rank_selection if table_rule is not None else None
+            if (selection is not None and selection.ranking_scope != RankingScope.GLOBAL
+                    and selection.ranking_scope not in (scoped_standings or {})):
+                table_pending_issue = RankingIssue.MISSING_GROUP_MEMBERSHIP
             else:
-                record_berth(destination, row.participant, source=source, berth_type=berth_type, issue=issue, final_evidence=final_evidence,
-                             resolution=BerthResolution.PROJECTED)
-                return
+                row = next((candidate for candidate in scoped_candidates.get(table_rule, ())
+                            if candidate.participant in available
+                            and candidate.participant not in liga_mx_finalists), None)
+                if row is None:
+                    row = next(ranked_candidates, None)
+                if row is None:
+                    table_pending_issue = BerthIssue.INSUFFICIENT_ELIGIBLE_PARTICIPANTS
+                elif row.rank is None:
+                    table_pending_issue = row.ranking_reason or BerthIssue.RANKING_UNRESOLVED
+                else:
+                    record_berth(destination, row.participant, source=source, berth_type=berth_type, issue=issue, final_evidence=final_evidence,
+                                 resolution=BerthResolution.PROJECTED)
+                    return
         record_berth(destination, None, source=source, berth_type=berth_type, resolution=BerthResolution.UNRESOLVED,
                      issue=table_pending_issue, final_evidence=final_evidence)
 
     for destination, rule in rules.ordered_berths:
-        if rule is None:
-            award_from_table(destination, source=profile_identity, berth_type=BerthType.TABLE)
+        if isinstance(rule, TableBerthRule):
+            award_from_table(destination, source=profile_identity, berth_type=BerthType.TABLE, table_rule=rule)
             continue
         evidence = evidence_by_comp.get(rule.competition)
         # An absent final adds nothing beyond the berth's issue.

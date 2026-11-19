@@ -20,6 +20,7 @@ from modules.pillars.common import (
     classify_strength,
 )
 from modules.competition.competitive_rules import CompetitionRules, ObjectiveRule
+from modules.competition.standings_rows import standing_group
 from modules.competition.rule_terms import (
     AggregationScope, ObjectiveType, RelegationPath, RankingScope,
     RuleStatus, SelectionMethod, StandingsMetric,
@@ -265,23 +266,13 @@ def _scope_standings(
 ) -> Tuple[Any, Optional[str]]:
     if rule.rank_selection.ranking_scope == RankingScope.GLOBAL:
         return current_standings, None
-    keys = {
-        RankingScope.GROUP: ("group",),
-        RankingScope.CONFERENCE: ("conference", "group"),
-        RankingScope.DIVISION: ("division",),
-        RankingScope.LEAGUE: ("league", "group"),
-    }[rule.rank_selection.ranking_scope]
-    def group_value(record: Any) -> Optional[str]:
-        if not isinstance(record, dict):
-            return None
-        return next((_normalize_name(record[key]) for key in keys if record.get(key)), None)
-    group = group_value(standing)
-    if group is None or group == "unknown":
+    group = standing_group(standing, rule.rank_selection.ranking_scope)
+    if group is None:
         return None, "MISSING_RANKING_GROUP"
     if rule.rank_selection.ranking_group is not None and group != _normalize_name(rule.rank_selection.ranking_group):
         return None, "OTHER_RANKING_GROUP"
     scoped = {key: record for key, record in _standings_items(current_standings)
-              if group_value(record) == group}
+              if standing_group(record, rule.rank_selection.ranking_scope) == group}
     if rule.rank_selection.group_size is not None and (
         _count_valid_standings(scoped) != rule.rank_selection.group_size
         or any((_extract_rank(record) or 0) > rule.rank_selection.group_size for record in scoped.values())

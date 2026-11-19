@@ -4,7 +4,7 @@ from modules.competition.competition_ids import NBA_CUP_FINAL
 
 
 SPECIFIC_KNOCKOUT_ROUNDS = frozenset({
-    'final', 'semifinal', 'quarterfinal', 'round_of_16', 'round_of_32', 'round_of_64',
+    'final', 'semifinal', 'quarterfinal', 'round_of_16', 'round_of_32', 'round_of_64', 'match_for_3rd_place',
 })
 KNOCKOUT_ROUNDS = ('knockouts/playoffs', *sorted(SPECIFIC_KNOCKOUT_ROUNDS))
 

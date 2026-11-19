@@ -93,7 +93,7 @@ COPA_ARGENTINA: Final[CompetitionIdentity] = CompetitionIdentity(1024, 273, "sof
 COUPE_DE_FRANCE: Final[CompetitionIdentity] = CompetitionIdentity(335, 77, "sofascore", competition_name="Coupe de France")  # competition_id=236; Fútbol masculino
 TACA_DE_PORTUGAL: Final[CompetitionIdentity] = CompetitionIdentity(336, 207, "sofascore", competition_name="Taça de Portugal")  # competition_id=374; Fútbol masculino
 KNVB_BEKER: Final[CompetitionIdentity] = CompetitionIdentity(330, 121, "sofascore", competition_name="KNVB Beker")  # competition_id=390
-US_OPEN_CUP: Final[CompetitionIdentity] = CompetitionIdentity(495, 6814, "sofascore")  # competition_id=3661; Fútbol; no la homónima de tenis.
+US_OPEN_CUP: Final[CompetitionIdentity] = CompetitionIdentity(495, 6814, "sofascore", competition_name="US Open Cup")  # competition_id=3661; Fútbol; no la homónima de tenis.
 SAUDI_KINGS_CUP: Final[CompetitionIdentity] = CompetitionIdentity(2058, 42021, "sofascore", competition_name="King's Cup")  # competition_id=681; FUTBOL MASCULINO
 LIGA_MX_CAMPEON_DE_CAMPEONES: Final[CompetitionIdentity] = CompetitionIdentity(2103, 54197, "sofascore", competition_name="Campeón de Campeones")  # competition_id=7935
 LEAGUES_CUP_GROUP_STAGE: Final[CompetitionIdentity] = CompetitionIdentity(13783, 146257, "sofascore")  # competition_id=8807; Fútbol; no la homónima de tenis.

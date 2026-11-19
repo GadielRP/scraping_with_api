@@ -2,9 +2,11 @@
 
 ## Responsabilidades y flujo
 
-`competitive_rules.py` define los tipos y la puntuación compartida; `standings_policies.py` declara los criterios de clasificación por competición; `competition_profiles.py` asocia cada ID canónico con esas reglas, tamaño, duración y objetivos; `competition_history_config.py` conserva exclusivamente las identidades del proveedor y los ámbitos históricos recolectados. La lista operativa continúa en `tracked_competitions.py`.
+`competition_ids.py` define las identidades del proveedor; `tracked_competitions.py` decide qué competiciones procesa el flujo principal; `competition_profiles.py` configura tamaño, duración, puntuación, standings y objetivos. `competitive_rules.py` define los tipos y la puntuación compartida, y `standings_policies.py` declara los criterios de clasificación por competición.
 
 P1 resuelve el perfil una vez en `_prepare_p1`, antes del historial. `CompetitionContext` transporta los metadatos del perfil y `competitive_rules`. La construcción de tablas consulta ese mismo perfil por el ID canónico del evento, sin inferencia por deporte, nombres o temporada. El historial sigue seleccionando resultados mediante sus IDs de temporada y fechas; esos IDs no eligen otra regla deportiva.
+
+Las competiciones con perfil y temporada utilizan el servicio de historial de DB, que calcula las tablas antes de cada partido y excluye el evento analizado y los partidos posteriores. No existe una lista adicional de competiciones recolectadas para habilitar esa ruta. Las solicitudes sin perfil o sin temporada conservan la consulta de historial por API.
 
 `reference_season` y los destinos conservan información descriptiva. Se aplica el perfil vigente incluso a eventos históricos. Un ID desconocido no recibe una configuración alternativa desde la base o la API: el contexto queda sin metadatos deportivos y el cálculo de tablas informa del perfil ausente.
 

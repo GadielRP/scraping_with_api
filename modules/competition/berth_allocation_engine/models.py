@@ -13,6 +13,7 @@ from modules.competition.rule_terms import (
 )
 
 if TYPE_CHECKING:
+    from modules.competition.competitive_rules import RankSelection
     from modules.competition.season_aggregate import SeasonStanding
 
 
@@ -64,9 +65,10 @@ class TournamentBerthRule:
 
 @dataclass(frozen=True, slots=True)
 class TableBerthRule:
-    """Berths awarded sequentially to the highest-ranking eligible clubs in standings."""
+    """Table berths retaining the objective's ranking scope and selection criteria."""
     destination: QualificationDestination
     places: int
+    rank_selection: RankSelection | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,9 +79,9 @@ class QualificationRules:
     table_berths: tuple[TableBerthRule, ...] = ()
 
     @property
-    def ordered_berths(self) -> tuple[tuple[QualificationDestination, TournamentBerthRule | None], ...]:
-        """Every berth as (destination, tournament rule or None) in allocation order."""
-        table = [rule.destination for rule in self.table_berths for _ in range(rule.places)]
+    def ordered_berths(self) -> tuple[tuple[QualificationDestination, TournamentBerthRule | TableBerthRule], ...]:
+        """Every berth and its source rule in allocation order."""
+        table = [rule for rule in self.table_berths for _ in range(rule.places)]
         ordered = []
         for position in range(1, len(table) + 2):
             ordered.extend(
@@ -87,7 +89,8 @@ class QualificationRules:
                 if (rule.before_table_slot is not None and min(rule.before_table_slot, len(table) + 1) == position)
             )
             if position <= len(table):
-                ordered.append((table[position - 1], None))
+                table_rule = table[position - 1]
+                ordered.append((table_rule.destination, table_rule))
         ordered.extend(
             (rule.destination, rule) for rule in self.tournament_berths
             if rule.before_table_slot is None

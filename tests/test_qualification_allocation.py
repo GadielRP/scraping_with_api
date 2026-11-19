@@ -1,6 +1,7 @@
 """Qualification berths: allocation from a profile, evidence gating and the M5 view."""
 
 from copy import deepcopy
+from contextlib import nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -132,6 +133,84 @@ def test_liga_mx_uses_annual_table_and_reassigns_duplicate_finalists():
     assert {b.participant for b in outcome.berths} == {identity(rank) for rank in range(1, 7)}
     assert [b.participant for b in outcome.berths if b.destination.destination_round == "ROUND_OF_16"] == [identity(1)]
     assert all(b.resolution is BerthResolution.PROJECTED for b in outcome.berths)
+
+
+@pytest.mark.parametrize("cup_winner,open_cup_finalists,expected_clubs", [
+    (None, None, [None, 1, 6, 3, 2, None]),
+    (1, None, [1, 6, 3, 2, 4, None]),
+    (9, None, [9, 1, 6, 3, 2, None]),
+    (9, (8, 7), [9, 1, 6, 3, 2, 8]),
+    (9, (1, 8), [9, 1, 6, 3, 2, 8]),
+    (9, (1, 6), [9, 1, 6, 3, 2, 4]),
+    (9, (99, 8), [9, 1, 6, 3, 2, 99]),
+])
+def test_mls_qualification_keeps_conference_leaders_and_reallocates_overlaps(
+    session, monkeypatch, cup_winner, open_cup_finalists, expected_clubs,
+):
+    from modules.alerts.matchup_streak_analysis.standings_engine import build_standings_snapshot
+
+    profile = COMPETITION_PROFILES[ids.MLS]
+    stats = {
+        f"Club {club}": dict(
+            participant_identity=asdict(identity(club)),
+            group="Eastern" if club <= 5 else "Western",
+            points=65 if club in (2, 3) else 75 - club * 5,
+            wins=20 if club == 3 else 19,
+            games_played=30,
+        )
+        for club in range(1, 11)
+    }
+    standings = build_standings_snapshot(stats, profile)
+    before = deepcopy(standings)
+    finals = () if cup_winner is None else (cup(cup_winner, ids.MLS_PLAYOFFS),)
+    if open_cup_finalists is not None:
+        champion, runner_up = open_cup_finalists
+        finals += (replace(cup(champion, ids.US_OPEN_CUP), away=identity(runner_up)),)
+    monkeypatch.setattr(qualification_preparation, "db_manager",
+                        SimpleNamespace(get_session=lambda: nullcontext(session)))
+    def read_finals(_session, competitions, season_year, *_args, **_kwargs):
+        assert competitions == (ids.MLS_PLAYOFFS, ids.US_OPEN_CUP)
+        assert season_year == 2026
+        return finals
+    monkeypatch.setattr(qualification_preparation, "read_tournament_finals", read_finals)
+    competition = replace(
+        _configured_event("laliga").competition,
+        source_unique_tournament_id=ids.MLS.source_unique_tournament_id,
+        source_tournament_id=ids.MLS.source_tournament_id,
+        canonical_name="MLS", display_name="MLS", competitive_rules=profile,
+    )
+    event = SimpleNamespace(event_id=1000, season_year=2026, starts_at=NOW)
+    outcome = qualification_preparation.prepare_qualification(
+        event, competition, SimpleNamespace(current_standings=standings), as_of=NOW,
+    ).berth_allocation
+
+    assert outcome.destination_season_year == 2027
+    assert [berth.participant.source_participant_id if berth.participant else None
+            for berth in outcome.berths] == expected_clubs
+    assert [berth.destination.destination_round for berth in outcome.berths] == [
+        "ROUND_OF_16", "ROUND_OF_32", "ROUND_OF_32", "ROUND_OF_32", "ROUND_OF_32", "ROUND_OF_32",
+    ]
+    assert all(berth.destination.destination_competition_identity == ids.CONCACAF_CHAMPIONS_CUP
+               for berth in outcome.berths)
+    assert next(berth for berth in outcome.berths if berth.participant == identity(6)).table_rank == 6
+    assert outcome.berths[0].resolution == (
+        BerthResolution.UNRESOLVED if cup_winner is None else BerthResolution.CONFIRMED
+    )
+    assert all(berth.resolution is BerthResolution.PROJECTED for berth in outcome.berths[1:5])
+    open_cup_berth = outcome.berths_by_source[ids.US_OPEN_CUP]
+    assert open_cup_berth.source.competition_name == "US Open Cup"
+    if open_cup_finalists is None:
+        assert open_cup_berth.resolution is BerthResolution.UNRESOLVED
+        assert open_cup_berth.issue == "final_absent"
+    elif open_cup_finalists == (1, 6):
+        assert open_cup_berth.resolution is BerthResolution.PROJECTED
+        assert open_cup_berth.issue == "tournament_winner_already_qualified"
+    elif open_cup_finalists[0] == 99:
+        assert open_cup_berth.table_rank is None
+    assert standings == before
+    assert profile.objectives[0].rank_selection.rank_end == 7
+    assert (profile.objectives[1].rank_selection.rank_start, profile.objectives[1].rank_selection.rank_end) == (8, 9)
+    assert all(rule.status == "CONFIGURED" for rule in profile.objectives)
 
 
 def test_premier_league_cups_share_berths_in_priority_order():

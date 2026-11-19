@@ -18,7 +18,8 @@ from infrastructure.persistence.models import Season
 from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
 from modules.competition.competition_profiles import get_competition_profile as get_profile_by_identity
-from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingStatus
+from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingScope, RankingStatus
+from modules.competition.standings_rows import standing_group
 from modules.events.result_availability import available_at
 from shared.temporal import from_unix_timestamp
 
@@ -27,7 +28,7 @@ from modules.competition.competitive_rules import CompetitionRules
 from modules.discipline.contracts import IncidentType
 from modules.discipline.policies import accumulate_football_fair_play
 from .historical_form_reporting import format_standings_table_for_telegram
-from .constants import get_team_group
+from modules.competition.competition_group_memberships import get_team_group
 from .standings_rules import normalize_result_subtype, rank_standings, select_standings_policy
 
 logger = logging.getLogger(__name__)
@@ -254,25 +255,30 @@ def _finalize_standings_snapshot(
         number_of_teams=profile.number_of_teams,
         games_per_team=profile.total_regular_season_games,
     )
-    return _build_standings_payload(
+    return build_standings_snapshot(
         finalized_stats, profile, match_records,
         season_completion_ratio=completion_ratio, standings_policy=standings_policy,
     )
 
 
-def _build_standings_payload(
+def build_standings_snapshot(
     team_stats: Dict[str, Dict[str, object]],
     profile: CompetitionRules,
     match_records: Optional[List[Dict[str, object]]] = None,
     *,
     season_completion_ratio: Optional[float] = None,
     standings_policy: str = "in_season",
+    ranking_scope: RankingScope | None = None,
 ) -> Dict[str, Dict]:
+    """Rank a snapshot by its profile grouping or an explicit objective scope."""
     standings: Dict[str, Dict] = {}
 
     grouped_teams: Dict[Optional[str], List[Tuple[str, Dict[str, object]]]] = {}
     for team_name, stats in team_stats.items():
-        group_name = None if profile.grouping_method == GroupingMethod.LEAGUE_WIDE else stats.get("group") or "UNKNOWN"
+        if ranking_scope is not None:
+            group_name = None if ranking_scope == RankingScope.GLOBAL else standing_group(stats, ranking_scope) or "UNKNOWN"
+        else:
+            group_name = None if profile.grouping_method == GroupingMethod.LEAGUE_WIDE else stats.get("group") or "UNKNOWN"
         grouped_teams.setdefault(group_name, []).append((team_name, stats))
 
     for group_name, teams in grouped_teams.items():

@@ -18,11 +18,13 @@ def _table_places(rule: ObjectiveRule) -> int:
     if rule.objective_type != ObjectiveType.COMPETITION_QUALIFICATION or rule.status != RuleStatus.CONFIGURED:
         return 0
     if (selection.selection_method == SelectionMethod.RANK_RANGE
-            and selection.ranking_scope == RankingScope.GLOBAL
             and selection.aggregation_scope == AggregationScope.TOURNAMENT):
-        return selection.rank_end - selection.rank_start + 1
+        if selection.ranking_scope == RankingScope.GLOBAL:
+            return selection.rank_end - selection.rank_start + 1
+        return selection.places or 0
     if (selection.selection_method == SelectionMethod.BEST_REMAINING
-            and selection.aggregation_scope == AggregationScope.SEASON_AGGREGATE):
+            and selection.ranking_scope == RankingScope.GLOBAL
+            and selection.aggregation_scope in (AggregationScope.TOURNAMENT, AggregationScope.SEASON_AGGREGATE)):
         return selection.places or 0
     return 0
 
@@ -36,7 +38,7 @@ def build_qualification_rules(profile: CompetitionRules) -> QualificationRules |
         destination_season_offset=config.destination_season_offset,
         tournament_berths=config.tournament_berths,
         table_berths=tuple(
-            TableBerthRule(destination=rule.qualification_destination, places=places)
+            TableBerthRule(destination=rule.qualification_destination, places=places, rank_selection=rule.rank_selection)
             for rule in profile.objectives or ()
             if (places := _table_places(rule))
         ),

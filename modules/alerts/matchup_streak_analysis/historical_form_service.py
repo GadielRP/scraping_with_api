@@ -57,7 +57,7 @@ def _normalize_standing_snapshot(raw_standing: Dict, standings_method: str = Non
 
 
 class HistoricalFormService:
-    """Fetch historical form from the local database for collected seasons."""
+    """Fetch season history and per-game standings for configured competition profiles."""
 
     def __init__(self, standings_calculator_instance=None):
         self.standings_calculator = standings_calculator_instance or standings_calculator

@@ -2,7 +2,7 @@
 
 This catalogue owns current format, scoring and objectives. Reference seasons
 document the current configuration; events are not filtered by season labels.
-Tracking and historical collection routing remain independent.
+Tracking is configured separately in tracked_competitions.py.
 Sporting boundaries distinguish confirmed rules from pending allocations.
 """
 
@@ -103,6 +103,7 @@ def create_competition_qualification_rule(
     destination_round: DestinationRound | None = None,
     path: QualificationPath | None = QualificationPath.DIRECT,
     status: RuleStatus = RuleStatus.CONFIGURED,
+    scope: RankingScope = RankingScope.GLOBAL,
     aggregation_scope: AggregationScope = AggregationScope.TOURNAMENT,
     selection_method: SelectionMethod = SelectionMethod.RANK_RANGE,
     places: int | None = None,
@@ -119,7 +120,7 @@ def create_competition_qualification_rule(
         ),
         rank_selection=RankSelection(
             rank_start=start, rank_end=end, reference_rank=end,
-            selection_method=selection_method, aggregation_scope=aggregation_scope,
+            selection_method=selection_method, ranking_scope=scope, aggregation_scope=aggregation_scope,
             places=places,
         ),
         status=status,
@@ -135,9 +136,10 @@ def create_cup_berth(
     destination_round: DestinationRound | None = None,
     path: QualificationPath = QualificationPath.DIRECT,
     before_table_slot: int | None,
+    finalists: tuple[Finalist, ...] = (Finalist.WINNER,),
     sources: tuple[str, ...] = (),
 ) -> TournamentBerthRule:
-    """Berth won by a cup champion; it passes to the table when the champion cannot take it."""
+    """Cup berth: try the configured finalists in order, then the best remaining table club."""
     return TournamentBerthRule(
         competition=competition,
         destination=QualificationDestination(
@@ -146,6 +148,7 @@ def create_cup_berth(
             destination_round=destination_round,
             qualification_path=path,
         ),
+        finalists=finalists,
         reallocate_to_table=True,
         open_to_outsiders=True,
         before_table_slot=before_table_slot,
@@ -1187,21 +1190,52 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
                 destination_competition_identity=competition_ids.MLS_PLAYOFFS,
             ),
             create_competition_qualification_rule(
-                path=None,
-                status=RuleStatus.PENDING,
-                selection_method=SelectionMethod.MULTIPLE_QUALIFICATION_PATHS,
-                places=5,
-                note=(
-                    "For Concacaf 2027, the MLS Cup winner enters the Round of 16. "
-                    "The Shield winner, other conference winner and two next eligible Shield clubs "
-                    "enter Round One. Resolve overlaps with Leagues Cup and domestic cups."
-                ),
-                destination_phase=None,  # Pending: routes or destination phase unresolved.
+                start=1,
+                end=1,
+                scope=RankingScope.CONFERENCE,
+                places=2,
                 destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                destination_phase=DestinationPhase.PLAYOFFS,
+                destination_round=DestinationRound.ROUND_OF_32,
+                note="Supporters' Shield winner and the other regular-season conference winner. A berth already held by the MLS Cup champion passes to the next eligible Shield club.",
+            ),
+            create_competition_qualification_rule(
+                selection_method=SelectionMethod.BEST_REMAINING,
+                places=2,
+                destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                destination_phase=DestinationPhase.PLAYOFFS,
+                destination_round=DestinationRound.ROUND_OF_32,
+                note="Two best remaining clubs in the overall Supporters' Shield standings after the MLS Cup champion and conference winners. The round before the round of 16 has 22 entrants and five byes.",
             ),
         ),
         standings=standings_policies.MLS,
         grouping_method=GroupingMethod.MLS_CONFERENCE,
+        qualification_sources=QualificationSources(
+            tournament_berths=(
+                create_tournament_berth(
+                    competition_ids.MLS_PLAYOFFS, # MLS Cup champion
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    destination_round=DestinationRound.ROUND_OF_16,
+                    sources=(
+                        "https://www.mlssoccer.com/competitions/concacaf-champions-cup/news/concacaf-champions-cup-2027-tracker-qualified-teams",
+                        "https://www.mlssoccer.com/news/audi-2026-mls-cup-playoffs-field-set-and-wild-card-match-schedule-announced",
+                    ),
+                ),
+                create_cup_berth(
+                    competition_ids.US_OPEN_CUP,
+                    before_table_slot=None,
+                    finalists=(Finalist.WINNER, Finalist.RUNNER_UP),
+                    destination_competition_identity=competition_ids.CONCACAF_CHAMPIONS_CUP,
+                    destination_phase=DestinationPhase.PLAYOFFS,
+                    destination_round=DestinationRound.ROUND_OF_32,
+                    sources=(
+                        "https://www.concacaf.com/media/jgvd55qf/2026-concacaf-champions-cup-regulations-english.pdf",
+                        "https://www.concacaf.com/competitions/champions-cup/news/2027-concacaf-champions-cup-qualified-clubs",
+                    ),
+                ),
+            ),
+        ),
         note="2026 format: no relegation. Cancelled games may require official PPG ruling. Update current profile before 2027 Sprint (14 games, top eight per conference); 2028 Leagues Cup is decided by Sprint, not this table.",
     ),
 

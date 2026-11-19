@@ -11,7 +11,7 @@ from functools import partial
 
 from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingMetric
 
-from .constants import get_team_group
+from modules.competition.competition_group_memberships import get_team_group
 
 
 class TieBreakRecords:

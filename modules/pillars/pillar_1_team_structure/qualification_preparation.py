@@ -14,6 +14,7 @@ from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculato
     calculate_multiseason_averages,
     calculate_season_aggregate_standings,
 )
+from modules.alerts.matchup_streak_analysis.standings_engine import build_standings_snapshot
 from modules.competition.berth_allocation_engine.berth_allocation_engine import allocate_berths
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
 from modules.competition.final_outcome import ParticipantIdentity
@@ -23,6 +24,7 @@ from modules.competition.rule_terms import (
     AggregationScope,
     BerthType,
     ObjectiveType,
+    RankingScope,
     RuleStatus,
     SelectionMethod,
     TournamentFinalStatus,
@@ -89,6 +91,7 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
     cutoff = as_utc(as_of or now)
     config = profile.qualification_sources
     table = None
+    scoped_standings = {}
     relegated, roster, eligibility_unconfirmed = frozenset(), None, False
     with db_manager.get_session() as session:
         if config.shared_table is not None:
@@ -103,7 +106,25 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
             relegation, roster, eligibility_unconfirmed = _aggregate_inputs(session, profile, annual)
             relegated = frozenset(relegation.participants)
         else:
-            standings = table_rows(getattr(streak, "current_standings", None))
+            current_standings = getattr(streak, "current_standings", None)
+            standings = table_rows(current_standings)
+            ranking_scopes = {
+                rule.rank_selection.ranking_scope for rule in rules.table_berths
+                if rule.rank_selection is not None and rule.rank_selection.ranking_scope != RankingScope.GLOBAL
+            }
+            if standings and ranking_scopes:
+                snapshot_metadata = next(iter(current_standings.values()))
+                match_records = (getattr(streak, "league_totals_context", None) or {}).get("matches")
+                for ranking_scope in ranking_scopes | {RankingScope.GLOBAL}:
+                    scoped_standings[ranking_scope] = table_rows(build_standings_snapshot(
+                        current_standings, profile, match_records,
+                        ranking_scope=ranking_scope,
+                        standings_policy=snapshot_metadata.get("standings_policy", "in_season"),
+                        season_completion_ratio=snapshot_metadata.get("season_completion_ratio"),
+                    ))
+                standings = scoped_standings.pop(RankingScope.GLOBAL)
+                if any(rows is None for rows in scoped_standings.values()):
+                    standings = None
         if standings is None and (config.shared_table is None or table):
             logger.warning(
                 "Qualification skipped: standings lack participant identity, ordering or group membership "
@@ -134,6 +155,7 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
         season_year=season_year,
         profile_identity=profile_identity,
         tournament_evidence=finals,
+        scoped_standings=scoped_standings,
         bracket_eliminations=eliminations,
         excluded_participants=relegated,
         next_season_roster=roster,

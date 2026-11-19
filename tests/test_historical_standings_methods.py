@@ -1,24 +1,18 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from modules.alerts.matchup_streak_analysis import standings_engine as se
-from modules.competition.competition_history_config import (
-    get_competition_history_config,
-)
+from modules.alerts.matchup_streak_analysis import historical_form
 
 from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
 from modules.competition.rule_terms import GroupingMethod
 
 NBA_UNIQUE_TOURNAMENT_ID = 132
 SHL_UNIQUE_TOURNAMENT_ID = 261
-SAUDI_PRO_LEAGUE_UNIQUE_TOURNAMENT_ID = 955
-LIGA_MX_APERTURA_UNIQUE_TOURNAMENT_ID = 11621
-LIGA_MX_APERTURA_TOURNAMENT_ID = 28
-LIGA_MX_CLAUSURA_UNIQUE_TOURNAMENT_ID = 11620
-LIGA_MX_CLAUSURA_TOURNAMENT_ID = 16753
 
 
 class _FakeResult:
@@ -194,28 +188,43 @@ def test_saudi_pro_league_uses_football_h2h_method():
     assert get_competition_profile(50).standings.name == "SAUDI_PRO_LEAGUE"
 
 
-def test_liga_mx_apertura_and_clausura_are_collected_with_gd_method():
-    apertura = get_competition_history_config(
-        LIGA_MX_APERTURA_UNIQUE_TOURNAMENT_ID,
-        LIGA_MX_APERTURA_TOURNAMENT_ID,
-    )
-    clausura = get_competition_history_config(
-        LIGA_MX_CLAUSURA_UNIQUE_TOURNAMENT_ID,
-        LIGA_MX_CLAUSURA_TOURNAMENT_ID,
+@pytest.mark.parametrize("competition_id,method,teams,games,grouping", [
+    (328, "LIGA_MX_APERTURA", 18, 17, GroupingMethod.LEAGUE_WIDE),
+    (2192, "LIGA_MX_CLAUSURA", 18, 17, GroupingMethod.LEAGUE_WIDE),
+    (76, "MLS", 30, 34, GroupingMethod.MLS_CONFERENCE),
+])
+def test_configured_profiles_use_database_season_history(monkeypatch, competition_id, method, teams, games, grouping):
+    profile = get_competition_profile(competition_id)
+    assert profile.standings.name == method
+    assert profile.number_of_teams == teams
+    assert profile.total_regular_season_games == games
+    assert profile.grouping_method is grouping
+
+    expected_history = ([{"event_id": 1}], 1)
+    database_history = Mock(return_value=expected_history)
+    provider_history = Mock(side_effect=AssertionError("Configured profiles must use database history"))
+    monkeypatch.setattr(historical_form, "get_competition_profile", get_competition_profile)
+    monkeypatch.setattr(historical_form.historical_form_service, "get_team_form_from_db", database_history)
+    monkeypatch.setattr(historical_form.api_client, "get_team_last_results_response", provider_history)
+    identity = IDENTITIES[competition_id]
+    cutoff = datetime(2026, 11, 2, tzinfo=timezone.utc).timestamp()
+
+    result = historical_form.get_team_last_results_by_id(
+        team_id=1, team_name="Club", competition_slug=method.lower(), sport="Football",
+        season_id=86668, source_unique_tournament_id=identity.source_unique_tournament_id,
+        source_tournament_id=identity.source_tournament_id, competition_id=competition_id,
+        season_year=2026, exclude_event_id=455374, event_start_timestamp=cutoff,
     )
 
-    assert apertura is not None
-    assert clausura is not None
-    assert apertura.code == "liga_mx_apertura"
-    assert clausura.code == "liga_mx_clausura"
-    assert apertura.collected is True
-    assert clausura.collected is True
-    for competition_id, method in ((328, "LIGA_MX_APERTURA"), (2192, "LIGA_MX_CLAUSURA")):
-        profile = get_competition_profile(competition_id)
-        assert profile.standings.name == method
-        assert profile.number_of_teams == 18
-        assert profile.total_regular_season_games == 17
-        assert profile.grouping_method is GroupingMethod.LEAGUE_WIDE
+    assert result is expected_history
+    database_history.assert_called_once_with(
+        team_name="Club", season_id=86668, sport="Football",
+        source_unique_tournament_id=identity.source_unique_tournament_id,
+        source_tournament_id=identity.source_tournament_id, competition_id=competition_id,
+        season_year=2026, exclude_event_id=455374, current_event_timestamp=cutoff,
+        send_debug_standings=False,
+    )
+    provider_history.assert_not_called()
 
 
 def _euroleague_row(home, away, home_score, away_score, home_sets, away_sets):

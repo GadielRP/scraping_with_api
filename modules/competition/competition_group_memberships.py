@@ -1,4 +1,4 @@
-"""Static team grouping mappings for matchup streak analysis."""
+"""Team memberships in each competition's conferences, divisions, leagues and groups."""
 
 from __future__ import annotations
 

@@ -1,8 +1,8 @@
 """
 Historical Form processing for Matchup Streak Analysis.
 
-Handles fetching and processing team form data from the API (Route 2)
-and from the local database for collected seasons (Route 1).
+Configured competition profiles use database season history with historical standings.
+Other requests use API form data.
 Extracted from streak_alerts.py (StreakAlertEngine methods).
 """
 
@@ -14,9 +14,6 @@ from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
 from shared.temporal import from_unix_timestamp, in_timezone
 
-from modules.competition.competition_history_config import (
-    is_collected_competition_scope,
-)
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from .historical_form_service import historical_form_service
 
@@ -603,19 +600,10 @@ def get_team_last_results_by_id(
             - List of dicts with canonical form-result keys (team_result_code, team_score, opponent_score, team_name, opponent_name)
             - Integer representing the overall (unfiltered) current win streak
     """
-    # =====================================================================
-    # ROUTE 1: DB-based form retrieval for collected seasons
-    # Uses the DB-backed historical form service instead of API calls
-    # =====================================================================
+    # Profiles select the database history route; tracking is enforced by the caller.
     season_id_int = int(season_id) if season_id is not None else None
-    if is_collected_competition_scope(
-        source_unique_tournament_id=source_unique_tournament_id,
-        source_tournament_id=source_tournament_id,
-        season_id=season_id_int,
-    ):
-        profile = get_competition_profile(competition_id)
-        if profile is None:
-            raise ValueError(f"No competition profile configured for competition_id={competition_id}")
+    profile = get_competition_profile(competition_id) if season_id_int is not None else None
+    if profile is not None:
         standings_method = profile.standings.name
         grouping_method = profile.grouping_method
         logger.info(
@@ -641,9 +629,7 @@ def get_team_last_results_by_id(
             send_debug_standings=debug_mode,  # Toggle: via .env global_debug_mode
         )
 
-    # =====================================================================
-    # ROUTE 2: API-based form retrieval (existing logic - UNCHANGED)
-    # =====================================================================
+    # API history supports requests without a configured profile or season.
 
     # Season-based filtering: fetch all games from current season (no minimum)
     use_season_filtering = season_id and sport not in ['Tennis', 'Tennis Doubles']

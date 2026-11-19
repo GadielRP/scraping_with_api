@@ -5,7 +5,7 @@ from dataclasses import asdict
 
 import pytest
 
-from modules.alerts.matchup_streak_analysis.constants import get_team_group
+from modules.competition.competition_group_memberships import get_team_group
 from modules.alerts.matchup_streak_analysis.standings_engine import _apply_game_result, _create_team_stats, _finalize_team_stats
 from modules.alerts.matchup_streak_analysis.standings_rules import rank_standings
 from modules.competition.competition_profiles import COMPETITION_PROFILES
