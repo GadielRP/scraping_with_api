@@ -64,10 +64,15 @@ class SofaScoreDebugResponseWriter:
         payload: object,
         filename: str | None = None,
         subfolder: str | Path | None = None,
+        output_directory: str | Path | None = None,
     ) -> Path | None:
-        """Save a non-event response directly under debug/sofascore/{response_type}_responses/."""
+        """Save a non-event response to its type folder or a supplied directory."""
         response_token = cls._filename_token(response_type, fallback="response").lower()
-        directory = cls.OUTPUT_ROOT / "sofascore" / f"{response_token}_responses"
+        directory = (
+            Path(output_directory)
+            if output_directory is not None
+            else cls.OUTPUT_ROOT / "sofascore" / f"{response_token}_responses"
+        )
         if subfolder:
             directory = directory / subfolder
         directory.mkdir(parents=True, exist_ok=True)
