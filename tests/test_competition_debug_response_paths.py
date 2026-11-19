@@ -14,7 +14,6 @@ from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer 
 )
 from modules.odds_ingestion import ProviderOddsSummary
 from modules.odds_ingestion.fetch_result import OddsFetchResult
-from scripts.diagnostics.diagnose_sofascore_pre_start_responses import discover_responses
 
 
 def test_event_data_and_oddspapi_candidate_keep_loaded_competition_slug():
@@ -79,9 +78,6 @@ def test_sofascore_phase_saves_raw_response_in_competition_folder(tmp_path, monk
 
     path = output_directory / "football" / "liga_mx_apertura" / "238868_Home_Away" / "238868_9001_t_5.json"
     assert json.loads(path.read_text(encoding="utf-8")) == payload
-    responses, errors = discover_responses(tmp_path)
-    assert not errors
-    assert len(responses[238868][5]) == 1
 
 
 def test_sofascore_writer_without_competition_slug(tmp_path, monkeypatch):
@@ -92,15 +88,6 @@ def test_sofascore_writer_without_competition_slug(tmp_path, monkeypatch):
         payload={"markets": []},
     )
     assert path == output_directory / "unknown_sport" / "unknown_competition" / "238868" / "238868_9001_t_5.json"
-
-
-def test_oddspapi_diagnostics_find_nested_event_responses(tmp_path):
-    from scripts.development.diagnose_oddspapi_debug_responses import collect_response_files
-
-    path = tmp_path / "basketball" / "nba_preseason" / "379309_Home_Away" / "379309_id123_t_5_odds.json"
-    path.parent.mkdir(parents=True)
-    path.write_text('{"raw": true}', encoding="utf-8")
-    assert collect_response_files(tmp_path) == [(5, path)]
 
 
 def test_sofascore_writer_normalizes_sport_from_memory(tmp_path, monkeypatch):

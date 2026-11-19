@@ -732,57 +732,10 @@ class TestViabilityAssessment:
 # CLI-level validation
 # =====================================================================
 
-class TestCLIValidation:
-    def test_live_mode_requires_fixture_id(self):
-        from scripts.development.compare_oddspapi_regular_endpoints import main
-        exit_code = main(["--live"])
-        assert exit_code != 0
-
-    def test_offline_mode_no_http_client_created(self):
-        """Offline mode should not import or instantiate OddsPapiClient."""
-        import importlib
-        import sys
-
-        # Remove any cached import
-        modules_to_check = [k for k in sys.modules if "oddspapi.client" in k]
-
-        from scripts.development.compare_oddspapi_regular_endpoints import (
-            _compare_fixture,
-            parse_odds_response,
-            parse_historical_response,
-        )
-        # Calling parse functions and compare should not trigger client import
-        odds = parse_odds_response({})
-        hist = parse_historical_response({})
-        # No assertion on sys.modules because the module may already be cached;
-        # the key point is that no HTTP request is made.
-        assert odds == []
-        assert hist == []
-
-    def test_exchange_bookmaker_rejected_by_cli(self):
-        from scripts.development.compare_oddspapi_regular_endpoints import main
-        exit_code = main(["--bookmakers", "betfair-ex,pinnacle", "--odds-file", "nonexistent.json"])
-        assert exit_code != 0
-
 
 # =====================================================================
 # API key security
 # =====================================================================
-
-class TestApiKeySecurity:
-    def test_api_key_not_in_logs(self, caplog):
-        """Verify that redacting works in log output."""
-        from scripts.development.compare_oddspapi_regular_endpoints import _redact_api_key
-
-        result = _redact_api_key("key=secret123&other=value", "secret123")
-        assert "secret123" not in result
-        assert "***REDACTED***" in result
-
-    def test_none_api_key_passthrough(self):
-        from scripts.development.compare_oddspapi_regular_endpoints import _redact_api_key
-
-        result = _redact_api_key("some text", None)
-        assert result == "some text"
 
 
 # =====================================================================

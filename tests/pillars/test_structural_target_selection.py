@@ -7,7 +7,6 @@ from contextlib import contextmanager
 import pytest
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import modules.jobs.pre_start_check_job.pillar_pipeline as pillar_pipeline
 from modules.pillars.context import CompetitionContext, EventContext, ParticipantContext
@@ -156,8 +155,6 @@ def _run_pipeline(monkeypatch, selection_spy=None, mining_service=None, debug_mo
     return result, captured
 
 
-
-
 def test_pipeline_selects_target_once_and_injects_same_object(monkeypatch) -> None:
     calls = []
 
@@ -193,10 +190,6 @@ def test_shared_hardcoded_override_is_consumed_by_both_pillars(
     assert captured["p2_selection"].target_minute == 0
     assert result["pillar_2"]["target_minute"] == 0
     assert result["pillar_3"]["target_minute"] == 0
-
-
-
-
 
 
 def test_execution_error_keeps_common_ft_and_configuration_skips(monkeypatch):
@@ -342,104 +335,3 @@ def test_streak_debug_does_not_overwrite_trajectory_artifacts(tmp_path, monkeypa
     )
     assert {path: path.read_bytes() for path in trajectory_files} == before
     assert json.loads((directory / "4004_streak_analysis.json").read_text()) == {"home_streak": 3}
-
-
-@pytest.mark.parametrize("entrypoint", ["production", "simulator"])
-@pytest.mark.parametrize("excel_fails", [False, True])
-def test_shared_debug_flow_exports_from_production_and_simulator(
-    tmp_path, monkeypatch, entrypoint, excel_fails,
-):
-    # Exercise the real debug propagation, key-moment evaluation, batch,
-    # processor and writer. Only external ingestion/loading is replaced.
-    from decimal import Decimal
-    from openpyxl import load_workbook
-    import modules.jobs.pre_start_check_job.run_pre_start_check_job as job
-    import modules.jobs.pre_start_check_job.key_moment_evaluation as evaluation
-    import scripts.development.simulate_pre_start_check as simulator
-    from tests.test_odds_trajectory_excel import choice, context
-
-    monkeypatch.chdir(tmp_path)
-    event = _event_context()
-    event.minutes_until_start = 30
-    c = choice("1")
-    c.odds_values[30] = Decimal("2.10")
-    trajectory = context([("1X2", "Full Time", None, "SofaScore", None, [c])], targets=(120, 30))
-    monkeypatch.setattr(pillar_pipeline, "build_odds_trajectory_context", lambda *args, **kwargs: trajectory)
-    alerts = []
-    monkeypatch.setattr(evaluation, "evaluate_and_dispatch_alerts_batch", lambda *args, **kwargs: alerts.append(kwargs))
-    monkeypatch.setattr(evaluation, "_hydrate_missing_tennis_metadata", lambda *args: None)
-    monkeypatch.setattr(evaluation, "_build_evaluation_payloads", lambda *args: [event])
-    monkeypatch.setattr(evaluation, "flush_missing_standings_endpoints", lambda *args: None)
-    monkeypatch.setattr(evaluation, "_load_trajectory_payloads", lambda ids: {4004: []})
-    config = pillar_pipeline.Config
-    for name, value in {
-        "ENABLE_LEGACY_ALERT_PIPELINE": True, "ENABLE_PILLAR_PIPELINE": True,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS": False,
-        "PILLAR_PIPELINE_EXECUTION_MOMENTS": [30], "PRE_START_ODDS_MOMENTS": [120, 30],
-        "PILLAR_PIPELINE_WORKERS": 1,
-        "PILLAR_PIPELINE_ENABLED_PILLARS": {f"pillar_{i}": False for i in range(1, 6)},
-        "ENABLE_TIMESTAMP_CORRECTION": False,
-    }.items():
-        monkeypatch.setattr(config, name, value)
-    if excel_fails:
-        def fail(*args, **kwargs):
-            raise RuntimeError("Excel unavailable")
-        monkeypatch.setattr(pillar_pipeline, "export_odds_trajectory_context_xlsx", fail)
-
-    event_data = {"id": 4004, "starts_at": event.starts_at, "sport": "Football"}
-    loaded = SimpleNamespace(id=4004, home_team="Home", away_team="Away", sport="Football", season_id=2026, starts_at=event.starts_at)
-    class Rescheduled(set):
-        def cleanup(self):
-            pass
-
-    runtime = SimpleNamespace(
-        event_repo=SimpleNamespace(get_event_by_id=lambda _: loaded),
-        recently_rescheduled=Rescheduled(),
-        missing_odds=None,
-    )
-    candidate = {"event_id": 4004, "minutes_until_start": 30}
-    plan = SimpleNamespace(candidates=[candidate], by_event_id={4004: candidate})
-    monkeypatch.setattr(evaluation, "_select_pipeline_candidates", lambda candidates, moments: candidates)
-    op_context = SimpleNamespace(event_states={}, event_ids=set())
-    if entrypoint == "production":
-        monkeypatch.setattr(job, "_tracked_competition_ids", lambda: set())
-        monkeypatch.setattr(job, "tracked_competition_ids", lambda: set())
-        monkeypatch.setattr(job, "_load_upcoming_events", lambda *args: [event_data])
-        monkeypatch.setattr(job, "minutes_until_start", lambda _: 30)
-        monkeypatch.setattr(job, "start_oddsportal_scrape_for_events", lambda *args, **kwargs: op_context)
-        monkeypatch.setattr(job, "load_pre_start_odds_source_states", lambda *args: {})
-        monkeypatch.setattr(job, "build_pre_start_event_candidates", lambda *args, **kwargs: plan)
-        monkeypatch.setattr(job, "attach_stored_observations", lambda *args: None)
-        monkeypatch.setattr(job, "persist_snapshot_observations", lambda *args: None)
-        monkeypatch.setattr(job, "_ingest_provider_odds", lambda *args, **kwargs: None)
-        monkeypatch.setattr(job, "_maintain_recently_started_events", lambda *args: None)
-        monkeypatch.setattr(job, "run_in_game_checks", lambda: None)
-        monkeypatch.setattr(job.api_client, "set_challenge_evidence_enabled", lambda _: None)
-        job.run_pre_start_check_job(runtime, global_debug_mode=True)
-    else:
-        monkeypatch.setattr(simulator, "PreStartRuntime", lambda _: runtime)
-        monkeypatch.setattr(simulator, "_log_pipeline_eligibility", lambda _: True)
-        monkeypatch.setattr(simulator.EventRepository, "_build_event_data_with_legacy_fallback", lambda _: event_data)
-        monkeypatch.setattr(simulator, "run_production_odds_phase", lambda *args, **kwargs: SimpleNamespace(event_plan=plan))
-        monkeypatch.setattr(simulator, "_wait_for_oddsportal_worker", lambda _: None)
-        for name, value in {
-            "ENABLE_ODDS_INGESTION_SIMULATION": True, "ENABLE_ODDSPORTAL_ODDS_SIMULATION": False,
-            "ENABLE_ALERT_PIPELINE": True, "ENABLE_PILLAR_PIPELINE": True,
-            "ENABLE_CUSTOM_PILLAR_FILTER": True,
-            **{f"ENABLE_PILLAR_{i}": False for i in range(1, 6)},
-        }.items():
-            monkeypatch.setattr(simulator, name, value)
-        assert simulator._run_pre_start_check_simulation(4004, 30)
-
-    assert len(alerts) == 1
-    assert alerts[0]["debug_mode"] is True
-    directory = tmp_path / "debug/pillar_pipeline_objects/football/league/4004_Home_vs_Away"
-    assert json.loads((directory / "4004_odds_trajectory_context.json").read_text())["target_minutes_present"] == [120, 30]
-    path = directory / "4004_odds_trajectory_context.xlsx"
-    assert path.exists() is not excel_fails
-    if not excel_fails:
-        workbook = load_workbook(path)
-        assert workbook["Forma actual 1X2"]["G4"].value == 2.1
-        assert "T30" in workbook["Forma actual 1X2"]["A2"].value
-        assert "Inicio: 2026-08-31 18:00:00 UTC" in workbook["Forma actual 1X2"]["A1"].value
-        workbook.close()

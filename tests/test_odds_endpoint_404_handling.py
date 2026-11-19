@@ -47,8 +47,6 @@ from modules.sofascore.results_parser import (
     is_event_status_deletable,
     parse_event_result,
 )
-from scripts.development import pre_start_odds_simulation
-from scripts.development import simulate_pre_start_check
 
 
 def _event_info(event_id=101):
@@ -1279,124 +1277,6 @@ def test_oddspapi_client_explicit_key_still_bypasses_scheduler(monkeypatch):
     client.close()
 
 
-def test_manual_simulator_uses_production_provider_processors(monkeypatch):
-    calls = []
-    event_info = _event_info()
-    states = {
-        101: {
-            "sofascore": _state(101, "sofascore", "9001", True),
-            "oddspapi": _state(101, "oddspapi", "fixture-1", True),
-        }
-    }
-    monkeypatch.setattr(
-        pre_start_odds_simulation,
-        "load_pre_start_odds_source_states",
-        lambda _events: states,
-    )
-    monkeypatch.setattr(
-        pre_start_odds_simulation,
-        "build_pre_start_event_candidates",
-        lambda scheduler, events, timings, source_states, **kwargs: (
-            calls.append(("candidate_builder", events, source_states))
-            or SimpleNamespace(
-                candidates=[event_info],
-                by_event_id={101: event_info},
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        pre_start_odds_simulation.EventRepository,
-        "_build_event_data_with_legacy_fallback",
-        lambda _event: event_info["event_data"],
-    )
-    monkeypatch.setattr(
-        pre_start_odds_simulation,
-        "run_sofascore_pre_start_odds",
-        lambda event_infos, source_states, **_kwargs: calls.append(
-            ("sofascore", event_infos, source_states, _kwargs["debug_mode"])
-        ),
-    )
-    monkeypatch.setattr(
-        pre_start_odds_simulation,
-        "run_oddspapi_pre_start_odds",
-        lambda event_infos, source_states, **_kwargs: (
-            calls.append(("oddspapi", event_infos, source_states, _kwargs["debug_mode"]))
-            or SimpleNamespace(
-                requests_attempted=0,
-                events_ingested=0,
-                events_skipped=1,
-                events_failed=0,
-            )
-        ),
-    )
-    event = SimpleNamespace(
-        id=101,
-        slug="home-away",
-        sport="Football",
-        home_team="Home",
-        away_team="Away",
-        starts_at=None,
-        season_id=5,
-    )
-
-    pre_start_odds_simulation.run_production_odds_phase(
-        event,
-        30,
-        [30],
-        debug_mode=True,
-    )
-
-    assert [call[0] for call in calls] == [
-        "candidate_builder",
-        "sofascore",
-        "oddspapi",
-    ]
-    assert calls[1][3] is True
-    assert calls[2][3] is True
-    assert calls[1][2] is states
-    assert calls[2][2] is states
-
-
-def test_untracked_pipeline_gate_explains_ingestion_without_evaluation(
-    monkeypatch,
-    caplog,
-):
-    event = SimpleNamespace(competition_id=999999)
-    monkeypatch.setattr(
-        simulate_pre_start_check.Config,
-        "TRACKED_COMPETITIONS_ONLY",
-        False,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check.Config,
-        "FILTER_PIPELINES_BY_TRACKED_COMPETITIONS",
-        True,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check.Config,
-        "ODDS_EXTRACTION_GENERAL_TRACKED_COMPETITIONS_ONLY",
-        True,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check.Config,
-        "ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY",
-        True,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check.Config,
-        "ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY",
-        True,
-    )
-
-    should_continue = simulate_pre_start_check._log_pipeline_eligibility(event)
-
-    assert should_continue is True
-    assert "ALERT AND PILLAR PIPELINES WILL SKIP" in caplog.text
-    assert "GENERAL PROVIDER ODDS EXTRACTION WILL SKIP" in caplog.text
-    assert "SOFASCORE ODDS EXTRACTION WILL SKIP" in caplog.text
-    assert "ODDSPAPI ODDS EXTRACTION WILL SKIP" in caplog.text
-
-
 def test_odds_extraction_gate_uses_competition_id_already_on_event(
     monkeypatch,
     caplog,
@@ -1671,111 +1551,6 @@ def test_ingest_forwards_tracked_ids_only_to_gated_providers(monkeypatch):
     assert oddspapi_kwargs[0]["tracked_competition_ids"] is None
 
 
-def test_single_event_simulator_uses_production_op_and_evaluation_flow(
-    monkeypatch,
-):
-    monkeypatch.setattr(simulate_pre_start_check, 'ENABLE_ODDSPORTAL_ODDS_SIMULATION', True)
-    event = SimpleNamespace(
-        id=101,
-        home_team="Home",
-        away_team="Away",
-        sport="Football",
-        season_id=999999,
-        competition_id=999999,
-        starts_at=None,
-    )
-    scheduler = SimpleNamespace(
-        event_repo=SimpleNamespace(get_event_by_id=lambda _event_id: event),
-        recently_rescheduled=RescheduledEvents(),
-        missing_odds=MissingOddsCooldown(600,2048),
-    )
-    event_data = {
-        "id": event.id,
-        "home_team": event.home_team,
-        "away_team": event.away_team,
-        "sport": event.sport,
-        "season_id": event.season_id,
-        "competition_id": event.competition_id,
-        "starts_at": event.starts_at,
-    }
-    event_plan = SimpleNamespace(
-        candidates=[{"event_id": event.id}],
-        by_event_id={event.id: {"event_id": event.id}},
-    )
-    op_context = SimpleNamespace(
-        event_states={},
-        event_ids=set(),
-    )
-    calls = []
-
-    monkeypatch.setattr(
-        simulate_pre_start_check,
-        "PreStartRuntime",
-        lambda _repo: scheduler,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check,
-        "_log_pipeline_eligibility",
-        lambda _event: True,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check.EventRepository,
-        "_build_event_data_with_legacy_fallback",
-        lambda _event: event_data,
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check,
-        "start_oddsportal_scrape_for_events",
-        lambda actual_scheduler, events, timings, **kwargs: (
-            calls.append(
-                ("oddsportal", actual_scheduler, events, timings, kwargs)
-            )
-            or op_context
-        ),
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check,
-        "run_production_odds_phase",
-        lambda *args, **kwargs: (
-            calls.append(("providers", args, kwargs))
-            or SimpleNamespace(event_plan=event_plan)
-        ),
-    )
-    monkeypatch.setattr(
-        simulate_pre_start_check,
-        "evaluate_pre_start_key_moments",
-        lambda actual_scheduler, actual_plan, actual_context, **kwargs: (
-            calls.append(
-                (
-                    "evaluation",
-                    actual_scheduler,
-                    actual_plan,
-                    actual_context,
-                    kwargs,
-                )
-            )
-        ),
-    )
-
-    result = simulate_pre_start_check._run_pre_start_check_simulation(101, 0)
-
-    assert result is True
-    assert [call[0] for call in calls] == [
-        "oddsportal",
-        "providers",
-        "evaluation",
-    ]
-    assert calls[0][3] == {101: 0}
-    assert calls[0][4] == {
-        "debug_mode": True,
-        "scraping_enabled": True,
-    }
-    assert calls[1][2]["runtime"] is scheduler
-    assert calls[2][2] is event_plan
-    assert calls[2][3] is op_context
-    assert calls[2][4]["debug_mode"] is True
-
-
 def test_oddsportal_simulation_override_controls_worker_config_gate(monkeypatch):
     monkeypatch.setattr(oddsportal_worker.Config, "ODDSPORTAL_SCRAPING_ENABLED", False)
     competition_id = next(iter(oddsportal_worker.ODDSPORTAL_COMPETITION_ROUTES))
@@ -1808,18 +1583,6 @@ def test_oddsportal_simulation_override_controls_worker_config_gate(monkeypatch)
     )
     assert default_context.event_ids == set()
     assert len(launched) == 1
-
-
-def test_simulator_waits_for_oddsportal_worker():
-    calls = []
-    worker_thread = SimpleNamespace(join=lambda: calls.append("joined"))
-    runtime = SimpleNamespace(
-        oddsportal=SimpleNamespace(active_thread=worker_thread),
-    )
-
-    simulate_pre_start_check._wait_for_oddsportal_worker(runtime)
-
-    assert calls == ["joined"]
 
 
 def test_oddsportal_initial_only_choices_are_not_rendered_as_fully_missing():

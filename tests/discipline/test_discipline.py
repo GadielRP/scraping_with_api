@@ -590,63 +590,6 @@ def test_second_yellow_is_one_incident_and_counts_in_both_card_totals(database, 
     assert (acquired.yellow_cards, acquired.red_cards) == (3, 1)
 
 
-def test_endpoint_scripts_persist_through_shared_discipline_runner(database, monkeypatch, capsys):
-    import sys
-    from infrastructure.persistence import advisory_lock
-    from infrastructure.persistence.repositories import event_source_mapping_repository
-    from modules.jobs.discipline_collection_job import composition
-    from scripts.sofascore import discipline, get_event_comments, get_event_statistics
-
-    monkeypatch.setattr(composition, "db_manager", database)
-    monkeypatch.setattr(advisory_lock, "db_manager", database)
-    monkeypatch.setattr(event_source_mapping_repository, "db_manager", database)
-    monkeypatch.setattr(discipline, "DisciplineSettings", lambda: DisciplineSettings(
-        tracked_competitions_only=False, statistics_for_all_events=True))
-    monkeypatch.setattr("modules.discipline.providers.sofascore.get_competition_profile", lambda _: None)
-    with database.get_session() as session:
-        session.get(Event, 1).sport = "Football"
-
-    comments = fixture("football.json")
-    yellow = next(item for item in comments["comments"] if item["type"] == "yellowCard")
-    comments["comments"].insert(1, dict(yellow, type="yellowRedCard", id=2))
-    statistics = fixture("football_statistics.json")
-    statistics["statistics"][0]["groups"][0]["statisticsItems"][1]["homeValue"] = 1
-    client = DualClient(comments, statistics)
-    open_comments = client.open_event_comments
-    comment_requests = []
-
-    def count_comments(source_event_id):
-        comment_requests.append(source_event_id)
-        return open_comments(source_event_id)
-
-    monkeypatch.setattr(client, "open_event_comments", count_comments)
-    monkeypatch.setattr(get_event_comments, "api_client", client)
-    monkeypatch.setattr(sys, "argv", ["get_event_comments", "457265", "--persist", "--no-save-debug"])
-    get_event_comments.main()
-    output = capsys.readouterr()
-    assert json.loads(output.out) == comments and "updated" in output.err
-    assert comment_requests == ["457265"] and client.statistics_calls == 1
-    with database.get_session() as session:
-        detail_ids = session.scalars(select(DisciplinaryIncident.id)).all()
-    assert len(detail_ids) == 7
-
-    client.statistics["statistics"][0]["groups"][0]["statisticsItems"][0]["homeValue"] = 4
-    monkeypatch.setattr(get_event_statistics, "api_client", client)
-    monkeypatch.setattr(sys, "argv", ["get_event_statistics", "1", "--source", "canonical",
-                                      "--persist", "--no-save-debug"])
-    get_event_statistics.main()
-    output = capsys.readouterr()
-    assert json.loads(output.out) == client.statistics and "updated" in output.err
-    assert comment_requests == ["457265"] and client.statistics_calls == 2
-    repo = DisciplinaryIncidentRepository(database)
-    assert repo.get_event_card_totals("sofascore", (1,))[1, "home", "yellow_card"] == 4
-    assert DisciplineTotalDraft(
-        IncidentType.RED_CARD_SECOND_YELLOW, Side.HOME, 1, DisciplineEndpoint.COMMENTS,
-    ) in repo.get_event_totals("sofascore", 1)
-    with database.get_session() as session:
-        assert session.scalars(select(DisciplinaryIncident.id)).all() == detail_ids
-
-
 @pytest.mark.parametrize("error", [WorkDeferred("deadline"), JsonDocumentLimitExceeded("budget"), MemoryError()])
 def test_resource_exhaustion_never_starts_statistics(error):
     client = DualClient(error, fixture("football_statistics.json"))

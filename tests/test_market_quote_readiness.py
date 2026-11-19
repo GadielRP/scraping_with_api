@@ -3,12 +3,7 @@ from __future__ import annotations
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from infrastructure.persistence.repositories.market.market_quote_readiness import (
-    MarketQuoteReadinessAuditor,
-    MarketQuoteReadinessIssue,
-    MarketQuoteReadinessReport,
-)
-from scripts.maintenance import audit_market_quote_readiness as readiness_cli
+from infrastructure.persistence.repositories.market.market_quote_readiness import MarketQuoteReadinessAuditor
 
 
 SCHEMA_SQL = (
@@ -124,56 +119,3 @@ def test_audit_reports_every_blocking_data_class_in_scope():
         "duplicate_quote_identity",
     } <= set(issues)
     assert issues["unlinked_snapshot"].sample_ids == (10001,)
-
-
-class _AuditContext:
-    def __enter__(self):
-        return object()
-
-    def __exit__(self, *_args):
-        return False
-
-
-def test_cli_exit_codes_for_ready_blocked_and_schema_error(monkeypatch):
-    monkeypatch.setattr(readiness_cli.Config, "validate_odds_read_settings", lambda: None)
-    monkeypatch.setattr(readiness_cli.db_manager, "get_session", _AuditContext)
-
-    reports = iter(
-        (
-            MarketQuoteReadinessReport(True, ()),
-            MarketQuoteReadinessReport(
-                False,
-                (),
-                issues=(MarketQuoteReadinessIssue("unlinked_snapshot", 1),),
-            ),
-            MarketQuoteReadinessReport(
-                False, (), schema_errors=("missing_table:market_choice_quotes",)
-            ),
-        )
-    )
-    monkeypatch.setattr(
-        readiness_cli.MarketQuoteReadinessAuditor,
-        "audit",
-        lambda *_args, **_kwargs: next(reports),
-    )
-
-    assert readiness_cli.main([]) == 0
-    assert readiness_cli.main([]) == 2
-    assert readiness_cli.main([]) == 3
-
-
-def test_cli_distinguishes_configuration_and_query_failures(monkeypatch):
-    monkeypatch.setattr(
-        readiness_cli.Config,
-        "validate_odds_read_settings",
-        lambda: (_ for _ in ()).throw(ValueError("bad config")),
-    )
-    assert readiness_cli.main([]) == 3
-
-    monkeypatch.setattr(readiness_cli.Config, "validate_odds_read_settings", lambda: None)
-    monkeypatch.setattr(
-        readiness_cli.db_manager,
-        "get_session",
-        lambda: (_ for _ in ()).throw(RuntimeError("query failed")),
-    )
-    assert readiness_cli.main([]) == 4
