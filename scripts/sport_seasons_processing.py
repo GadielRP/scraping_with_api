@@ -57,7 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 season_to_process = [
-    # {"season_name": "NBA 26/27", "tournament_id": 132, "season_id": 100772},
+    {"season_name": "NBA 26/27", "tournament_id": 132, "season_id": 100772},
     # {"season_name": "NBA 25/26", "tournament_id": 132, "season_id": 80229},
     # {"season_name": "NBA 24/25", "tournament_id": 132, "season_id": 65360},
     # {"season_name": "NBA 23/24", "tournament_id": 132, "season_id": 54105},
@@ -79,7 +79,7 @@ season_to_process = [
     # {"season_name": "Premier League 2021", "tournament_id": 17, "season_id": 37036},
     # {"season_name": "Premier League 2020", "tournament_id": 17, "season_id": 29415},
     {"season_name": "MLS 2026", "tournament_id": 242, "season_id": 86668},
-    {"season_name": "MLS 2025", "tournament_id": 242, "season_id": 70158},
+    {"season_name": "NFL 2026", "tournament_id": 9464, "season_id": 94366},
     # {"season_name": "NFL 2025", "tournament_id": 9464, "season_id": 75522},
     # {"season_name": "NFL 2024", "tournament_id": 9464, "season_id": 60592},
     # {"season_name": "NFL 2023", "tournament_id": 9464, "season_id": 51361},
@@ -99,9 +99,9 @@ season_to_process = [
     {"season_name": "League 1 2025", "tournament_id": 34, "season_id": 77356},
     {"season_name": "Saudi Pro League 2026", "tournament_id": 955, "season_id": 99275},
     {"season_name": "Saudi Pro League 2025", "tournament_id": 955, "season_id": 80443},
-    # {"season_name": "SHL 2025", "tournament_id": 261, "season_id": 75679},
-    # {"season_name": "PFL 2025", "tournament_id": 1654, "season_id": 81520},
-    # {"season_name": "CBA 2025", "tournament_id": 1566, "season_id": 85375},
+    {"season_name": "SHL 2025", "tournament_id": 261, "season_id": 75679},
+    {"season_name": "PFL 2025", "tournament_id": 1654, "season_id": 81520},
+    {"season_name": "CBA 2025", "tournament_id": 1566, "season_id": 85375},
     {"season_name": "LPF Argentina 2026", "tournament_id": 155, "season_id": 87913},
     {"season_name": "LPF Argentina Clausura 2025", "tournament_id": 155, "season_id": 77826},
     {"season_name": "LPF Argentina Apertura 2025", "tournament_id": 155, "season_id": 70268},
@@ -110,13 +110,16 @@ season_to_process = [
     {"season_name": "Brasileirão Betano 2026", "tournament_id": 325, "season_id": 87678},
     {"season_name": "Eridivisie 2026", "tournament_id": 37, "season_id": 96143},
     {"season_name": "Liga MX Apertura 2026", "tournament_id": 11621, "season_id": 96191},
-
+    {"season_name": "Liga MX Clausura 2025", "tournament_id": 11620, "season_id": 87699},
     # trophy/cup seasons (not leagues) - these are often used for international competitions
-    {"season_name": "FA Cup 2026", "tournament_id": 19, "season_id": 102079},
+    #{"season_name": "FA Cup 2026", "tournament_id": 19, "season_id": 102079},
     # {"season_name": "FA Cup 2025", "tournament_id": 19, "season_id": 82557},
     # {"season_name": "Coppa Italia 2025", "tournament_id": 328, "season_id": 77308},
     # {"season_name": "Copa Argentina 2025", "tournament_id": 102, "season_id": 70664},
     # {"season_name": "taça de Portugal 2025", "tournament_id": 336, "season_id": 80287},
+    {"season_name": "US Open Cup 2026", "tournament_id": 495, "season_id": 90046},
+    #{"season_name": "US Open Cup 2025", "tournament_id": 495, "season_id": 71737},
+    {"season_name": "Copa Argentina 2026", "tournament_id": 1024, "season_id": 88177},
 
 ]
 
