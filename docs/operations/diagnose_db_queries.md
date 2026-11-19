@@ -88,6 +88,7 @@ This helps verify that tracked competitions are mapped correctly to the source p
 ```sql
 SELECT
 	esm.source,
+	e.discovery_source,
 	esm.source_event_id,
 	esm.has_odds,
     e.id AS event_id,
@@ -102,7 +103,7 @@ SELECT
 FROM events e
 LEFT JOIN event_source_mappings esm
     ON e.id = esm.event_id
-WHERE esm.source_event_id in ('17364655') or e.id = 460298
+WHERE esm.source_event_id in ('15664537','16416317','16665376') or e.id in (481006)
 ORDER BY e.starts_at DESC
 LIMIT 200;
 ```
