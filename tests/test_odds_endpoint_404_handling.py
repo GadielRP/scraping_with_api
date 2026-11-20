@@ -17,7 +17,7 @@ from infrastructure.persistence.repositories.market.market_odds_read_models impo
     QuotePriceOrigin,
     MarketOddsState,
 )
-from modules.alerts.alerts_formatter.odds_alert import (
+from modules.alerts.formatters.odds_alert import (
     format_market_odds,
 )
 from modules.jobs.pre_start_check_job import event_candidate_builder

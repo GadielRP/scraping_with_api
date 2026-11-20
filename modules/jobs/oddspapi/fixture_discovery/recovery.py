@@ -187,7 +187,7 @@ class FixtureDiscoveryService:
     ) -> None:
         """Best-effort alert using the already configured Telegram transport."""
         try:
-            from modules.alerts import pre_start_notifier
+            from modules.alerts.telegram_notifier import pre_start_notifier
 
             message = (
                 "🚨 Oddspapi fixture discovery requires attention\n"

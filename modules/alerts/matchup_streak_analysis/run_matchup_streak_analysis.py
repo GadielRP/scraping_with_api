@@ -5,7 +5,7 @@ This module is the public entry point for matchup streak analysis.
 It:
   - Re-exports the MatchupStreakContext dataclass
   - Exposes build_matchup_streak_context() and should_send_streak_alert()
-  - Wires together head_to_head, historical_form, winning_odds, and constants
+  - Wires together head_to_head, historical_form and constants
     into a single analysis pipeline.
 
 Replaces: streak_alerts.StreakAlertEngine and the top-level streak_alert_engine
@@ -16,7 +16,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from modules.sofascore import api_client
 from infrastructure.persistence.repositories import SeasonRepository
@@ -30,7 +30,6 @@ from .historical_form import (
     _get_filtering_criteria,
 )
 from modules.standings.calculator import standings_calculator
-from .winning_odds import get_winning_odds_data
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +139,6 @@ class MatchupStreakContext:
     #   }
     # }
     league_totals_context: Optional[Dict[str, Any]] = None
-    # Winning odds data
-    winning_odds_data: Optional[Dict] = None  # Winning odds response data
     # Current event odds (for display in H2H streak messages)
     one_open: Optional[float] = None
     x_open: Optional[float] = None
@@ -387,13 +384,6 @@ def build_matchup_streak_context(
                 f"({len(away_team_batches)} batches, final ranking: {away_team_final_real_ranking})"
             )
 
-        # -----------------------------------------------------------------
-        # Winning odds
-        # -----------------------------------------------------------------
-        # commented since winning odds are no longer needed, at least for now
-        #winning_odds_data = get_winning_odds_data(event_id)
-        winning_odds_data = None
-
         # Log summary of what data we have
         data_summary = []
         if total > 0:
@@ -402,15 +392,13 @@ def build_matchup_streak_context(
             data_summary.append(f"Home form: {home_team_wins}W-{home_team_losses}L-{home_team_draws}D")
         if away_team_wins + away_team_losses + away_team_draws > 0:
             data_summary.append(f"Away form: {away_team_wins}W-{away_team_losses}L-{away_team_draws}D")
-        if winning_odds_data:
-            data_summary.append("Winning odds: available")
 
         if data_summary:
             logger.info(f"📊 Matchup analysis for {participants}: {', '.join(data_summary)}")
         else:
             logger.info(
                 f"📊 Matchup analysis for {participants}: "
-                "No data available (no H2H matches, no team form, no winning odds)"
+                "No data available (no H2H matches, no team form)"
             )
 
         # -----------------------------------------------------------------
@@ -655,8 +643,6 @@ def build_matchup_streak_context(
             # Standings snapshots
             home_team_standing=home_team_standing,
             away_team_standing=away_team_standing,
-            # Winning odds data
-            winning_odds_data=winning_odds_data,
             # Current event odds
             one_open=one_open,
             x_open=x_open,
@@ -686,8 +672,7 @@ def should_send_streak_alert(
 
     Send alerts if we have sufficient data AND at least one of:
     1. Matchup data (at least 1 match analyzed), OR
-    2. Team form data (at least one team has results), OR
-    3. Winning odds data
+    2. Team form data (at least one team has results)
 
     Args:
         streak: MatchupStreakContext object
@@ -724,10 +709,7 @@ def should_send_streak_alert(
         (streak.away_team_wins + streak.away_team_losses + streak.away_team_draws > 0)
     )
 
-    # Check if we have winning odds data
-    has_winning_odds = streak.winning_odds_data is not None
-
-    should_send = has_h2h_data or has_team_form or has_winning_odds
+    should_send = has_h2h_data or has_team_form
 
     if should_send:
         reasons = []
@@ -735,8 +717,6 @@ def should_send_streak_alert(
             reasons.append(f"Matchup data ({streak.h2h_matchup_matches_analyzed} matches)")
         if has_team_form:
             reasons.append("team form data")
-        if has_winning_odds:
-            reasons.append("winning odds data")
         logger.info(
             f"✅ Matchup streak alert will send for {participants}: "
             f"{', '.join(reasons)} (data: home={home_total_games}, away={away_total_games})"
@@ -746,8 +726,7 @@ def should_send_streak_alert(
             f"⏭️ Matchup streak alert skipped for {participants}: "
             f"No meaningful data (Matchup: {streak.h2h_matchup_matches_analyzed}, "
             f"Home form: {streak.home_team_wins + streak.home_team_losses + streak.home_team_draws}, "
-            f"Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws}, "
-            f"Winning odds: {has_winning_odds})"
+            f"Away form: {streak.away_team_wins + streak.away_team_losses + streak.away_team_draws})"
         )
 
     return should_send

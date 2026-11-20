@@ -26,8 +26,8 @@ from modules.competition.rule_terms import GroupingMethod
 from modules.standings.telegram_report import (
     format_fair_play_table_for_telegram,
     format_standings_table_for_telegram,
-    send_debug_telegram,
 )
+from infrastructure.network.telegram import send_telegram_message
 from modules.standings.calculator import standings_calculator
 
 logger = logging.getLogger(__name__)
@@ -222,7 +222,7 @@ class HistoricalFormService:
         )
         standings_key = (*debug_scope, "standings")
         if not deduplicate_global or self._claim_global_debug_table(standings_key):
-            send_debug_telegram(message, personal_chat_id)
+            send_telegram_message(message, personal_chat_id)
         fair_play_message = format_fair_play_table_for_telegram(
             current_standings, f"CURRENT (at {current_date})",
         )
@@ -230,7 +230,7 @@ class HistoricalFormService:
         if fair_play_message and (
             not deduplicate_global or self._claim_global_debug_table(fair_play_key)
         ):
-            send_debug_telegram(fair_play_message, personal_chat_id)
+            send_telegram_message(fair_play_message, personal_chat_id)
 
     @staticmethod
     def _is_argentina_zones_profile(debug_scope: Tuple) -> bool:

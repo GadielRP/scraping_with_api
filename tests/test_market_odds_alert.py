@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from infrastructure.persistence.repositories.market.market_odds_read_models import (
     ChoiceOddsState, MarketOddsState, MarketOddsReadResult, OddsPrice, QuotePriceOrigin,
 )
-from modules.alerts.alerts_formatter import odds_alert
+from modules.alerts.formatters import odds_alert
 
 
 def _choice(name, opening, current):

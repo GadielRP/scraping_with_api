@@ -8,7 +8,7 @@ from infrastructure.persistence.models import Bookie, Event
 from infrastructure.persistence.repositories.market_repository import MarketRepository
 from infrastructure.persistence.repositories.market.market_odds_read_repository import MarketOddsReadRepository
 from infrastructure.settings import Config
-from modules.alerts.alerts_formatter import odds_alert
+from modules.alerts.formatters import odds_alert
 from modules.jobs.pre_start_check_job import alert_pipeline
 from modules.jobs.pre_start_check_job import run_pre_start_check_job as runner
 

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from modules.alerts.dual_process.process_1 import alert_engine
-from modules.alerts.dual_process.process_2 import Process2Engine
+from modules.alerts.dual_process.process_1.engine import alert_engine
+from modules.alerts.dual_process.process_2.engine import Process2Engine
 from infrastructure.settings import Config
 from shared.temporal import now_in_timezone
 
@@ -336,7 +336,7 @@ class DualProcessRunner:
     def send_alerts(self, notifier, dual_reports: List[DualProcessReport]) -> bool:
         """Send dual-process alerts through the formatter layer."""
         try:
-            from modules.alerts.alerts_formatter.dual_process_alert import send_dual_process_alerts
+            from modules.alerts.formatters.dual_process_alert import send_dual_process_alerts
 
             return send_dual_process_alerts(notifier, dual_reports)
         except Exception as e:

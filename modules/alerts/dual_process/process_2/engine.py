@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository
 
-from .sports import FootballFormulas
+from .sports.football import FootballFormulas
 
 logger = logging.getLogger(__name__)
 

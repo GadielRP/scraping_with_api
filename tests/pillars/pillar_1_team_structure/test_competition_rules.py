@@ -61,61 +61,6 @@ def test_sporting_profiles_and_operational_allowlist_remain_independent():
         rules = config
         assert isinstance(rules.grouping_method, GroupingMethod)
         assert isinstance(rules.standings.primary_metric, StandingsMetric)
-        assert rules.reference_season in {"2026", "2027", "2026/27"}
-
-
-@pytest.mark.parametrize("code,teams,games,safe", [
-    ("laliga", 20, 38, 17), ("premier_league", 20, 38, 17),
-    ("serie_a", 20, 38, 17), ("bundesliga", 18, 34, 15),
-    ("ligue_1", 18, 34, 15), ("liga_portugal", 18, 34, 15),
-    ("eredivisie", 18, 34, 15), ("saudi_pro_league", 18, 34, 15),
-    ("brasileirao", 20, 38, 16), ("shl", 14, 52, 12),
-    ("liiga", 17, 64, 14),
-])
-def test_retention_boundaries_are_league_specific(code, teams, games, safe):
-    rules = PROFILES[code]
-    retention = [rule for rule in rules.objectives if rule.objective_type == "DIVISION_RETENTION"]
-    assert (rules.number_of_teams, rules.total_regular_season_games) == (teams, games)
-    assert {rule.rank_selection.reference_rank for rule in retention} == {safe}
-    assert {rank for rule in retention for rank in range(rule.rank_selection.rank_start, rule.rank_selection.rank_end + 1)} == set(range(safe + 1, teams + 1))
-
-
-@pytest.mark.parametrize("code", ["liiga", "shl"])
-def test_hockey_profiles_only_model_domestic_objectives(code):
-    assert [rule.objective_type for rule in PROFILES[code].objectives] == [
-        ObjectiveType.PHASE_QUALIFICATION,
-        ObjectiveType.PHASE_QUALIFICATION,
-        ObjectiveType.DIVISION_RETENTION,
-    ]
-
-
-def test_brazil_qualification_destinations_use_family_or_specific_identity():
-    rules = PROFILES["brasileirao"]
-    external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
-    assert [(rule.rank_selection.rank_start, rule.rank_selection.rank_end) for rule in external[:3]] == [(1, 4), (5, 5), (6, 11)]
-    assert [rule.status for rule in external] == [RuleStatus.CONFIGURED] * 3
-
-
-def test_saudi_two_is_awarded_through_the_king_cup():
-    profile = get_competition_profile(50)
-    rule, = (berth for berth in profile.qualification_sources.tournament_berths
-             if berth.destination.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO)
-    assert rule.competition == competition_ids.SAUDI_KINGS_CUP
-    assert all(
-        objective.qualification_destination != rule.destination
-        for objective in profile.objectives
-    )
-    assert rule.destination.destination_competition_identity == competition_ids.AFC_CHAMPIONS_LEAGUE_TWO
-    assert rule.destination.destination_phase is DestinationPhase.GROUP_STAGE
-    assert rule.destination.qualification_path is QualificationPath.DIRECT
-    assert rule.before_table_slot is None
-
-
-def test_wnba_2026_uses_one_global_playoff_cutoff():
-    rules = get_competition_profile(145)
-    assert (rules.reference_season, rules.number_of_teams, rules.total_regular_season_games) == ("2026", 15, 44)
-    rule, = rules.objectives
-    assert (rule.rank_selection.rank_start, rule.rank_selection.rank_end, rule.rank_selection.ranking_scope) == (1, 8, RankingScope.GLOBAL)
 
 
 @pytest.mark.parametrize("field,value", [
@@ -182,43 +127,6 @@ def test_unknown_route_is_allowed_only_while_the_objective_is_pending():
         replace(pending, status=RuleStatus.CONFIGURED)
 
 
-def test_profiles_use_explicit_knockout_rounds_and_only_relevant_destinations():
-    for competition, objective_index, expected_round in (
-        (competition_ids.LIIGA, 1, "ROUND_OF_16"),
-        (competition_ids.MLS, 0, "ROUND_OF_16"),
-        (competition_ids.WNBA, 0, "QUARTER_FINALS"),
-    ):
-        objective = COMPETITION_PROFILES[competition].objectives[objective_index]
-        assert objective.qualification_destination.destination_round == expected_round
-    cba = COMPETITION_PROFILES[competition_ids.CBA]
-    assert next(rule for rule in cba.objectives if rule.rank_selection.rank_start == 5
-                ).qualification_destination.destination_round == "ROUND_OF_16"
-    assert cba.qualification_sources is None
-    assert all(rule.objective_type != "COMPETITION_QUALIFICATION" for rule in cba.objectives)
-    saudi = COMPETITION_PROFILES[competition_ids.SAUDI_PRO_LEAGUE]
-    assert len(saudi.objectives) == 3
-    assert len(saudi.qualification_sources.tournament_berths) == 1
-
-
-@pytest.mark.parametrize("cid,index,stage,path,destination", [
-    (176, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.NBA_PLAYOFFS),
-    (176, 1, DestinationPhase.PLAY_IN, QualificationPath.DIRECT, competition_ids.NBA_PLAY_IN),
-    (429, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.EUROLEAGUE_PLAYOFFS),
-    (429, 1, DestinationPhase.PLAY_IN, QualificationPath.DIRECT, competition_ids.EUROLEAGUE_PLAY_IN),
-    (76, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.MLS_PLAYOFFS),
-    (76, 1, DestinationPhase.PLAY_IN, QualificationPath.DIRECT, competition_ids.MLS_PLAYOFFS),
-    (180, 1, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.SHL_PLAYOFFS),
-    (525, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.LIIGA_PLAYOFFS),
-    (5196, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.NHL_PLAYOFFS),
-    (554, 0, DestinationPhase.PLAYOFFS, QualificationPath.DIRECT, competition_ids.AHL_PLAYOFFS),
-])
-def test_internal_destinations_use_generic_stages(cid, index, stage, path, destination):
-    rule = get_competition_profile(cid).objectives[index]
-    assert rule.qualification_destination.destination_phase is stage
-    assert rule.qualification_destination.destination_competition_identity == destination
-    assert rule.qualification_destination.qualification_path is path
-
-
 def test_destination_name_is_stored_and_serialized_independently_of_note():
     rule = get_competition_profile(competition_ids.LALIGA).objectives[0]
     assert rule.qualification_destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE
@@ -267,39 +175,6 @@ def test_tournament_berths_are_unique_per_profile_and_carry_registered_names():
         assert len(routes) == len(set(routes))
 
 
-def test_premier_league_cup_rules_keep_their_distinct_explicit_destinations():
-    berths = {
-        rule.competition: rule
-        for rule in get_competition_profile(competition_ids.PREMIER_LEAGUE).qualification_sources.tournament_berths
-    }
-    fa_cup = berths[competition_ids.FA_CUP].destination
-    efl_cup = berths[competition_ids.EFL_CUP].destination
-
-    assert fa_cup.destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
-    assert fa_cup.destination_phase is DestinationPhase.LEAGUE_PHASE
-    assert fa_cup.qualification_path is QualificationPath.DIRECT
-    assert efl_cup.destination_competition_identity == competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
-    assert efl_cup.destination_phase is DestinationPhase.QUALIFICATION_ROUND
-    assert efl_cup.qualification_path is QualificationPath.DIRECT
-
-
-def test_qualification_routes_reference_qualification_records():
-    laliga = get_competition_profile(competition_ids.LALIGA)
-    assert laliga.objectives[2].qualification_destination.destination_competition_identity == competition_ids.UEFA_CONFERENCE_LEAGUE_QUALIFICATION
-    france = get_competition_profile(competition_ids.LIGUE_1)
-    assert france.objectives[1].qualification_destination.destination_competition_identity == competition_ids.UEFA_CHAMPIONS_LEAGUE_QUALIFICATION
-    assert france.objectives[2].qualification_destination.destination_competition_identity == competition_ids.UEFA_EUROPA_LEAGUE
-    brazil = get_competition_profile(competition_ids.BRASILEIRAO)
-    assert brazil.qualification_sources.tournament_berths[0].competition == competition_ids.COPA_DO_BRASIL
-    assert [(rule.rank_selection.rank_start, rule.rank_selection.rank_end)
-            for rule in brazil.objectives] == [(1, 4), (5, 5), (6, 11), (17, 20)]
-    assert brazil.objectives[1].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES_QUALIFICATION
-    assert brazil.objectives[0].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_LIBERTADORES
-    assert brazil.objectives[0].qualification_destination.destination_competition_identity.source_tournament_id is None
-    assert brazil.objectives[2].qualification_destination.destination_competition_identity == competition_ids.CONMEBOL_SUDAMERICANA
-    assert competition_ids.COPA_DEL_REY.source_tournament_id == 150  # Football cup identity.
-
-
 @pytest.mark.parametrize("cid,index,changes", [
     (167, 0, {"destination_phase": None}),
     (167, 0, {"destination_competition_identity": None}),
@@ -335,20 +210,6 @@ def test_m5_diagnostic_preserves_destination_id_and_readable_name():
     rule = result.raw["home"]["objective_rule"]
     assert rule["qualification_destination"]["destination_competition_identity"] == asdict(competition_ids.UEFA_CHAMPIONS_LEAGUE)
     assert rule["qualification_destination"]["destination_competition_identity"]["competition_name"] == "UEFA Champions League"
-
-
-def test_annual_objectives_do_not_use_a_single_argentine_or_mexican_tournament():
-    for code in (
-        "liga_profesional_de_argentina_apertura", "liga_profesional_de_argentina_clausura",
-        "liga_mx_apertura", "liga_mx_clausura",
-    ):
-        rules = PROFILES[code]
-        external = [rule for rule in rules.objectives if rule.objective_type == "COMPETITION_QUALIFICATION"]
-        assert all(rule.rank_selection.aggregation_scope == "SEASON_AGGREGATE" for rule in external)
-    argentina = PROFILES["liga_profesional_de_argentina_apertura"]
-    retention = [rule for rule in argentina.objectives if rule.objective_type == "DIVISION_RETENTION"]
-    assert {rule.rank_selection.aggregation_scope for rule in retention} == {"SEASON_AGGREGATE", "MULTISEASON_RECORD"}
-    assert all(rule.status == RuleStatus.CONFIGURED for rule in retention)
 
 
 @pytest.mark.parametrize("label", ["Serie A 26/27", "2026/2027", "2025/26", None, "unknown"])

@@ -31,8 +31,8 @@ from modules.standings.telegram_report import (
     format_standings_table_for_telegram,
     format_fair_play_table_for_telegram,
     debug_standings_enabled,
-    send_debug_telegram,
 )
+from infrastructure.network.telegram import send_telegram_message
 from modules.standings.season_aggregate import calculate_season_aggregate_standings
 from modules.standings.calculator import standings_calculator
 from modules.competition.rule_terms import RankingMetric
@@ -118,7 +118,7 @@ def main():
             title += f" | {_policy_label(policy_name, first_row.get('season_completion_ratio'))}"
             report = format_standings_table_for_telegram(result["standings"], title)
             standings_rules = profile.standings
-    send_debug_telegram(report, os.environ["PERSONAL_CHAT_ID"])
+    send_telegram_message(report, os.environ["PERSONAL_CHAT_ID"])
     criteria = getattr(standings_rules, f"{policy_name}_criteria")
     metrics = {metric for criterion in criteria for metric in criterion.metrics}
     if standings_rules.fair_play_weights and metrics.intersection({
@@ -131,7 +131,7 @@ def main():
             break_ties_on_red_cards=RankingMetric.NEGATIVE_FAIR_PLAY_RED_CARDS in metrics,
         )
         if fair_play_report:
-            send_debug_telegram(fair_play_report, os.environ["PERSONAL_CHAT_ID"])
+            send_telegram_message(fair_play_report, os.environ["PERSONAL_CHAT_ID"])
 
     competition_context = resolve_p1_competition_context(event_identity, competition_context)
     competition_context = prepare_qualification(
@@ -140,7 +140,7 @@ def main():
     if competition_context.berth_allocation is None:
         print("No berth allocation for this competition and season.")
         return
-    send_debug_telegram(
+    send_telegram_message(
         format_berth_allocation_for_telegram(competition_context.berth_allocation, title),
         os.environ["PERSONAL_CHAT_ID"],
     )

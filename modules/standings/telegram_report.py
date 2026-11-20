@@ -1,4 +1,4 @@
-"""Telegram reports for standings, fair play and qualification berths, and the debug sender."""
+"""Telegram reports for standings, fair play and qualification berths."""
 
 import html
 import logging
@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Sequence
 
+from infrastructure.network.telegram import send_telegram_message
 from infrastructure.settings import Config
 from modules.competition.rule_terms import BerthResolution, BerthType
 from modules.competition.season_aggregate import SeasonStanding
@@ -226,40 +227,20 @@ def send_argentina_zones_standings_debug(
         current_message = format_standings_table_for_telegram(
             current_standings, f"ARGENTINA CLAUSURA (at {date_label})",
         )
-        send_debug_telegram(current_message, chat_id)
+        send_telegram_message(current_message, chat_id)
 
     if annual_table:
         annual_message = format_annual_standings_table_for_telegram(
             annual_table, f"ARGENTINA ANNUAL {season_year} (at {date_label})",
         )
-        send_debug_telegram(annual_message, chat_id)
+        send_telegram_message(annual_message, chat_id)
 
     if current_standings:
         fair_play_message = format_fair_play_table_for_telegram(
             current_standings, f"ARGENTINA FAIR PLAY (at {date_label})", break_ties_on_red_cards=True,
         )
         if fair_play_message:
-            send_debug_telegram(fair_play_message, chat_id)
-
-
-def send_debug_telegram(message: str, chat_id: str) -> None:
-    """Send a debug message to Telegram if the bot is configured."""
-    import requests
-
-    if not Config.TELEGRAM_BOT_TOKEN or not chat_id:
-        logger.debug("Telegram not configured for debug messages")
-        return
-
-    try:
-        url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            logger.info("Debug standings sent to personal chat")
-        else:
-            logger.warning("Failed to send debug standings: %s", response.status_code)
-    except Exception as exc:
-        logger.error("Error sending debug Telegram: %s", exc)
+            send_telegram_message(fair_play_message, chat_id)
 
 
 def debug_standings_enabled() -> bool:

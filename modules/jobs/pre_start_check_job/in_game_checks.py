@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from modules.alerts.basketball_4q import basketball_4q_monitor
+from modules.alerts.basketball_4q.run_basketball_4q import basketball_4q_monitor
 
 
 def run_in_game_checks() -> None:

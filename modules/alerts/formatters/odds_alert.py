@@ -9,7 +9,7 @@ from typing import Sequence
 from infrastructure.persistence.repositories import EventRepository
 from infrastructure.persistence.repositories.market.market_odds_read_repository import MarketOddsReadRepository
 from infrastructure.persistence.repositories.market.market_odds_read_models import ChoiceOddsState, MarketOddsState
-from modules.alerts import pre_start_notifier
+from modules.alerts.telegram_notifier import pre_start_notifier
 from modules.competition.tracked_competitions import is_tracked_competition
 
 logger = logging.getLogger(__name__)

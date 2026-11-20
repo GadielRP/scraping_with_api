@@ -13,9 +13,9 @@ from modules.jobs.pre_start_check_job.moment_policy import (
     dual_process_moments,
     is_closing_odds_moment,
 )
-from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.matchup_streak_alert import send_matchup_streak_alerts
-from modules.alerts.alerts_formatter.odds_alert import send_odds_alert
+from modules.alerts.telegram_notifier import pre_start_notifier
+from modules.alerts.formatters.matchup_streak_alert import send_matchup_streak_alerts
+from modules.alerts.formatters.odds_alert import send_odds_alert
 from modules.alerts.dual_process.run_dual_process import prediction_engine
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.pillars.context import EventContext, build_event_context

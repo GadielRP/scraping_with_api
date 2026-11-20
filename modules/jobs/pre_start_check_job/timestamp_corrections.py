@@ -14,8 +14,8 @@ from infrastructure.persistence.repositories import ResultRepository
 from infrastructure.settings import Config
 from shared.temporal import from_unix_timestamp, utc_now
 from modules.jobs.pre_start_check_job.timing import minutes_since_start
-from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.time_correction_alert import send_time_correction_message
+from modules.alerts.telegram_notifier import pre_start_notifier
+from modules.alerts.formatters.time_correction_alert import send_time_correction_message
 from modules.sofascore.event_identity import resolve_sofascore_event_identity
 
 logger = logging.getLogger(__name__)

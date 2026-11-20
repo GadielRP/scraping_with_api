@@ -9,12 +9,10 @@ import logging
 from datetime import timedelta
 from typing import Dict
 
-from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.repositories import EventRepository
-from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.q4_alert import create_q4_alert_message
+from modules.alerts.telegram_notifier import pre_start_notifier
+from modules.alerts.formatters.q4_alert import create_q4_alert_message
 from modules.alerts.basketball_4q.predictor import predictor_4q
-from infrastructure.persistence.models import Event
 from modules.sofascore import api_client
 from shared.temporal import as_utc, utc_now
 

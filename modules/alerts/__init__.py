@@ -1,5 +1,1 @@
-"""Alerts package."""
-
-from .telegram_notifier import PreStartNotification, pre_start_notifier
-
-__all__ = ["PreStartNotification", "pre_start_notifier"]
+"""Alerts: detection, message formatting and delivery of pre-start and in-game alerts."""

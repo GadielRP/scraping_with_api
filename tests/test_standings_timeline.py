@@ -279,7 +279,7 @@ def test_current_standings_debug_preserves_season_year_scope(monkeypatch):
     monkeypatch.setenv("PERSONAL_CHAT_ID", "test-chat")
     messages = []
     monkeypatch.setattr(
-        form_service, "send_debug_telegram",
+        form_service, "send_telegram_message",
         lambda message, chat_id: messages.append((message, chat_id)),
     )
     service = HistoricalFormService(

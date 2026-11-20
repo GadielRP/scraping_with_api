@@ -4,8 +4,8 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 from infrastructure.persistence.repositories import DualProcessOddsRepository
-from modules.alerts import pre_start_notifier
-from modules.alerts.alerts_formatter.dual_process_alert import create_candidate_report_message
+from modules.alerts.telegram_notifier import pre_start_notifier
+from modules.alerts.formatters.dual_process_alert import create_candidate_report_message
 from infrastructure.settings import Config
 from shared.temporal import as_utc, in_timezone, utc_now
 
