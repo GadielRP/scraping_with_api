@@ -99,7 +99,9 @@ def prepare_qualification(event, competition, streak, *, as_of=None):
         source=competition.source,
         competition_name=competition.display_name or competition.canonical_name,
     )
-    with_eps = apply_european_performance_spot(profile_identity, profile, _season_completion_ratio(streak))
+    with_eps = apply_european_performance_spot(
+        profile_identity, profile, season_year, _season_completion_ratio(streak),
+    )
     if with_eps is not profile:
         profile, rules = with_eps, build_qualification_rules(with_eps)
         competition = replace(competition, competitive_rules=profile)

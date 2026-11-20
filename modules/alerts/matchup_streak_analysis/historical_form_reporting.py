@@ -1,11 +1,13 @@
 """Optional reporting helpers for DB-backed historical form analysis."""
 
+import html
 import logging
 import os
 from datetime import datetime
 from typing import Dict, List, Sequence
 
 from infrastructure.settings import Config
+from modules.competition.rule_terms import BerthResolution, BerthType
 from modules.competition.season_aggregate import SeasonStanding
 from shared.temporal import in_timezone
 
@@ -171,6 +173,38 @@ def format_annual_standings_table_for_telegram(
             "diff": row.goal_diff,
         }
         message += _format_standing_line(row.name, stats) + "\n"
+    return message
+
+
+def format_berth_allocation_for_telegram(allocation, title: str) -> str:
+    """Which clubs reach which competition, from ``CompetitionContext.berth_allocation``."""
+    by_destination: Dict[tuple, List[str]] = {}
+    for berth in allocation.berths:
+        destination = berth.destination
+        competition = destination.destination_competition_identity
+        label = html.escape(
+            (competition.competition_name if competition else None) or "Destino sin identificar"
+        )
+        stage = destination.destination_round or destination.destination_phase
+        if stage:
+            label += f" ({stage})"
+        holder = berth.participant
+        if holder is None:
+            line = f"pendiente: {html.escape(str(berth.issue or berth.resolution))}"
+        else:
+            name = html.escape(holder.source_participant_name or f"#{holder.source_participant_id}")
+            line = f"#{berth.table_rank} {name}" if berth.table_rank is not None else name
+            if berth.berth_type is BerthType.TOURNAMENT:
+                line += f" · {html.escape(berth.source.competition_name or 'torneo')}"
+            if berth.resolution is BerthResolution.CONFIRMED:
+                line += " ✓"
+            elif berth.issue:
+                line += f" ({html.escape(str(berth.issue))})"
+        by_destination.setdefault(label, []).append(line)
+
+    message = f"PLAZAS PARA {allocation.destination_season_year}: <b>{title}</b>\n✓ confirmada · sin marca: proyectada\n"
+    for label, lines in by_destination.items():
+        message += f"\n<b>{label}</b>\n" + "\n".join(lines) + "\n"
     return message
 
 

@@ -9,12 +9,16 @@ for the selected season; it does not force final rankings or invent missing game
 The tie-break sequence is chosen from the stored results: the closing sequence applies
 only when every game of the season is stored (100 %); otherwise the in-season one does.
 The report title shows the policy used and the season completion ratio.
+A second message lists which clubs reach which competition. It comes from the same
+competition context the pre-start pipeline builds: the profile bound by
+resolve_p1_competition_context and the berths allocated by prepare_qualification.
 """
 
 import argparse
 import os
 from dataclasses import asdict
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from sqlalchemy import func, or_, select
 
@@ -23,6 +27,7 @@ from infrastructure.persistence.models import Competition, Season
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id
 from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
     format_annual_standings_table_for_telegram,
+    format_berth_allocation_for_telegram,
     format_standings_table_for_telegram,
     format_fair_play_table_for_telegram,
     debug_standings_enabled,
@@ -31,6 +36,9 @@ from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
 from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import calculate_season_aggregate_standings
 from modules.alerts.matchup_streak_analysis.standings_engine import standings_calculator
 from modules.competition.rule_terms import RankingMetric
+from modules.pillars.context import EventIdentity, build_competition_context
+from modules.pillars.pillar_1_team_structure.competition_context_resolver import resolve_p1_competition_context
+from modules.pillars.pillar_1_team_structure.qualification_preparation import prepare_qualification
 
 
 def _policy_label(policy, ratio):
@@ -71,6 +79,15 @@ def main():
         # Year 3000 is also representable by Windows' Unix timestamp conversion.
         all_results_bound = datetime(3000, 1, 1, tzinfo=timezone.utc)
         title = f"{competition.display_name} | season_id={season.id} | year={season.year}"
+        # The pre-start pipeline's inputs: a competition context and the standings its streak carries.
+        # Aggregate tables are computed by prepare_qualification itself, so no current standings are needed.
+        competition_context = build_competition_context(competition)
+        event_identity = EventIdentity(
+            event_id=0, participants_label=title, starts_at=all_results_bound, minutes_until_start=None,
+            sport="unknown", competition_id=competition.competition_id,
+            competition_name=competition.display_name, season_id=season.id, season_year=season.year,
+        )
+        streak = SimpleNamespace(current_standings=None, league_totals_context=None)
         if arguments.annual:
             sources = profile.qualification_sources
             if sources is None or sources.shared_table is None or season.year is None:
@@ -93,6 +110,9 @@ def main():
             if result.get("status") == "ERROR":
                 parser.error(result["error"])
             fair_play_standings = result["standings"]
+            streak = SimpleNamespace(
+                current_standings=result["standings"], league_totals_context=result.get("league_totals_context"),
+            )
             first_row = next(iter(fair_play_standings.values()), {})
             policy_name = first_row.get("standings_policy", "in_season")
             title += f" | {_policy_label(policy_name, first_row.get('season_completion_ratio'))}"
@@ -112,6 +132,18 @@ def main():
         )
         if fair_play_report:
             send_debug_telegram(fair_play_report, os.environ["PERSONAL_CHAT_ID"])
+
+    competition_context = resolve_p1_competition_context(event_identity, competition_context)
+    competition_context = prepare_qualification(
+        event_identity, competition_context, streak, as_of=all_results_bound,
+    )
+    if competition_context.berth_allocation is None:
+        print("No berth allocation for this competition and season.")
+        return
+    send_debug_telegram(
+        format_berth_allocation_for_telegram(competition_context.berth_allocation, title),
+        os.environ["PERSONAL_CHAT_ID"],
+    )
 
 
 if __name__ == "__main__":

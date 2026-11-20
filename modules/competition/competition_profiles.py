@@ -37,13 +37,17 @@ from modules.competition.rule_terms import (
 # Annual configuration: UEFA European Performance Spots (EPS).
 # Each season UEFA gives two associations one extra Champions League league-phase place. It goes to the
 # best-placed club of that association's top division that has not reached the league phase by another route.
-# List the top-division profile of each benefited association, for example (competition_ids.PREMIER_LEAGUE,).
-# Empty means that no association has the spot. The extra place follows the profile's last direct league-phase
-# place; the later UEFA table places, and the cup berths that precede them, move down by one.
+# Map each season_year to the top-division profile of each benefited association. The key is the event's
+# season_year: the season whose table awards the places (they are played in season_year + 1).
+# A season_year that is missing here, or unknown, has no spot. The extra place follows the profile's last direct
+# league-phase place; the later UEFA table places, and the cup berths that precede them, move down by one.
 # The spot only applies once the season completion ratio reaches the minimum below (inclusive); before that
 # the profile keeps its base places.
 # ---------------------------------------------------------------------------
-UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS: tuple[CompetitionIdentity, ...] = (competition_ids.PREMIER_LEAGUE, competition_ids.LALIGA)
+UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS: Mapping[int, tuple[CompetitionIdentity, ...]] = {
+    2025: (competition_ids.PREMIER_LEAGUE, competition_ids.LALIGA),
+    2026: (competition_ids.PREMIER_LEAGUE, competition_ids.LIGA_PORTUGAL),
+}
 UEFA_EPS_MIN_SEASON_COMPLETION_RATIO = 0.85
 
 
@@ -255,14 +259,15 @@ def _with_european_performance_spot(rules: CompetitionRules) -> CompetitionRules
 def apply_european_performance_spot(
     identity: CompetitionIdentity,
     rules: CompetitionRules,
+    season_year: int | None,
     season_completion_ratio: float | None,
 ) -> CompetitionRules:
-    """The profile with its EPS place, if the federation has one and enough of the season is played.
+    """The profile with its EPS place, if the federation has one that year and enough of the season is played.
 
-    An unknown ratio (unknown season format) never applies the spot.
+    An unknown season year or ratio (unknown season format) never applies the spot.
     """
     if (
-        identity not in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS
+        identity not in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS.get(season_year, ())
         or season_completion_ratio is None
         or season_completion_ratio < UEFA_EPS_MIN_SEASON_COMPLETION_RATIO
     ):
@@ -1423,11 +1428,14 @@ COMPETITION_PROFILES: Mapping[CompetitionIdentity, CompetitionRules] = MappingPr
 
 def _validate_eps_federations() -> None:
     """Reject a misconfigured federation at import, not in the middle of a pipeline run."""
-    for identity in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS:
-        rules = COMPETITION_PROFILES.get(identity)
-        if rules is None:
-            raise ValueError(f"UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS has no profile for {identity}")
-        _with_european_performance_spot(rules)
+    for season_year, federations in UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS.items():
+        if isinstance(season_year, bool) or not isinstance(season_year, int):
+            raise ValueError(f"UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS keys must be season years, got {season_year!r}")
+        for identity in federations:
+            rules = COMPETITION_PROFILES.get(identity)
+            if rules is None:
+                raise ValueError(f"UEFA_EPS_CHAMPIONS_LEAGUE_FEDERATIONS[{season_year}] has no profile for {identity}")
+            _with_european_performance_spot(rules)
 
 
 _validate_eps_federations()

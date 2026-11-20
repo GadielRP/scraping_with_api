@@ -128,6 +128,34 @@ def _clean_text(value) -> Optional[str]:
     return normalized or None
 
 
+def build_competition_context(competition_ref, raw_metadata: Optional[dict] = None) -> CompetitionContext:
+    """The CompetitionContext of a stored competition, before sporting rules are bound to it."""
+    raw_metadata = raw_metadata or {}
+    return CompetitionContext(
+        competition_id=competition_ref.competition_id,
+        source=competition_ref.source,
+        source_tournament_id=competition_ref.source_tournament_id,
+        source_unique_tournament_id=competition_ref.source_unique_tournament_id,
+        canonical_name=competition_ref.canonical_name,
+        display_name=_clean_text(competition_ref.display_name),
+        slug=_clean_text(competition_ref.slug),
+        unique_slug=_clean_text(competition_ref.unique_slug),
+        category_id=competition_ref.category_id,
+        category_name=competition_ref.category_name,
+        number_of_teams=competition_ref.number_of_teams,
+        number_of_teams_source=competition_ref.competition_config_source
+        or ("db_cache" if competition_ref.number_of_teams is not None else "missing"),
+        total_regular_season_games=competition_ref.total_regular_season_games,
+        standings_grouping=competition_ref.standings_grouping,
+        competition_config_source=competition_ref.competition_config_source or "missing",
+        has_standings_source_endpoint=competition_ref.has_standings_source_endpoint,
+        source_tournament_name=raw_metadata.get("tournament_name"),
+        source_unique_tournament_name=raw_metadata.get("unique_tournament_name"),
+        created_at=competition_ref.created_at,
+        updated_at=competition_ref.updated_at,
+    )
+
+
 def build_event_context(
     event_obj,
     minutes_until_start: Optional[int] = None,
@@ -191,29 +219,7 @@ def build_event_context(
         created_at=away_participant.created_at,
         updated_at=away_participant.updated_at,
     )
-    competition = CompetitionContext(
-        competition_id=competition_ref.competition_id,
-        source=competition_ref.source,
-        source_tournament_id=competition_ref.source_tournament_id,
-        source_unique_tournament_id=competition_ref.source_unique_tournament_id,
-        canonical_name=competition_ref.canonical_name,
-        display_name=competition_display_name,
-        slug=_clean_text(competition_ref.slug),
-        unique_slug=_clean_text(competition_ref.unique_slug),
-        category_id=competition_ref.category_id,
-        category_name=competition_ref.category_name,
-        number_of_teams=competition_ref.number_of_teams,
-        number_of_teams_source=competition_ref.competition_config_source
-        or ("db_cache" if competition_ref.number_of_teams is not None else "missing"),
-        total_regular_season_games=competition_ref.total_regular_season_games,
-        standings_grouping=competition_ref.standings_grouping,
-        competition_config_source=competition_ref.competition_config_source or "missing",
-        has_standings_source_endpoint=competition_ref.has_standings_source_endpoint,
-        source_tournament_name=raw_metadata.get("tournament_name"),
-        source_unique_tournament_name=raw_metadata.get("unique_tournament_name"),
-        created_at=competition_ref.created_at,
-        updated_at=competition_ref.updated_at,
-    )
+    competition = build_competition_context(competition_ref, raw_metadata)
 
     return EventContext(
         event_id=getattr(event_obj, "id", 0),
