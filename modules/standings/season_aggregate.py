@@ -16,7 +16,7 @@ from modules.competition.season_aggregate import (
 )
 from shared.temporal import as_utc
 from modules.discipline.policies import accumulate_football_fair_play
-from .standings_rules import rank_standings, select_standings_policy
+from .ranking import rank_standings, select_standings_policy
 
 
 def calculate_season_aggregate_standings(

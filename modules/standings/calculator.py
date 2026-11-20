@@ -1,7 +1,6 @@
-"""Historical standings calculation engine.
+"""Standings computed from stored results at a cutoff, with a cache.
 
-This layer owns the DB-backed standings computation and the cache used by
-historical form retrieval.
+Used by the matchup streak alert, the P1 pillar and the standings script.
 """
 
 
@@ -17,19 +16,19 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Season
 from infrastructure.persistence.repositories.disciplinary_incident_repository import DisciplinaryIncidentRepository
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
-from modules.competition.competition_profiles import get_competition_profile as get_profile_by_identity
+from modules.competition.competition_profiles import get_competition_profile
 from modules.competition.rule_terms import GroupingMethod, RankingIssue, RankingScope, RankingStatus
 from modules.competition.standings_rows import standing_group
 from modules.events.result_availability import available_at
 from shared.temporal import from_unix_timestamp
 
-from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
+from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id
 from modules.competition.competitive_rules import CompetitionRules
 from modules.discipline.contracts import IncidentType
 from modules.discipline.policies import accumulate_football_fair_play
-from .historical_form_reporting import format_standings_table_for_telegram
+from .telegram_report import format_standings_table_for_telegram
 from modules.competition.competition_group_memberships import get_team_group
-from .standings_rules import normalize_result_subtype, rank_standings, select_standings_policy
+from .ranking import normalize_result_subtype, rank_standings, select_standings_policy
 
 logger = logging.getLogger(__name__)
 FOOTBALL_CARD_STATS = (("yellow_cards", "yellow_card"), ("red_cards", "red_card"))
@@ -212,7 +211,7 @@ def _fair_play_carryover_snapshots(profile, season_id, season_year, cutoffs):
         yield from repeat(None, len(cutoffs))
         return
 
-    prior_profile = get_profile_by_identity(competition)
+    prior_profile = get_competition_profile(competition)
     expected_games = prior_profile.total_regular_season_games
     with db_manager.get_session() as session:
         if season_year is None:
@@ -545,27 +544,6 @@ class HistoricalStandingsCalculator:
         _attach_card_totals(football_records, profile)
         return match_records
 
-    def calculate_standings_at(
-        self,
-        season_id: int,
-        cutoff_timestamp: float,
-        sport: str = None,
-        source_unique_tournament_id: Optional[int] = None,
-        source_tournament_id: Optional[int] = None,
-        competition_id: Optional[int] = None,
-        season_year: Optional[int] = None,
-    ) -> Dict[str, Dict]:
-        bundle = self.calculate_standings_bundle_at(
-            season_id=season_id,
-            cutoff_timestamp=cutoff_timestamp,
-            sport=sport,
-            source_unique_tournament_id=source_unique_tournament_id,
-            source_tournament_id=source_tournament_id,
-            competition_id=competition_id,
-            season_year=season_year,
-        )
-        return bundle.get("standings", {})
-
     def calculate_standings_bundle_at(
         self,
         season_id: int,
@@ -637,7 +615,7 @@ class HistoricalStandingsCalculator:
         """Compute standings snapshots for many cutoffs with one league fetch.
 
         Returns a mapping of each requested cutoff timestamp to the same
-        standings payload that calculate_standings_at() would produce for that
+        standings payload that calculate_standings_bundle_at()["standings"] would produce for that
         cutoff, but performing a single league-wide SQL query instead of one
         per cutoff. On failure every cutoff maps to an empty dict, mirroring
         the per-cutoff error behavior.
@@ -666,7 +644,7 @@ class HistoricalStandingsCalculator:
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> Dict[float, Dict[str, Dict]]:
-        profile = get_competition_profile(competition_id)
+        profile = get_competition_profile_for_local_id(competition_id)
         if profile is None:
             raise ValueError(f"No competition profile configured for competition_id={competition_id}")
 
@@ -725,7 +703,7 @@ class HistoricalStandingsCalculator:
         competition_id: Optional[int] = None,
         season_year: Optional[int] = None,
     ) -> Dict[str, Any]:
-        profile = get_competition_profile(competition_id)
+        profile = get_competition_profile_for_local_id(competition_id)
         if profile is None:
             raise ValueError(f"No competition profile configured for competition_id={competition_id}")
 

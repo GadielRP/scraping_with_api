@@ -3,7 +3,7 @@
 Covers the fix for the pre-start bottleneck where every historical form game
 triggered a full league standings recompute (one league-wide SQL per game).
 The timeline must return exactly the same standings that per-cutoff
-calculate_standings_at() calls would, while issuing a single league fetch.
+calculate_standings_bundle_at() calls would, while issuing a single league fetch.
 """
 
 import importlib
@@ -16,7 +16,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from modules.alerts.matchup_streak_analysis import standings_engine as se
+from modules.standings import calculator as se
 from modules.alerts.matchup_streak_analysis.historical_form_service import (
     HistoricalFormService,
 )
@@ -111,7 +111,7 @@ def test_timeline_matches_per_cutoff_standings_with_single_fetch(monkeypatch):
     # Independent cutoff requests each issue one league fetch.
     per_cutoff_calculator = se.HistoricalStandingsCalculator()
     expected = {
-        cutoff: per_cutoff_calculator.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
+        cutoff: per_cutoff_calculator.calculate_standings_bundle_at(SEASON_ID, cutoff, "Basketball", competition_id=174)["standings"]
         for cutoff in cutoffs
     }
     assert len(fake_db.execute_calls) == len(cutoffs)
@@ -154,9 +154,9 @@ def _closing_threshold_rows():
 
 
 def _patch_profile_size(monkeypatch, games_per_team):
-    base = se.get_competition_profile(174)
+    base = se.get_competition_profile_for_local_id(174)
     sized = replace(base, number_of_teams=4, total_regular_season_games=games_per_team)
-    monkeypatch.setattr(se, "get_competition_profile", lambda competition_id: sized)
+    monkeypatch.setattr(se, "get_competition_profile_for_local_id", lambda competition_id: sized)
 
 
 def test_timeline_selects_policy_per_cutoff_and_matches_individual_bundles(monkeypatch):
@@ -185,7 +185,7 @@ def test_timeline_selects_policy_per_cutoff_and_matches_individual_bundles(monke
     fake_db.execute_calls.clear()
     individual = se.HistoricalStandingsCalculator()
     for cutoff in cutoffs:
-        assert individual.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174) == timeline[cutoff]
+        assert individual.calculate_standings_bundle_at(SEASON_ID, cutoff, "Basketball", competition_id=174)["standings"] == timeline[cutoff]
 
 
 def test_unknown_calendar_keeps_in_season_policy_without_ratio(monkeypatch):
@@ -261,7 +261,7 @@ def test_get_team_form_from_db_uses_constant_league_fetches(monkeypatch):
     fake_db.execute_calls.clear()
     for result in results:
         cutoff = float(result["startTimestamp"])
-        standings = reference.calculate_standings_at(SEASON_ID, cutoff, "Basketball", competition_id=174)
+        standings = reference.calculate_standings_bundle_at(SEASON_ID, cutoff, "Basketball", competition_id=174)["standings"]
         expected_own = (standings.get("Hawks") or {}).get("rank")
         expected_opp = (standings.get(result["opponent_name"]) or {}).get("rank")
         assert result["own_ranking"] == expected_own

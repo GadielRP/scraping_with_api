@@ -147,7 +147,7 @@ def test_liga_mx_uses_annual_table_and_reassigns_duplicate_finalists():
 def test_mls_qualification_keeps_conference_leaders_and_reallocates_overlaps(
     session, monkeypatch, cup_winner, open_cup_finalists, expected_clubs,
 ):
-    from modules.alerts.matchup_streak_analysis.standings_engine import build_standings_snapshot
+    from modules.standings.calculator import build_standings_snapshot
 
     profile = COMPETITION_PROFILES[ids.MLS]
     stats = {
@@ -569,7 +569,7 @@ def test_unusable_finals_remain_pending(session, kind, expected):
 
 
 def test_participant_identity_survives_standings_calculation():
-    from modules.alerts.matchup_streak_analysis.standings_engine import (
+    from modules.standings.calculator import (
         _register_match_record, _finalize_standings_snapshot, _serialize_match_records,
     )
     record = {"event_id": 10, "startTimestamp": 1, "home_team": "Club 1", "away_team": "Club 2",

@@ -8,7 +8,7 @@ from infrastructure.settings import Config
 from infrastructure.runtime.view_refresh_exclusion import view_refresh_exclusion
 from shared.execution_context import check_execution_budget, WorkDeferred
 from shared.runtime_observability import observe_operation
-from modules.alerts.matchup_streak_analysis.standings_engine import (
+from modules.standings.calculator import (
     standings_calculator,
 )
 from modules.jobs.pre_start_check_job.event_candidate_builder import (

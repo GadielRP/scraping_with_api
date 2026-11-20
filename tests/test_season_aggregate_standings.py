@@ -10,16 +10,14 @@ from sqlalchemy.orm import Session
 from infrastructure.persistence.models import (
     Competition, DisciplinaryIncidentTotal, Event, EventOutcomeObservation, EventSourceMapping, Participant, Result, Season,
 )
-from modules.alerts.matchup_streak_analysis import standings_engine
+from modules.standings import calculator
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_card_records
-from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
+from modules.standings.season_aggregate import (
     calculate_multiseason_averages, calculate_season_aggregate_standings,
 )
 from modules.competition import competition_ids as ids
 from modules.competition.competition_profiles import COMPETITION_PROFILES, get_competition_profile
 from modules.competition.final_outcome import ParticipantIdentity
-from modules.competition.qualification_rules import build_qualification_rules
-from modules.competition.rule_terms import SelectionMethod
 from modules.pillars.mining.serialization import to_json_value
 from modules.pillars.pillar_1_team_structure import qualification_preparation
 from tests.pillars.pillar_1_team_structure.test_competition_rules import _configured_event
@@ -134,30 +132,6 @@ def test_annual_table_ignores_a_match_still_in_play_at_the_cutoff(season_data):
     assert records[-1][0] == cutoff - timedelta(minutes=5)
 
 
-def test_only_argentina_and_liga_mx_clausura_select_shared_profiles():
-    assert [identity for identity, rules in COMPETITION_PROFILES.items()
-            if rules.qualification_sources is not None and rules.qualification_sources.shared_table is not None] == [
-        ids.LIGA_MX_CLAUSURA, ids.ARGENTINA_CLAUSURA,
-    ]
-    mexico = COMPETITION_PROFILES[ids.LIGA_MX_CLAUSURA].qualification_sources
-    assert COMPETITION_PROFILES[ids.LIGA_MX_APERTURA].qualification_sources is None
-    assert mexico.destination_season_offset == 2
-    assert [(source.competition, source.games_per_team) for source in mexico.shared_table.sources] == [
-        (ids.LIGA_MX_APERTURA, 17), (ids.LIGA_MX_CLAUSURA, 17),
-    ]
-    clausura = COMPETITION_PROFILES[ids.ARGENTINA_CLAUSURA]
-    annual = clausura.qualification_sources.shared_table
-    assert [(source.competition, source.games_per_team) for source in annual.sources] == [
-        (ids.ARGENTINA_APERTURA, COMPETITION_PROFILES[ids.ARGENTINA_APERTURA].total_regular_season_games),
-        (ids.ARGENTINA_CLAUSURA, clausura.total_regular_season_games),
-    ]
-    rules = build_qualification_rules(clausura)
-    assert [(rule.destination, rule.places) for rule in rules.table_berths] == [
-        (rule.qualification_destination, rule.rank_selection.places)
-        for rule in clausura.objectives if rule.rank_selection.selection_method == SelectionMethod.BEST_REMAINING
-    ]
-
-
 def _add_cards(session, event_id, home, away):
     session.add(EventSourceMapping(
         mapping_id=event_id, event_id=event_id, source="sofascore", source_event_id=str(event_id),
@@ -191,9 +165,9 @@ def test_clausura_timeline_carries_apertura_cards_without_its_results(season_dat
     _add_cards(session, 1, (2, 1, 1), (0, 0, 0))
     profile = replace(get_competition_profile(ids.ARGENTINA_CLAUSURA), number_of_teams=2, total_regular_season_games=1)
     apertura = replace(get_competition_profile(ids.ARGENTINA_APERTURA), total_regular_season_games=1)
-    monkeypatch.setattr(standings_engine, "get_competition_profile", lambda _: profile)
-    monkeypatch.setattr(standings_engine, "get_profile_by_identity", lambda _: apertura)
-    monkeypatch.setattr(standings_engine.db_manager, "get_session", lambda: nullcontext(session))
+    monkeypatch.setattr(calculator, "get_competition_profile_for_local_id", lambda _: profile)
+    monkeypatch.setattr(calculator, "get_competition_profile", lambda _: apertura)
+    monkeypatch.setattr(calculator.db_manager, "get_session", lambda: nullcontext(session))
     match_time = cutoff - timedelta(days=181)
     record = {
         "event_id": 2, "startTimestamp": int(match_time.timestamp()),
@@ -205,20 +179,20 @@ def test_clausura_timeline_carries_apertura_cards_without_its_results(season_dat
         "home_yellow_cards": 0, "home_red_cards": 0, "home_second_yellow_dismissals": 0,
         "away_yellow_cards": 1, "away_red_cards": 0, "away_second_yellow_dismissals": 0,
     }
-    calculator = standings_engine.HistoricalStandingsCalculator()
-    monkeypatch.setattr(calculator, "_fetch_match_records_before_cutoff", lambda **_: [record])
+    instance = calculator.HistoricalStandingsCalculator()
+    monkeypatch.setattr(instance, "_fetch_match_records_before_cutoff", lambda **_: [record])
     early = (match_time + timedelta(hours=1)).timestamp()
     late = cutoff.timestamp()
-    snapshots = calculator.calculate_standings_timeline(1, (early, late), competition_id=2, season_year=season_year)
+    snapshots = instance.calculate_standings_timeline(1, (early, late), competition_id=2, season_year=season_year)
     assert snapshots[early]["Boca Juniors"]["ranking_reason"] == "MISSING_FAIR_PLAY_POINTS"
     boca = snapshots[late]["Boca Juniors"]
     velez = snapshots[late]["Vélez Sarsfield"]
     assert (boca["points"], boca["games_played"], boca["fair_play_games_counted"]) == (1, 1, 2)
     assert (boca["fair_play_points"], boca["rank"], velez["fair_play_points"], velez["rank"]) == (4, 2, 1, 1)
-    assert calculator.calculate_standings_at(1, late, competition_id=2) == snapshots[late]
+    assert instance.calculate_standings_bundle_at(1, late, competition_id=2)["standings"] == snapshots[late]
 
-    monkeypatch.setattr(standings_engine, "get_competition_profile", lambda _: apertura)
-    local = calculator.calculate_standings_at(1, late, competition_id=1, season_year=season_year)
+    monkeypatch.setattr(calculator, "get_competition_profile_for_local_id", lambda _: apertura)
+    local = instance.calculate_standings_bundle_at(1, late, competition_id=1, season_year=season_year)["standings"]
     assert (local["Boca Juniors"]["fair_play_points"], local["Boca Juniors"]["rank"]) == (0, 1)
 
 

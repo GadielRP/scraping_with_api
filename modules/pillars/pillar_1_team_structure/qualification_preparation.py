@@ -10,11 +10,11 @@ from infrastructure.persistence.repositories.tournament_final_repository import 
     read_tournament_finals,
 )
 from infrastructure.persistence.repositories.season_aggregate_totals_repository import read_season_members
-from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import (
+from modules.standings.season_aggregate import (
     calculate_multiseason_averages,
     calculate_season_aggregate_standings,
 )
-from modules.alerts.matchup_streak_analysis.standings_engine import build_standings_snapshot
+from modules.standings.calculator import build_standings_snapshot
 from modules.competition.berth_allocation_engine.berth_allocation_engine import allocate_berths
 from modules.competition.berth_allocation_engine.relegation_engine import resolve_relegation
 from modules.competition.final_outcome import ParticipantIdentity

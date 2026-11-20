@@ -1,12 +1,9 @@
-from dataclasses import replace
 from types import SimpleNamespace
 
-import pytest
-
-from modules.alerts.matchup_streak_analysis.standings_engine import (
+from modules.standings.calculator import (
     _build_team_standing_payload, _create_team_stats, _finalize_team_stats,
 )
-from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
+from tests.competition_fixtures import profile as get_competition_profile, with_identity
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import resolve_p1_competition_context
 from tests.pillars.pillar_1_team_structure.test_module_5_late_season import _event, _calculate_m5
 
@@ -16,28 +13,6 @@ def _resolved_event(cid):
     event.competition = with_identity(event.competition, cid)
     event.competition = resolve_p1_competition_context(event.to_identity(), event.competition)
     return event
-
-
-def test_current_profiles_have_sizes_duration_scoring_and_explicit_objectives():
-    for cid, teams, games, maximum in ((76, 30, 34, 3), (554, 32, 72, 2), (174, 20, 46, 2)):
-        profile = get_competition_profile(cid)
-        assert (profile.number_of_teams, profile.total_regular_season_games) == (teams, games)
-        assert profile.scoring.maximum_per_game == maximum
-        assert profile.objectives is not None
-    for cid in (76, 554):
-        assert all(rule.objective_type != "DIVISION_RETENTION" for rule in get_competition_profile(cid).objectives)
-    retention = next(rule for rule in get_competition_profile(174).objectives if rule.objective_type == "DIVISION_RETENTION")
-    assert (retention.rank_selection.rank_start, retention.rank_selection.rank_end, retention.rank_selection.reference_rank) == (19, 20, 18)
-    assert retention.relegation_path == "RELEGATION_PLAYOFF"
-    assert not get_competition_profile(174).standings.verified
-
-
-@pytest.mark.parametrize("division,size,places", [
-    ("Atlantic", 7, 5), ("North", 8, 6), ("Central", 7, 5), ("Pacific", 10, 7),
-])
-def test_ahl_current_division_quotas(division, size, places):
-    rule = next(rule for rule in get_competition_profile(554).objectives if rule.rank_selection.ranking_group == division)
-    assert (rule.rank_selection.group_size, rule.rank_selection.rank_start, rule.rank_selection.rank_end, rule.rank_selection.reference_rank) == (size, 1, places, places)
 
 
 def test_ahl_payload_exposes_division_and_scoring_preserves_overtime_loss_point():

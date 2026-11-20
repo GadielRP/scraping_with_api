@@ -29,7 +29,7 @@ from .historical_form import (
     _calculate_final_real_ranking,
     _get_filtering_criteria,
 )
-from .standings_engine import standings_calculator
+from modules.standings.calculator import standings_calculator
 from .winning_odds import get_winning_odds_data
 
 logger = logging.getLogger(__name__)

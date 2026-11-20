@@ -7,8 +7,8 @@ Responsibilities:
     recompute per game.
   - Optionally send a current-standings debug report to Telegram.
 
-Standings math itself lives in standings_engine; Telegram formatting lives in
-historical_form_reporting.
+Standings math lives in modules.standings.calculator; Telegram formatting lives in
+modules.standings.telegram_report.
 """
 
 import logging
@@ -23,12 +23,12 @@ from infrastructure.settings import Config
 from shared.temporal import from_unix_timestamp, in_timezone
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id as get_competition_profile
 from modules.competition.rule_terms import GroupingMethod
-from .historical_form_reporting import (
+from modules.standings.telegram_report import (
     format_fair_play_table_for_telegram,
     format_standings_table_for_telegram,
     send_debug_telegram,
 )
-from .standings_engine import standings_calculator
+from modules.standings.calculator import standings_calculator
 
 logger = logging.getLogger(__name__)
 _MAX_RECENT_GLOBAL_DEBUG_TABLES = 256

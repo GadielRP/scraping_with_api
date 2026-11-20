@@ -2,7 +2,7 @@
 
 Each policy declares the sequence used in season (the published table) and the one
 used once the whole season is played (100 %), which defines the final classification.
-Metrics are evaluated by standings_rules, not by the catalogue. An unavailable step
+Metrics are evaluated by modules.standings.ranking, not by the catalogue. An unavailable step
 records an actual data/implementation limit or an official resolution at the exact
 point where it would apply; later steps are only declared when they can be reached.
 Sporting boundaries and outstanding verification are reviewed separately.

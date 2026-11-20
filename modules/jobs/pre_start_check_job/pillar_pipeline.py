@@ -27,7 +27,7 @@ from infrastructure.persistence.repositories.pillar_5_price_memory_repository im
 from infrastructure.persistence.repositories.pillar_mining_repository import (
     PillarMiningRepository,
 )
-from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
+from modules.standings.telegram_report import (
     send_argentina_zones_standings_debug,
 )
 from modules.competition.rule_terms import GroupingMethod

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.alerts.matchup_streak_analysis import standings_engine as se
+from modules.standings import calculator as se
 from tests.test_standings_timeline import SEASON_ID, _FakeDb
 
 CUTOFF = datetime(2026, 5, 19, 19, 15, tzinfo=timezone.utc)
@@ -37,9 +37,9 @@ def _games(standings):
 
 
 def _standings_at(monkeypatch, rows, cutoff):
-    return _calculator(monkeypatch, rows).calculate_standings_at(
+    return _calculator(monkeypatch, rows).calculate_standings_bundle_at(
         SEASON_ID, cutoff.timestamp(), "Basketball", competition_id=COMPETITION_ID,
-    )
+    )["standings"]
 
 
 @pytest.fixture

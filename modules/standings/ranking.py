@@ -17,7 +17,7 @@ from modules.competition.rule_terms import (
 )
 
 from modules.competition.competition_group_memberships import AHL_CONFERENCE_BY_DIVISION, get_team_group
-from .standings_tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
+from .tiebreaks import COMPLEX_TIEBREAKS, TieBreakRecords
 
 
 def normalize_result_subtype(raw_subtype, winner):

@@ -25,7 +25,7 @@ from sqlalchemy import func, or_, select
 from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Competition, Season
 from infrastructure.persistence.repositories.competition_repository import get_competition_profile_for_local_id
-from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
+from modules.standings.telegram_report import (
     format_annual_standings_table_for_telegram,
     format_berth_allocation_for_telegram,
     format_standings_table_for_telegram,
@@ -33,8 +33,8 @@ from modules.alerts.matchup_streak_analysis.historical_form_reporting import (
     debug_standings_enabled,
     send_debug_telegram,
 )
-from modules.alerts.matchup_streak_analysis.season_aggregate_standings_calculator import calculate_season_aggregate_standings
-from modules.alerts.matchup_streak_analysis.standings_engine import standings_calculator
+from modules.standings.season_aggregate import calculate_season_aggregate_standings
+from modules.standings.calculator import standings_calculator
 from modules.competition.rule_terms import RankingMetric
 from modules.pillars.context import EventIdentity, build_competition_context
 from modules.pillars.pillar_1_team_structure.competition_context_resolver import resolve_p1_competition_context

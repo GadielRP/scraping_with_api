@@ -1,4 +1,4 @@
-"""Optional reporting helpers for DB-backed historical form analysis."""
+"""Telegram reports for standings, fair play and qualification berths, and the debug sender."""
 
 import html
 import logging

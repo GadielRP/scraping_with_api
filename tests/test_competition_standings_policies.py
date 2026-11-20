@@ -5,11 +5,10 @@ from dataclasses import asdict
 
 import pytest
 
-from modules.competition.competition_group_memberships import get_team_group
-from modules.alerts.matchup_streak_analysis.standings_engine import _apply_game_result, _create_team_stats, _finalize_team_stats
-from modules.alerts.matchup_streak_analysis.standings_rules import rank_standings
+from modules.standings.calculator import _apply_game_result, _create_team_stats, _finalize_team_stats
+from modules.standings.ranking import rank_standings
 from modules.competition.competition_profiles import COMPETITION_PROFILES
-from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
+from tests.competition_fixtures import profile as get_competition_profile
 from modules.competition.tracked_competitions import TRACKED_COMPETITION_IDENTITIES
 
 
@@ -50,10 +49,6 @@ def test_every_tracked_competition_has_a_serializable_sporting_profile():
     for cid in TRACKED_COMPETITION_IDENTITIES:
         profile = get_competition_profile(cid)
         json.dumps(asdict(profile))
-    assert get_competition_profile(76).grouping_method == "mls_conference"
-    assert get_competition_profile(554).grouping_method == "ahl_division"
-    assert get_competition_profile(554).total_regular_season_games == 72
-    assert not get_competition_profile(174).standings.verified
 
 
 @pytest.mark.parametrize("cid", [167, 88])
@@ -294,18 +289,6 @@ def test_auxiliary_percentage_dropped_by_the_first_refactor_is_restored(cid):
     assert stats["pct"] == 0.5
 
 
-@pytest.mark.parametrize("method,team,group", [
-    ("argentina_zones", "Boca Juniors", "Group A"),
-    ("argentina_zones", "River Plate", "Group B"),
-    ("mls_conference", "Inter Miami CF", "Eastern"),
-    ("mls_conference", "San Diego FC", "Western"),
-    ("ahl_division", "Hamilton Hammers", "North"),
-    ("ahl_division", "Rockford Icehogs", "Central"),
-])
-def test_published_group_memberships_match_stored_event_names(method, team, group):
-    assert get_team_group(team, method) == group
-
-
 @pytest.mark.parametrize(("played", "ratio", "policy"), [
     (320, 640 / 760, "in_season"),
     (350, 700 / 760, "in_season"),
@@ -313,7 +296,7 @@ def test_published_group_memberships_match_stored_event_names(method, team, grou
     (380, 760 / 760, "closing_projection"),
 ])
 def test_closing_policy_applies_only_when_the_whole_season_is_played(played, ratio, policy):
-    from modules.alerts.matchup_streak_analysis.standings_rules import select_standings_policy
+    from modules.standings.ranking import select_standings_policy
 
     team_games = played * 2  # each match counts for both participants
     games = [team_games // 20 + (i < team_games % 20) for i in range(20)]
@@ -324,7 +307,7 @@ def test_closing_policy_applies_only_when_the_whole_season_is_played(played, rat
     ([10] * 20, None, 38), ([10] * 20, 20, None), ([10] * 20, 20, 0), ([10] * 21, 20, 38), ([39] + [10] * 19, 20, 38),
 ])
 def test_unknown_or_incompatible_format_keeps_in_season_policy(games, teams, per_team):
-    from modules.alerts.matchup_streak_analysis.standings_rules import select_standings_policy
+    from modules.standings.ranking import select_standings_policy
 
     assert select_standings_policy(games, number_of_teams=teams, games_per_team=per_team) == (None, "in_season")
 

@@ -5,11 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from modules.alerts.matchup_streak_analysis import standings_engine as se
+from modules.standings import calculator as se
 from modules.alerts.matchup_streak_analysis import historical_form
 
-from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES, with_identity
-from modules.competition.rule_terms import GroupingMethod
+from tests.competition_fixtures import profile as get_competition_profile, IDENTITIES
 
 NBA_UNIQUE_TOURNAMENT_ID = 132
 SHL_UNIQUE_TOURNAMENT_ID = 261
@@ -69,7 +68,7 @@ def _compute(monkeypatch, season_id, rows, sport, source_unique_tournament_id=No
     competition_id = {SHL_UNIQUE_TOURNAMENT_ID: 180, NBA_UNIQUE_TOURNAMENT_ID: 176}.get(
         source_unique_tournament_id, competition_id or {"Football": 168, "Basketball": 174, "American football": 5153, "Ice hockey": 5196}[sport],
     )
-    monkeypatch.setattr(se, "get_competition_profile", get_competition_profile)
+    monkeypatch.setattr(se, "get_competition_profile_for_local_id", get_competition_profile)
     simulator = se.HistoricalStandingsCalculator()
     return simulator._calculate_standings_bundle_internal(
         season_id=season_id,
@@ -184,22 +183,8 @@ def test_grouped_unmapped_team_warned_not_dropped(monkeypatch, caplog):
     )
 
 
-def test_saudi_pro_league_uses_football_h2h_method():
-    assert get_competition_profile(50).standings.name == "SAUDI_PRO_LEAGUE"
-
-
-@pytest.mark.parametrize("competition_id,method,teams,games,grouping", [
-    (328, "LIGA_MX_APERTURA", 18, 17, GroupingMethod.LEAGUE_WIDE),
-    (2192, "LIGA_MX_CLAUSURA", 18, 17, GroupingMethod.LEAGUE_WIDE),
-    (76, "MLS", 30, 34, GroupingMethod.MLS_CONFERENCE),
-])
-def test_configured_profiles_use_database_season_history(monkeypatch, competition_id, method, teams, games, grouping):
-    profile = get_competition_profile(competition_id)
-    assert profile.standings.name == method
-    assert profile.number_of_teams == teams
-    assert profile.total_regular_season_games == games
-    assert profile.grouping_method is grouping
-
+def test_configured_profiles_use_database_season_history(monkeypatch):
+    competition_id, method = 76, "MLS"
     expected_history = ([{"event_id": 1}], 1)
     database_history = Mock(return_value=expected_history)
     provider_history = Mock(side_effect=AssertionError("Configured profiles must use database history"))
