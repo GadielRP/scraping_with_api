@@ -672,6 +672,13 @@ Security invariants:
 
 ### 6.1 Which moments actually fetch (this is the gate)
 
+With `ENABLE_ODDSPAPI_PRE_START_HISTORICAL=false`, pre-start fetches only `/v4/odds`
+at T−5 when that minute is allowed. Set `ODDSPAPI_HISTORY_RECOVERY_FROM_UTC` to
+enable the daily `oddspapi_prematch_odds_recovery` job after Midnight Sync.
+The maintenance worker reuses cached lines to restore tracked fixtures through
+T−5, comparing current prices by provider timestamp and preserving openings.
+The timing rules below describe the historical-enabled mode.
+
 Configured key moments are `PRE_START_ODDS_MOMENTS` (versioned default in `Config`: `[120, 30, 5, 1, 0, -5]`). The main pre-start job runs `regular_pre_start_moments()` after removing the dedicated closing minute (`1`). `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` is an additional OddspAPI-only gate applied before candidate selection. Its versioned default is `[5]`, restricting candidate selection strictly to T−5. (If overridden by an environment variable such as `[5, 0]`, T−0 becomes requestable as well, but `[5]` remains the codebase default).
 
 - **Minute 1 ($T-1$)**: The dedicated critical lane (`run_t_minus_one_odds_job`) is disabled by default via `ENABLE_PRE_START_T_MINUS_ONE_JOB=false`. Minute `1` remains in `PRE_START_ODDS_MOMENTS` and can be reconstructed by the live historical as-of engine only when T−0 is admitted. Under the default T−5-only allowlist, neither a real-time nor reconstructed T−1 snapshot is requested.
@@ -1070,7 +1077,7 @@ The phase constant `ODDSPAPI_INGESTION_SOURCE = "oddspapi_pre_start"` is a calle
 | `ODDSPAPI_PRE_START_CLOSING_ONLY` | `false` | `false` = `/odds` runs at allowed positive moments. `true` skips ordinary positive moments; an explicitly forced significant-change moment still runs its hybrid `/odds` priming step. |
 | `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | `[5]` (code default) | OddspAPI-only moment gate applied before provider selection. Versioned default is `[5]` (T−5 only). Can be overridden via environment variable (e.g. `[5,0]`) to admit the independent T−0 historical lane. |
 | `ENABLE_PRE_START_T_MINUS_ONE_JOB` | `false` | `false` = disables dedicated T-1 critical scheduler job. Minute 1 stays in `PRE_START_ODDS_MOMENTS` for T-0 as-of reconstruction. |
-| `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `true` | Extra Betfair historical at T-120 **if** that moment actually requests. Skipped for tracked competitions. |
+| `ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS` | `false` | Opts configured exchanges into historical requests at eligible moments or in daily recovery. Configured exchanges remain in the T−5 `/odds` request. |
 | `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST` | `true` | Reconstructs and persists key moments (T-1, T-0, and reconciles T-120/30/5) from live `/historical-odds`. |
 | `ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` | `true` | Selects the adaptive significant-change strategy for live historical ingestion when an explicit kickoff is present. Forced moments select it explicitly even if this global flag is `false`; the flag does not enable persistence by itself. |
 | `significant_change_min_magnitude_pct` | `10.0` | Minimum absolute movement from the adaptive anchor. Must be finite and positive. represents the change pct |

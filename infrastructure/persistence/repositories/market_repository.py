@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +31,7 @@ from infrastructure.persistence.repositories.market.market_choice_quote_writer i
 from infrastructure.persistence.repositories.market.market_choice_snapshot_writer import (
     MarketChoiceSnapshotWriter,
 )
+from modules.oddspapi.historical_snapshot_policy import provider_instant, select_latest_current_player
 from shared.odds_utils import fractional_to_decimal, normalize_odds_value
 from shared.temporal import as_utc, utc_now
 
@@ -178,6 +179,84 @@ class MarketRepository:
             .yield_per(1000)
         )
         return set(rows)
+
+    @staticmethod
+    def _recover_oddspapi_quotes(event_id, batches, cutoff):
+        """Apply historical ticks to existing quote instruments and keep their openings."""
+        source = "oddspapi"
+        incoming = {
+            (batch["bookie_id"], choice.get("sourceMarketId"), choice.get("sourceOutcomeId"),
+             *MarketRepository._opening_gate_side_and_level(choice)): choice
+            for batch in batches for market in batch["markets"] for choice in market["choices"]
+        }
+        result = MarketSaveResult()
+        collected_at = utc_now()
+        with db_manager.get_session() as session:
+            quotes = session.query(MarketChoiceQuote, Market.bookie_id).select_from(MarketChoiceQuote).join(
+                MarketChoice, MarketChoice.choice_id == MarketChoiceQuote.choice_id,
+            ).join(Market, Market.market_id == MarketChoice.market_id).filter(
+                Market.event_id == event_id, Market.is_live.is_(False), MarketChoiceQuote.source == source,
+            )
+            instruments = [
+                (quote, incoming[key]) for quote, bookie_id in quotes
+                if (key := (bookie_id, quote.source_market_id, quote.source_outcome_id,
+                            quote.exchange_side, quote.exchange_level)) in incoming
+            ]
+            ids = {quote.quote_id for quote, _ in instruments}
+            if not ids:
+                return result
+            snapshot = MarketChoiceSnapshot
+            captures = {}
+            for row in session.query(snapshot).filter(
+                snapshot.quote_id.in_(ids), snapshot.collected_at < cutoff + timedelta(minutes=5),
+            ).order_by(snapshot.collected_at.desc(), snapshot.snapshot_id.desc()):
+                captures.setdefault(row.quote_id, row)
+            seen = MarketRepository._existing_moment_snapshot_source_keys(
+                session, event_id=event_id, source=source, quote_ids=ids,
+                earliest=datetime.min.replace(tzinfo=cutoff.tzinfo), latest=cutoff,
+            )
+            for quote, choice in instruments:
+                capture = captures.get(quote.quote_id)
+                base = {}
+                if capture and capture.source_collected_at and capture.source_collected_at <= cutoff:
+                    base = {"price": capture.odds_value, "changedAt": capture.source_collected_at,
+                            "limit": capture.source_limit}
+                historical = {"price": choice["decimalValue"], "changedAt": choice.get("changedAt"),
+                              "limit": choice.get("limit")}
+                historical_at = provider_instant(historical["changedAt"])
+                if historical_at is None or historical_at > cutoff:
+                    winner = base
+                else:
+                    winner = select_latest_current_player(base, historical) if base else historical
+                winner_at = provider_instant(winner.get("changedAt"))
+                ticks = list(choice.get("momentQuotes") or ())
+                if winner_at is not None and winner_at <= cutoff:
+                    side = quote.exchange_side
+                    identity = (quote.choice_id, source, side, quote.exchange_level)
+                    written = MarketChoiceQuoteWriter.upsert(
+                        session, quote_index={identity: quote}, choice_id=quote.choice_id, source=source,
+                        exchange_side=side, exchange_level=quote.exchange_level, current_price=winner["price"],
+                        current_captured_at=collected_at, source_limit=MarketRepository._numeric_or_none(winner.get("limit")),
+                    )
+                    result.quotes_persisted += int(written.applied)
+                    ticks.append(dict(base if winner is base else historical, createdAt=winner_at))
+                for tick in ticks:
+                    at = provider_instant(tick.get("createdAt"))
+                    price, limit = map(MarketRepository._numeric_or_none, (tick.get("price"), tick.get("limit")))
+                    size = limit if quote.exchange_side else None
+                    key = (quote.quote_id, at, price, limit, size)
+                    if at is None or at > cutoff or price is None or key in seen:
+                        continue
+                    MarketChoiceSnapshotWriter.append(
+                        session, quote=quote, odds_value=price, collected_at=collected_at,
+                        source_collected_at=at, source_limit=limit, exchange_size=size,
+                    )
+                    seen.add(key)
+                    result.snapshots_saved += 1
+            if result.quotes_persisted or result.snapshots_saved:
+                from .reporting_refresh_repository import invalidate_reporting
+                invalidate_reporting(session)
+        return result
 
     @staticmethod
     def save_canonical_bookmaker_batches(

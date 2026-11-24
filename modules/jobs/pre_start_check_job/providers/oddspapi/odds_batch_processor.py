@@ -44,6 +44,7 @@ from .constants import (
     ODDSPAPI_INGESTION_SOURCE,
     ODDSPAPI_PRE_START_ODDS_ENDPOINTS,
     ODDSPAPI_SOURCE,
+    RESTRICTED_CAPTURE_MINUTE,
 )
 from .debug_response_writer import OddspapiDebugResponseWriter
 from .event_selector import OddspapiPreStartCandidate
@@ -606,6 +607,8 @@ class OddspapiPreStartOddsBatchProcessor:
         market_mapping_index: MarketMappingIndex | None = None,
         debug_mode: bool = False,
         available_through_utc: datetime | dict[int, datetime | None] | None = None,
+        historical_enabled: bool = True,
+        recovery: bool = False,
     ) -> OddspapiPreStartOddsSummary:
         selected_endpoint = str(endpoint or "").strip().lower()
         if selected_endpoint not in ODDSPAPI_PRE_START_ODDS_ENDPOINTS:
@@ -615,17 +618,28 @@ class OddspapiPreStartOddsBatchProcessor:
                 f"Expected one of: {supported}"
             )
 
+        current_only = not historical_enabled
+        if current_only:
+            candidates = [
+                candidate for candidate in candidates or []
+                if candidate.minutes_until_start == RESTRICTED_CAPTURE_MINUTE
+            ]
+            enable_exchange_historical = False
+            exchange_historical_moments = []
+
         summary = OddspapiPreStartOddsSummary(candidates_seen=len(candidates or []))
         mapped_candidates = [candidate for candidate in candidates or [] if candidate.fixture_id]
         summary.candidates_with_mapping = len(mapped_candidates)
         historical_event_ids = [
             candidate.event_id
             for candidate in mapped_candidates
-            if self._is_live_candidate(candidate)
-            or (
-                candidate.starts_at is not None
-                and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
-                    candidate.minutes_until_start
+            if not current_only and (
+                self._is_live_candidate(candidate)
+                or (
+                    candidate.starts_at is not None
+                    and ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
+                        candidate.minutes_until_start
+                    )
                 )
             )
         ]
@@ -639,13 +653,14 @@ class OddspapiPreStartOddsBatchProcessor:
             if historical_event_ids
             else set()
         )
-        closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
+        closing_only = Config.ODDSPAPI_PRE_START_CLOSING_ONLY and not current_only
         requestable_candidates = [
             candidate
             for candidate in mapped_candidates
             if (
                 (
                     candidate.has_odds is not False
+                    or current_only
                     or self._is_live_candidate(candidate)
                     or (
                         candidate.starts_at is not None
@@ -687,7 +702,7 @@ class OddspapiPreStartOddsBatchProcessor:
             historical_api_keys = list(keys)
         else:
             odds_api_keys = odds_endpoint_api_keys()
-            historical_api_keys = free_endpoint_api_keys()
+            historical_api_keys = odds_api_keys if current_only else free_endpoint_api_keys()
         scheduler = self.key_scheduler
         if scheduler is None and not self._custom_pipeline:
             scheduler = get_oddspapi_key_scheduler()
@@ -696,7 +711,7 @@ class OddspapiPreStartOddsBatchProcessor:
             if keys or scheduler is None
             else scheduler.available_key_count(ODDSPAPI_CURRENT_ODDS_ENDPOINT)
         )
-        historical_key_count = (
+        historical_key_count = odds_key_count if current_only else (
             len(historical_api_keys)
             if keys or scheduler is None
             else scheduler.available_key_count(ODDSPAPI_HISTORICAL_ODDS_ENDPOINT)
@@ -791,6 +806,8 @@ class OddspapiPreStartOddsBatchProcessor:
                     "max_workers": 1,
                     "debug_mode": debug_mode,
                     "available_through_utc": available_through_utc,
+                    "historical_enabled": historical_enabled,
+                    "recovery": recovery,
                 },
             )
             non_requestable_candidates = [
@@ -838,7 +855,7 @@ class OddspapiPreStartOddsBatchProcessor:
                 event_result = self._event_result(candidate)
                 summary.results.append(event_result)
                 is_live = self._is_live_candidate(candidate)
-                configured_significant_change = (
+                configured_significant_change = not current_only and (
                     ODDSPAPI_PRE_START_SETTINGS.is_significant_change_forced(
                         candidate.minutes_until_start
                     )
@@ -859,7 +876,9 @@ class OddspapiPreStartOddsBatchProcessor:
                     event_result.skip_reason = "missing_oddspapi_mapping"
                     summary.events_skipped += 1
                     continue
-                if candidate.has_odds is False and not (is_live or force_significant_changes):
+                if candidate.has_odds is False and not (
+                    is_live or force_significant_changes or current_only
+                ):
                     event_result.skipped = True
                     event_result.skip_reason = "oddspapi_odds_unavailable"
                     summary.events_skipped += 1
@@ -875,7 +894,6 @@ class OddspapiPreStartOddsBatchProcessor:
                         candidate.fixture_id,
                     )
                     continue
-                closing_only = getattr(Config, "ODDSPAPI_PRE_START_CLOSING_ONLY", False)
                 if (
                     closing_only
                     and not is_live
@@ -899,6 +917,11 @@ class OddspapiPreStartOddsBatchProcessor:
                     0,
                 )
                 try:
+                    boundary = (
+                        available_through_utc.get(candidate.event_id)
+                        if isinstance(available_through_utc, dict)
+                        else available_through_utc
+                    )
                     # Tracked leagues get openings via OddsPortal at T-120; skip
                     # exchange historical only at that opening moment. Live still
                     # uses the mainline cache for exchange outcome fetches.
@@ -945,32 +968,29 @@ class OddspapiPreStartOddsBatchProcessor:
                         minimum_initial_span_minutes=(
                             minimum_initial_span_minutes
                         ),
-                        current_odds_available=candidate.has_odds,
+                        current_odds_available=True if current_only else candidate.has_odds,
                         require_active_quotes=require_active_quotes,
                         filter_post_kickoff_ticks=filter_post_kickoff_ticks,
                         debug_mode=debug_mode,
                         exchange_fetch_executor=exchange_fetch_executor,
                         starts_at=candidate.starts_at,
                         as_of_moments=(
-                            list(Config.PRE_START_ODDS_MOMENTS)
-                            if getattr(
+                            [minute for minute in Config.PRE_START_ODDS_MOMENTS
+                             if not recovery or minute > RESTRICTED_CAPTURE_MINUTE]
+                            if recovery or getattr(
                                 Config,
                                 "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
                                 False,
                             )
                             else None
                         ),
-                        attach_as_of=getattr(
+                        attach_as_of=recovery or getattr(
                             Config,
                             "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
                             False,
                         ),
-                        force_significant_changes=force_significant_changes,
-                        available_through_utc=(
-                            available_through_utc.get(candidate.event_id)
-                            if isinstance(available_through_utc, dict)
-                            else available_through_utc
-                        ),
+                        force_significant_changes=recovery or force_significant_changes,
+                        available_through_utc=boundary,
                     )
                     save_odds_responses = getattr(
                         Config, "ENABLE_ODDSPAPI_SAVE_ODDS_RESPONSES", False
@@ -1056,6 +1076,7 @@ class OddspapiPreStartOddsBatchProcessor:
                         use_mainline_cache=is_live or force_significant_changes,
                         mainline_fallback_bookmakers=mainline_fallback_bookmakers,
                         debug_mode=debug_mode,
+                        **({"recovery_cutoff": boundary} if recovery else {}),
                     )
                     self._copy_ingestion_stats(event_result, ingestion_result)
                     self._accumulate(summary, event_result)

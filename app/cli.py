@@ -118,6 +118,7 @@ def _build_parser():
             "results-all",
             "daily-discovery",
             "oddspapi-fixture-discovery",
+            "oddspapi-prematch-odds-recovery",
             "backfill-results",
             "status",
             "events",
@@ -137,7 +138,7 @@ def _build_parser():
         "--date",
         type=str,
         default=None,
-        help="Calendar date yyyy-mm-dd (local for results-date; UTC for Oddspapi discovery)",
+        help="Calendar date yyyy-mm-dd (UTC for Oddspapi fixture discovery; local for results and odds recovery)",
     )
     parser.add_argument(
         "--sports",
@@ -167,10 +168,12 @@ def _run_command(args):
 
     target_date = None
     discipline_selection = _discipline_selection(args) if args.command == "discipline" else None
-    if args.command == "results-date":
+    if args.command in {"results-date", "oddspapi-prematch-odds-recovery"}:
         if not args.date:
-            raise ValueError("results-date requires --date yyyy-mm-dd")
+            raise ValueError(f"{args.command} requires --date yyyy-mm-dd")
         target_date = date.fromisoformat(args.date)
+    if args.command == "oddspapi-prematch-odds-recovery" and args.dry_run:
+        raise ValueError("oddspapi-prematch-odds-recovery writes to the database and does not support --dry-run")
     if not initialize_system():
         raise RuntimeError("Failed to initialize system")
 
@@ -189,6 +192,8 @@ def _run_command(args):
         ApplicationRuntime().run(jobs[args.command])
     elif args.command == "results-date":
         ApplicationRuntime().run("results_date", target_date=target_date)
+    elif args.command == "oddspapi-prematch-odds-recovery":
+        ApplicationRuntime().run("oddspapi_prematch_odds_recovery", target_date=target_date)
     elif args.command == "start":
         _start_scheduler()
     elif args.command == "oddspapi-fixture-discovery":

@@ -32,7 +32,7 @@ from .odds_batch_processor import (
     OddspapiPreStartOddsEventResult,
     OddspapiPreStartOddsSummary,
 )
-from .constants import ODDSPAPI_SOURCE
+from .constants import ODDSPAPI_SOURCE, RESTRICTED_CAPTURE_MINUTE
 from .settings import ODDSPAPI_PRE_START_SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -158,10 +158,15 @@ def run_oddspapi_pre_start_odds(
     )
     # TEMPORARY: skip Oddspapi fetches outside ODDSPAPI_PRE_START_ALLOWED_MOMENTS
     # (currently T-5). Local to this phase so the shared pre-start plan is unchanged.
+    allowed_moments = Config.ODDSPAPI_PRE_START_ALLOWED_MOMENTS
+    historical_enabled = Config.ENABLE_ODDSPAPI_PRE_START_HISTORICAL
+    if not historical_enabled:
+        if RESTRICTED_CAPTURE_MINUTE in (allowed_moments or ()):
+            allowed_moments = (RESTRICTED_CAPTURE_MINUTE,)
+        else:
+            events_to_process = []
     events_to_process = restrict_candidates_to_allowed_moments(
-        events_to_process,
-        getattr(Config, "ODDSPAPI_PRE_START_ALLOWED_MOMENTS", None),
-        provider="Oddspapi",
+        events_to_process, allowed_moments, provider="Oddspapi",
     )
     if not getattr(Config, "ENABLE_ODDSPAPI_PRE_START_ODDS", True):
         summary = OddspapiPreStartOddsSummary(disabled=True, skip_reason="oddspapi_pre_start_disabled")
@@ -209,7 +214,7 @@ def run_oddspapi_pre_start_odds(
         return summary
 
     key_scheduler = get_oddspapi_key_scheduler()
-    if getattr(Config, "ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH", True):
+    if historical_enabled and Config.ENABLE_ODDSPAPI_ACCOUNT_USAGE_REFRESH:
         try:
             refresh_oddspapi_account_usage_if_due()
         except WorkDeferred:
@@ -267,11 +272,7 @@ def run_oddspapi_pre_start_odds(
         exchange_max_requests_per_run=(
             ODDSPAPI_PRE_START_SETTINGS.exchange_max_requests_per_run
         ),
-        enable_exchange_historical=getattr(
-            Config,
-            "ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS",
-            True,
-        ),
+        enable_exchange_historical=Config.ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS,
         persist_main_line_only=getattr(
             Config,
             "ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY",
@@ -312,6 +313,7 @@ def run_oddspapi_pre_start_odds(
         max_workers=getattr(Config, "ODDSPAPI_PRE_START_WORKERS", 1),
         debug_mode=debug_mode,
         available_through_utc=available_through_utc,
+        historical_enabled=historical_enabled,
     )
     assignments_after = key_scheduler.assignment_counts()
     summary.api_key_assignments = {

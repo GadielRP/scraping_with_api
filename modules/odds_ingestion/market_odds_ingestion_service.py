@@ -290,9 +290,10 @@ class MarketOddsIngestionService:
         mainline_outcome_ids_by_bookmaker: Mapping[str, Collection[str]] | None = None,
         mainline_fallback_bookmakers: Sequence[str] | None = None,
         debug_mode: bool = False,
+        recovery_cutoff=None,
     ) -> MarketIngestionResult:
         source = MarketOddsIngestionService._normalize_source(source, "oddspapi_odds")
-        if dry_run:
+        if dry_run or recovery_cutoff is not None:
             resolution = OddspapiEventResolver.resolve_from_odds_response(
                 odds_response,
                 create_mappings=False,
@@ -551,11 +552,14 @@ class MarketOddsIngestionService:
             # All bookmakers for this event/response are persisted through the
             # same canonical entry point as OddsPortal/SofaScore. See
             # docs/refactors/db-schema-odds-refactor.md (Fase 2).
-            save_result = MarketRepository.save_canonical_bookmaker_batches(
-                resolution.canonical_event_id,
-                bookmaker_batches,
-                source="oddspapi",
-            )
+            if recovery_cutoff is None:
+                save_result = MarketRepository.save_canonical_bookmaker_batches(
+                    resolution.canonical_event_id, bookmaker_batches, source="oddspapi",
+                )
+            else:
+                save_result = MarketRepository._recover_oddspapi_quotes(
+                    resolution.canonical_event_id, bookmaker_batches, recovery_cutoff,
+                )
             markets_saved = save_result.markets_saved
             choices_saved = save_result.choices_saved
             snapshots_saved = save_result.snapshots_saved

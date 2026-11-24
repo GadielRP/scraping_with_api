@@ -137,7 +137,7 @@ class OddspapiOddsFetcher:
         except OddsPapiHttpError as exc:
             if exc.status_code == 404:
                 return OddsFetchResult.endpoint_not_found()
-            if exc.error_code in self.EMPTY_ODDS_ERROR_CODES:
+            if exc.status_code not in (401, 403) and exc.error_code in self.EMPTY_ODDS_ERROR_CODES:
                 return OddsFetchResult.from_payload(None)
             raise
         return OddsFetchResult.from_payload(

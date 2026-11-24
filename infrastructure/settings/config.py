@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+from shared.temporal import as_utc
 from .job_execution import JobExecutionSettings
 
 # Load environment variables
@@ -42,6 +43,13 @@ def _parse_optional_env_list(env_name, default_value=None):
     except (ValueError, SyntaxError):
         cleaned = [item.strip() for item in value.split(',') if item.strip()]
         return cleaned or None
+
+
+def _parse_optional_utc_instant(env_name):
+    value = os.getenv(env_name, "").strip()
+    if not value:
+        return None
+    return as_utc(datetime.fromisoformat(value), field_name=env_name)
 
 
 def _parse_env_secret_list(primary_name, alias_name=None):
@@ -355,6 +363,13 @@ class Config:
         'ENABLE_ODDSPAPI_PRE_START_ODDS',
         False,
     )
+    ENABLE_ODDSPAPI_PRE_START_HISTORICAL = _parse_env_bool(
+        'ENABLE_ODDSPAPI_PRE_START_HISTORICAL',
+        True,
+    )
+    ODDSPAPI_HISTORY_RECOVERY_FROM_UTC = _parse_optional_utc_instant(
+        'ODDSPAPI_HISTORY_RECOVERY_FROM_UTC',
+    )
     ODDSPAPI_PRE_START_WORKERS = max(
         1,
         int(os.getenv('ODDSPAPI_PRE_START_WORKERS', '4')),
@@ -369,7 +384,7 @@ class Config:
     )
     ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS = _parse_env_bool(
         'ENABLE_ODDSPAPI_EXCHANGE_HISTORICAL_REQUESTS',
-        True,
+        False,
     )
     ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY = _parse_env_bool(
         'ODDSPAPI_PRE_START_PERSIST_MAIN_LINE_ONLY',

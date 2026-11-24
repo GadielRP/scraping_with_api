@@ -27,6 +27,9 @@ class ApplicationRuntime:
         from modules.jobs.discover_dropping_odds import run_discover_dropping_odds
         from modules.jobs.discover_secondary_sources import run_discover_secondary_sources
         from modules.jobs.midnight_sync_job import run_midnight_sync_job
+        from modules.jobs.oddspapi.prematch_odds_recovery import (
+            recover_prematch_odds_for_finished_fixtures,
+        )
         from modules.jobs.view_refresh.run_view_refresh import run_view_refresh
         from modules.jobs.results_collection_job import run_results_collection
 
@@ -35,6 +38,7 @@ class ApplicationRuntime:
             discovery=run_discover_dropping_odds,
             discovery2=run_discover_secondary_sources,
             midnight=run_midnight_sync_job,
+            oddspapi_prematch_odds_recovery=recover_prematch_odds_for_finished_fixtures,
             daily=self._run_daily_discovery,
             results=run_results_collection,
             results_all=run_results_collection,
@@ -93,7 +97,7 @@ class ApplicationRuntime:
     def dispatch_scheduled(self, name, scheduled_at, priority, closing=False):
         """Bind occurrence identity and deadline before submitting to the assigned worker."""
         from infrastructure.scheduler.contracts import JobRequest
-        from shared.temporal import in_timezone
+        from shared.temporal import in_timezone, utc_now
 
         local = in_timezone(scheduled_at, Config.TIMEZONE)
         action = self.jobs[name]
@@ -106,6 +110,19 @@ class ApplicationRuntime:
         elif name == "midnight":
             target = local.date() - timedelta(days=1)
             action, key = partial(action, target_date=target), f"midnight:{target}"
+            if not Config.ENABLE_ODDSPAPI_PRE_START_HISTORICAL and Config.ODDSPAPI_HISTORY_RECOVERY_FROM_UTC:
+                def sync_then_enqueue_odds_recovery(sync=action):
+                    sync()
+                    self.scheduler.dispatch(JobRequest(
+                        f"oddspapi_prematch_odds_recovery:{target}",
+                        partial(
+                            self.jobs["oddspapi_prematch_odds_recovery"], target,
+                            self.scheduler.critical_work_pending,
+                        ),
+                        utc_now(), Priority.MAINTENANCE,
+                    ))
+
+                action = sync_then_enqueue_odds_recovery
         elif name == "fixtures":
             target = self.fixtures.target_date_for_slot(local)
             action = partial(
