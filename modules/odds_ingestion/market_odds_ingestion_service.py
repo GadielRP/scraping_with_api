@@ -598,6 +598,18 @@ class MarketOddsIngestionService:
                     diagnostics=diagnostics,
                 )
 
+            if recovery_cutoff is None:
+                skipped = markets_saved <= 0
+                reason = "no markets saved" if skipped else None
+            else:
+                skipped = not (save_result.quotes_persisted or snapshots_saved)
+                reason = "no historical quote or snapshot changes" if skipped else None
+                logger.info(
+                    "OddsPapi history recovery event_id=%s quotes_updated=%s snapshots_added=%s",
+                    resolution.canonical_event_id,
+                    save_result.quotes_persisted,
+                    snapshots_saved,
+                )
             dual_process_available = (
                 DualProcessOddsRepository.event_has_dual_process_odds(
                     resolution.canonical_event_id
@@ -627,8 +639,8 @@ class MarketOddsIngestionService:
                     skipped_incomplete_markets_detected
                 ),
                 dual_process_market_available=dual_process_available,
-                skipped=markets_saved <= 0,
-                reason=None if markets_saved > 0 else "no markets saved",
+                skipped=skipped,
+                reason=reason,
                 diagnostics=diagnostics,
             )
         except Exception as exc:

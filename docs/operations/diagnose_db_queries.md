@@ -105,7 +105,6 @@ LEFT JOIN event_source_mappings esm
     ON e.id = esm.event_id
 WHERE esm.source_event_id in ('15664537','16416317','16665376') or e.id in (481006)
 ORDER BY e.starts_at DESC
-LIMIT 200;
 ```
 
 This is a fast way to find untracked or orphaned events.
