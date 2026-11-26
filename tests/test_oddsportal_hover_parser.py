@@ -234,13 +234,13 @@ def test_debug_mode_saves_one_accepted_tooltip_per_bookie_choice(tmp_path):
         "Minnesota Wild",
     )
 
-    regular_path = scraper._save_parsed_tooltip_html(
+    regular_path = scraper._save_tooltip_html(
         tooltip_html="<div>regular tooltip</div>",
         source="bookmaker",
         bookie_name="bet365",
         choice="2",
     )
-    exchange_path = scraper._save_parsed_tooltip_html(
+    exchange_path = scraper._save_tooltip_html(
         tooltip_html="<div>exchange tooltip</div>",
         source="betfair",
         bookie_name=None,
@@ -271,7 +271,7 @@ def test_tooltip_debug_files_are_disabled_without_debug_mode(tmp_path):
     )
     scraper.set_debug_event_context(156595, "Buffalo Sabres", "Minnesota Wild")
 
-    saved_path = scraper._save_parsed_tooltip_html(
+    saved_path = scraper._save_tooltip_html(
         tooltip_html="<div>must not be saved</div>",
         source="bookmaker",
         bookie_name="bet365",

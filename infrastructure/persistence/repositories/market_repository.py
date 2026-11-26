@@ -231,11 +231,16 @@ class MarketRepository:
                 winner_at = provider_instant(winner.get("changedAt"))
                 ticks = list(choice.get("momentQuotes") or ())
                 if winner_at is not None and winner_at <= cutoff:
+                    initial_at = provider_instant(choice.get("initialChangedAt"))
+                    initial_price = (MarketRepository._float_or_none(choice.get("initialDecimalValue"))
+                                     if initial_at is not None and initial_at <= cutoff else None)
                     side = quote.exchange_side
                     identity = (quote.choice_id, source, side, quote.exchange_level)
                     written = MarketChoiceQuoteWriter.upsert(
                         session, quote_index={identity: quote}, choice_id=quote.choice_id, source=source,
-                        exchange_side=side, exchange_level=quote.exchange_level, current_price=winner["price"],
+                        exchange_side=side, exchange_level=quote.exchange_level,
+                        initial_price=initial_price, initial_captured_at=initial_at,
+                        current_price=winner["price"],
                         current_captured_at=collected_at, source_limit=MarketRepository._numeric_or_none(winner.get("limit")),
                     )
                     result.quotes_persisted += int(written.applied)

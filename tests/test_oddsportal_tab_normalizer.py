@@ -7,7 +7,7 @@ from modules.oddsportal.oddsportal_tab_normalizer import (
 
 
 def test_normalize_tab_label_removes_accents_and_collapses_whitespace():
-    assert normalize_tab_label("Final del partido \nincluyendo prórroga") == "final del partido incluyendo proroga"
+    assert normalize_tab_label("Final del partido \nincluyendo prórroga") == "final del partido incluyendo prorroga"
 
 
 def test_period_candidates_match_spanish_half():

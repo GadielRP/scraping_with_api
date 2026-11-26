@@ -642,8 +642,8 @@ def test_intraday_batches_postponed_event_using_shared_status_parser(monkeypatch
     )
     monkeypatch.setattr(
         intraday_result_freshness,
-        "resolve_sofascore_event_id",
-        lambda _event_id: 9001,
+        "resolve_sofascore_event_identity",
+        lambda _event_id: SimpleNamespace(sofascore_event_id=9001),
     )
     monkeypatch.setattr(
         intraday_result_freshness.api_client,
@@ -680,8 +680,8 @@ def test_intraday_batches_event_endpoint_404(monkeypatch):
     )
     monkeypatch.setattr(
         intraday_result_freshness,
-        "resolve_sofascore_event_id",
-        lambda _event_id: 9001,
+        "resolve_sofascore_event_identity",
+        lambda _event_id: SimpleNamespace(sofascore_event_id=9001),
     )
     monkeypatch.setattr(
         intraday_result_freshness.api_client,
@@ -846,6 +846,7 @@ def test_oddspapi_client_builds_historical_request_and_enforces_bookmaker_limit(
         status_code=200,
         text="",
         headers={},
+        close=lambda: None,
         json=lambda: {"fixtureId": "fixture-1"},
     )
     client = OddsPapiClient(
@@ -901,12 +902,14 @@ def test_oddspapi_historical_endpoint_observes_five_second_cooldown(monkeypatch)
                 status_code=200,
                 text="",
                 headers={},
+                close=lambda: None,
                 json=lambda: {"fixtureId": "fixture-1"},
             ),
             SimpleNamespace(
                 status_code=200,
                 text="",
                 headers={},
+                close=lambda: None,
                 json=lambda: {"fixtureId": "fixture-2"},
             ),
         ]
@@ -943,6 +946,7 @@ def test_oddspapi_client_exposes_http_status_for_404():
         status_code=404,
         text="fixture odds not found",
         headers={},
+        close=lambda: None,
         json=lambda: {"error": {"code": "FIXTURE_NOT_FOUND"}},
     )
     client = OddsPapiClient(

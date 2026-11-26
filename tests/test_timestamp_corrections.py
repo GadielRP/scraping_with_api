@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 import pytest
+from types import SimpleNamespace
 
 from infrastructure.settings import Config
 from modules.jobs.pre_start_check_job import timestamp_corrections as corrections
@@ -33,7 +34,7 @@ def test_timing_return_distinguishes_unchanged_committed_and_failed(monkeypatch,
 def test_only_committed_changes_are_returned_and_counted(monkeypatch, caplog, timing_result, expected_ids, checked, failed):
     monkeypatch.setattr(Config, "PRE_START_WORKERS", 1)
     monkeypatch.setattr(corrections, "minutes_since_start", lambda _: -15)
-    monkeypatch.setattr(corrections, "resolve_sofascore_event_id", lambda _: 456)
+    monkeypatch.setattr(corrections, "resolve_sofascore_event_identity", lambda _: SimpleNamespace(sofascore_event_id=456))
     monkeypatch.setattr(api_client, "get_event_results", lambda *_args, **_kwargs: (timing_result, None))
     caplog.set_level("INFO", logger=corrections.__name__)
     ids = corrections.check_recently_started_events_for_timestamp_corrections([
@@ -51,7 +52,7 @@ def test_early_result_is_collected_even_when_timing_cannot_be_checked(monkeypatc
 
     monkeypatch.setattr(Config, "PRE_START_WORKERS", 1)
     monkeypatch.setattr(corrections, "minutes_since_start", lambda _: -15)
-    monkeypatch.setattr(corrections, "resolve_sofascore_event_id", lambda _: 456)
+    monkeypatch.setattr(corrections, "resolve_sofascore_event_identity", lambda _: SimpleNamespace(sofascore_event_id=456))
     result = {"home_score": 1, "away_score": 0, "winner": "1"}
     parsed = SimpleNamespace(is_finished=True, result=result)
     monkeypatch.setattr(api_client, "get_event_results", lambda *_args, **_kwargs: (None, parsed))
