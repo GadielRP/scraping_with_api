@@ -79,7 +79,7 @@ def run_t_minus_one_odds_job(
             events,
             timings,
             key_moments=(closing_minute,),
-            oddsportal_context=OddsPortalScrapeContext({}, set(), {}),
+            oddsportal_context=OddsPortalScrapeContext({}, set()),
             debug_mode=debug_mode,
             timestamp_correction_enabled=False,
             evaluate_key_moments=False,
