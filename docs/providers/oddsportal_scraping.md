@@ -80,7 +80,7 @@ The manual path calls `run_job_pre_start_check_now()`. After the synchronous pre
 
 ### 3.3 Event query and timing bucket
 
-`run_pre_start_check_job()` first optionally restricts all pre-start work to the canonical tracked-competition allowlist when `PRE_START_TRACKED_COMPETITIONS_ONLY=true`.
+`run_pre_start_check_job()` filters loaded events by the canonical tracked-competition allowlist when `TRACKED_COMPETITIONS_ONLY=true`.
 
 It then calls:
 
@@ -133,7 +133,7 @@ sequenceDiagram
         PS->>PS: NBA in-game checks
         PS->>DB: load source states
         PS->>PS: build provider candidates
-        PS->>PS: _ingest_provider_odds via _PROVIDER_ODDS_PHASES
+        PS->>PS: _ingest_provider_odds
         Note over PS: run_sofascore_pre_start_odds<br/>run_oddspapi_pre_start_odds
         PS->>AL: evaluate key-moment pipelines
         AL->>AL: eligible legacy alerts wait for their OP event
@@ -149,7 +149,7 @@ The real order is:
 5. Run recently-started timestamp correction and result-freshness maintenance.
 6. Run in-game checks.
 7. If events remain, load provider source states and build the normal pre-start candidate plan.
-8. Ingest SofaScore and Oddspapi odds through `_PROVIDER_ODDS_PHASES` (`run_sofascore_pre_start_odds`, `run_oddspapi_pre_start_odds` under `providers/`). See [`pre_start_odds_ingestion.md`](pre_start_odds_ingestion.md).
+8. Ingest SofaScore and OddsPapi odds through their provider phases. See the [ingestion guide](pre_start_odds_ingestion.md).
 9. Evaluate the enabled legacy-alert and pillar pipelines.
 
 OddsPortal is therefore launched before timestamp maintenance. If maintenance later removes or reschedules an event, an already-selected OddsPortal task is not cancelled.
@@ -172,7 +172,7 @@ Important consequences:
 - A missing `season_id` does not prevent selection. It disables the DB-cache shortcut for that task, but live league discovery can still run.
 - `ENABLE_ODDS_EXTRACTION` does not gate OddsPortal candidate selection.
 - The capture moment is controlled by `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`). It is deliberately not hardcoded to -5 or dependent on provider odds moment lists.
-- `PRE_START_TRACKED_COMPETITIONS_ONLY` can filter the event out earlier at the SQL query, even if it has an OddsPortal route.
+- `TRACKED_COMPETITIONS_ONLY` can filter the event out at the SQL query, even if it has an OddsPortal route.
 
 For each selected event, `create_oddsportal_scrape_state()` creates:
 
@@ -202,7 +202,7 @@ This guard prevents overlapping OddsPortal cycles within one application runtime
 
 The worker's outer `finally` also sets `done_event` for every event that did not receive a normal callback. This covers dispatcher crashes and chunk-level failures.
 
-Shutdown closes admission and signals cooperative cancellation before waiting. `JOB_SHUTDOWN_GRACE_SECONDS` limits the application's total join budget; an unfinished cycle is logged. Third-party browser calls still depend on Playwright timeouts, and real browser memory/process cleanup is tracked as EXEC-006 in `docs/maintenance/execution-legacy-cleanup.md`.
+Shutdown closes admission and signals cooperative cancellation before waiting. `JobExecutionSettings.shutdown_grace_seconds` limits the application's total join budget. An unfinished cycle is logged. Third-party browser calls still depend on Playwright timeouts.
 
 ## 7. Task construction and browser distribution
 
@@ -708,7 +708,7 @@ These remain environment-backed because they vary by machine, deployment, or int
 | `POLL_INTERVAL_MINUTES` | Determines exact scheduler minute marks. Values should align with the opening capture bucket (`ODDSPORTAL_OPENING_CAPTURE_MINUTES`, default `120`). |
 | `PRE_START_WINDOW_MINUTES` | Upper boundary of the event query. The repository independently includes approximately five minutes of recently started events. |
 | `PRE_START_ODDS_MOMENTS` | Controls normal provider/evaluation key moments, not OddsPortal selection itself. |
-| `PRE_START_TRACKED_COMPETITIONS_ONLY` | Can remove non-business-tracked events before OddsPortal selection. |
+| `TRACKED_COMPETITIONS_ONLY` | Filters event loading before OddsPortal selection. |
 | `FILTER_PIPELINES_BY_TRACKED_COMPETITIONS` | Filters alert/pillar evaluation, not OddsPortal scraping. |
 | `ENABLE_ODDS_EXTRACTION` | Controls normal provider extraction, not the OddsPortal worker. |
 | `ENABLE_LEGACY_ALERT_PIPELINE` | Enables the only current consumer that waits for OddsPortal. |
@@ -771,7 +771,7 @@ Check, in order:
 3. canonical `competition_id`, not `season_id`;
 4. presence in `ODDSPORTAL_COMPETITION_ROUTES`;
 5. logged rounded `minutes_until_start` equals `Config.ODDSPORTAL_OPENING_CAPTURE_MINUTES` (default `120`);
-6. earlier filtering by `PRE_START_TRACKED_COMPETITIONS_ONLY`.
+6. earlier filtering by `TRACKED_COMPETITIONS_ONLY`.
 
 ### Candidate selected but never “started”
 

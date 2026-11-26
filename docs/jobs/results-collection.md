@@ -6,7 +6,7 @@ Midnight is scheduled at 04:00 in `Config.TIMEZONE` and collects the previous **
 
 A lightweight private `schedule.Scheduler` only dispatches descriptions of work. Three bounded, serial executors own pre-start, closing T−1 and maintenance. Pre-start keeps at most one active run and one latest pending tick. Closing preserves the exact original occurrence, expires at its target kickoff and uses a PostgreSQL advisory session lock for simultaneous exclusion across instances. The lock uses an autocommit connection, with guaranteed release and no transaction held during HTTP; it does not record historical slot consumption.
 
-Maintenance admits eight active/queued identities by default. Date/slot are part of identity where relevant. A bounded retry registry handles full admission; maintenance deferred by resource pressure resumes the same date/slot after 60 seconds. This queue is in process. Missing midnight dates after a process crash still require `results-date` or a separately designed reconciliation job.
+Maintenance admits eight active/queued identities by default. Date/slot are part of identity where relevant. A bounded retry registry handles full admission. A deferred maintenance job retries the same date/slot after 60 seconds. The in-process queue is lost on restart. Use the dated CLI commands to replay missed work.
 
 Provider calls share the existing SofaScore rate cap, with closing ahead of pre-start ahead of maintenance. Priority does not preempt requests already on the network. Provider pools have bounded pending futures and inherit execution/cancellation context. HTTP timeouts and retry waits respect remaining run budget. Pre-start processes acquisition/evaluation before intraday maintenance; its default cooperative budget is 240 seconds. Missing SofaScore odds endpoints use a bounded cooldown while permitting an attempt in each new configured critical moment, including T−1.
 
@@ -27,6 +27,20 @@ Metadata, result and deletion writes are separate bounded transactions. Result r
 `JobExecutionSettings.event_read_batch_size` controls selection/pipeline groups. `JobExecutionSettings.event_write_batch_size` controls SQL write chunks. Configure both in `infrastructure/settings/job_execution.py`. Both default to 100 but are independent. `batch_upsert_results` returns a set of confirmed canonical IDs, not a speculative integer count. All internal consumers have been migrated.
 
 Re-running a date selects only unresolved/incomplete rows; no cursor table is required. Infrastructure errors propagate. A provider failure remains pending and increments `failed`; a valid unfinished response increments `deferred`.
+
+## OddsPapi prematch odds recovery
+
+After the scheduled Midnight Sync call returns, `ApplicationRuntime` enqueues a separate `oddspapi_prematch_odds_recovery:YYYY-MM-DD` job for the same local target date if pre-start historical requests are disabled and `ODDSPAPI_HISTORY_RECOVERY_FROM_UTC` is set. The job runs on the maintenance executor, separate from pre-start and closing. It checks for critical work before each fixture and defers if any is pending.
+
+Selection requires a tracked competition, an OddsPapi mapping and a row in `results`. Kickoff must fall on or after the configured recovery start and before the end of the target day. Events that started before the target day also qualify when `results.finished_at` falls within it. A null finish time is sufficient for events that started on the target day. Only configured bookmakers with pre-kickoff cache for that event and fixture are requested. When none qualify, the job logs `reason=no_cache`. See the [OddsPapi request modes and history rules](../providers/pre_start_odds_ingestion.md#oddspapi-request-modes).
+
+Use the standalone command to replay a date. It requires `ODDSPAPI_HISTORY_RECOVERY_FROM_UTC` and writes to the configured database. It rejects `--dry-run`. The manual `midnight` command runs result sync alone.
+
+```bash
+python main.py oddspapi-prematch-odds-recovery --date 2026-11-25
+```
+
+The job updates existing quote instruments and deduplicates historical snapshots. It selects qualifying fixtures again on a manual replay. If quota is exhausted, it stops the current run, and a replay of the target date can pick up the remaining work. Inspect `quotes_updated` and `snapshots_added` to see what each fixture wrote. `markets_saved=0` is expected because recovery works on existing markets. `no historical quote or snapshot changes` indicates a processed response with zero writes.
 
 ## Durable materialized-view refresh
 

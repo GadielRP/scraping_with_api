@@ -779,6 +779,7 @@ class OddspapiPreStartOddsAcquisitionService:
         requested_bookmakers: set[str],
         fetch_executor: OddspapiExchangeHistoricalFetchExecutor | None = None,
         available_through_utc: datetime | None = None,
+        starts_at: datetime | None = None,
     ) -> OddspapiOddsAcquisitionResult:
         combined = self._unique_bookmakers(regular, exchange)
         current_payload: dict | None = None
@@ -871,6 +872,7 @@ class OddspapiPreStartOddsAcquisitionService:
                 source_sport_id=source_sport_id,
                 minimum_initial_span_minutes=minimum_initial_span_minutes,
                 require_active_quotes=require_active_quotes,
+                kickoff_utc=starts_at,
                 available_through_utc=available_through_utc,
                 selection_context=selection_context,
             )
@@ -953,6 +955,7 @@ class OddspapiPreStartOddsAcquisitionService:
                         False,
                     )
                 ),
+                kickoff_utc=starts_at,
                 available_through_utc=available_through_utc,
             )
 
@@ -1092,4 +1095,5 @@ class OddspapiPreStartOddsAcquisitionService:
             requested_bookmakers=requested_bookmakers,
             fetch_executor=exchange_fetch_executor,
             available_through_utc=available_through_utc,
+            starts_at=starts_at,
         )

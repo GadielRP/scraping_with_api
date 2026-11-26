@@ -25,7 +25,7 @@ Campos relevantes:
 | Campo | Uso |
 |---|---|
 | `id` | Identificador canónico del evento. Es la clave que se usa en todas las consultas de cuotas. |
-| `starts_at` | Inicio del evento. Es una columna `TIMESTAMP WITH TIME ZONE` (`timestamptz`) normalizada a UTC en base de datos y tipada como `datetime` timezone-aware en Python (cumpliendo el contrato temporal canónico; históricamente denominada `start_time_utc`). |
+| `starts_at` | Instante de kickoff. PostgreSQL lo guarda como `timestamptz` y Python lo recibe como `datetime` con zona horaria, normalizado a UTC. |
 | `sport`, `competition_id` | Contexto deportivo y competición. |
 | `home_participant_id`, `away_participant_id` | Participantes canónicos. |
 | `created_at`, `updated_at` | Auditoría de la entidad (instantes `timestamptz` en UTC). |
@@ -77,7 +77,7 @@ Tampoco contiene precios.
 
 ## 5. `canonical_market_types`
 
-Catálogo de mercados canónicos (véase [`canonical_markets_list.md`](file:///c:/Users/gadie/Documents/projects/sofascore/docs/architecture/canonical_markets_list.md)). Sus filas son configuración compartida, no datos exclusivos del evento.
+Catálogo compartido de [mercados canónicos](canonical_markets_list.md).
 
 Campos relevantes:
 
@@ -88,7 +88,7 @@ Campos relevantes:
 | `canonical_market_group` | Grupo, por ejemplo `1X2`, `Over/Under`, `Asian Handicap`. |
 | `canonical_market_period` | `Full Time`, `1st Half`, etc. |
 | `market_family`, `requires_line_value` | Reglas del mercado. |
-| `enabled_for_ingestion` | Si el catálogo permite ingestión (`True` para los 39 tipos canónicos). |
+| `enabled_for_ingestion` | Si el catálogo permite ingerir ese tipo. |
 | `enabled_for_trajectory` | Si el mercado participa en análisis de trayectoria temporal (Pilar 4). |
 
 ## 6. `market_source_mappings`
@@ -196,12 +196,12 @@ Campos relevantes:
 | `source_limit` | Límite/tamaño de la cuota cuando aplica. |
 | `initial_odds` | Apertura normalizada, redondeada a la precisión SQL. |
 | `initial_captured_at` | Timestamp del proveedor para la apertura (`initialChangedAt`). |
-| `current_odds` | Última cuota válida normalizada antes del cutoff de kickoff. |
+| `current_odds` | Cuota actual seleccionada para esa fuente. En el recovery de OddsPapi gana la observación elegible más reciente hasta T−5. |
 | `current_updated_at` | Hora de escritura del estado actual, no necesariamente el timestamp del proveedor. |
 | `movement` | `-1` bajó, `0` sin cambio, `+1` subió. |
 | `created_at`, `updated_at` | Auditoría de la fila. |
 
-La estrategia significativa no reemplaza `initial_odds` ni `current_odds`. Aunque una cuota no supere el umbral, puede seguir siendo la cuota actual y quedar en estos campos.
+La apertura de OddsPapi requiere que el primer tick elegible tenga al menos 60 minutos de antigüedad respecto a `starts_at`. La recuperación rellena aperturas vacías sobre cuotas existentes. La selección de cambios significativos se aplica a los snapshots de la trayectoria.
 
 ## 11. `market_choice_snapshots`
 
@@ -219,25 +219,15 @@ Es el histórico append-only de observaciones de un `quote_id`.
 
 ### Tipos de snapshots que puede contener
 
-1. **Apertura ordinaria**: se crea cuando se establece `initial_odds`. Usa el timestamp de apertura del proveedor en `source_collected_at` y la hora de escritura en `collected_at`.
-2. **Cuota actual ordinaria**: representa `current_odds` de esa ingestión. No requiere haber superado el umbral significativo.
-3. **Snapshot de exchange**: observación de cada lado/nivel back o lay.
-4. **`momentQuote` dinámico**: tick seleccionado por el detector al superar la magnitud configurada y sobrevivir la regla de reversión. Su `collected_at` es la hora local real del tick, con microsegundos antes de la precisión SQL; su `source_collected_at` es el timestamp del proveedor.
-5. **`momentQuote` de fallback**: observación reconstruida en T−120, T−30, T−5, T−1 o T−0. Su `collected_at` es el momento teórico configurado y `source_collected_at` conserva el timestamp del tick que estaba vigente.
-
-El detector se evalúa por serie (`bookmaker + mercado + outcome + jugador`). Por eso un mismo mercado puede tener algunas elecciones con snapshots dinámicos y otras con snapshots de fallback.
+- **Apertura y cuota actual ordinarias.** La ingestión normal puede escribir una observación de cada precio. El recovery usa el tick ganador hasta T−5 para la cuota actual y su snapshot. La apertura recuperada se guarda en la cuota y aparece también en el histórico si otro criterio selecciona ese tick.
+- **Exchange.** Cada snapshot pertenece a su instrumento back o lay y a su nivel.
+- **Momentos fijos y cambios significativos.** Un momento fijo usa el tick vigente en su objetivo. El detector añade cambios por serie de bookmaker, mercado, outcome y jugador. En ambos casos, `collected_at` es la hora real del lote y `source_collected_at` conserva la hora del tick.
 
 ### Deduplicación
 
-La precisión SQL de `collected_at` es de segundos. La deduplicación de momentos usa:
+La deduplicación histórica usa `quote_id`, el timestamp completo del proveedor, el precio, el límite y el tamaño del exchange. Un mismo tick puede satisfacer varios objetivos y guardarse una sola vez.
 
-```text
-quote_id + collected_at truncado a segundo
-```
-
-La memoria de la escritura conserva todos los `source_collected_at` asociados a esa clave. Una repetición con el mismo timestamp del proveedor se omite; otro timestamp del proveedor en el mismo segundo puede insertar un snapshot adicional.
-
-La tabla no tiene orden implícito. Toda auditoría debe usar `ORDER BY`, por ejemplo:
+Ordena por `collected_at` para ver el orden de escritura. Para reconstruir la cronología del proveedor, ordena por `source_collected_at` y usa `snapshot_id` para desempatar.
 
 ```sql
 ORDER BY
@@ -265,11 +255,7 @@ Cache auxiliar usado para enriquecer adquisiciones históricas/live con la selec
 
 Esta tabla no es un histórico de precios. Solo permite que una posterior respuesta de `/historical-odds` sepa qué outcomes/líneas deben conservarse como principales.
 
-En el flujo híbrido forzado, el orden es:
-
-```text
-/odds -> oddspapi_mainline_outcome_cache -> /historical-odds -> markets/choices/quotes/snapshots
-```
+En modo restringido, T−5 escribe la caché a partir de `/odds`. La recuperación selecciona los bookmakers que tienen filas anteriores al kickoff para el mismo evento y fixture. La adquisición histórica consulta los outcomes cacheados por evento y bookmaker en solo lectura. Consulta la [guía de ingesta](../providers/pre_start_odds_ingestion.md) para ver ambos modos.
 
 ## Qué esperar después de una ingestión Oddspapi
 

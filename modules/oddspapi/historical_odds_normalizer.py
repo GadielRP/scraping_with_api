@@ -76,6 +76,7 @@ class OddspapiHistoricalOddsNormalizer:
         minimum_initial_span_minutes: float = 0.0,
         require_active_quotes: bool = True,
         current_cutoff_utc: datetime | None = None,
+        kickoff_utc: datetime | None = None,
     ) -> dict | None:
         """Reduce an ordered series to opening + latest pre-cutoff quote.
 
@@ -102,15 +103,18 @@ class OddspapiHistoricalOddsNormalizer:
             normalized["active"] = True
         normalized["changedAt"] = latest.get("createdAt")
         opening_at = cls._parse_timestamp(opening.get("createdAt"))
-        latest_at = cls._parse_timestamp(latest.get("createdAt"))
+        opening_reference_at = kickoff_utc or cls._parse_timestamp(
+            latest.get("createdAt")
+        )
         minimum_span_seconds = max(
             0.0,
             float(minimum_initial_span_minutes or 0.0),
         ) * 60.0
         has_credible_opening = (
             opening_at is not None
-            and latest_at is not None
-            and (latest_at - opening_at).total_seconds() >= minimum_span_seconds
+            and opening_reference_at is not None
+            and (opening_reference_at - opening_at).total_seconds()
+            >= minimum_span_seconds
         )
         if has_credible_opening:
             normalized["initialPrice"] = opening.get("price")

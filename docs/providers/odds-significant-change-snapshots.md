@@ -1,89 +1,25 @@
 # Snapshots de cambios significativos de OddsPapi
 
-## Activación y contrato
+`ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS` habilita el detector en la adquisición histórica ordinaria. La persistencia de momentos históricos en pre-start se controla con `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST`. T−5 fuerza el detector en el modo híbrido cuando el histórico de pre-start está habilitado. La recuperación diaria fuerza la detección y la reconstrucción de momentos. Las rutas y los flags están en la [guía de ingesta](pre_start_odds_ingestion.md).
 
-`ENABLE_ODDSPAPI_SIGNIFICANT_CHANGE_SNAPSHOTS=true` (default en `Config`) activa la selección de cambios adaptativos en la adquisición histórica live de OddspAPI; `ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST=true` (default en `Config`) gobierna la escritura de dichos snapshots en base de datos. Si se desactiva explícitamente (`false`), se conserva la reconstrucción fija previa.
+## Selección por serie
 
-Los umbrales y la política versionada de producto están centralizados en `OddspapiPreStartSettings` (`modules/jobs/pre_start_check_job/providers/oddspapi/settings.py`):
-- `significant_change_min_magnitude_pct = 15.0`: magnitud mínima de cambio relativo respecto al ancla vigente (15%).
-- `significant_change_min_history_hours = 20.0`: historial mínimo requerido desde el primer tick válido hasta el kickoff (20 horas).
-- `significant_change_flash_reversal_minutes = 3.0`: ventana de confirmación para descartar reversiones transitorias (3 minutos).
-- `significant_change_min_price = 1.01`: precio mínimo admisible para la sanitización (`price > 1.01`).
-- `significant_change_forced_moments = (5,)`: momentos clave no-live que ejecutan deliberadamente el flujo híbrido `/odds` → caché de líneas principales → `/historical-odds` con evaluación de cambios significativos.
+El lector ordena los ticks por `createdAt` y, cuando interviene el detector, sanitiza cada serie de bookmaker, mercado, outcome y jugador. Excluye precios no finitos, precios de hasta `1.01` y ticks posteriores al kickoff. La política de actividad decide si admite observaciones inactivas. La recuperación limita además la serie a los ticks con timestamp en o antes de T−5.
 
-Estos umbrales se aplican individualmente a cada combinación bookmaker / mercado / outcome / jugador.
+Los parámetros versionados se definen en [la política del proveedor](../../modules/jobs/pre_start_check_job/providers/oddspapi/settings.py).
 
-El reader ordena cronológicamente y sanitiza una vez por serie. Apertura, última cuota, detector y fallback comparten los ticks limpios. Se excluyen precios no finitos, precios centinela y ticks posteriores al kickoff (`createdAt > kickoff_utc`). Las cuotas inactivas (`active=false`) se excluyen únicamente cuando `require_active_quotes=true`; con `false` permanecen elegibles. Si falta kickoff, se registra el motivo y se utiliza el comportamiento clásico.
+| Parámetro | Valor | Aplicación |
+|---|---|---|
+| `initial_odds_min_span_minutes` | 60 min | Antigüedad mínima del primer tick elegible al kickoff para aceptar la apertura. |
+| `significant_change_min_history_hours` | 20 h | Antigüedad mínima del primer tick válido al kickoff para evaluar cambios significativos. |
+| `significant_change_min_magnitude_pct` | 10 % | Cambio relativo mínimo frente al precio del ancla. |
+| `significant_change_flash_reversal_minutes` | 3 min | Ventana para descartar una reversión por debajo del umbral. |
+| `significant_change_min_price` | 1.01 | Límite inferior excluido en la sanitización. |
 
-El detector (`OddspapiHistoricalOddsChangeDetector`) recibe la conversión horaria como dependencia explícita y no importa configuración global, HTTP ni SQL. El DTO se comparte desde `historical_odds_quote.py`.
+El primer tick válido sirve como ancla. Cada cambio confirmado mueve el ancla. Un tick sigue vigente hasta el siguiente válido, así que la confirmación admite períodos sin nuevas observaciones. Dentro del tramo final de tres minutos del corte de observación, el detector evalúa solo el último tick y puede emitirlo sin esperar confirmación.
 
-## Selección temporal
+## Momentos fijos y persistencia
 
-- No se emite el ancla inicial. Cada cambio confirmado actualiza el ancla.
-- La reversión debe volver a una diferencia estrictamente menor al umbral antes de completar la ventana. Revertir exactamente al final no invalida el candidato. Los microticks en la nueva zona no requieren precio idéntico.
-- Un tick se considera vigente hasta el siguiente válido; no se exige una frecuencia de actualizaciones para confirmar permanencia.
-- En el tramo posterior a `kickoff - ventana`, solo se evalúa el último tick válido hasta kickoff. Se emite sin confirmación si cambia al menos el umbral respecto al ancla vigente. No se registra un cierre estable automáticamente.
-- Los momentos canónicos se seleccionan del historial válido completo antes de reducir los cambios significativos. Una reversión breve o un cambio pequeño siguen siendo precios legítimos en su checkpoint.
-- El reader combina los momentos canónicos configurados (`as_of_targets`) junto con los cambios significativos detectados en una sola pasada en memoria, conservando asociaciones de selección distintas; el repositorio deduplica ticks por fuente y valores materiales. Si no hay cambios significativos o el historial es insuficiente (< 20 horas), se conservan íntegros los momentos canónicos.
-- Los cambios dinámicos conservan microsegundos en `source_collected_at`, momento seleccionado en `targetAt`, fecha del proveedor en `createdAt` y minutos fraccionarios en `minutesUntilStart`. La consulta conserva por separado minutos de observación y minutos de mercado.
+Los objetivos fijos salen de `PRE_START_ODDS_MOMENTS`. Cada uno toma el último tick elegible en o antes de su objetivo. Los checkpoints se conservan aunque la serie sea demasiado corta para el detector, el cambio sea pequeño o haya una reversión breve. El recovery solicita los objetivos **estrictamente anteriores a T−5** y obtiene la observación de T−5 de la reconciliación entre la captura original y el histórico. Con los perfiles actuales, esto deja T−360, T−120 y T−30 en local, y T−120 y T−30 en producción, siempre que exista un tick válido para el objetivo.
 
-Los snapshots ordinarios de apertura y cuota actual continúan existiendo; esta estrategia combina la proyección canónica fija con la detección adaptativa de eventos intermedios.
-
-## Persistencia y coste
-
-La deduplicación histórica usa identidad de cuota, timestamp completo del proveedor,
-precio, límite y cantidad del exchange. No usa momentos teóricos ni comodines NULL.
-Una consulta filtrada por evento, proveedor, instrumentos e intervalo de fuente
-carga las claves relevantes. El lote actual actualiza esas claves mientras escribe.
-
-`collected_at` siempre es el instante UTC real del lote. `source_collected_at` conserva
-el momento del proveedor o NULL. Un mismo tick seleccionado para varios objetivos se
-persiste una vez. Los actuales de distintas adquisiciones siguen siendo observaciones
-independientes. La idempotencia cubre reejecuciones secuenciales; no se añade un índice
-ni exclusión entre transacciones concurrentes. No se corrigen filas históricas.
-
-La sanitización conserva referencias a los ticks originales; los reductores
-de apertura/cierre y momentos ya no copian listas completas. El detector
-inspecciona ventanas por índice, sin crear slices. Su memoria adicional es
-O(n + cambios) contando la lista limpia. El tiempo incluye las inspecciones
-de ventanas: no se garantiza complejidad lineal para cualquier serie adversa
-con muchos candidatos confirmados y ventanas superpuestas.
-
-## Verificación local
-
-Se ejecutaron 137 pruebas de dominio, reader, adquisición, exchanges,
-adapter, persistencia y controles de batch. Se usaron SQLite temporal y
-clientes simulados. No se verificó un servidor PostgreSQL real. Queda una
-advertencia preexistente de SQLAlchemy sobre `declarative_base`.
-
-Se actualizaron dobles antiguos de adquisición/exchanges al contrato actual
-de mappings, caché y scheduler. Los ocho fallos iniciales de esas suites se
-reprodujeron también cargando el código de HEAD anterior al cambio.
-
-Medición en Python 3.12 con `tracemalloc`, contando sanitización y detector
-después de construir la entrada; serie con spikes alternos, un cambio
-sostenido y microticks posteriores:
-
-| Ticks | Tiempo | Pico adicional | Cambios |
-| --- | --- | --- | --- |
-| 10.001 | 0,042 s | 86.704 bytes | 1 |
-| 100.001 | 0,362 s | 802.360 bytes | 1 |
-
-Estas cifras no incluyen descarga JSON ni su ordenamiento inicial.
-
-El archivo local `historical_odds_id1300010963301857_bet365_pinnacle.json`
-se reprodujo con kickoff controlado `2026-09-03T18:00:00Z`, sin afirmar que
-sea la hora real del evento. Contiene 573 series: 365 quedan vacías tras la
-sanitización y 208 tienen entre 13,0043 y 18,0236 horas válidas. Con mínimo
-24 horas genera 1.040 observaciones de fallback; con mínimo 12 horas ninguna
-serie necesita fallback y no se detectan cambios del 20%.
-
-Comando de las suites verificadas, usando un directorio temporal nuevo:
-
-```text
-python -m pytest -q -p no:cacheprovider --basetemp <directorio-temporal-nuevo> tests/test_historical_odds_change_detector.py tests/test_historical_odds_reader_change_fallback.py tests/test_historical_odds_as_of.py tests/test_odds_acquisition_service.py tests/test_exchange_historical_fetch_executor.py tests/oddspapi/test_market_adapter.py tests/test_save_canonical_bookmaker_batches_quotes.py tests/test_market_choice_snapshot_writer.py tests/test_odds_batch_processor_exchange_fanout_wiring.py
-```
-
-Para aislar la ejecución del `.env`, establecer `DATABASE_URL=sqlite:///:memory:`
-en el proceso de pruebas. El JSON de reproducción es un dato local, no un
-requisito de las nuevas pruebas sintéticas.
+Un mismo tick puede representar varios objetivos. La persistencia histórica lo deduplica por identidad de cuota, timestamp completo del proveedor, precio, límite y tamaño del exchange. `collected_at` es la hora real de escritura y `source_collected_at` es la hora de la observación según el proveedor. Los campos `initial_odds` y `current_odds` se seleccionan por su propia regla temporal. Consulta [el modelo de persistencia](../architecture/odds_db_ingestion_context.md) para auditar una cuota.

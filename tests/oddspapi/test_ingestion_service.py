@@ -734,6 +734,28 @@ def test_historical_reader_drops_player_when_only_live_ticks_exist():
     assert result.normalized_payload["bookmakerOdds"] == {}
 
 
+def test_historical_opening_age_uses_kickoff_with_t_minus_five_cutoff():
+    payload = _historical_payload(
+        [
+            {"createdAt": "2026-11-25T18:38:14.663Z", "price": 2.05},
+            {"createdAt": "2026-11-25T19:37:08.473Z", "price": 1.98},
+            {"createdAt": "2026-11-25T19:40:37.663Z", "price": 1.97},
+        ]
+    )
+
+    result = OddspapiHistoricalOddsReader.read(
+        payload,
+        kickoff_utc=datetime.fromisoformat("2026-11-25T13:45:00-06:00"),
+        available_through_utc=datetime.fromisoformat("2026-11-25T19:40:00+00:00"),
+        minimum_initial_span_minutes=60,
+    )
+
+    player = _normalized_historical_player(result)
+    assert player["initialPrice"] == 2.05
+    assert player["initialChangedAt"] == "2026-11-25T18:38:14.663Z"
+    assert player["changedAt"] == "2026-11-25T19:37:08.473Z"
+
+
 def test_historical_current_cutoff_keeps_as_of_targets_independent():
     payload = _historical_payload(
         [

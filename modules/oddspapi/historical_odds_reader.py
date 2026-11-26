@@ -55,6 +55,7 @@ class OddspapiHistoricalOddsReader:
         if not isinstance(bookmakers, dict):
             bookmakers = {}
 
+        kickoff_utc = OddspapiHistoricalOddsAsOf.start_time_as_utc(kickoff_utc)
         if enable_significant_changes and kickoff_utc is None:
             logger.warning(
                 "Significant-change extraction disabled: missing kickoff_utc"
@@ -136,6 +137,7 @@ class OddspapiHistoricalOddsReader:
                                 ),
                                 require_active_quotes=require_active_quotes,
                                 current_cutoff_utc=current_cutoff_utc,
+                                kickoff_utc=kickoff_utc,
                             )
                         )
                         if normalized is not None:

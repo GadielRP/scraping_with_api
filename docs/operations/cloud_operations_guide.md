@@ -157,25 +157,8 @@ Where to run commands:
 
 ### D) Local Testing Commands
 
-```powershell
-# System status
-python main.py status
-
-# Manual job execution
-python main.py discovery
-python main.py pre-start
-python main.py midnight
-python main.py results
-python main.py results-all
-python main.py final-odds-all
-
-# Alert system
-python main.py alerts
-python main.py refresh-alerts
-
-# Data inspection
-python main.py events --limit 20
-```
+See [manual job commands](#15-mainpy-cli-commands) and the
+[pre-start simulator](../jobs/pre-start-simulator.md).
 
 ---
 
@@ -629,17 +612,14 @@ python main.py results
 # Collect results (all finished) now
 python main.py results-all
 
-# Final odds collector (batch)
-python main.py final-odds-all
+# Replay OddsPapi prematch recovery for a local date
+python main.py oddspapi-prematch-odds-recovery --date 2026-11-25
 
 # Show status and scheduled jobs
 python main.py status
 
 # Show recent events (override limit)
 python main.py events --limit 20
-
-# Run alert evaluation manually
-python main.py alerts
 
 # Refresh alert materialized views
 python main.py refresh-alerts
@@ -662,8 +642,8 @@ docker exec -it sofascore_app python /app/main.py results
 # Collect results (all finished) now
 docker exec -it sofascore_app python /app/main.py results-all
 
-# Final odds collector (batch)
-docker exec -it sofascore_app python /app/main.py final-odds-all
+# Replay OddsPapi prematch recovery for a local date
+docker exec -it sofascore_app python /app/main.py oddspapi-prematch-odds-recovery --date 2026-11-25
 
 # Show status and scheduled jobs
 docker exec -it sofascore_app python /app/main.py status
@@ -671,12 +651,12 @@ docker exec -it sofascore_app python /app/main.py status
 # Show recent events (override limit)
 docker exec -it sofascore_app python /app/main.py events --limit 20
 
-# Run alert evaluation manually
-docker exec -it sofascore_app python /app/main.py alerts
-
 # Refresh alert materialized views
 docker exec -it sofascore_app python /app/main.py refresh-alerts
 ```
+
+The [recovery job guide](../jobs/results-collection.md#oddspapi-prematch-odds-recovery)
+describes the configuration, database writes and log counters for manual replay.
 
 ---
 

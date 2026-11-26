@@ -53,23 +53,23 @@ The application is driven by main.py, which delegates to app/cli.py. cli.py defi
 
 | Command | Description |
 | :--- | :--- |
-| start | Launches the full scheduler – initialises the database, creates tables, migrates schema and schedules discovery, pre‑start, midnight sync and daily discovery jobs. |
+| start | Checks the deployed database schema and starts the scheduler. |
 | discovery | Triggers Discovery A immediately – fetches dropping odds feeds and sport‑specific dropping endpoints, deduplicates and stores events. |
 | discovery2 | Runs Discovery B – pulls high‑value streaks, head‑to‑head (H2H), winning odds and other special feeds. |
 | pre-start | Executes the pre‑start cycle now – captures upcoming events, applies timestamp corrections, extracts odds snapshots at key moments and evaluates alerts. |
 | midnight | Performs the midnight sync job – collects results and updates prediction logs. |
-| results | Collects previous‑day results and updates prediction logs. |
+| results | Collects results for the previous local day. |
 | results-date --date YYYY-MM-DD | Collects results for the specified date. |
 | oddspapi-fixture-discovery | Discovers Oddspapi fixture IDs for the UTC day and maps them to existing canonical events. It does not create events or ingest odds. |
-| results-all | Retrieves results for all finished events. |
+| oddspapi-prematch-odds-recovery --date YYYY-MM-DD | Replays OddsPapi historical recovery for a local date and writes eligible openings and snapshots to existing quotes. |
+| results-all | Attempts collection for sufficiently old events with incomplete results. |
 | daily-discovery | Runs daily sports discovery – extracts today’s events and odds for each sport. |
 | backfill-results --limit N | Backfills missing results history up to N events. |
 | status | Prints database and scheduler status information. |
 | events --limit N | Displays a summary of recently discovered events. |
-| alerts | Evaluates and sends alerts on upcoming events. |
-| refresh-alerts | Refreshes the materialised view used for alert candidate lookup. |
+| refresh-alerts | Requests and attempts refresh of the reporting views. |
 
-These commands map one‑to‑one to functions in app/commands/. See the docstrings there for further details.
+Run `python main.py --help` to list supported commands and options.
 
 ## Modules
 ### Alerts (modules/alerts)
@@ -82,15 +82,13 @@ dual_process/ – implements the dual process alert strategy. The process_1 and 
 matchup_streak_analysis/ – analyses head‑to‑head records, historical form and standings. It defines constants.py, head_to_head.py, historical_form.py, standings_engine.py, standings_rules.py, standings_simulator.py and winning_odds.py. The run_matchup_streak_analysis.py script triggers this pipeline and uses the materialised view mv_alert_events for candidate lookup.
 ### Jobs (modules/jobs)
 
-Oddspapi jobs are grouped under `modules/jobs/oddspapi/fixture_discovery/` for mapping known canonical events to Oddspapi fixtures, while pre-start odds acquisition lives in `modules/jobs/pre_start_check_job/providers/oddspapi/` inside the pre-start lifecycle. This keeps discovery and odds ingestion separate without creating a second pre-start scheduler.
-
-Scheduled work is compartmentalised in the jobs/ package. Each job has its own sub‑directory with a run_*.py script and helper modules. Highlights include:
+The application runtime dispatches jobs to separate pre-start, closing and maintenance workers. Highlights include:
 
 clean_league_cache/ – clears stale OddsPortal league cache rows before the day’s discovery.
 daily_discovery/ – runs an advance pass at 17:07 and an update at 08:07, with fixed UTC target dates and per-sport retries every 30 minutes, including overnight. It maintains progress via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
-midnight_sync_job/ – runs after midnight to collect match results and update prediction logs. Reporting is refreshed independently by maintenance polling.
-discovery/ – bounded provider fetching, explicit event/odds admission policies and calendar audit logging. The application runtime dispatches jobs to separate pre-start, closing and maintenance workers.
+midnight_sync_job/ – runs at 04:00 in `Config.TIMEZONE`, collects results and updates prediction logs.
+oddspapi/ – maps provider fixtures to canonical events and runs separate [prematch odds recovery](docs/jobs/results-collection.md#oddspapi-prematch-odds-recovery) on the maintenance executor after scheduled Midnight Sync when configured.
 pre_start_check_job/ – executes the core pre-start lifecycle, provider odds ingestion, and prediction pipelines.
 
 #### Pre-Start Candidate Building & Lifecycle
@@ -99,7 +97,7 @@ The pre-start check runs repeatedly (every `POLL_INTERVAL_MINUTES`, default 5m) 
 
 1. **Upcoming Event Ingestion (`_load_upcoming_events`)**:
    - Queries upcoming events from the canonical database starting within the configured lookahead window.
-   - When `PRE_START_TRACKED_COMPETITIONS_ONLY=true`, initial candidate loading is scoped strictly to tracked competition IDs. When `false`, all upcoming events enter the pre-start evaluation pool.
+   - `TRACKED_COMPETITIONS_ONLY=true` limits candidate loading to tracked competitions.
 
 2. **Recently Started Maintenance & Intraday Freshness (`_maintain_recently_started_events`)**:
    - Inspects matches that recently passed kickoff to detect late-breaking timestamp delays or rain delays.
@@ -110,7 +108,7 @@ The pre-start check runs repeatedly (every `POLL_INTERVAL_MINUTES`, default 5m) 
    - Computes exact `minutes_until_start` for each event against UTC clock time.
    - Evaluates whether the event aligns with key operational moments (`PRE_START_ODDS_MOMENTS`, e.g. `120, 30, 5, 1, 0, -5`).
    - Runs `should_extract_odds_for_event`: calls the SofaScore `/event/{id}` endpoint when timestamp correction is enabled, ingests court surface / ground observations, captures rankings into `metadata_snapshot`, and handles rescheduled events.
-   - Applies provider-specific competition gating (`ODDS_EXTRACTION_SOFASCORE_TRACKED_COMPETITIONS_ONLY`, `ODDS_EXTRACTION_ODDSPAPI_TRACKED_COMPETITIONS_ONLY`) to set the `should_extract_odds` decision flag.
+   - Applies the general competition gate to `should_extract_odds`. Provider phases apply their own competition gates after the candidate plan is built.
    - Yields a unified `PreStartEventPlan` containing the active candidate list and an `event_id` index lookup.
 
 4. **Multi-Provider Ingestion & Prediction Handoff**:
@@ -139,7 +137,7 @@ The pillars package implements specialized analytical and statistical signal eng
 * `pillar_1_team_structure/`: Multilayer side and totals engine (Base Strength, Offensive Profile, Direct Matchup, Quality-Adjusted Immediate State, Structural Drift, Opponent Expectation, etc.).
 * `pillar_2_side_market/`: Evaluates side market dynamics, spreads, and market consensus.
 * `pillar_3_totals_market_context/`: Evaluates totals market context, distribution expectations, and line stability.
-* `pillar_4/`: Evaluates market velocity and temporal drift across opening and closing odds (`calculate_pillar_4`). See [`docs/pillars/p4-temporal-market-drift.md`](docs/pillars/p4-temporal-market-drift.md).
+* `pillar_4/`: Evaluates market movement over time. See the [P4 guide](docs/pillars/guia-funcional/04-pilar-4-movimiento-temporal.md).
 * `pillar_5/`: Analyzes price memory, stability and exact quote distribution across bookmakers (`run_pillar_5`).
 * `mining/`: Unified persistence and feature extraction layer (`PillarMiningRepository`) storing JSONB signal profiles for analytical pillars. See [`docs/pillars/mining-persistence.md`](docs/pillars/mining-persistence.md).
 
@@ -155,40 +153,13 @@ This package encapsulates a Playwright‑based scraper that captures authoritati
 
 Data scraped here is canonicalized via `OddsPortalMarketAdapter` and persisted through `MarketOddsIngestionService.save_from_oddsportal_data()`. See [`docs/providers/oddsportal_scraping.md`](docs/providers/oddsportal_scraping.md) for comprehensive operational details.
 
-#### Temporary provider ownership policy
+#### Provider quote ownership
 
-OddsPortal captures authoritative opening odds at
-`ODDSPORTAL_OPENING_CAPTURE_MINUTES` (120 minutes before the event by default).
-
-> **Architecture debt notice:** canonical markets currently do not include the
-> provider source in their database identity. Matching OddsPortal and OddsPAPI
-> markets for the same bookmaker therefore resolve to the same market and
-> choice rows. Until the schema can represent provider-specific quotes, the
-> application enforces ownership per field instead of relying on execution
-> order.
-
-The temporary policy is:
-
-| Data | Temporary owner | Persistence behavior |
-| :--- | :--- | :--- |
-| Opening odds (`initial_odds`) | OddsPortal when that market is scraped | A valid OddsPortal opening overwrites an existing provider opening. |
-| Opening odds for markets not covered by OddsPortal | OddsPAPI | The approximate OddsPAPI opening is preserved, so partial OddsPortal coverage does not create data gaps. |
-| Current odds (`current_odds`) | OddsPAPI | OddsPortal never overwrites the current value. |
-| Pre-start trajectory snapshots | OddsPAPI | OddsPortal creates no snapshots, preventing opening quotes from being mistaken for current timeframe observations. |
-
-This makes concurrent completion order irrelevant: OddsPortal may finish before
-or after OddsPAPI and the stored result remains an OddsPortal opening paired
-with an OddsPAPI current. This is an intentional short-term compatibility rule,
-not the target data model. A future source-aware schema should replace it and
-store each provider's opening, current and timestamp independently.
-
-When `ODDSPORTAL_SCRAPING_ENABLED=false`, the OddsPortal phase is skipped and
-OddsPAPI remains the sole owner of both opening and current odds. Its historical
-normalizer uses the earliest quote marked `active=true` as the opening only when
-the active history spans at least `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES`
-(60 minutes by default), and uses the latest active quote as the current value.
-Those values and the normal OddsPAPI snapshots are persisted through the
-standard repository policy.
+Markets and choices are shared across providers. OddsPortal writes its own
+opening-only quote. OddsPapi and SofaScore manage their own prices and
+snapshots. Alerts resolve opening and current independently using
+[provider priority](config/odds_read_priority.json). See the
+[ingestion guide](docs/providers/pre_start_odds_ingestion.md#canonical-writes-and-reads).
 
 ### Prediction (modules/prediction)
 
@@ -255,11 +226,7 @@ Set up environment variables. Copy .env.example to .env and populate the require
 *   `TIMEZONE` – local timezone (default America/Mexico_City).
 *   `POLL_INTERVAL_MINUTES` – polling interval for the pre‑start check job.
 *   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONAL_CHAT_ID` – credentials for Telegram alerts.
-*   `ODDSPAPI_KEY` - API key required for Oddspapi requests.
-*   `ODDSPAPI_BASE_URL`, `ODDSPAPI_TIMEOUT_SECONDS` and `ODDSPAPI_DEFAULT_LANGUAGE` - Oddspapi client settings.
-*   `ODDSPAPI_FIXTURES_COOLDOWN_SECONDS` - minimum delay between `/v4/fixtures` requests; default `2.0` seconds.
-*   `ENABLE_ODDSPAPI_PRE_START_ODDS` - enables Oddspapi odds ingestion inside the normal pre-start run.
-*   `ODDSPAPI_PRE_START_BOOKMAKERS`, `ODDSPAPI_PRE_START_MARKET_KEYS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS`, `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` and `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` - scope the provider's pre-start requests and persisted markets.
+*   `ODDSPAPI_FREE_KEYS` and optional `ODDSPAPI_PAID_KEY` – OddsPapi credentials. See the [provider configuration](docs/providers/pre_start_odds_ingestion.md#oddspapi-configuration) for capture and recovery settings.
 *   Proxy toggles and credentials (if scraping behind a proxy).
 *   Optional toggles like `ENABLE_TIMESTAMP_CORRECTION`, `ENABLE_ODDS_EXTRACTION`, `SUPPORTED_SPORTS`, `STREAK_ALERT_MIN_RESULTS`.
 
@@ -268,9 +235,7 @@ Configure discovery schedules and admission policy in
 then restart. SofaScore and OddsPapi have independent switches for future events,
 tracked competitions, excluded sports, excluded categories and excluded competitions.
 The default accepts events at least ten minutes before kickoff and excludes the
-audited lists in that module. It does not reject an event merely because
-SofaScore's `has_odds` is false or unknown. See the
-[coverage investigation and implementation plan](docs/analysis/discovery-filter-plan.md).
+audited lists in that module. See [discovery selection and scheduling](docs/jobs/daily-discovery.md).
 The existing odds-first admission in team streaks remains enabled through
 `SOFASCORE.team_streaks_require_odds`; disable it to persist admitted events
 without requiring an odds response first.
@@ -310,139 +275,22 @@ python main.py daily-discovery
 
 Refer to the command table above for the full list of options.
 
-### Oddspapi Pre-start Odds Ingestion
+### OddsPapi odds capture and recovery
 
-Oddspapi pre-start odds ingestion is part of `python main.py pre-start` and
-the pre-start polling cycle started by `python main.py start`. It is **not** a
-separate scheduled job. After the normal SofaScore odds loop, it selects only
-events for which the existing pre-start timing decision set
-`should_extract_odds=True`, bulk-loads their `event_source_mappings` rows with
-`source=oddspapi`, requests `/v4/odds` by `fixtureId`, and sends the payload to
-the existing market ingestion service. It runs before materialized views and
-odds trajectories are refreshed.
-
-The fixture-discovery job must create the mapping first. Events with no
-Oddspapi mapping are skipped; this ingestion path never runs fuzzy matching,
-creates events, or calls `/v4/fixtures`.
-
-Add the following to `.env` (the same defaults are present in `.env.example`):
-
-```dotenv
-# Keys are leased per request and balanced by normalized account usage.
-ODDSPAPI_FREE_KEYS=replace_with_key_1,replace_with_key_2,replace_with_key_3,replace_with_key_4
-ODDSPAPI_PAID_KEY=
-ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS=24
-ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES=60
-
-# The pre-start scheduler cadence and its shared timing moments.
-POLL_INTERVAL_MINUTES=5
-PRE_START_T_MINUS_ONE_INTERVAL_MINUTES=1
-PRE_START_ODDS_MOMENTS=120,30,5,1,0,-5
-PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES=3
-
-# Oddspapi pre-start ingestion.
-ENABLE_ODDSPAPI_PRE_START_ODDS=true
-ODDSPAPI_PRE_START_ALLOWED_MOMENTS=5
-ODDSPAPI_PRE_START_ODDS_ENDPOINT=historical-odds
-ODDSPAPI_PRE_START_WORKERS=4
-ODDSPAPI_PRE_START_BOOKMAKERS=pinnacle,bet365
-ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS=
-ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS=1x2_full_time,over_under_full_time,asian_handicap_full_time
-ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS=120
-ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT=8
-ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN=40
-ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES=60
-ODDSPAPI_PRE_START_MARKET_KEYS=
-ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS=
-ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS=
-ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN=0
-```
-
-`ODDSPAPI_FREE_KEYS` and the optional `ODDSPAPI_PAID_KEY` are the only
-Oddspapi pre-start values containing secrets. Free keys are comma-separated;
-without a key the flow logs one warning and skips eligible events. The legacy
-`ODDSPAPI_KEY` remains a fallback. The remaining values are optional because
-`infrastructure/settings/config.py` supplies the shown defaults:
-
-| Setting | Default | Effect |
-| :--- | :--- | :--- |
-| `ENABLE_ODDSPAPI_PRE_START_ODDS` | `true` | Set to `false` to disable only the Oddspapi subflow; SofaScore pre-start ingestion, views, alerts and pillars continue normally. |
-| `ODDSPAPI_PRE_START_ALLOWED_MOMENTS` | `5` | Whitelist of operational moments at which Oddspapi pre-start odds acquisition executes (default T-5 only; `[5,0]` is an operational override). |
-| `ODDSPAPI_PRE_START_ODDS_ENDPOINT` | `historical-odds` | Selects the regular-bookmaker source. Historical mode uses the latest historical observation as current odds and the earliest credible observation as initial odds, without calling `/v4/odds` unless an exchange bookmaker is enabled. |
-| `ODDSPAPI_PRE_START_WORKERS` | `4` | Maximum concurrent pre-start workers. Effective concurrency is bounded by work items and eligible endpoint keys. Workers own HTTP sessions, while keys are dynamically leased per request. |
-| `ODDSPAPI_ACCOUNT_USAGE_REFRESH_HOURS` | `24` | Durable `/v4/account` refresh interval used to reconcile reported and locally estimated quota usage. |
-| `ODDSPAPI_ACCOUNT_USAGE_REFRESH_RETRY_MINUTES` | `60` | Backoff after an account refresh failure; ingestion continues from persisted estimates. |
-| `ODDSPAPI_PRE_START_BOOKMAKERS` | `ODDSPAPI_DEFAULT_BOOKMAKERS` (normally `pinnacle`) | Regular sportsbook slugs requested together from the selected endpoint. The recommended Historical configuration uses `pinnacle,bet365`. |
-| `ODDSPAPI_PRE_START_EXCHANGE_BOOKMAKERS` | none | Optional exchange slugs such as `betfair-ex`. Enabling one also enables the pre-start `/v4/odds` discovery request; Historical Odds is then called separately once per selected exchange outcome. A slug cannot belong to both bookmaker lists. |
-| `ODDSPAPI_PRE_START_EXCHANGE_MARKET_KEYS` | `ODDSPAPI_DEFAULT_MARKET_KEYS` | Canonical market keys eligible for exchange historical requests. Filtering happens after resolving the fixture-specific `marketId`. |
-| `ODDSPAPI_PRE_START_EXCHANGE_MAIN_LINE_ONLY` | `true` | For line/handicap markets, request Historical Odds only for outcomes whose current `/odds` player is marked `mainLine=true`. Non-line markets are unaffected. |
-| `ODDSPAPI_PRE_START_EXCHANGE_INCLUDE_PLAYER_PROPS` | `false` | Enables exchange player-prop discovery. It is disabled by default to avoid multiplying outcome/player requests. |
-| `ODDSPAPI_PRE_START_EXCHANGE_HISTORICAL_MOMENTS` | `120` | Key moments at which exchange Historical Odds may run. The default performs opening enrichment only two hours before start. |
-| `ODDSPAPI_PRE_START_EXCHANGE_MAX_OUTCOMES_PER_EVENT` | `8` | Hard cap on outcome-scoped historical exchange requests for one fixture. |
-| `ODDSPAPI_PRE_START_EXCHANGE_MAX_REQUESTS_PER_RUN` | `40` | Cross-event request budget for exchange Historical Odds in one scheduler run. `0` means unlimited. |
-| `ODDSPAPI_INITIAL_ODDS_MIN_SPAN_MINUTES` | `60` | Minimum elapsed time between the earliest active and latest current historical quote before the earliest price is accepted as an initial odd. |
-| `ODDSPAPI_PRE_START_MARKET_KEYS` | no filter | Optional comma-separated canonical market keys to persist. Blank means every mapped key whose canonical type has `enabled_for_ingestion=true`. |
-| `ODDSPAPI_PRE_START_ALLOWED_MARKET_GROUPS` | no filter | Optional comma-separated market groups to persist, e.g. `1X2,Home/Away,Over/Under,Asian handicap`. Blank means all mapped groups. |
-| `ODDSPAPI_PRE_START_ALLOWED_MARKET_PERIODS` | no filter | Optional comma-separated periods to persist, e.g. `Full Time`. Blank means all mapped periods. |
-| `ODDSPAPI_PRE_START_MAX_EVENTS_PER_RUN` | `0` | Maximum mapped events to request in one pre-start pass. `0` means unlimited; extra candidates are skipped for that pass. |
-| `POLL_INTERVAL_MINUTES` | `5` | Frequency of the existing pre-start cycle. The job checks exact rounded minute values, so choose a cadence that lands on the configured key moments. |
-| `PRE_START_T_MINUS_ONE_INTERVAL_MINUTES` | `1` | Frequency of the isolated closing-odds scheduler. Keep it at `1` to cover events starting at any minute. |
-| `PRE_START_ODDS_MOMENTS` | `120,30,5,1,0,-5` | Exact rounded minutes before/after kickoff at which pre-start lifecycle evaluates candidates. The closing minute is owned by the isolated T-1 ingestion lane. |
-| `PRE_START_ODDS_MOMENT_TOLERANCE_MINUTES` | `3` | Allowed distance from a configured moment when loading the downstream trajectory. |
-
-`/v4/odds` is never requested when `minutes_until_start <= 0`, even if an
-exchange bookmaker or the current-odds mode is enabled. The closing `1`
-minute is handled by the isolated T-1 odds lane; regular bookmakers remain
-available at the configured `-5` moment.
-
-Parallel pre-start ingestion uses at most four workers and never more workers
-than eligible keys or work items. Each worker owns one HTTP client/connection
-pool, but requests acquire keys from the shared quota-aware scheduler. Exchange
-mode preserves the serial per-event budget while outcome-scoped historical
-requests fan out through at most four scheduler-backed workers.
-
-Oddspapi `createdAt` values are interpreted as UTC and normalized through
-`shared.temporal` before being stored as project-local
-`market_choice_snapshots.source_collected_at` (see [`docs/architecture/temporal-contract.md`](docs/architecture/temporal-contract.md)).
-This applies to both the opening (`initialChangedAt`) and latest (`changedAt`) observations.
-
-The standalone utilities in `odds_papi/` use the same comma-separated
-`ODDSPAPI_KEY` setting. They select the first key by default; set
-`ODDSPAPI_SCRIPT_KEY_INDEX=2` temporarily to diagnose the second configured
-key without placing it directly in the command line. Both direct script
-execution and `python -m odds_papi.<script>` remain supported.
-
-These shared Oddspapi client settings normally need no change, but can be
-overridden if required: `ODDSPAPI_BASE_URL=https://api.oddspapi.io`,
-`ODDSPAPI_TIMEOUT_SECONDS=15`, `ODDSPAPI_DEFAULT_ODDS_FORMAT=decimal`,
-`ODDSPAPI_DEFAULT_LANGUAGE=en`, and `ODDSPAPI_DEFAULT_VERBOSITY=3`.
-`ODDSPAPI_ENDPOINT_COOLDOWNS` controls the serialized per-endpoint cooldowns,
-including the five-second Historical Odds delay. `ODDSPAPI.scheduled_times` in
-`infrastructure/settings/discovery.py`
-configures the separate mapping-discovery job and does not schedule this
-pre-start subflow.
-
-To validate only this path for one canonical event, without running the rest
-of the pre-start job, use the manual integration harness. It prompts for an
-`events.id` when none is supplied. The default performs real persistence;
-`--dry-run` still requests and parses odds but writes no market data:
+Pre-start captures current quotes and main-line cache at T−5 in the restricted
+mode. After scheduled Midnight Sync, a separate maintenance job uses that cache
+to recover openings and historical observations for fixtures with results. The
+[ingestion guide](docs/providers/pre_start_odds_ingestion.md) covers both modes,
+bookmaker precedence, environment switches and the versioned thresholds.
 
 ```bash
-python -m scripts.development.simulate_oddspapi_pre_start_odds 12345
-python -m scripts.development.simulate_oddspapi_pre_start_odds 12345 --dry-run
+python main.py oddspapi-prematch-odds-recovery --date 2026-11-25
 ```
 
-To exercise the broader pre-start flow for one event at a forced key moment,
-use the development simulator:
-
-```bash
-python -m scripts.development.simulate_pre_start_check 12345 30
-```
-
-Both development simulators initialize the standard application logging
-system. Their full output is appended to the weekly
-`logs/<month>/week_<n>/sofascore_odds.log` file as well as printed to the
-terminal.
+The recovery command writes to the configured database. Use the
+[job guide](docs/jobs/results-collection.md#oddspapi-prematch-odds-recovery) for
+date selection and logs, and the
+[pre-start simulator](docs/jobs/pre-start-simulator.md) to test T−5 capture.
 
 ### Oddspapi Fixture Discovery
 

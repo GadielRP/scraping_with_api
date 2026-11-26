@@ -6,8 +6,8 @@ IDs canónicos ya existentes en la base de datos.
 
 ## Ejecutar
 
-Desde la raíz del proyecto, con el entorno virtual y la migración Alembic
-`20261012_01` aplicada a la base de pruebas:
+Desde la raíz del proyecto, con el entorno virtual y la base de pruebas
+actualizada a la revisión vigente:
 
 ```powershell
 # P1–P5 con las cuotas ya persistidas, en T5, sin adquirir cuotas nuevas.
@@ -57,9 +57,9 @@ independientemente del toggle de cuotas SofaScore.
 - Es una ejecución real con horario de selección forzado: escribe cuotas,
   metadatos e instrumentación en la base configurada. Con ingestión habilitada,
   la corrección productiva de horarios también puede actualizar el evento.
-- `evaluation_as_of` es el instante UTC real de captura de inputs. No se cambia
-  por el minuto simulado ni por un reloj histórico. La frontera histórica de
-  consulta Oddspapi es kickoff menos minutos simulados y solo limita esa fuente.
+- `evaluation_as_of` es el instante UTC real de captura de inputs. En la
+  reconstrucción histórica de OddsPapi, el límite de observación es el kickoff
+  menos los minutos simulados.
 - Cada evaluación persistida genera su `evaluation_id`; conserva los seis ámbitos,
   incluidos los `SKIPPED`. P5 utiliza la vista y congela la muestra original.
   Consultar [persistencia minera](../pillars/mining-persistence.md) para lectores.
@@ -75,7 +75,12 @@ independientemente del toggle de cuotas SofaScore.
 
 ## Relojes y reconstrucción histórica
 
-La ingestión puede probarse sola, sin configuración minera ni frontera de IDs:
+Este comando prueba la ingestión de OddsPapi en T−5. Con
+`ENABLE_ODDSPAPI_PRE_START_HISTORICAL=false` y `5` permitido realiza una captura
+real de `/v4/odds` y alimenta la caché, según la
+[configuración del proveedor](../providers/pre_start_odds_ingestion.md).
+Para probar la reconstrucción de fixtures con resultado, usa el
+[comando de recuperación](results-collection.md#oddspapi-prematch-odds-recovery).
 
 ```powershell
 python -m scripts.development.simulate_pre_start_check 303597 -m 5 --odds-ingestion --oddspapi --no-sofascore --no-oddsportal --no-alerts --no-pillars --market-report

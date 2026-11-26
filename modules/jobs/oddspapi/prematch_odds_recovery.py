@@ -43,6 +43,12 @@ def recover_prematch_odds_for_finished_fixtures(target_date, critical_pending=No
                     Event.competition_id.in_(tracked_competition_ids()))
             .distinct().order_by(Event.id, mapping.source_event_id).all()
         )
+    recover_prematch_odds(rows, critical_pending)
+
+
+def recover_prematch_odds(rows, critical_pending=None):
+    """Reprocess /historical-odds up to T−5 for rows of
+    (event_id, fixture_id, starts_at, source_sport_id, bookmaker_slug) ordered by event and fixture."""
     if not rows:
         return
     regular = Config.ODDSPAPI_PRE_START_BOOKMAKERS or Config.ODDSPAPI_DEFAULT_BOOKMAKERS
