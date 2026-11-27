@@ -10,8 +10,8 @@ to:
 5. Batch delete events whose /event endpoint returns 404 and have NO persisted results in the results table.
 
 Usage:
-    python -m scripts.maintenance.backfill_missing_competition_events
-    python -m scripts.maintenance.backfill_missing_competition_events --limit 100 --sleep 0.2
+    python -m scripts.maintenance.sofascore.backfill_missing_competition_events
+    python -m scripts.maintenance.sofascore.backfill_missing_competition_events --limit 100 --sleep 0.2
 """
 
 from __future__ import annotations

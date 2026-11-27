@@ -6,17 +6,17 @@ PostgreSQL schema.
 
 Examples::
 
-    python -m scripts.maintenance.backfill_canonical_periods audit \
+    python -m scripts.maintenance.canonical.backfill_canonical_periods audit \
         --strategy canonical_period_backfill_by_fixed_competition_ids_v1 \
         --competition-id 5153 --competition-id 14861 \
         --page-size 250 --limit 1000 \
         --manifest data/backfills/canonical_periods/nfl-v2/manifest.json
-    python -m scripts.maintenance.backfill_canonical_periods audit \
+    python -m scripts.maintenance.canonical.backfill_canonical_periods audit \
         --strategy canonical_period_backfill_by_configured_non_draw_sports_v1 \
         --sport basketball --sport tennis --sport "tennis doubles" --sport volleyball \
         --page-size 250 --manifest data/backfills/canonical_periods/non-draw-sports-v1/manifest.json
     # Repeat the same audit command without --force until it writes manifest.json.
-    python -m scripts.maintenance.backfill_canonical_periods apply \
+    python -m scripts.maintenance.canonical.backfill_canonical_periods apply \
         --confirm-write --expected-db-host db.local --expected-db-name sofascore_local \
         --limit 200 --manifest data/backfills/canonical_periods/nfl-v2/manifest.json
 """

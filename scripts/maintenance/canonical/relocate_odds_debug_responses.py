@@ -2,9 +2,9 @@
 """Group existing raw odds JSON files by sport and canonical competition slug.
 
 Preview:
-    python scripts/maintenance/relocate_odds_debug_responses.py
+    python scripts/maintenance/canonical/relocate_odds_debug_responses.py
 Move at most 100 response files across both providers:
-    python scripts/maintenance/relocate_odds_debug_responses.py --apply --limit 100
+    python scripts/maintenance/canonical/relocate_odds_debug_responses.py --apply --limit 100
 
 The default is a dry run. Existing destination files are never overwritten.
 Existing event-folder names are preserved inside sport/competition folders.
@@ -19,7 +19,7 @@ from pathlib import Path
 import re
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

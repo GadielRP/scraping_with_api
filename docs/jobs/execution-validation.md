@@ -31,7 +31,7 @@ La prueba Linux usa el backend Python de `ijson`; la prueba Windows usa el backe
 
 ## Memoria incremental: 1k, 10k y 50k
 
-`scripts/benchmarks/discovery_memory.py` compara `json.load` con lectura incremental y registro en el mismo almacén temporal. Cada medición corre en un proceso nuevo. Ambos procesan el mismo fixture; se mide el parsing/agrupado, no todo el programa.
+`scripts/benchmarks/sofascore/discovery_memory.py` compara `json.load` con lectura incremental y registro en el mismo almacén temporal. Cada medición corre en un proceso nuevo. Ambos procesan el mismo fixture; se mide el parsing/agrupado, no todo el programa.
 
 | Eventos | Asignación Python materializada (MiB) | Asignación incremental (MiB) | Pico RSS materializado (MiB) | Pico RSS incremental (MiB) |
 |---:|---:|---:|---:|---:|
@@ -46,12 +46,12 @@ El coste medido bajo `tracemalloc`, validación de tokens y escritura temporal f
 Reproducción:
 
 ```powershell
-.venv/Scripts/python.exe scripts/benchmarks/discovery_memory.py --output scratch/discovery-memory-benchmark.json
+.venv/Scripts/python.exe scripts/benchmarks/sofascore/discovery_memory.py --output scratch/discovery-memory-benchmark.json
 ```
 
 ## Carga integrada con PostgreSQL
 
-`scripts/benchmarks/execution_load.py` exige una base vacía cuyo nombre empiece por `execution_load_`. Usa los escritores y definiciones de vistas reales, con fixtures del proveedor.
+`scripts/benchmarks/canonical/execution_load.py` exige una base vacía cuyo nombre empiece por `execution_load_`. Usa los escritores y definiciones de vistas reales, con fixtures del proveedor.
 
 Dataset: 20.000 eventos históricos y 60.000 choices/quotes/snapshots, seguidos de 10.000 eventos nuevos del día anterior. Durante mantenimiento se ejecutan lectores SQL en los canales pre-start y T−1.
 
@@ -75,7 +75,7 @@ El contenedor PostgreSQL alcanzó 342,1 MiB durante su vida, que incluyó prepar
 Reproducción: crear una base PostgreSQL desechable y vacía, establecer `EXECUTION_LOAD_DATABASE_URL` con sus credenciales locales y ejecutar:
 
 ```powershell
-.venv/Scripts/python.exe scripts/benchmarks/execution_load.py --events 10000 --history 20000 --output scratch/execution-load.json
+.venv/Scripts/python.exe scripts/benchmarks/canonical/execution_load.py --events 10000 --history 20000 --output scratch/execution-load.json
 ```
 
 Nunca reutilizar la base de la aplicación para este benchmark. El script rechaza nombres fuera del prefijo y bases con tablas.

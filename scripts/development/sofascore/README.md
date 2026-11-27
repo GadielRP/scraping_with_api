@@ -3,7 +3,7 @@
 Run these commands from the repository root with Python's module form:
 
 ```powershell
-python -m scripts.sofascore.get_event_details 12345
+python -m scripts.development.sofascore.get_event_details 12345
 ```
 
 The other scripts use the same pattern, replacing `get_event_details` with

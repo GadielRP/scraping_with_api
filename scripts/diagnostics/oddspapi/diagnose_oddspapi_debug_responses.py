@@ -6,9 +6,9 @@ catalog, tracks mainline outcomes dynamically across all available moments (T-12
 T-30, T-5, T-1, T-0, etc.), and highlights line shifts.
 
 Usage:
-  python scripts/development/diagnose_oddspapi_debug_responses.py debug/oddspapi/odds_responses
-  python scripts/development/diagnose_oddspapi_debug_responses.py debug/oddspapi/odds_responses/209277_Celta_Vigo_Osasuna
-  python scripts/development/diagnose_oddspapi_debug_responses.py path/to/file.json --bookmaker pinnacle
+  python scripts/diagnostics/oddspapi/diagnose_oddspapi_debug_responses.py debug/oddspapi/odds_responses
+  python scripts/diagnostics/oddspapi/diagnose_oddspapi_debug_responses.py debug/oddspapi/odds_responses/209277_Celta_Vigo_Osasuna
+  python scripts/diagnostics/oddspapi/diagnose_oddspapi_debug_responses.py path/to/file.json --bookmaker pinnacle
 """
 
 from __future__ import annotations

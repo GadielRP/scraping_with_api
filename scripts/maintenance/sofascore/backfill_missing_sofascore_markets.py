@@ -2,8 +2,8 @@
 """Backfill markets for mapped events that currently have no market rows.
 
 Examples:
-    python scripts/backfill/maintenance/backfill_missing_sofascore_markets.py
-    python scripts/backfill/maintenance/backfill_missing_sofascore_markets.py --source sofascore --limit 100
+    python scripts/maintenance/sofascore/backfill_missing_sofascore_markets.py
+    python scripts/maintenance/sofascore/backfill_missing_sofascore_markets.py --source sofascore --limit 100
 """
 
 from __future__ import annotations

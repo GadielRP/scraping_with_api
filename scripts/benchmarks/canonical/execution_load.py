@@ -14,7 +14,7 @@ from threading import Event, Thread
 from time import monotonic, sleep
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 
 def main():

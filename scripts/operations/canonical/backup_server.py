@@ -8,7 +8,7 @@ What it does:
 - Rotates old backups older than --retention-days.
 
 Usage examples (on the server):
-  python3 scripts/backup_server.py \
+  python3 scripts/operations/canonical/backup_server.py \
     --container sofascore-pg \
     --db-name sofascore_odds \
     --db-user sofascore \

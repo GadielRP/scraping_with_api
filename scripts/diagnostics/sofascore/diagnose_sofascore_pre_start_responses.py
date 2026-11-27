@@ -11,8 +11,8 @@ SofaScore debug capture and reports:
 
 Examples::
 
-    python -m scripts.diagnostics.diagnose_sofascore_pre_start_responses
-    python -m scripts.diagnostics.diagnose_sofascore_pre_start_responses \
+    python -m scripts.diagnostics.sofascore.diagnose_sofascore_pre_start_responses
+    python -m scripts.diagnostics.sofascore.diagnose_sofascore_pre_start_responses \
         --input-dir debug/sofascore/odds_responses \
         --moments 120,30,5,1,0,-5 \
         --event-id 191099

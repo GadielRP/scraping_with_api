@@ -6,7 +6,7 @@ rate limit, challenge handling, and evidence logging.
 
 Run with::
 
-    python -m scripts.diagnostics.sofascore_country_endpoint
+    python -m scripts.diagnostics.sofascore.sofascore_country_endpoint
 """
 
 from __future__ import annotations

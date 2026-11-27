@@ -2,7 +2,7 @@
 
 Run with::
 
-    python -m scripts.diagnostics.sofascore_event_endpoint 17108553
+    python -m scripts.diagnostics.sofascore.sofascore_event_endpoint 17108553
 
 The script uses the normal SofaScore client, proxy, rate limiter, and challenge
 handling; it does not alter browser or TLS fingerprints.

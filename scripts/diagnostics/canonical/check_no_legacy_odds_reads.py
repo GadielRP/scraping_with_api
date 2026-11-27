@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SCAN_ROOTS = ("app", "infrastructure", "modules", "scripts")
 LEGACY_CHOICE_FIELDS = {"initial_odds", "current_odds", "change"}
 LEGACY_SNAPSHOT_IDENTITY_FIELDS = {

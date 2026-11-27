@@ -8,7 +8,7 @@ from modules.jobs.pre_start_check_job.providers.sofascore.debug_response_writer 
     SofaScoreDebugResponseWriter,
 )
 from modules.sofascore import api_client
-from scripts.sofascore.debug import (
+from scripts.development.sofascore.debug import (
     add_debug_file_argument,
     log_debug_file,
     save_response_for_debug,

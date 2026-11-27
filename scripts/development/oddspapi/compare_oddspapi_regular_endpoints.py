@@ -5,7 +5,7 @@ Diagnostic tool — does NOT modify production behaviour, database, or ingestion
 Usage examples:
 
   Offline (default, no HTTP):
-    python -m scripts.development.compare_oddspapi_regular_endpoints \\
+    python -m scripts.development.oddspapi.compare_oddspapi_regular_endpoints \\
       --odds-file odds_papi/odds_data/odds_id1300010963303463.json \\
       --historical-file odds_papi/odds_data/historical_odds_id1300010963303463_pinnacle_bet365.json \\
       --bookmakers pinnacle,bet365 \\
@@ -13,7 +13,7 @@ Usage examples:
       --output-dir exports/oddspapi_endpoint_comparison
 
   Live (requires --live flag and ODDSPAPI_KEY):
-    python -m scripts.development.compare_oddspapi_regular_endpoints \\
+    python -m scripts.development.oddspapi.compare_oddspapi_regular_endpoints \\
       --fixture-id id1300010963303463 \\
       --bookmakers pinnacle,bet365 \\
       --minutes-until-start 120 \\
@@ -21,7 +21,7 @@ Usage examples:
       --output-dir exports/oddspapi_endpoint_comparison
 
   Manifest/batch (JSON):
-    python -m scripts.development.compare_oddspapi_regular_endpoints \\
+    python -m scripts.development.oddspapi.compare_oddspapi_regular_endpoints \\
       --manifest path/to/manifest.json \\
       --output-dir exports/oddspapi_endpoint_comparison
 """
@@ -40,7 +40,7 @@ from pathlib import Path
 # Resolve project root for python -m execution
 # ---------------------------------------------------------------------------
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _SCRIPT_DIR.parent.parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 

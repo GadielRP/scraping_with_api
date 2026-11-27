@@ -5,16 +5,16 @@ then delegates candidate selection, provider ingestion, OddsPortal selection,
 and key-moment evaluation to the same functions used by production.
 
 Usage:
-    python -m scripts.development.simulate_pre_start_check <event_id> <minutes>
-    python -m scripts.development.simulate_pre_start_check <event_id_1> <event_id_2> ... <minutes>
-    python -m scripts.development.simulate_pre_start_check <event_ids> --minutes <minutes>
+    python -m scripts.development.canonical.simulate_pre_start_check <event_id> <minutes>
+    python -m scripts.development.canonical.simulate_pre_start_check <event_id_1> <event_id_2> ... <minutes>
+    python -m scripts.development.canonical.simulate_pre_start_check <event_ids> --minutes <minutes>
 
 Examples:
-    python -m scripts.development.simulate_pre_start_check 14083613 30
-    python -m scripts.development.simulate_pre_start_check 14083613 14083614 30
-    python -m scripts.development.simulate_pre_start_check 14083613,14083614 30
-    python -m scripts.development.simulate_pre_start_check 14083613 14083614 --minutes 30
-    python -m scripts.development.simulate_pre_start_check 14083613 -m 5 --no-odds-ingestion --pillar-5
+    python -m scripts.development.canonical.simulate_pre_start_check 14083613 30
+    python -m scripts.development.canonical.simulate_pre_start_check 14083613 14083614 30
+    python -m scripts.development.canonical.simulate_pre_start_check 14083613,14083614 30
+    python -m scripts.development.canonical.simulate_pre_start_check 14083613 14083614 --minutes 30
+    python -m scripts.development.canonical.simulate_pre_start_check 14083613 -m 5 --no-odds-ingestion --pillar-5
 
 All toggles accept --<flag> and --no-<flag>; see --help. This runs real
 persistence and provider calls when enabled. Alerts can send real notifications.
@@ -63,7 +63,7 @@ from modules.sports.catalog import is_supported_sport_name
 from modules.oddspapi.historical_odds_as_of import OddspapiHistoricalOddsAsOf
 from modules.competition.tracked_competitions import is_tracked_competition
 from modules.sofascore import api_client
-from scripts.development.pre_start_odds_simulation import (
+from scripts.development.canonical.pre_start_odds_simulation import (
     run_production_odds_phase,
 )
 from shared.runtime_observability import observe_operation

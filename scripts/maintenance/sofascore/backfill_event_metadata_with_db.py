@@ -40,20 +40,20 @@ All modes are fully idempotent — re-running is safe.
 Usage
 -----
     # Dry-run all modes before committing
-    python scripts/backfill/backfill_event_metadata_with_db.py --test
+    python scripts/maintenance/sofascore/backfill_event_metadata_with_db.py --test
 
     # Blueprint mode: use NBA 25/26 data to fill NBA 24/25
-    python scripts/backfill/backfill_event_metadata_with_db.py \\
+    python scripts/maintenance/sofascore/backfill_event_metadata_with_db.py \\
         --blueprint-season 80229 --target-season 65360
 
     # Tournament auto: fill all seasons for every known tournament
-    python scripts/backfill/backfill_event_metadata_with_db.py --tournament-auto
+    python scripts/maintenance/sofascore/backfill_event_metadata_with_db.py --tournament-auto
 
     # General fallback for a specific sport
-    python scripts/backfill/backfill_event_metadata_with_db.py --sport Basketball
+    python scripts/maintenance/sofascore/backfill_event_metadata_with_db.py --sport Basketball
 
     # Verbose output
-    python scripts/backfill/backfill_event_metadata_with_db.py --tournament-auto --verbose
+    python scripts/maintenance/sofascore/backfill_event_metadata_with_db.py --tournament-auto --verbose
 """
 
 import argparse
@@ -72,7 +72,7 @@ from sqlalchemy.orm import Session
 # Project bootstrap
 # ---------------------------------------------------------------------------
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "..", ".."))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
@@ -80,7 +80,7 @@ from infrastructure.persistence.database import db_manager
 from infrastructure.persistence.models import Competition, Event
 
 # Import the season map — tournament_id here is actually source_unique_tournament_id
-from scripts.sport_seasons_processing import season_to_process
+from scripts.maintenance.sofascore.sport_seasons_processing import season_to_process
 
 # ---------------------------------------------------------------------------
 # Logging

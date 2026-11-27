@@ -1092,6 +1092,6 @@ Estas rutas permiten a una persona técnica contrastar o ampliar el informe; no 
 | Configuración y huellas | `modules/pillars/mining/versioning.py` |
 | Escritura y lectura histórica | `infrastructure/persistence/repositories/pillar_mining_repository.py` |
 | Contrato técnico de persistencia | `docs/pillars/mining-persistence.md` |
-| Simulación | `scripts/development/simulate_pre_start_check.py`, `docs/jobs/pre-start-simulator.md` |
+| Simulación | `scripts/development/canonical/simulate_pre_start_check.py`, `docs/jobs/pre-start-simulator.md` |
 
 **Idea final:** cada resultado debe poder explicarse con el expediente que realmente se capturó, sus operaciones y sus reglas. Conservar también lo que faltó permite estudiar mañana el sistema sin cambiar lo que produjo originalmente.

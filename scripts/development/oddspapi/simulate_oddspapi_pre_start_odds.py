@@ -5,9 +5,9 @@ request, market mapping, bookmaker resolution, and market/snapshot ingestion.
 It does not call SofaScore, refresh materialized views, or run alerts/pillars.
 
 Usage:
-    python -m scripts.development.simulate_oddspapi_pre_start_odds 12345
-    python -m scripts.development.simulate_oddspapi_pre_start_odds 12345 --dry-run
-    python -m scripts.development.simulate_oddspapi_pre_start_odds
+    python -m scripts.development.oddspapi.simulate_oddspapi_pre_start_odds 12345
+    python -m scripts.development.oddspapi.simulate_oddspapi_pre_start_odds 12345 --dry-run
+    python -m scripts.development.oddspapi.simulate_oddspapi_pre_start_odds
 """
 
 from __future__ import annotations

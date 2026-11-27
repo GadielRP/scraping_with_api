@@ -15,8 +15,8 @@ delete its event (canceled, not found, finished without score), the evidence is 
 
 Examples::
 
-    python -m scripts.maintenance.backfill_result_finished_at --batch-size 50
-    python -m scripts.maintenance.backfill_result_finished_at --season-id 123 --reset
+    python -m scripts.maintenance.canonical.backfill_result_finished_at --batch-size 50
+    python -m scripts.maintenance.canonical.backfill_result_finished_at --season-id 123 --reset
 """
 
 from __future__ import annotations

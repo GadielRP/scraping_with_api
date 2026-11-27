@@ -13,7 +13,7 @@ Prerequisites on Windows:
 - Python 3 installed (to run this script)
 
 Typical usage:
-  python scripts/pull_backup_windows.py \
+  python scripts/operations/canonical/pull_backup_windows.py \
     --server-ip 203.0.113.10 \
     --server-user root \
     --ssh-key "%USERPROFILE%/.ssh/id_rsa" \

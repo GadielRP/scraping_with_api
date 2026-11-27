@@ -2,9 +2,9 @@
 """Backfill missing SofaScore results for mature, source-mapped events.
 
 Examples:
-    python -m scripts.backfill.maintenance.backfill_missing_sofascore_results
-    python -m scripts.backfill.maintenance.backfill_missing_sofascore_results --limit 250 --dry-run
-    python -m scripts.backfill.maintenance.backfill_missing_sofascore_results --min-age-days 0 --after-event-id 120000
+    python -m scripts.maintenance.sofascore.backfill_missing_sofascore_results
+    python -m scripts.maintenance.sofascore.backfill_missing_sofascore_results --limit 250 --dry-run
+    python -m scripts.maintenance.sofascore.backfill_missing_sofascore_results --min-age-days 0 --after-event-id 120000
 
 The SQL candidate query is capped by ``--limit`` before ORM event rows are
 loaded. Use ``--after-event-id`` to continue through a large candidate set

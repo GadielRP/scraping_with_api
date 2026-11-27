@@ -1,6 +1,6 @@
 # Limpieza de event source mappings
 
-`scripts/maintenance/prune_event_source_mappings.py` elimina exclusivamente filas de
+`scripts/maintenance/canonical/prune_event_source_mappings.py` elimina exclusivamente filas de
 `event_source_mappings`. Conserva eventos, participantes, resultados, mercados,
 choices, quotes y snapshots, incluso los del mismo proveedor cuyo mapping se borra.
 Un evento puede quedar sin mappings y seguir presente.
@@ -16,13 +16,13 @@ Vista previa para conservar SofaScore, OddsPapi y OddsPortal, y seleccionar todo
 los mappings de otros proveedores:
 
 ```powershell
-python scripts/maintenance/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal
+python scripts/maintenance/canonical/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal
 ```
 
 Aplicar esa selección:
 
 ```powershell
-python scripts/maintenance/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --apply
+python scripts/maintenance/canonical/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --apply
 ```
 
 ## Eliminar proveedores específicos
@@ -31,8 +31,8 @@ Reemplaza `legacy_provider_a` y `legacy_provider_b` por los nombres reales que
 quieras retirar. `--source` selecciona exclusivamente esos nombres:
 
 ```powershell
-python scripts/maintenance/prune_event_source_mappings.py --source legacy_provider_a legacy_provider_b
-python scripts/maintenance/prune_event_source_mappings.py --source legacy_provider_a legacy_provider_b --apply
+python scripts/maintenance/canonical/prune_event_source_mappings.py --source legacy_provider_a legacy_provider_b
+python scripts/maintenance/canonical/prune_event_source_mappings.py --source legacy_provider_a legacy_provider_b --apply
 ```
 
 ## Lotes, límite total y continuación
@@ -50,8 +50,8 @@ Ejemplo para aplicar hasta 1,000 eliminaciones y después continuar desde el cur
 devuelto (sustituye `12345` por ese `last_mapping_id`):
 
 ```powershell
-python scripts/maintenance/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --limit 1000 --apply
-python scripts/maintenance/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --after-id 12345 --apply
+python scripts/maintenance/canonical/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --limit 1000 --apply
+python scripts/maintenance/canonical/prune_event_source_mappings.py --keep-source sofascore oddspapi oddsportal --batch-size 100 --after-id 12345 --apply
 ```
 
 La salida JSON identifica el modo, los proveedores indicados y, por lote y en el

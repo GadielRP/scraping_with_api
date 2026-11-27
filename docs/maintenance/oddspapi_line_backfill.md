@@ -11,8 +11,8 @@ línea conservan su política anterior.
 Ejecutar desde la raíz del repositorio, con la base elegida en `DATABASE_URL`:
 
 ```powershell
-.venv/Scripts/python.exe -m scripts.maintenance.backfill_oddspapi_lines audit --output exports/oddspapi_line_repair/before
-.venv/Scripts/python.exe -m scripts.maintenance.backfill_oddspapi_lines plan --output exports/oddspapi_line_repair/reviewed/manifest.json
+.venv/Scripts/python.exe -m scripts.maintenance.oddspapi.backfill_oddspapi_lines audit --output exports/oddspapi_line_repair/before
+.venv/Scripts/python.exe -m scripts.maintenance.oddspapi.backfill_oddspapi_lines plan --output exports/oddspapi_line_repair/reviewed/manifest.json
 ```
 
 `audit` solo lee la base y escribe `audit.md`, `audit.csv` y `audit.json`.
@@ -72,8 +72,8 @@ Revisar `manifest.json` y `plan_report.json`. El destino local de esta investiga
 es `127.0.0.1:5435/sofascore_odds`:
 
 ```powershell
-.venv/Scripts/python.exe -m scripts.maintenance.backfill_oddspapi_lines apply --manifest exports/oddspapi_line_repair/reviewed/manifest.json --checkpoint exports/oddspapi_line_repair/local/checkpoint.json --results exports/oddspapi_line_repair/local/results.jsonl --expected-db-host 127.0.0.1 --expected-db-port 5435 --expected-db-name sofascore_odds --confirm-write
-.venv/Scripts/python.exe -m scripts.maintenance.backfill_oddspapi_lines audit --output exports/oddspapi_line_repair/after
+.venv/Scripts/python.exe -m scripts.maintenance.oddspapi.backfill_oddspapi_lines apply --manifest exports/oddspapi_line_repair/reviewed/manifest.json --checkpoint exports/oddspapi_line_repair/local/checkpoint.json --results exports/oddspapi_line_repair/local/results.jsonl --expected-db-host 127.0.0.1 --expected-db-port 5435 --expected-db-name sofascore_odds --confirm-write
+.venv/Scripts/python.exe -m scripts.maintenance.oddspapi.backfill_oddspapi_lines audit --output exports/oddspapi_line_repair/after
 ```
 
 `apply` no accede a los JSON debug ni recalcula la selección. Ejecuta las acciones
@@ -103,13 +103,13 @@ como ya procesados. Usar rutas de checkpoint/resultados exclusivas del servidor.
 Con un Python configurado para la base del servidor y desde la raíz del proyecto:
 
 ```bash
-python -m scripts.maintenance.backfill_oddspapi_lines apply \
+python -m scripts.maintenance.oddspapi.backfill_oddspapi_lines apply \
   --manifest /ruta/subida/manifest.json \
   --checkpoint /ruta/resultados/server/checkpoint.json \
   --results /ruta/resultados/server/results.jsonl \
   --expected-db-host postgres --expected-db-port 5432 \
   --expected-db-name sofascore_odds --confirm-write
-python -m scripts.maintenance.backfill_oddspapi_lines audit \
+python -m scripts.maintenance.oddspapi.backfill_oddspapi_lines audit \
   --output /ruta/resultados/server/after
 ```
 

@@ -1,7 +1,7 @@
 """Run each mode in a fresh process; tracemalloc measures Python allocations, not RSS.
 
-python -m scripts.benchmarks.discipline_comments --comments 100000 --events 3
-python -m scripts.benchmarks.discipline_comments --comments 100000 --mode materialized
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 100000 --events 3
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 100000 --mode materialized
 """
 import argparse
 from contextlib import contextmanager

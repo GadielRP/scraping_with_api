@@ -1,8 +1,8 @@
 """Send full-season standings to the configured personal Telegram chat.
 
 Examples:
-    python -m scripts.development.compute_season_standings --season-id 86668 --competition MLS
-    python -m scripts.development.compute_season_standings --season-id 87913 --competition 310 --annual
+    python -m scripts.development.canonical.compute_season_standings --season-id 86668 --competition MLS
+    python -m scripts.development.canonical.compute_season_standings --season-id 87913 --competition 310 --annual
 
 The calculators require a cutoff. A far-future bound includes every stored result
 for the selected season; it does not force final rankings or invent missing games.

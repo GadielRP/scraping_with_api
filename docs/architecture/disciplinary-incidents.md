@@ -196,8 +196,8 @@ resultado completo. Admiten ID de SofaScore por defecto o ID interno con
 `--source canonical`. Conservan la salida JSON y la opción `--no-save-debug`.
 
 ```bash
-python -m scripts.sofascore.get_event_comments 12345 --source canonical --persist
-python -m scripts.sofascore.get_event_statistics 12345 --source canonical --persist
+python -m scripts.development.sofascore.get_event_comments 12345 --source canonical --persist
+python -m scripts.development.sofascore.get_event_statistics 12345 --source canonical --persist
 ```
 
 Comments usa el flujo compartido de detalle y totales, incluida la precedencia
@@ -261,7 +261,7 @@ El script de temporadas admite `--with-discipline` en sus modos de temporada
 individual, `--season_name` y `--auto`:
 
 ```bash
-python -m scripts.sport_seasons_processing 100772 -t 132 --skip-odds --with-discipline
+python -m scripts.maintenance.sofascore.sport_seasons_processing 100772 -t 132 --skip-odds --with-discipline
 ```
 
 El flag activa la recolección del script independientemente de los toggles de
@@ -285,10 +285,10 @@ anterior y ejecuta el upgrade Alembic real desde `20261029_01`.
 
 ```bash
 python -m pytest tests/discipline tests/test_schema_version.py tests/test_sofascore_event_comments.py -q
-python -m scripts.benchmarks.discipline_comments --comments 1000
-python -m scripts.benchmarks.discipline_comments --comments 100000
-python -m scripts.benchmarks.discipline_comments --comments 100000 --events 20
-python -m scripts.benchmarks.discipline_comments --comments 100000 --mode materialized
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 1000
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 100000
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 100000 --events 20
+python -m scripts.benchmarks.sofascore.discipline_comments --comments 100000 --mode materialized
 ```
 
 Ejecutar cada benchmark en un proceso nuevo. Reporta tiempo, filas y pico de

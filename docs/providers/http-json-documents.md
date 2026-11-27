@@ -92,13 +92,13 @@ disponibles y no ofrecen esta garantía de memoria.
 
 ## Verificación reproducible
 
-`scripts/benchmarks/discovery_memory.py` compara lectura materializada con
+`scripts/benchmarks/sofascore/discovery_memory.py` compara lectura materializada con
 incremental y deduplicación en disco. Puede usar un JSON de fixtures real como
 plantilla, asignando IDs distintos para aumentar el volumen:
 
 ```powershell
-python scripts/benchmarks/discovery_memory.py --fixture-sample "ruta/al/ejemplo.json" --count 10000 --mode materialized
-python scripts/benchmarks/discovery_memory.py --fixture-sample "ruta/al/ejemplo.json" --count 10000 --mode incremental
+python scripts/benchmarks/sofascore/discovery_memory.py --fixture-sample "ruta/al/ejemplo.json" --count 10000 --mode materialized
+python scripts/benchmarks/sofascore/discovery_memory.py --fixture-sample "ruta/al/ejemplo.json" --count 10000 --mode incremental
 ```
 
 El benchmark mide el componente de lectura y almacenamiento temporal en un

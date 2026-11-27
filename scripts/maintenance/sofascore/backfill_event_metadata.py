@@ -18,19 +18,19 @@ Uses the current architecture:
 
 Usage examples:
     # Dry-run with 10 events
-    python scripts/backfill/backfill_event_metadata.py --test --limit 10
+    python scripts/maintenance/sofascore/backfill_event_metadata.py --test --limit 10
 
     # Missing metadata only (safe default)
-    python scripts/backfill/backfill_event_metadata.py --missing-only --batch-size 100
+    python scripts/maintenance/sofascore/backfill_event_metadata.py --missing-only --batch-size 100
 
     # Missing metadata + missing results
-    python scripts/backfill/backfill_event_metadata.py --missing-only --refresh-results --missing-results-only --batch-size 100
+    python scripts/maintenance/sofascore/backfill_event_metadata.py --missing-only --refresh-results --missing-results-only --batch-size 100
 
     # Date range, missing only
-    python scripts/backfill/backfill_event_metadata.py --from-date 2025-10-01 --to-date 2025-12-31 --missing-only
+    python scripts/maintenance/sofascore/backfill_event_metadata.py --from-date 2025-10-01 --to-date 2025-12-31 --missing-only
 
     # Force all + results
-    python scripts/backfill/backfill_event_metadata.py --force --refresh-results --sleep 1
+    python scripts/maintenance/sofascore/backfill_event_metadata.py --force --refresh-results --sleep 1
 """
 
 import argparse
@@ -58,7 +58,7 @@ from modules.sofascore.exceptions import (
     SofaScoreNotFoundException,
     SofaScoreRateLimitException,
 )
-from scripts.sport_seasons_processing import season_to_process
+from scripts.maintenance.sofascore.sport_seasons_processing import season_to_process
 from shared.temporal import local_day_bounds_utc
 
 # ---------------------------------------------------------------------------

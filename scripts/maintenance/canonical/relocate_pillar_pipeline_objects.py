@@ -2,9 +2,9 @@
 """Group pillar pipeline objects by sport, competition slug and existing event folder.
 
 Preview:
-    python -m scripts.maintenance.relocate_pillar_pipeline_objects --limit 100
+    python -m scripts.maintenance.canonical.relocate_pillar_pipeline_objects --limit 100
 Move files:
-    python -m scripts.maintenance.relocate_pillar_pipeline_objects --apply --limit 100
+    python -m scripts.maintenance.canonical.relocate_pillar_pipeline_objects --apply --limit 100
 
 The default is a dry run. Only debug/pillar_pipeline_objects is scanned.
 Existing event-folder names are preserved and destination files are not overwritten.
@@ -17,11 +17,11 @@ import logging
 from pathlib import Path
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.maintenance.relocate_odds_debug_responses import (
+from scripts.maintenance.canonical.relocate_odds_debug_responses import (
     collect_responses as collect_debug_files,
     load_event_debug_paths,
     relocate_responses,

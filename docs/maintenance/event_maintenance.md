@@ -16,7 +16,7 @@ y el lote en curso se revierte si no llegó al commit.
 
 ## Corregir positivos históricos Oddspapi
 
-`scripts/maintenance/reset_oddspapi_has_odds.py` cambia exclusivamente
+`scripts/maintenance/oddspapi/reset_oddspapi_has_odds.py` cambia exclusivamente
 `has_odds=true` a `NULL`, actualizando también `updated_at`, cuando:
 
 - El mapping pertenece a `oddspapi`.
@@ -37,13 +37,13 @@ después; no hay una marca separada que identifique qué positivos se comprobaro
 
 ```powershell
 # Previsualizar todos los candidatos, en lotes de 500 mappings.
-.venv/Scripts/python.exe scripts/maintenance/reset_oddspapi_has_odds.py --batch-size 500
+.venv/Scripts/python.exe scripts/maintenance/oddspapi/reset_oddspapi_has_odds.py --batch-size 500
 
 # Aplicar la corrección por lotes.
-.venv/Scripts/python.exe scripts/maintenance/reset_oddspapi_has_odds.py --batch-size 500 --apply
+.venv/Scripts/python.exe scripts/maintenance/oddspapi/reset_oddspapi_has_odds.py --batch-size 500 --apply
 
 # Otra fecha de corte y una ejecución limitada.
-.venv/Scripts/python.exe scripts/maintenance/reset_oddspapi_has_odds.py --created-before 2026-09-24T18:00:00Z --batch-size 100 --limit 1000 --apply
+.venv/Scripts/python.exe scripts/maintenance/oddspapi/reset_oddspapi_has_odds.py --created-before 2026-09-24T18:00:00Z --batch-size 100 --limit 1000 --apply
 ```
 
 `selected` y `updated` cuentan mappings, no eventos distintos. `scanned` cuenta
@@ -60,7 +60,7 @@ salida, repetir el lote no vuelve a modificar los NULL.
 
 ## Eliminar eventos mediante filtros configurables
 
-`scripts/maintenance/prune_events.py` no tiene una población predeterminada.
+`scripts/maintenance/canonical/prune_events.py` no tiene una población predeterminada.
 Ejecutarlo sin argumentos produce un error de selección y no recorre eventos.
 Por defecto no hay filtros por estado de fuente ni por presencia de mercados,
 y las listas de discovery están desactivadas. Debes indicar competiciones,
@@ -101,35 +101,35 @@ solo si se solicitan. Categorías y torneos excluidos son selectores separados;
 ```powershell
 # Población auditada: sin mercados, SofaScore false y sin mapping Oddspapi.
 # Todas las competiciones; solo previsualizar.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --all-competitions
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --all-competitions
 
 # La misma población, limitada a las competiciones excluidas en discovery.py.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions
 
 # Todos los eventos sin mercados de las competiciones excluidas, con cualquier estado de fuente.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --discovery-exclusions
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --discovery-exclusions
 
 # Todos los eventos sin mercados de las categorías excluidas configuradas.
 # Preview: omite --apply hasta revisar los contadores y los IDs seleccionados.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --discovery-excluded-categories
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --discovery-excluded-categories
 
 # Una categoría exacta escrita en CLI, independiente de discovery.py.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --category "football=Romania Amateur"
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --category "football=Romania Amateur"
 
 # Sumar competiciones concretas a las listas de discovery.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions --competition-ids 123 456 --source-unique-tournament-ids 789 1011
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions --competition-ids 123 456 --source-unique-tournament-ids 789 1011
 
 # Otro conjunto: disponibilidad Oddspapi desconocida, sin mercados, competición 123.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --source-state oddspapi=unknown --competition-id 123
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --source-state oddspapi=unknown --competition-id 123
 
 # Seleccionar la competición 123 sin restricciones de fuentes o mercados.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --competition-id 123
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --competition-id 123
 
 # Aplicar una selección explícita en lotes de 100, con un máximo de 500 eventos.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions --batch-size 100 --limit 500 --apply
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --source-state sofascore=false --source-state oddspapi=missing --discovery-exclusions --batch-size 100 --limit 500 --apply
 
 # Aplicar categorías excluidas configuradas en lotes de 100 después de revisar el preview.
-.venv/Scripts/python.exe scripts/maintenance/prune_events.py --markets absent --discovery-excluded-categories --batch-size 100 --apply
+.venv/Scripts/python.exe scripts/maintenance/canonical/prune_events.py --markets absent --discovery-excluded-categories --batch-size 100 --apply
 ```
 
 `unknown` requiere al menos un NULL y ningún positivo; `false` requiere al menos

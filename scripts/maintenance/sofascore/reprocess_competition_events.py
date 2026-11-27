@@ -1,7 +1,7 @@
 """Refetch and reprocess persisted SofaScore events for one competition.
 
 Example:
-    python scripts/reprocess_competition_events.py --competition_name "Premier League"
+    python scripts/maintenance/sofascore/reprocess_competition_events.py --competition_name "Premier League"
 """
 
 import argparse
