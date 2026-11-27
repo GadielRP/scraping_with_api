@@ -18,8 +18,20 @@ Los parámetros versionados se definen en [la política del proveedor](../../mod
 
 El primer tick válido sirve como ancla. Cada cambio confirmado mueve el ancla. Un tick sigue vigente hasta el siguiente válido, así que la confirmación admite períodos sin nuevas observaciones. Dentro del tramo final de tres minutos del corte de observación, el detector evalúa solo el último tick y puede emitirlo sin esperar confirmación.
 
+La reversión debe volver a una diferencia **estrictamente menor** al umbral y ocurrir antes del final de la ventana. Una reversión exactamente al final no invalida el cambio. Los precios en la nueva zona pueden variar durante la ventana. El primer tick por sí solo sirve como ancla y un cierre estable no genera un cambio significativo.
+
 ## Momentos fijos y persistencia
 
 Los objetivos fijos salen de `PRE_START_ODDS_MOMENTS`. Cada uno toma el último tick elegible en o antes de su objetivo. Los checkpoints se conservan aunque la serie sea demasiado corta para el detector, el cambio sea pequeño o haya una reversión breve. El recovery solicita los objetivos **estrictamente anteriores a T−5** y obtiene la observación de T−5 de la reconciliación entre la captura original y el histórico. Con los perfiles actuales, esto deja T−360, T−120 y T−30 en local, y T−120 y T−30 en producción, siempre que exista un tick válido para el objetivo.
 
 Un mismo tick puede representar varios objetivos. La persistencia histórica lo deduplica por identidad de cuota, timestamp completo del proveedor, precio, límite y tamaño del exchange. `collected_at` es la hora real de escritura y `source_collected_at` es la hora de la observación según el proveedor. Los campos `initial_odds` y `current_odds` se seleccionan por su propia regla temporal. Consulta [el modelo de persistencia](../architecture/odds_db_ingestion_context.md) para auditar una cuota.
+
+El lector conserva `targetAt` y `minutesUntilStart` como metadatos de la selección. En un cambio dinámico, los minutos pueden ser fraccionarios. `createdAt` conserva el timestamp del proveedor con su precisión original. Los objetivos compatibles se combinan antes de la persistencia, que compara con los ticks ya presentes y con los añadidos en el mismo lote. La deduplicación cubre reejecuciones secuenciales. Las transacciones concurrentes no tienen una restricción única nueva que impida insertar el mismo tick. Las capturas ordinarias siguen representando observaciones independientes.
+
+## Implementación y verificación
+
+El [lector histórico](../../modules/oddspapi/historical_odds_reader.py) comparte cada serie ordenada entre normalización, selección fija y detección. El [detector](../../modules/oddspapi/historical_odds_change_detector.py) recibe kickoff y umbrales explícitos. La sanitización conserva referencias a los ticks originales. El detector recorre ventanas por índice y las ventanas superpuestas pueden aumentar el trabajo sobre series con muchos candidatos.
+
+```bash
+python -m pytest -q tests/test_historical_odds_change_detector.py tests/test_historical_odds_reader_change_fallback.py tests/test_historical_odds_as_of.py tests/test_oddspapi_history_recovery.py
+```

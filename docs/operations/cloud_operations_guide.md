@@ -609,6 +609,9 @@ python main.py midnight
 # Collect results (finished events) now
 python main.py results
 
+# Collect results for a missed local date
+python main.py results-date --date 2026-11-25
+
 # Collect results (all finished) now
 python main.py results-all
 
@@ -638,6 +641,9 @@ docker exec -it sofascore_app python /app/main.py midnight
 
 # Collect results (finished events) now
 docker exec -it sofascore_app python /app/main.py results
+
+# Collect results for a missed local date
+docker exec -it sofascore_app python /app/main.py results-date --date 2026-11-25
 
 # Collect results (all finished) now
 docker exec -it sofascore_app python /app/main.py results-all

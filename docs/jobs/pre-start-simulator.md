@@ -1,6 +1,6 @@
 # Simulación del flujo pre-start
 
-`scripts/development/simulate_pre_start_check.py` usa selección de candidatos,
+`scripts/development/canonical/simulate_pre_start_check.py` usa selección de candidatos,
 proveedores y evaluación productivos con minutos forzados. Acepta uno o varios
 IDs canónicos ya existentes en la base de datos.
 
@@ -11,13 +11,13 @@ actualizada a la revisión vigente:
 
 ```powershell
 # P1–P5 con las cuotas ya persistidas, en T5, sin adquirir cuotas nuevas.
-.venv\Scripts\python.exe -m scripts.development.simulate_pre_start_check 14083613 --minutes 5 --no-odds-ingestion --no-alerts --pillars --custom-pillar-filter --pillar-1 --pillar-2 --pillar-3 --pillar-4 --pillar-5
+.venv\Scripts\python.exe -m scripts.development.canonical.simulate_pre_start_check 14083613 --minutes 5 --no-odds-ingestion --no-alerts --pillars --custom-pillar-filter --pillar-1 --pillar-2 --pillar-3 --pillar-4 --pillar-5
 
 # Varios eventos: adquirir cuotas SofaScore/Oddspapi y evaluar P5 solamente.
-.venv\Scripts\python.exe -m scripts.development.simulate_pre_start_check 14083613,14083614 -m 5 --odds-ingestion --sofascore --oddspapi --no-oddsportal --no-alerts --pillars --custom-pillar-filter --no-pillar-1 --no-pillar-2 --no-pillar-3 --no-pillar-4 --pillar-5 --market-report
+.venv\Scripts\python.exe -m scripts.development.canonical.simulate_pre_start_check 14083613,14083614 -m 5 --odds-ingestion --sofascore --oddspapi --no-oddsportal --no-alerts --pillars --custom-pillar-filter --no-pillar-1 --no-pillar-2 --no-pillar-3 --no-pillar-4 --pillar-5 --market-report
 
 # Consultar todas las opciones y sus valores por defecto.
-.venv\Scripts\python.exe -m scripts.development.simulate_pre_start_check --help
+.venv\Scripts\python.exe -m scripts.development.canonical.simulate_pre_start_check --help
 ```
 
 También acepta `<id> <minutos>` o `<id1> <id2> <minutos>`. Los minutos pueden ser
@@ -75,7 +75,8 @@ independientemente del toggle de cuotas SofaScore.
 
 ## Relojes y reconstrucción histórica
 
-Este comando prueba la ingestión de OddsPapi en T−5. Con
+Puedes probar la ingestión sola, sin configurar los pilares ni su frontera de
+IDs. Este comando prueba el flujo de OddsPapi en T−5. Con
 `ENABLE_ODDSPAPI_PRE_START_HISTORICAL=false` y `5` permitido realiza una captura
 real de `/v4/odds` y alimenta la caché, según la
 [configuración del proveedor](../providers/pre_start_odds_ingestion.md).
@@ -83,13 +84,13 @@ Para probar la reconstrucción de fixtures con resultado, usa el
 [comando de recuperación](results-collection.md#oddspapi-prematch-odds-recovery).
 
 ```powershell
-python -m scripts.development.simulate_pre_start_check 303597 -m 5 --odds-ingestion --oddspapi --no-sofascore --no-oddsportal --no-alerts --no-pillars --market-report
+python -m scripts.development.canonical.simulate_pre_start_check 303597 -m 5 --odds-ingestion --oddspapi --no-sofascore --no-oddsportal --no-alerts --no-pillars --market-report
 ```
 
 Después puede evaluarse lo ya guardado:
 
 ```powershell
-python -m scripts.development.simulate_pre_start_check 303597 -m 5 --no-odds-ingestion --no-alerts --pillars --custom-pillar-filter --pillar-2 --pillar-3 --pillar-4 --pillar-5 --no-pillar-1
+python -m scripts.development.canonical.simulate_pre_start_check 303597 -m 5 --no-odds-ingestion --no-alerts --pillars --custom-pillar-filter --pillar-2 --pillar-3 --pillar-4 --pillar-5 --no-pillar-1
 ```
 
 `collected_at` conserva la hora real del lote; `evaluation_as_of`, la hora real de

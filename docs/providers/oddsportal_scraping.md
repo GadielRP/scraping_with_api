@@ -33,7 +33,7 @@ The fallback in `Config` is `true` only when the variable is absent. Therefore, 
 
 | File | Current responsibility |
 |---|---|
-| `infrastructure/scheduler/job_scheduler.py` | Registers the pre-start schedule, runs it once at startup, exposes the manual run, and owns `_active_op_thread`. |
+| `infrastructure/scheduler/schedules.py` and `app/runtime.py` | Register the pre-start calendar, dispatch to the pre-start executor and provide the manual entry point. |
 | `modules/jobs/pre_start_check_job/run_pre_start_check_job.py` | Top-level pre-start orchestration. Starts OddsPortal selection before maintenance and provider ingestion. |
 | `modules/jobs/pre_start_check_job/oddsportal_worker.py` | Selects OddsPortal candidates, creates per-event synchronization state, launches the background thread, builds scraper tasks, persists callback results, and signals completion. |
 | `modules/jobs/pre_start_check_job/alert_pipeline.py` | Legacy alert-side synchronization with the per-event OddsPortal state. |
@@ -64,11 +64,7 @@ There is no active root `scheduler.py` or root `oddsportal_scraper.py` in this r
 
 ### 3.1 Scheduled service
 
-`JobScheduler._setup_pre_start_jobs()` registers `job_pre_start_check` at every exact minute mark implied by `POLL_INTERVAL_MINUTES`. With the usual value `5`, those marks are `:00`, `:05`, `:10`, and so on.
-
-`JobScheduler.start()` also runs one immediate pre-start check before starting the scheduler thread. That ordering avoids an immediate startup run overlapping the first scheduled run in the same scheduler instance.
-
-The scheduler loop itself calls due jobs serially. The OddsPortal browser work is parallel only because the pre-start job launches its own background thread.
+`configure_calendar()` registers pre-start at every minute mark implied by `POLL_INTERVAL_MINUTES`. With the usual value `5`, those marks are `:00`, `:05`, `:10`, and so on. The scheduler dispatches due work to separate serial executors for pre-start, closing and maintenance. The OddsPortal cycle has its own worker within the pre-start runtime.
 
 ### 3.2 Manual command
 
@@ -76,7 +72,7 @@ The scheduler loop itself calls due jobs serially. The OddsPortal browser work i
 python main.py pre-start
 ```
 
-The manual path calls `run_job_pre_start_check_now()`. After the synchronous pre-start phases return, it joins the current `_active_op_thread` without a timeout so the process does not exit while the non-daemon OddsPortal worker is still running.
+The CLI calls `ApplicationRuntime.run("pre_start")`. It applies the pre-start execution budget and closes the runtime in a `finally` block. Shutdown signals the OddsPortal cycle and waits within the shared shutdown grace period.
 
 ### 3.3 Event query and timing bucket
 
@@ -85,7 +81,7 @@ The manual path calls `run_job_pre_start_check_now()`. After the synchronous pre
 It then calls:
 
 ```python
-scheduler.event_repo.get_events_starting_soon(
+runtime.event_repo.get_events_starting_soon(
     Config.PRE_START_WINDOW_MINUTES,
     competition_ids=tracked_competition_ids,
 )
@@ -94,15 +90,15 @@ scheduler.event_repo.get_events_starting_soon(
 The SQL time interval is:
 
 ```text
-[current aware local minute - 5 minutes, current time + PRE_START_WINDOW_MINUTES]
+[current UTC minute - 5 minutes, current UTC instant + PRE_START_WINDOW_MINUTES]
 ```
 
-The lower boundary is built from `datetime.now().replace(second=0, microsecond=0) - 5 minutes`. Consequently, the query includes recently started events only near the five-minute boundary; it is not an unrestricted post-start query.
+The event repository rounds the lower boundary down to the current UTC minute before subtracting five minutes. The upper boundary uses the current UTC instant.
 
 For every returned event, the job calculates once:
 
 ```python
-round((start_time - get_local_now_aware()).total_seconds() / 60)
+round((start_utc - now_utc).total_seconds() / 60)
 ```
 
 That same timing dictionary is passed to OddsPortal selection and later reused by the provider/evaluation planning.
@@ -112,7 +108,7 @@ That same timing dictionary is passed to OddsPortal selection and later reused b
 ```mermaid
 sequenceDiagram
     participant JS as JobScheduler
-    participant PS as Pre-start main thread
+    participant PS as Pre-start executor
     participant OP as OddsPortal launcher thread
     participant BR as Playwright browser workers
     participant DB as Database
@@ -129,28 +125,24 @@ sequenceDiagram
         BR->>DB: on_result saves markets
         BR->>AL: done_event.set()
     and Main pre-start path
-        PS->>PS: timestamp/result maintenance
-        PS->>PS: NBA in-game checks
         PS->>DB: load source states
         PS->>PS: build provider candidates
         PS->>PS: _ingest_provider_odds
         Note over PS: run_sofascore_pre_start_odds<br/>run_oddspapi_pre_start_odds
         PS->>AL: evaluate key-moment pipelines
         AL->>AL: eligible legacy alerts wait for their OP event
+        PS->>PS: timestamp/result maintenance and in-game checks
     end
 ```
 
 The real order is:
 
-1. Resolve the optional canonical competition filter.
-2. Load upcoming events.
-3. Calculate `minutes_until_start` once per event.
-4. Call `start_oddsportal_scrape_for_events()` immediately.
-5. Run recently-started timestamp correction and result-freshness maintenance.
-6. Run in-game checks.
-7. If events remain, load provider source states and build the normal pre-start candidate plan.
-8. Ingest SofaScore and OddsPapi odds through their provider phases. See the [ingestion guide](pre_start_odds_ingestion.md).
-9. Evaluate the enabled legacy-alert and pillar pipelines.
+1. Load upcoming events using the optional competition filter and exclude recently rescheduled events.
+2. Calculate `minutes_until_start` per event and call `start_oddsportal_scrape_for_events()`.
+3. Load source states and build the shared pre-start candidate plan.
+4. Ingest SofaScore and OddsPapi odds through their provider phases. See the [ingestion guide](pre_start_odds_ingestion.md).
+5. Evaluate the enabled alert and pillar pipelines.
+6. With remaining execution budget, run recently started event maintenance and then in-game checks.
 
 OddsPortal is therefore launched before timestamp maintenance. If maintenance later removes or reschedules an event, an already-selected OddsPortal task is not cancelled.
 
@@ -817,7 +809,7 @@ Check:
 - Decimal and fractional display tokens are auto-detected and normalized to decimal; there is no runtime format toggle.
 - Browser chunks are concurrent; events inside one chunk are sequential.
 - Current dispatcher code does not implement the previously documented resolver-seed architecture.
-- A no-candidate run clears `_active_op_thread`; it can lose the reference to an older worker that is still running.
+- Empty or disabled ticks leave the runtime's reference to any active OddsPortal cycle in place.
 - The main pre-start job does not join the scraper in scheduled mode; alert workers synchronize per event, and the scraper thread continues independently.
 - Queue/URL-resolution waiting in the legacy alert pipeline is unbounded; the configured alert timeout starts only after `on_task_started`.
 - The pillar pipeline currently ignores the OddsPortal synchronization arguments it receives.

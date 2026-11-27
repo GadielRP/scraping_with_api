@@ -88,6 +88,7 @@ clean_league_cache/ – clears stale OddsPortal league cache rows before the day
 daily_discovery/ – runs an advance pass at 17:07 and an update at 08:07, with fixed UTC target dates and per-sport retries every 30 minutes, including overnight. It maintains progress via `DailyDiscoveryRepository`. See [`docs/jobs/daily-discovery.md`](docs/jobs/daily-discovery.md).
 discover_dropping_odds/ & discover_secondary_sources/ – run the A and B discovery paths. Secondary sources include high‑value streaks, team streaks, H2H, winning odds and optimisation filters.
 midnight_sync_job/ – runs at 04:00 in `Config.TIMEZONE`, collects results and updates prediction logs.
+discovery/ – implements bounded provider fetching, admission policy and audit logging. See the [discovery guide](docs/jobs/daily-discovery.md).
 oddspapi/ – maps provider fixtures to canonical events and runs separate [prematch odds recovery](docs/jobs/results-collection.md#oddspapi-prematch-odds-recovery) on the maintenance executor after scheduled Midnight Sync when configured.
 pre_start_check_job/ – executes the core pre-start lifecycle, provider odds ingestion, and prediction pipelines.
 
@@ -235,7 +236,8 @@ Configure discovery schedules and admission policy in
 then restart. SofaScore and OddsPapi have independent switches for future events,
 tracked competitions, excluded sports, excluded categories and excluded competitions.
 The default accepts events at least ten minutes before kickoff and excludes the
-audited lists in that module. See [discovery selection and scheduling](docs/jobs/daily-discovery.md).
+audited lists in that module. A false or unknown SofaScore odds flag alone does
+not exclude an event from that admission policy. See [discovery selection and scheduling](docs/jobs/daily-discovery.md).
 The existing odds-first admission in team streaks remains enabled through
 `SOFASCORE.team_streaks_require_odds`; disable it to persist admitted events
 without requiring an odds response first.
