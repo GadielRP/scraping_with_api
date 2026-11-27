@@ -40,7 +40,7 @@ Use the standalone command to replay a date. It requires `ODDSPAPI_HISTORY_RECOV
 python main.py oddspapi-prematch-odds-recovery --date 2026-11-25
 ```
 
-The job updates existing quote instruments and deduplicates historical snapshots. It selects qualifying fixtures again on a manual replay. If quota is exhausted, it stops the current run, and a replay of the target date can pick up the remaining work. Inspect `quotes_updated` and `snapshots_added` to see what each fixture wrote. `markets_saved=0` is expected because recovery works on existing markets. `no historical quote or snapshot changes` indicates a processed response with zero writes.
+The job replaces each existing quote instrument that `/historical-odds` returns with at least one tick through kickoff: its snapshots are deleted and rewritten in the same transaction, and its opening and current are overwritten. Instruments the response does not return keep their stored data. It selects qualifying fixtures again on a manual replay, and a replay rewrites the same state. If quota is exhausted, it stops the current run, and a replay of the target date can pick up the remaining work. Inspect `quotes_updated` and `snapshots_added` to see what each fixture wrote. `markets_saved=0` is expected because recovery works on existing markets. `no historical quote or snapshot changes` indicates a processed response with zero writes.
 
 ## Durable materialized-view refresh
 

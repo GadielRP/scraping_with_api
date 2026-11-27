@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from itertools import groupby
 
 from sqlalchemy import and_, or_
@@ -13,7 +12,6 @@ from infrastructure.persistence.repositories import MarketMappingRepository
 from infrastructure.runtime.resource_budget import check_maintenance_capacity
 from infrastructure.settings import Config
 from modules.competition.tracked_competitions import tracked_competition_ids
-from modules.jobs.pre_start_check_job.providers.oddspapi.constants import RESTRICTED_CAPTURE_MINUTE
 from modules.jobs.pre_start_check_job.providers.oddspapi.event_selector import OddspapiPreStartCandidate
 from modules.jobs.pre_start_check_job.providers.oddspapi.odds_batch_processor import OddspapiPreStartOddsBatchProcessor
 from modules.jobs.pre_start_check_job.providers.oddspapi.settings import ODDSPAPI_PRE_START_SETTINGS
@@ -47,7 +45,7 @@ def recover_prematch_odds_for_finished_fixtures(target_date, critical_pending=No
 
 
 def recover_prematch_odds(rows, critical_pending=None):
-    """Reprocess /historical-odds up to T−5 for rows of
+    """Replace pre-match odds with /historical-odds up to kickoff for rows of
     (event_id, fixture_id, starts_at, source_sport_id, bookmaker_slug) ordered by event and fixture."""
     if not rows:
         return
@@ -77,7 +75,7 @@ def recover_prematch_odds(rows, critical_pending=None):
             exchange_max_requests_per_run=remaining or 0,
             enable_exchange_historical=remaining != 0,
             persist_main_line_only=True, require_active_quotes=Config.ODDSPAPI_PRE_START_REQUIRE_ACTIVE_QUOTES,
-            available_through_utc=kickoff - timedelta(minutes=RESTRICTED_CAPTURE_MINUTE), recovery=True,
+            available_through_utc=kickoff, recovery=True,
         )
         if remaining is not None:
             remaining -= summary.exchange_historical_requests_attempted

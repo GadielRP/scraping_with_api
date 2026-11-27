@@ -4,7 +4,7 @@
 
 ## Selección por serie
 
-El lector ordena los ticks por `createdAt` y, cuando interviene el detector, sanitiza cada serie de bookmaker, mercado, outcome y jugador. Excluye precios no finitos, precios de hasta `1.01` y ticks posteriores al kickoff. La política de actividad decide si admite observaciones inactivas. La recuperación limita además la serie a los ticks con timestamp en o antes de T−5.
+El lector ordena los ticks por `createdAt` y, cuando interviene el detector, sanitiza cada serie de bookmaker, mercado, outcome y jugador. Excluye precios no finitos, precios de hasta `1.01` y ticks posteriores al kickoff. La política de actividad decide si admite observaciones inactivas. La recuperación limita además la serie a los ticks con timestamp en o antes del kickoff.
 
 Los parámetros versionados se definen en [la política del proveedor](../../modules/jobs/pre_start_check_job/providers/oddspapi/settings.py).
 
@@ -22,7 +22,7 @@ La reversión debe volver a una diferencia **estrictamente menor** al umbral y o
 
 ## Momentos fijos y persistencia
 
-Los objetivos fijos salen de `PRE_START_ODDS_MOMENTS`. Cada uno toma el último tick elegible en o antes de su objetivo. Los checkpoints se conservan aunque la serie sea demasiado corta para el detector, el cambio sea pequeño o haya una reversión breve. El recovery solicita los objetivos **estrictamente anteriores a T−5** y obtiene la observación de T−5 de la reconciliación entre la captura original y el histórico. Con los perfiles actuales, esto deja T−360, T−120 y T−30 en local, y T−120 y T−30 en producción, siempre que exista un tick válido para el objetivo.
+Los objetivos fijos salen de `PRE_START_ODDS_MOMENTS`. Cada uno toma el último tick elegible en o antes de su objetivo. Los checkpoints se conservan aunque la serie sea demasiado corta para el detector, el cambio sea pequeño o haya una reversión breve. El recovery solicita los objetivos **hasta el kickoff inclusive** (los negativos quedan fuera) y reemplaza los snapshots guardados de cada cuota devuelta. Con `PRE_START_ODDS_MOMENTS=[360, 120, 30, 5, 1, 0]` esto deja T−360, T−120, T−30, T−5, T−1 y T−0, siempre que exista un tick válido para el objetivo.
 
 Un mismo tick puede representar varios objetivos. La persistencia histórica lo deduplica por identidad de cuota, timestamp completo del proveedor, precio, límite y tamaño del exchange. `collected_at` es la hora real de escritura y `source_collected_at` es la hora de la observación según el proveedor. Los campos `initial_odds` y `current_odds` se seleccionan por su propia regla temporal. Consulta [el modelo de persistencia](../architecture/odds_db_ingestion_context.md) para auditar una cuota.
 

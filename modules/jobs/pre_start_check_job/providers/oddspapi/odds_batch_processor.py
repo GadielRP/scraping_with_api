@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Callable
 
@@ -976,7 +976,8 @@ class OddspapiPreStartOddsBatchProcessor:
                         starts_at=candidate.starts_at,
                         as_of_moments=(
                             [minute for minute in Config.PRE_START_ODDS_MOMENTS
-                             if not recovery or minute > RESTRICTED_CAPTURE_MINUTE]
+                             if not recovery
+                             or candidate.starts_at - timedelta(minutes=minute) <= boundary]
                             if recovery or getattr(
                                 Config,
                                 "ENABLE_ODDSPAPI_HISTORICAL_AS_OF_PERSIST",
